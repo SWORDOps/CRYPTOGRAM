@@ -300,12 +300,6 @@ Cover::Cover(
 	nullptr) {
 }
 
-		if (peer->id == PeerId(1021739447)) {
-			return Badge::Content{
-				.badge = BadgeType::Premium,
-				.emojiStatusId = { DocumentId() },
-			};
-		}
 Cover::Cover(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller,
