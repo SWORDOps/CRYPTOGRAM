@@ -28,10 +28,22 @@ class Session;
  */
 struct MoneroMiningStatistics {
 	// Mining performance
-	double hashrate = 0.0;              // Current hashrate in H/s (hashes per second)
+	double hashrate = 0.0;              // Current total hashrate in H/s (hashes per second)
 	double hashrateAvg10s = 0.0;        // 10-second average
 	double hashrateAvg1m = 0.0;         // 1-minute average
 	double hashrateAvg15m = 0.0;        // 15-minute average
+
+	// Hardware-specific hashrates
+	double cpuHashrate = 0.0;           // CPU hashrate
+	double gpuHashrate = 0.0;           // Total GPU hashrate
+	double nvidiaHashrate = 0.0;        // NVIDIA GPU hashrate (CUDA)
+	double amdHashrate = 0.0;           // AMD GPU hashrate (OpenCL)
+
+	// Active hardware
+	bool cpuActive = false;             // CPU mining active
+	bool nvidiaActive = false;          // NVIDIA GPU mining active
+	bool amdActive = false;             // AMD GPU mining active
+	QString activeHardware;             // Human-readable list: "CPU, NVIDIA GPU"
 
 	// Share statistics
 	qint64 sharesAccepted = 0;          // Accepted shares (valid work)
@@ -52,6 +64,10 @@ struct MoneroMiningStatistics {
 	int cpuThreads = 0;                 // Number of mining threads
 	double cpuUsage = 0.0;              // Current CPU usage %
 	int configuredCpuPercent = 20;      // Configured CPU limit
+
+	// GPU usage
+	int gpuDevices = 0;                 // Number of GPUs detected
+	double gpuUsage = 0.0;              // Average GPU usage %
 
 	// Estimated earnings (approximate)
 	double estimatedXmrPerDay = 0.0;    // Estimated XMR/day at current hashrate

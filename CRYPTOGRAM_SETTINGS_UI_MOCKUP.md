@@ -100,8 +100,13 @@ Statistics
 ──────────
 Status: ⚡ Mining (idle for 23 minutes)
 
+Hardware:
+├─ Active: CPU, NVIDIA GPU
+├─ CPU: 2,100 H/s (85%)
+├─ NVIDIA: 350 H/s (15%)
+└─ Total: 2,450 H/s
+
 Performance:
-├─ Hashrate: 2,450 H/s
 ├─ 10s avg: 2,380 H/s
 ├─ 1m avg: 2,395 H/s
 └─ 15m avg: 2,410 H/s
@@ -122,6 +127,9 @@ Lifetime Contribution:
 └─ Estimated value: ~$18.00 worth of XMR
 
 Thank you for supporting CRYPTOGRAM development! 💙
+
+Note: XMRig automatically uses CPU + GPU when available.
+For Monero (RandomX), CPUs are more efficient than GPUs.
 
 
 [View Pool Stats] [Learn More About Mining]

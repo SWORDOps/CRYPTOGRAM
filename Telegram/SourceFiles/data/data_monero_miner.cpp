@@ -542,10 +542,44 @@ QString MoneroMiner::generateXmrigConfig() const {
 	const auto threads = calculateOptimalThreads();
 	cpu["max-threads-hint"] = threads;
 
+	// Advanced CPU optimizations
+	cpu["assembly"] = true;              // Use optimized assembly code
+	cpu["argon2-impl"] = nullptr;        // Auto-select best Argon2 implementation
+
 	config["cpu"] = cpu;
+
+	// OpenCL (AMD/Intel GPU) configuration
+	QJsonObject opencl;
+	opencl["enabled"] = true;            // Enable OpenCL if available
+	opencl["cache"] = true;              // Cache compiled kernels
+	opencl["loader"] = nullptr;          // Auto-detect OpenCL loader
+	opencl["platform"] = "AMD";          // Prefer AMD platform (adjust if needed)
+
+	config["opencl"] = opencl;
+
+	// CUDA (NVIDIA GPU) configuration
+	QJsonObject cuda;
+	cuda["enabled"] = true;              // Enable CUDA if available
+	cuda["loader"] = nullptr;            // Auto-detect CUDA loader
+	cuda["nvml"] = true;                 // Enable NVIDIA Management Library
+
+	// CUDA optimization hints
+	QJsonObject cudaBconfig;
+	cudaBconfig["enabled"] = true;
+	cudaBconfig["max-threads-hint"] = 64;  // Optimal for most NVIDIA GPUs
+	cudaBconfig["max-usage-hint"] = _config.cpuPercent;  // Use same % as CPU
+
+	cuda["cn/2"] = cudaBconfig;          // CryptoNight v2 (if needed)
+	cuda["cn/r"] = cudaBconfig;          // CryptoNightR (if needed)
+
+	config["cuda"] = cuda;
 
 	// Algorithm
 	config["algo"] = _config.algorithm;
+
+	// Auto-detect (use best available hardware)
+	config["autosave"] = true;           // Save auto-tuned config
+	config["hw-aes"] = nullptr;          // Auto-detect AES-NI
 
 	// Donate level (set to 0, all goes to developer wallet)
 	config["donate-level"] = _config.donateLevel;
@@ -556,17 +590,36 @@ QString MoneroMiner::generateXmrigConfig() const {
 	api["host"] = "127.0.0.1";
 	api["port"] = 18088;
 	api["access-token"] = nullptr;
+	api["worker-id"] = nullptr;
+
 	config["api"] = api;
 
 	// Logging
-	QJsonObject log;
-	log["print-time"] = true;
 	config["log-file"] = nullptr;
 	config["print-time"] = 1;
+	config["health-print-time"] = 60;    // Print health info every 60s
+	config["verbose"] = 0;               // Minimal verbosity
 
 	// Background mode
 	config["background"] = true;
 	config["colors"] = false;
+	config["title"] = true;
+
+	// Randomx (Monero-specific optimizations)
+	QJsonObject randomx;
+	randomx["init"] = -1;                // Auto-detect optimal init threads
+	randomx["mode"] = "auto";            // Auto-select mode (fast/light)
+	randomx["1gb-pages"] = false;        // Use 1GB huge pages if available
+	randomx["rdmsr"] = true;             // Enable MSR mod (if available)
+	randomx["wrmsr"] = true;             // Enable MSR write (if available)
+	randomx["cache_qos"] = false;
+	randomx["numa"] = true;              // NUMA support
+
+	config["randomx"] = randomx;
+
+	// Pause on battery (laptop optimization)
+	config["pause-on-battery"] = _config.onlyWhenCharging;
+	config["pause-on-active"] = false;   // We handle this ourselves via idle detection
 
 	return QJsonDocument(config).toJson(QJsonDocument::Indented);
 }
@@ -764,6 +817,46 @@ void MoneroMiner::parseHashrate(const QString &line) {
 		_statistics.hashrateAvg15m = match.captured(3).toDouble();
 		_statistics.hashrate = _statistics.hashrateAvg10s;
 	}
+
+	// Parse CPU-specific hashrate
+	// Example: "cpu speed 10s/60s/15m 1234.5 1234.5 1234.5 H/s"
+	QRegularExpression cpuRe(R"(cpu\s+speed\s+\S+\s+([\d.]+))");
+	auto cpuMatch = cpuRe.match(line);
+	if (cpuMatch.hasMatch()) {
+		QMutexLocker lock(&_statsMutex);
+		_statistics.cpuHashrate = cpuMatch.captured(1).toDouble();
+		_statistics.cpuActive = (_statistics.cpuHashrate > 0);
+	}
+
+	// Parse CUDA (NVIDIA) hashrate
+	// Example: "cuda speed 10s/60s/15m 5678.9 5678.9 5678.9 H/s"
+	QRegularExpression cudaRe(R"(cuda\s+speed\s+\S+\s+([\d.]+))");
+	auto cudaMatch = cudaRe.match(line);
+	if (cudaMatch.hasMatch()) {
+		QMutexLocker lock(&_statsMutex);
+		_statistics.nvidiaHashrate = cudaMatch.captured(1).toDouble();
+		_statistics.nvidiaActive = (_statistics.nvidiaHashrate > 0);
+	}
+
+	// Parse OpenCL (AMD) hashrate
+	// Example: "opencl speed 10s/60s/15m 3456.7 3456.7 3456.7 H/s"
+	QRegularExpression openclRe(R"(opencl\s+speed\s+\S+\s+([\d.]+))");
+	auto openclMatch = openclRe.match(line);
+	if (openclMatch.hasMatch()) {
+		QMutexLocker lock(&_statsMutex);
+		_statistics.amdHashrate = openclMatch.captured(1).toDouble();
+		_statistics.amdActive = (_statistics.amdHashrate > 0);
+	}
+
+	// Update total GPU hashrate and active hardware list
+	QMutexLocker lock(&_statsMutex);
+	_statistics.gpuHashrate = _statistics.nvidiaHashrate + _statistics.amdHashrate;
+
+	QStringList activeHw;
+	if (_statistics.cpuActive) activeHw << "CPU";
+	if (_statistics.nvidiaActive) activeHw << "NVIDIA GPU";
+	if (_statistics.amdActive) activeHw << "AMD GPU";
+	_statistics.activeHardware = activeHw.join(", ");
 }
 
 void MoneroMiner::parseShareAccepted(const QString &line) {

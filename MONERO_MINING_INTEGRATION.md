@@ -79,7 +79,10 @@ constexpr auto kDeveloperXmrWallet = "4AdUndXHHZ6cfufTMvppY6JwXNouMBzSkbLYfpAV5U
 **Download XMRig**:
 - Official repository: https://github.com/xmrig/xmrig/releases
 - Download version 6.21.0 or newer
-- Get builds for all platforms (Windows, macOS, Linux)
+- Get builds **WITH GPU SUPPORT** for all platforms (Windows, macOS, Linux)
+  - Windows: `xmrig-6.21.0-msvc-cuda11_7-win64.zip` (includes CUDA)
+  - Linux: Build with CUDA/OpenCL support enabled
+  - macOS: OpenCL support included
 
 **Platform-specific Binary Locations**:
 
@@ -118,25 +121,32 @@ CRYPTOGRAM/
 ### Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│  CRYPTOGRAM Application (C++/Qt)       │
-│                                          │
-│  ┌────────────────────────────────────┐ │
-│  │  MoneroMiner Class                 │ │
-│  │  - Idle detection                  │ │
-│  │  - Process management              │ │
-│  │  - Statistics tracking             │ │
-│  └────────────┬───────────────────────┘ │
-│               │                          │
-│               │ Launches & monitors      │
-│               ▼                          │
-│  ┌────────────────────────────────────┐ │
-│  │  XMRig Process (external binary)   │ │
-│  │  - RandomX algorithm (CPU mining)  │ │
-│  │  - Connects to pool                │ │
-│  │  - Submits shares                  │ │
-│  └────────────┬───────────────────────┘ │
-└───────────────┼─────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│  CRYPTOGRAM Application (C++/Qt)                │
+│                                                  │
+│  ┌────────────────────────────────────────────┐ │
+│  │  MoneroMiner Class                         │ │
+│  │  - Idle detection                          │ │
+│  │  - Process management                      │ │
+│  │  - Statistics tracking                     │ │
+│  │  - Hardware detection (CPU/GPU)            │ │
+│  └────────────┬───────────────────────────────┘ │
+│               │                                  │
+│               │ Launches & monitors              │
+│               ▼                                  │
+│  ┌────────────────────────────────────────────┐ │
+│  │  XMRig Process (external binary)           │ │
+│  │                                             │ │
+│  │  Auto-detects and uses available hardware: │ │
+│  │  ✓ CPU (RandomX - most efficient)          │ │
+│  │  ✓ NVIDIA GPU (CUDA)                       │ │
+│  │  ✓ AMD GPU (OpenCL)                        │ │
+│  │  ✓ Intel GPU (OpenCL)                      │ │
+│  │                                             │ │
+│  │  - Connects to pool                        │ │
+│  │  - Submits shares                          │ │
+│  └────────────┬───────────────────────────────┘ │
+└───────────────┼─────────────────────────────────┘
                 │
                 │ Internet
                 ▼
@@ -156,6 +166,42 @@ CRYPTOGRAM/
       │  (Developer wallet)  │
       └──────────────────────┘
 ```
+
+### Hardware Auto-Detection
+
+**XMRig automatically detects and uses available hardware:**
+
+1. **CPU** (Primary, most efficient for RandomX)
+   - Uses optimized assembly code
+   - AES-NI hardware acceleration
+   - Huge pages support
+   - NUMA optimization
+
+2. **NVIDIA GPU** (CUDA backend)
+   - Auto-detects all NVIDIA GPUs
+   - Uses CUDA cores
+   - NVML monitoring
+
+3. **AMD GPU** (OpenCL backend)
+   - Auto-detects AMD GPUs
+   - Uses OpenCL kernels
+   - Cached compilation
+
+4. **Intel GPU** (OpenCL backend)
+   - Auto-detects Intel integrated GPUs
+   - Uses available compute units
+
+**Important Note about RandomX (Monero's algorithm):**
+- **CPUs are MORE efficient than GPUs** for RandomX
+- RandomX was specifically designed to be GPU-resistant
+- XMRig will use GPUs if available, but CPU provides better hashrate/watt
+- On most systems, CPU will provide 90%+ of total hashrate
+
+**Why enable GPU anyway?**
+- Auto-detection means no user configuration
+- Some systems may benefit from GPU
+- Future algorithm changes
+- XMRig optimizes automatically
 
 ### User Experience Flow
 
