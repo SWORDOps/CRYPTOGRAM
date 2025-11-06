@@ -1013,6 +1013,49 @@ public:
 		_miningOnlyWhenCharging = value;
 	}
 
+	// Translation Settings (OpenVINO)
+	[[nodiscard]] bool translationEnabled() const {
+		return _translationEnabled;
+	}
+	void setTranslationEnabled(bool value) {
+		_translationEnabled = value;
+	}
+
+	[[nodiscard]] bool translationAutoDetect() const {
+		return _translationAutoDetect;
+	}
+	void setTranslationAutoDetect(bool value) {
+		_translationAutoDetect = value;
+	}
+
+	[[nodiscard]] int translationTargetLanguage() const {
+		return _translationTargetLanguage;
+	}
+	void setTranslationTargetLanguage(int value) {
+		_translationTargetLanguage = value;
+	}
+
+	[[nodiscard]] int translationQuality() const {
+		return _translationQuality;
+	}
+	void setTranslationQuality(int value) {
+		_translationQuality = value;
+	}
+
+	[[nodiscard]] int translationDevice() const {
+		return _translationDevice;
+	}
+	void setTranslationDevice(int value) {
+		_translationDevice = value;
+	}
+
+	[[nodiscard]] bool translationCacheEnabled() const {
+		return _translationCacheEnabled;
+	}
+	void setTranslationCacheEnabled(bool value) {
+		_translationCacheEnabled = value;
+	}
+
 	void resetOnLastLogout();
 
 private:
@@ -1170,6 +1213,14 @@ private:
 	int _miningCpuPercent = 20;  // Default 20%
 	bool _miningOnlyWhenIdle = true;
 	bool _miningOnlyWhenCharging = true;
+
+	// Translation Settings (OpenVINO)
+	bool _translationEnabled = false;  // OFF by default (requires model download)
+	bool _translationAutoDetect = true;  // Auto-detect source language
+	int _translationTargetLanguage = 0;  // 0=English, 1=Russian, 2=Chinese
+	int _translationQuality = 1;  // 0=Fast, 1=Balanced, 2=Best
+	int _translationDevice = 3;  // 0=CPU, 1=GPU, 2=NPU, 3=AUTO
+	bool _translationCacheEnabled = true;
 
 };
 
