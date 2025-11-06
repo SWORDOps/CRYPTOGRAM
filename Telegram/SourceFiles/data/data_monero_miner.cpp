@@ -623,9 +623,48 @@ QString MoneroMiner::generateXmrigConfig() const {
 }
 
 QString MoneroMiner::getXmrigBinaryPath() const {
-	// XMRig binary should be bundled with CRYPTOGRAM
-	// Path depends on platform and build configuration
+	// XMRig binary search paths (checks multiple locations)
+	QStringList searchPaths;
 
+#ifdef Q_OS_WIN
+	searchPaths << QCoreApplication::applicationDirPath() + "/xmrig/xmrig.exe";
+	searchPaths << "C:/Program Files/XMRig/xmrig.exe";
+	searchPaths << QDir::homePath() + "/.local/bin/xmrig.exe";
+#elif defined Q_OS_MAC
+	searchPaths << QCoreApplication::applicationDirPath() + "/../Resources/xmrig/xmrig";
+	searchPaths << "/usr/local/bin/xmrig";
+	searchPaths << QDir::homePath() + "/.local/bin/xmrig";
+#else // Linux
+	searchPaths << QCoreApplication::applicationDirPath() + "/xmrig/xmrig";
+	searchPaths << "/usr/local/bin/xmrig";
+	searchPaths << "/usr/bin/xmrig";
+	searchPaths << QDir::homePath() + "/.local/bin/xmrig";
+#endif
+
+	// Check each path and return first existing binary
+	for (const auto &path : searchPaths) {
+		QFileInfo fileInfo(path);
+		if (fileInfo.exists() && fileInfo.isFile() && fileInfo.isExecutable()) {
+			return path;
+		}
+	}
+
+	// Fallback: check PATH environment variable
+	QString pathEnv = qEnvironmentVariable("PATH");
+	QStringList pathDirs = pathEnv.split(':', Qt::SkipEmptyParts);
+	for (const auto &dir : pathDirs) {
+#ifdef Q_OS_WIN
+		QString xmrigPath = dir + "/xmrig.exe";
+#else
+		QString xmrigPath = dir + "/xmrig";
+#endif
+		QFileInfo fileInfo(xmrigPath);
+		if (fileInfo.exists() && fileInfo.isFile() && fileInfo.isExecutable()) {
+			return xmrigPath;
+		}
+	}
+
+	// Return default path if not found (will fail when starting process)
 #ifdef Q_OS_WIN
 	return QCoreApplication::applicationDirPath() + "/xmrig/xmrig.exe";
 #elif defined Q_OS_MAC

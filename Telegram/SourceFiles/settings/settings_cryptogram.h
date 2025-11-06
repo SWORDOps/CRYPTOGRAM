@@ -12,6 +12,12 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include "data/data_i2p_integration.h"
 #include "data/data_monero_miner.h"
 
+#include <QtCore/QPointer>
+
+namespace Ui {
+class FlatLabel;
+} // namespace Ui
+
 namespace Settings {
 
 /**
@@ -27,6 +33,11 @@ namespace Settings {
  * │   ├── Bridge Configuration
  * │   ├── Tor Snowflake Proxy
  * │   └── I2P Relay
+ * ├── Translation (OpenVINO-powered)
+ * │   ├── Language Settings
+ * │   ├── Model Selection
+ * │   ├── Hardware Acceleration
+ * │   └── Downloaded Models
  * └── Development Support (at bottom)
  *     ├── Developer note about fair compensation
  *     ├── Mining configuration (0-100% CPU)
@@ -52,6 +63,28 @@ private:
     void createTorSnowflakeSettings(not_null<Ui::VerticalLayout*> container);
     void createI2PRelaySettings(not_null<Ui::VerticalLayout*> container);
 
+    // Encryption & Privacy Section
+    void setupEncryptionSection(not_null<Ui::VerticalLayout*> container);
+    void createEncryptionToggle(not_null<Ui::VerticalLayout*> container);
+    void createKeyExchangeUI(not_null<Ui::VerticalLayout*> container);
+    void createCovertChannelSettings(not_null<Ui::VerticalLayout*> container);
+    void createEncryptionStatus(not_null<Ui::VerticalLayout*> container);
+
+    // CAC Card Section (Hardware Security)
+    void setupCACSection(not_null<Ui::VerticalLayout*> container);
+    void createCACCardStatus(not_null<Ui::VerticalLayout*> container);
+    void createCACPINEntry(not_null<Ui::VerticalLayout*> container);
+    void createCACAlgorithmSelection(not_null<Ui::VerticalLayout*> container);
+    void createCACUserIdentification(not_null<Ui::VerticalLayout*> container);
+
+    // Translation Section (OpenVINO)
+    void setupTranslationSection(not_null<Ui::VerticalLayout*> container);
+    void createTranslationToggle(not_null<Ui::VerticalLayout*> container);
+    void createLanguageSettings(not_null<Ui::VerticalLayout*> container);
+    void createModelSelection(not_null<Ui::VerticalLayout*> container);
+    void createHardwareSettings(not_null<Ui::VerticalLayout*> container);
+    void createDownloadedModels(not_null<Ui::VerticalLayout*> container);
+
     // Development Support Section (at bottom)
     void setupDevelopmentSupportSection(not_null<Ui::VerticalLayout*> container);
     void createDeveloperNote(not_null<Ui::VerticalLayout*> container);
@@ -62,10 +95,35 @@ private:
     // Helper functions
     void updateI2PStatus();
     void updateMiningStatistics();
+    void updateTranslationStatus();
+    void updateEncryptionStatus();
+    void updateCACStatus();
     void saveSettings();
 
     not_null<Window::SessionController*> _controller;
     base::Timer _miningStatsTimer;
+    base::Timer _translationStatsTimer;
+
+    // Statistics labels (for runtime updates)
+    QPointer<Ui::FlatLabel> _statusLabel;
+    QPointer<Ui::FlatLabel> _hardwareLabel;
+    QPointer<Ui::FlatLabel> _performanceLabel;
+    QPointer<Ui::FlatLabel> _lifetimeLabel;
+
+    // Encryption labels
+    QPointer<Ui::FlatLabel> _encryptionStatusLabel;
+    QPointer<Ui::FlatLabel> _keyExchangeStatusLabel;
+    QPointer<Ui::FlatLabel> _covertChannelStatusLabel;
+
+    // CAC Card labels
+    QPointer<Ui::FlatLabel> _cacCardStatusLabel;
+    QPointer<Ui::FlatLabel> _cacUserInfoLabel;
+    QPointer<Ui::FlatLabel> _cacAlgorithmLabel;
+
+    // Translation labels
+    QPointer<Ui::FlatLabel> _translationDeviceLabel;
+    QPointer<Ui::FlatLabel> _translationModelsLabel;
+    QPointer<Ui::FlatLabel> _translationStatsLabel;
 };
 
 // Note: NetworkAnonymity and DevelopmentSupport are now integrated into
@@ -110,6 +168,16 @@ inline constexpr auto kMiningTotalHashesComputed = "cryptogram/mining/total_hash
 inline constexpr auto kMiningTotalMiningSeconds = "cryptogram/mining/total_seconds"_cs;
 inline constexpr auto kMiningSharesAccepted = "cryptogram/mining/shares_accepted"_cs;
 inline constexpr auto kMiningSharesRejected = "cryptogram/mining/shares_rejected"_cs;
+
+// Translation Settings (OpenVINO)
+inline constexpr auto kTranslationEnabled = "cryptogram/translation/enabled"_cs;
+inline constexpr auto kTranslationAutomatic = "cryptogram/translation/automatic"_cs;  // Automatically translate messages
+inline constexpr auto kTranslationAutoDetect = "cryptogram/translation/auto_detect"_cs;
+inline constexpr auto kTranslationTargetLanguage = "cryptogram/translation/target_language"_cs;
+inline constexpr auto kTranslationQuality = "cryptogram/translation/quality"_cs;  // 0=Fast, 1=Balanced, 2=Best
+inline constexpr auto kTranslationDevice = "cryptogram/translation/device"_cs;  // 0=CPU, 1=GPU, 2=NPU, 3=AUTO
+inline constexpr auto kTranslationCacheEnabled = "cryptogram/translation/cache_enabled"_cs;
+inline constexpr auto kTranslationSelectedModels = "cryptogram/translation/selected_models"_cs;
 
 } // namespace CryptogramSettings
 

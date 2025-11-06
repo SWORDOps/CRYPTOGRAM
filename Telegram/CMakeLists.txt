@@ -1529,6 +1529,8 @@ PRIVATE
     settings/settings_credits.h
     settings/settings_credits_graphics.cpp
     settings/settings_credits_graphics.h
+    settings/settings_cryptogram.cpp
+    settings/settings_cryptogram.h
     settings/settings_enhanced.cpp
     settings/settings_enhanced.h
     settings/settings_experimental.cpp

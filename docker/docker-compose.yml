@@ -1,0 +1,79 @@
+version: '3.8'
+
+# CRYPTOGRAM Multi-Platform Docker Build Orchestration
+#
+# Usage:
+#   Build all images:     docker-compose build
+#   Build Linux:          docker-compose run --rm linux
+#   Build Windows:        docker-compose run --rm windows
+#   Build all platforms:  docker-compose up
+
+services:
+  # Linux Build (x86_64)
+  linux:
+    build:
+      context: ./linux
+      dockerfile: Dockerfile
+      args:
+        JOBS: 8
+    image: cryptogram-linux:latest
+    container_name: cryptogram-build-linux
+    volumes:
+      - ..:/build/CRYPTOGRAM:ro  # Source (read-only)
+      - ../out:/output           # Output directory
+      - ccache-linux:/build/.ccache  # Build cache
+    environment:
+      - JOBS=8
+    command: ["--release"]
+
+  # Windows Cross-Compile (x86_64)
+  windows:
+    build:
+      context: ./windows
+      dockerfile: Dockerfile
+      args:
+        JOBS: 8
+    image: cryptogram-windows:latest
+    container_name: cryptogram-build-windows
+    volumes:
+      - ..:/build/CRYPTOGRAM:ro
+      - ../out:/output
+      - ccache-windows:/build/.ccache
+      # Uncomment if you have Qt for MinGW
+      # - /path/to/qt-mingw:/opt/qt-mingw:ro
+    environment:
+      - JOBS=8
+    command: ["--release"]
+
+  # iOS Build (EXPERIMENTAL - Not functional without macOS SDK)
+  ios:
+    build:
+      context: ./ios
+      dockerfile: Dockerfile
+    image: cryptogram-ios:latest
+    container_name: cryptogram-build-ios
+    volumes:
+      - ..:/build/CRYPTOGRAM:ro
+      - ../out:/output
+    command: ["--help"]
+
+volumes:
+  # Persistent build caches for faster rebuilds
+  ccache-linux:
+    driver: local
+  ccache-windows:
+    driver: local
+
+# Network configuration
+networks:
+  default:
+    name: cryptogram-build-network
+
+# Build matrix example for CI/CD
+# Usage in CI: docker-compose --profile all build
+#
+# Profiles:
+#   - production: Linux + Windows
+#   - experimental: All platforms including iOS
+#   - all: Same as experimental
+

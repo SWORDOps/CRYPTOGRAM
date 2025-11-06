@@ -63,8 +63,8 @@ struct EncryptedDataContainer {
 
     // Encryption metadata
     QString encryptionAlgorithm;
-    QuantumAlgorithm quantumAlgorithm = QuantumAlgorithm::Kyber768;
-    QuantumSecurityLevel securityLevel = QuantumSecurityLevel::Level3;
+    QuantumAlgorithm quantumAlgorithm = QuantumAlgorithm::ML_KEM_1024;
+    QuantumSecurityLevel securityLevel = QuantumSecurityLevel::Level5;
     StorageClassificationLevel classification = StorageClassificationLevel::Secret;
 
     // Storage metadata

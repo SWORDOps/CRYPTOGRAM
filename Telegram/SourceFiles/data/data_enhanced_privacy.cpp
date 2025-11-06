@@ -59,17 +59,77 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Data {
 
-// Common marker used to identify encrypted messages
-const QString kEncryptionMarker = "<!--ENC:";
-const QString kEncryptionEndMarker = ":ENC-->";
+// Common marker used to identify encrypted messages (now invisible)
+// Using zero-width characters to hide encrypted content completely from non-CRYPTOGRAM users
+const QString kEncryptionMarker = QString(QChar(0x200B)) + QString(QChar(0x200C)) + QString(QChar(0x200D)); // ZWS+ZWNJ+ZWJ pattern
+const QString kEncryptionEndMarker = QString(QChar(0x200D)) + QString(QChar(0x200C)) + QString(QChar(0x200B)); // Reversed pattern
 
 // Metadata markers
 const QString kMetadataMarker = "<!--META:";
 const QString kMetadataEndMarker = ":META-->";
 
-// Range of unicode invisible characters to use in metadata
+// Range of unicode invisible characters to use for encoding ciphertext
 const int kInvisibleCharStart = 0x200B; // Zero-width space
-const int kInvisibleCharEnd = 0x200F;   // Right-to-left mark
+const int kInvisibleCharEnd = 0x200F;   // Right-to-left mark (5 characters: 0x200B-0x200F)
+
+// Helper function to encode base64 data as invisible Unicode characters
+QString EncodeAsInvisibleChars(const QString &base64Data) {
+    QString result;
+    result += kEncryptionMarker; // Invisible start marker
+
+    // Convert each character of base64 string to invisible Unicode characters
+    for (const QChar &ch : base64Data) {
+        // Map ASCII character to invisible Unicode range
+        unsigned char byte = ch.toLatin1();
+
+        // Split byte into nibbles (4-bit values)
+        int high = (byte >> 4) & 0x0F;  // Upper 4 bits
+        int low = byte & 0x0F;           // Lower 4 bits
+
+        // Map each nibble to invisible character range (0x200B-0x200F = 5 chars)
+        // For values 0-4, map directly; for 5-15, use modulo 5
+        result += QChar(kInvisibleCharStart + (high % 5));
+        result += QChar(kInvisibleCharStart + (low % 5));
+    }
+
+    result += kEncryptionEndMarker; // Invisible end marker
+    return result;
+}
+
+// Helper function to decode invisible Unicode characters back to base64 data
+QString DecodeFromInvisibleChars(const QString &invisibleText) {
+    // Find start and end markers
+    int startPos = invisibleText.indexOf(kEncryptionMarker);
+    int endPos = invisibleText.lastIndexOf(kEncryptionEndMarker);
+
+    if (startPos < 0 || endPos < 0 || startPos >= endPos) {
+        return QString(); // Invalid format
+    }
+
+    // Extract invisible encoded data
+    int dataStart = startPos + kEncryptionMarker.length();
+    int dataLength = endPos - dataStart;
+
+    QString result;
+
+    // Decode pairs of invisible characters back to ASCII
+    for (int i = dataStart; i < endPos; i += 2) {
+        if (i + 1 >= endPos) break;
+
+        int high = invisibleText[i].unicode() - kInvisibleCharStart;
+        int low = invisibleText[i + 1].unicode() - kInvisibleCharStart;
+
+        // Clamp values to valid range
+        high = qBound(0, high, 15);
+        low = qBound(0, low, 15);
+
+        // Reconstruct original byte
+        unsigned char byte = ((high & 0x0F) << 4) | (low & 0x0F);
+        result += QChar(byte);
+    }
+
+    return result;
+}
 
 // Define keyboard layouts for switching
 const QStringList _keyboardLayouts = {
@@ -99,6 +159,7 @@ bool EnhancedPrivacy::_trafficPaddingEnabled = false;
 int EnhancedPrivacy::_minPaddingBytes = 1024; // 1KB minimum
 int EnhancedPrivacy::_maxPaddingBytes = 16384; // 16KB maximum
 bool EnhancedPrivacy::_signalProtocolEnabled = false;
+QSet<UserId> EnhancedPrivacy::_cryptogramUsers; // Registry of known CRYPTOGRAM users
 
 namespace {
 
@@ -186,16 +247,16 @@ TextWithEntities EnhancedPrivacy::EncryptMessage(const TextWithEntities &origina
     if (!IsEncryptionEnabled() || passphrase.isEmpty()) {
         return original;
     }
-    
+
     // Check if already encrypted
     if (IsEncrypted(original)) {
         return original;
     }
-    
+
     // Convert to JSON to preserve entities
     QJsonObject obj;
     QJsonArray entities;
-    
+
     for (const auto &entity : original.entities) {
         QJsonObject entityObj;
         entityObj["type"] = static_cast<int>(entity.type());
@@ -204,22 +265,26 @@ TextWithEntities EnhancedPrivacy::EncryptMessage(const TextWithEntities &origina
         entityObj["data"] = entity.data();
         entities.append(entityObj);
     }
-    
+
     obj["text"] = original.text;
     obj["entities"] = entities;
-    
+
     QJsonDocument doc(obj);
     QString jsonData = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
-    
+
     // Encrypt the JSON data
-    QString encrypted = EncryptString(jsonData, passphrase);
-    QString resultText = kEncryptionMarker + encrypted + kEncryptionEndMarker;
-    
-    // Return as a new TextWithEntities
+    QString encryptedBase64 = EncryptString(jsonData, passphrase);
+
+    // Encode the base64 ciphertext as invisible Unicode characters
+    // This makes the message appear completely blank to non-CRYPTOGRAM users
+    QString resultText = EncodeAsInvisibleChars(encryptedBase64);
+
+    // Return as a new TextWithEntities with invisible text
+    // NO entities added - we want it to appear as completely empty text
     TextWithEntities result;
     result.text = resultText;
-    result.entities.push_back(EntityInText(EntityType::Pre, 0, resultText.length()));
-    
+    // Don't add any entities - keep it completely invisible
+
     return result;
 }
 
@@ -227,45 +292,40 @@ TextWithEntities EnhancedPrivacy::DecryptMessage(const TextWithEntities &encrypt
     if (!IsEncrypted(encrypted)) {
         return encrypted;
     }
-    
+
     const auto &text = encrypted.text;
-    const auto startPos = text.indexOf(kEncryptionMarker);
-    const auto endPos = text.lastIndexOf(kEncryptionEndMarker);
-    
-    if (startPos < 0 || endPos < 0 || startPos >= endPos) {
-        return encrypted; // Invalid format
+
+    // Decode invisible Unicode characters back to base64 ciphertext
+    QString encryptedBase64 = DecodeFromInvisibleChars(text);
+
+    if (encryptedBase64.isEmpty()) {
+        return encrypted; // Failed to decode invisible characters
     }
-    
-    // Extract the encrypted data
-    const auto encryptedData = text.mid(
-        startPos + kEncryptionMarker.length(),
-        endPos - startPos - kEncryptionMarker.length()
-    );
-    
+
     // Decrypt the data
     const auto passphrase = GetEncryptionPassphrase();
     if (passphrase.isEmpty()) {
         return encrypted; // No passphrase set
     }
-    
-    QString decrypted = DecryptString(encryptedData, passphrase);
+
+    QString decrypted = DecryptString(encryptedBase64, passphrase);
     if (decrypted.isEmpty()) {
         return encrypted; // Decryption failed
     }
-    
+
     // Parse the JSON
     QJsonParseError error;
     QJsonDocument doc = QJsonDocument::fromJson(decrypted.toUtf8(), &error);
     if (error.error != QJsonParseError::NoError || !doc.isObject()) {
         return encrypted; // Invalid JSON
     }
-    
+
     QJsonObject obj = doc.object();
-    
+
     // Reconstruct TextWithEntities
     TextWithEntities result;
     result.text = obj["text"].toString();
-    
+
     QJsonArray entitiesArray = obj["entities"].toArray();
     for (const auto &entityValue : entitiesArray) {
         QJsonObject entityObj = entityValue.toObject();
@@ -277,7 +337,7 @@ TextWithEntities EnhancedPrivacy::DecryptMessage(const TextWithEntities &encrypt
         );
         result.entities.push_back(entity);
     }
-    
+
     return result;
 }
 
@@ -1594,6 +1654,27 @@ void EnhancedPrivacy::RotateSignalKeys() {
     } catch (const std::exception &e) {
         LOG(("Signal Protocol Error: Failed to rotate keys: %1").arg(e.what()));
     }
+}
+
+// CRYPTOGRAM User Identification (Red Name Feature)
+void EnhancedPrivacy::RegisterCryptogramUser(UserId userId) {
+    _cryptogramUsers.insert(userId);
+}
+
+void EnhancedPrivacy::UnregisterCryptogramUser(UserId userId) {
+    _cryptogramUsers.remove(userId);
+}
+
+bool EnhancedPrivacy::IsCryptogramUser(UserId userId) {
+    return _cryptogramUsers.contains(userId);
+}
+
+const QSet<UserId>& EnhancedPrivacy::GetCryptogramUsers() {
+    return _cryptogramUsers;
+}
+
+void EnhancedPrivacy::ClearCryptogramUsers() {
+    _cryptogramUsers.clear();
 }
 
 } // namespace Data 

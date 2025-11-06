@@ -17,6 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "settings/settings_chat.h"
 #include "settings/settings_codes.h"
 #include "settings/settings_credits.h"
+#include "settings/settings_cryptogram.h"
 #include "settings/settings_folders.h"
 #include "settings/settings_information.h"
 #include "settings/settings_notifications.h"
@@ -713,6 +714,12 @@ void SetupSections(
 
 	SetupPowerSavingButton(&controller->window(), container);
 	SetupLanguageButton(&controller->window(), container);
+
+	// CRYPTOGRAM section (at bottom)
+	addSection(
+		rpl::single(QString("CRYPTOGRAM")),
+		Cryptogram::Id(),
+		{ &st::menuIconManage });
 
 	Ui::AddSkip(container);
 }

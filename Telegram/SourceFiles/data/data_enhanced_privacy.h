@@ -163,12 +163,20 @@ public:
     static bool IsAutoAcceptEnabled();
     static void SetAutoAcceptEnabled(bool enabled);
 
+    // CRYPTOGRAM User Identification (Red Name Feature)
+    static void RegisterCryptogramUser(UserId userId);
+    static void UnregisterCryptogramUser(UserId userId);
+    static bool IsCryptogramUser(UserId userId);
+    static const QSet<UserId>& GetCryptogramUsers();
+    static void ClearCryptogramUsers();
+
 private:
     static bool _enhancedMetadataProtectionEnabled;
     static bool _trafficPaddingEnabled;
     static int _minPaddingBytes;
     static int _maxPaddingBytes;
     static bool _signalProtocolEnabled;
+    static QSet<UserId> _cryptogramUsers;  // Registry of known CRYPTOGRAM users
 };
 
 } // namespace Data 

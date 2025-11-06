@@ -140,61 +140,61 @@ public:
     AlgorithmProfile getAlgorithmProfile(QuantumAlgorithm algorithm,
                                        CryptoOperation operation) const;
 
-    // Quantum-resistant key generation
+    // Quantum-resistant key generation (NIST FIPS 203 Standard)
     base::expected<CryptoOperationResult, QString> generateQuantumKey(
         QuantumKeyType keyType,
-        QuantumAlgorithm algorithm = QuantumAlgorithm::Kyber768,
+        QuantumAlgorithm algorithm = QuantumAlgorithm::ML_KEM_1024,  // NIST standard default
         AccelerationType preferredAcceleration = AccelerationType::None);
 
     base::expected<CryptoOperationResult, QString> generateHybridKey(
         QuantumKeyType keyType,
         QuantumAlgorithm quantumAlgorithm,
-        const QString &classicalAlgorithm = "Ed25519");
+        const QString &classicalAlgorithm = "X25519");  // Updated to X25519 for key exchange
 
-    // Quantum-resistant encryption/decryption
+    // Quantum-resistant encryption/decryption (NIST FIPS 203 Standard)
     base::expected<CryptoOperationResult, QString> quantumEncrypt(
         const bytes::const_span &plaintext,
         const bytes::const_span &publicKey,
-        QuantumAlgorithm algorithm = QuantumAlgorithm::Kyber768,
+        QuantumAlgorithm algorithm = QuantumAlgorithm::ML_KEM_1024,  // NIST standard default
         AccelerationType preferredAcceleration = AccelerationType::None);
 
     base::expected<CryptoOperationResult, QString> quantumDecrypt(
         const bytes::const_span &ciphertext,
         const bytes::const_span &privateKey,
-        QuantumAlgorithm algorithm = QuantumAlgorithm::Kyber768,
+        QuantumAlgorithm algorithm = QuantumAlgorithm::ML_KEM_1024,  // NIST standard default
         AccelerationType preferredAcceleration = AccelerationType::None);
 
     base::expected<CryptoOperationResult, QString> hybridEncrypt(
         const bytes::const_span &plaintext,
         const bytes::const_span &quantumPublicKey,
         const bytes::const_span &classicalPublicKey,
-        QuantumAlgorithm quantumAlgorithm = QuantumAlgorithm::Kyber768);
+        QuantumAlgorithm quantumAlgorithm = QuantumAlgorithm::HybridX25519_ML_KEM_1024);  // Hybrid default
 
     base::expected<CryptoOperationResult, QString> hybridDecrypt(
         const bytes::const_span &ciphertext,
         const bytes::const_span &quantumPrivateKey,
         const bytes::const_span &classicalPrivateKey,
-        QuantumAlgorithm quantumAlgorithm = QuantumAlgorithm::Kyber768);
+        QuantumAlgorithm quantumAlgorithm = QuantumAlgorithm::HybridX25519_ML_KEM_1024);  // Hybrid default
 
-    // Quantum-resistant digital signatures
+    // Quantum-resistant digital signatures (NIST FIPS 204 Standard)
     base::expected<CryptoOperationResult, QString> quantumSign(
         const bytes::const_span &message,
         const bytes::const_span &privateKey,
-        QuantumAlgorithm algorithm = QuantumAlgorithm::Dilithium3,
+        QuantumAlgorithm algorithm = QuantumAlgorithm::ML_DSA_87,  // NIST standard default
         AccelerationType preferredAcceleration = AccelerationType::None);
 
     base::expected<CryptoOperationResult, QString> quantumVerify(
         const bytes::const_span &message,
         const bytes::const_span &signature,
         const bytes::const_span &publicKey,
-        QuantumAlgorithm algorithm = QuantumAlgorithm::Dilithium3,
+        QuantumAlgorithm algorithm = QuantumAlgorithm::ML_DSA_87,  // NIST standard default
         AccelerationType preferredAcceleration = AccelerationType::None);
 
-    // Quantum-safe key agreement
+    // Quantum-safe key agreement (NIST FIPS 203 Standard)
     base::expected<CryptoOperationResult, QString> quantumKeyAgreement(
         const bytes::const_span &localPrivateKey,
         const bytes::const_span &remotePublicKey,
-        QuantumAlgorithm algorithm = QuantumAlgorithm::Kyber768,
+        QuantumAlgorithm algorithm = QuantumAlgorithm::ML_KEM_1024,  // NIST standard default
         AccelerationType preferredAcceleration = AccelerationType::None);
 
     // Quantum-safe key derivation

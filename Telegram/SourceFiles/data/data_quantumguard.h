@@ -22,24 +22,33 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 namespace Data {
 
 // NIST Post-Quantum Cryptography algorithms
+// Updated to NIST FIPS 203/204/205 standards (August 2024)
 enum class QuantumAlgorithm {
-    // Key Encapsulation Mechanisms (KEM)
-    Kyber512,      // CRYSTALS-Kyber 512-bit security
-    Kyber768,      // CRYSTALS-Kyber 768-bit security
-    Kyber1024,     // CRYSTALS-Kyber 1024-bit security
+    // Key Encapsulation Mechanisms (KEM) - NIST FIPS 203
+    Kyber512,      // ML-KEM-512 (CRYSTALS-Kyber) - NIST Security Level 1
+    Kyber768,      // ML-KEM-768 (CRYSTALS-Kyber) - NIST Security Level 3
+    Kyber1024,     // ML-KEM-1024 (CRYSTALS-Kyber) - NIST Security Level 5 [RECOMMENDED]
+    ML_KEM_1024 = Kyber1024,  // NIST standard name alias
 
-    // Digital Signature algorithms
-    Dilithium2,    // CRYSTALS-Dilithium Level 2
-    Dilithium3,    // CRYSTALS-Dilithium Level 3
-    Dilithium5,    // CRYSTALS-Dilithium Level 5
+    // Digital Signature algorithms - NIST FIPS 204
+    Dilithium2,    // ML-DSA-44 (CRYSTALS-Dilithium) - NIST Level 2
+    Dilithium3,    // ML-DSA-65 (CRYSTALS-Dilithium) - NIST Level 3
+    Dilithium5,    // ML-DSA-87 (CRYSTALS-Dilithium) - NIST Level 5 [RECOMMENDED]
+    ML_DSA_65 = Dilithium3,   // NIST standard name alias
+    ML_DSA_87 = Dilithium5,   // NIST standard name alias
 
-    // Hash-based signatures
-    SPHINCS_SHA256, // SPHINCS+ with SHA-256
-    SPHINCS_SHAKE,  // SPHINCS+ with SHAKE-256
+    // Hash-based signatures - NIST FIPS 205
+    SPHINCS_SHA256, // SLH-DSA-SHA2 (SPHINCS+) - Stateless hash-based
+    SPHINCS_SHAKE,  // SLH-DSA-SHAKE (SPHINCS+) - Stateless hash-based
+    SLH_DSA_SHAKE = SPHINCS_SHAKE,  // NIST standard name alias
 
-    // Hybrid approaches
-    HybridX25519_Kyber768,     // X25519 + Kyber768
-    HybridEd25519_Dilithium3   // Ed25519 + Dilithium3
+    // Hybrid approaches (Post-Quantum + Classical) [PRODUCTION STANDARD]
+    HybridX25519_Kyber768,      // X25519 + ML-KEM-768
+    HybridX25519_Kyber1024,     // X25519 + ML-KEM-1024 [DEFAULT/RECOMMENDED]
+    HybridX25519_ML_KEM_1024 = HybridX25519_Kyber1024,  // NIST name alias
+    HybridEd25519_Dilithium3,   // Ed25519 + ML-DSA-65
+    HybridEd25519_Dilithium5,   // Ed25519 + ML-DSA-87 [DEFAULT/RECOMMENDED]
+    HybridEd25519_ML_DSA_87 = HybridEd25519_Dilithium5  // NIST name alias
 };
 
 // Security levels for quantum resistance
@@ -136,8 +145,8 @@ public:
     QuantumThreatLevel getCurrentThreatLevel() const;
 
     // Algorithm selection and validation
-    QuantumAlgorithm selectOptimalKEM(QuantumSecurityLevel minLevel = QuantumSecurityLevel::Level3);
-    QuantumAlgorithm selectOptimalSignature(QuantumSecurityLevel minLevel = QuantumSecurityLevel::Level3);
+    QuantumAlgorithm selectOptimalKEM(QuantumSecurityLevel minLevel = QuantumSecurityLevel::Level5);
+    QuantumAlgorithm selectOptimalSignature(QuantumSecurityLevel minLevel = QuantumSecurityLevel::Level5);
     bool isAlgorithmSupported(QuantumAlgorithm algorithm) const;
     QList<QuantumAlgorithm> getSupportedAlgorithms() const;
 
@@ -234,8 +243,8 @@ public:
         double averageDecryptTime = 0.0;
         double averageSignTime = 0.0;
         double averageVerifyTime = 0.0;
-        QuantumAlgorithm fastestKEM = QuantumAlgorithm::Kyber768;
-        QuantumAlgorithm fastestSignature = QuantumAlgorithm::Dilithium3;
+        QuantumAlgorithm fastestKEM = QuantumAlgorithm::ML_KEM_1024;
+        QuantumAlgorithm fastestSignature = QuantumAlgorithm::ML_DSA_87;
     };
 
     QuantumPerformanceMetrics getPerformanceMetrics() const;

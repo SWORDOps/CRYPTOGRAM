@@ -225,7 +225,7 @@ QuantumSignalProtocol::QuantumKeyBundle QuantumSignalProtocol::generateQuantumKe
         // Classical identity key (Ed25519)
         auto classicalIdentityResult = d->quantumGuard->generateQuantumKey(
             QuantumKeyType::IdentityKey,
-            QuantumAlgorithm::HybridEd25519_Dilithium3);
+            QuantumAlgorithm::HybridEd25519_ML_DSA_87);
 
         if (classicalIdentityResult) {
             bundle.classicalIdentityKey = classicalIdentityResult->publicKey;
@@ -234,7 +234,7 @@ QuantumSignalProtocol::QuantumKeyBundle QuantumSignalProtocol::generateQuantumKe
         // Classical signed pre-key (X25519)
         auto classicalPreKeyResult = d->quantumGuard->generateQuantumKey(
             QuantumKeyType::PreKey,
-            QuantumAlgorithm::HybridX25519_Kyber768);
+            QuantumAlgorithm::HybridX25519_ML_KEM_1024);
 
         if (classicalPreKeyResult) {
             bundle.classicalSignedPreKey = classicalPreKeyResult->publicKey;
@@ -243,7 +243,7 @@ QuantumSignalProtocol::QuantumKeyBundle QuantumSignalProtocol::generateQuantumKe
         // Classical one-time key
         auto classicalOneTimeResult = d->quantumGuard->generateQuantumKey(
             QuantumKeyType::OneTimeKey,
-            QuantumAlgorithm::HybridX25519_Kyber768);
+            QuantumAlgorithm::HybridX25519_ML_KEM_1024);
 
         if (classicalOneTimeResult) {
             bundle.classicalOneTimePreKey = classicalOneTimeResult->publicKey;
@@ -251,10 +251,10 @@ QuantumSignalProtocol::QuantumKeyBundle QuantumSignalProtocol::generateQuantumKe
     }
 
     // Generate quantum keys
-    auto kemAlgorithm = d->quantumGuard->selectOptimalKEM(QuantumSecurityLevel::Level3);
-    auto signatureAlgorithm = d->quantumGuard->selectOptimalSignature(QuantumSecurityLevel::Level3);
+    auto kemAlgorithm = d->quantumGuard->selectOptimalKEM(QuantumSecurityLevel::Level5);
+    auto signatureAlgorithm = d->quantumGuard->selectOptimalSignature(QuantumSecurityLevel::Level5);
 
-    // Quantum identity key (Dilithium3)
+    // Quantum identity key (ML-DSA-87)
     auto quantumIdentityResult = d->quantumGuard->generateQuantumKey(
         QuantumKeyType::IdentityKey,
         signatureAlgorithm);
@@ -263,7 +263,7 @@ QuantumSignalProtocol::QuantumKeyBundle QuantumSignalProtocol::generateQuantumKe
         bundle.quantumIdentityKey = quantumIdentityResult->publicKey;
     }
 
-    // Quantum signed pre-key (Kyber768)
+    // Quantum signed pre-key (ML-KEM-1024)
     auto quantumPreKeyResult = d->quantumGuard->generateQuantumKey(
         QuantumKeyType::PreKey,
         kemAlgorithm);
@@ -293,7 +293,7 @@ QuantumSignalProtocol::QuantumKeyBundle QuantumSignalProtocol::generateQuantumKe
 
     bundle.kemAlgorithm = kemAlgorithm;
     bundle.signatureAlgorithm = signatureAlgorithm;
-    bundle.securityLevel = QuantumSecurityLevel::Level3;
+    bundle.securityLevel = QuantumSecurityLevel::Level5;
     bundle.isHybridBundle = _hybridModeEnabled;
 
     return bundle;
@@ -381,13 +381,13 @@ base::expected<bytes::vector, QString> QuantumSignalProtocol::encryptQuantumMess
     if (currentThreatLevel >= QuantumThreatLevel::High) {
         // Use maximum security for high threat environments
         outMetadata.securityLevel = QuantumSecurityLevel::Level5;
-        outMetadata.kemAlgorithm = QuantumAlgorithm::Kyber1024;
-        outMetadata.signatureAlgorithm = QuantumAlgorithm::Dilithium5;
+        outMetadata.kemAlgorithm = QuantumAlgorithm::ML_KEM_1024;
+        outMetadata.signatureAlgorithm = QuantumAlgorithm::ML_DSA_87;
     } else {
-        // Standard security level
-        outMetadata.securityLevel = QuantumSecurityLevel::Level3;
-        outMetadata.kemAlgorithm = QuantumAlgorithm::Kyber768;
-        outMetadata.signatureAlgorithm = QuantumAlgorithm::Dilithium3;
+        // Standard security level (now also Level5 for compliance)
+        outMetadata.securityLevel = QuantumSecurityLevel::Level5;
+        outMetadata.kemAlgorithm = QuantumAlgorithm::ML_KEM_1024;
+        outMetadata.signatureAlgorithm = QuantumAlgorithm::ML_DSA_87;
     }
 
     // Perform quantum Double Ratchet step

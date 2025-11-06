@@ -98,7 +98,7 @@ struct QuantumTSMCapabilities {
     QMap<QuantumAlgorithm, int> verificationTimeMs;
 
     // Security levels
-    QuantumSecurityLevel maxSecurityLevel = QuantumSecurityLevel::Level3;
+    QuantumSecurityLevel maxSecurityLevel = QuantumSecurityLevel::Level5;
     QuantumThreatLevel supportedThreatLevel = QuantumThreatLevel::Moderate;
     bool isQuantumReady = false;
     bool isNationStateReady = false;
@@ -111,8 +111,8 @@ struct QuantumTSMKeyInfo {
 
     // Quantum-specific information
     QuantumTSMKeyType quantumKeyType;
-    QuantumAlgorithm quantumAlgorithm = QuantumAlgorithm::Kyber768;
-    QuantumSecurityLevel securityLevel = QuantumSecurityLevel::Level3;
+    QuantumAlgorithm quantumAlgorithm = QuantumAlgorithm::ML_KEM_1024;
+    QuantumSecurityLevel securityLevel = QuantumSecurityLevel::Level5;
     bool isHybridKey = false;
     bool isQuantumReady = false;
 
@@ -135,12 +135,12 @@ struct QuantumTSMEncryptionResult {
     TSMEncryptionResult baseResult;
 
     // Quantum-specific data
-    QuantumAlgorithm algorithm = QuantumAlgorithm::Kyber768;
+    QuantumAlgorithm algorithm = QuantumAlgorithm::ML_KEM_1024;
     bytes::vector quantumCiphertext;
     bytes::vector quantumEncapsulation;
     bytes::vector hybridSecret;
     bool isQuantumProtected = false;
-    QuantumSecurityLevel achievedSecurityLevel = QuantumSecurityLevel::Level3;
+    QuantumSecurityLevel achievedSecurityLevel = QuantumSecurityLevel::Level5;
 };
 
 // Quantum TSM signature result (extended)
@@ -149,11 +149,11 @@ struct QuantumTSMSignatureResult {
     TSMSignatureResult baseResult;
 
     // Quantum-specific data
-    QuantumAlgorithm algorithm = QuantumAlgorithm::Dilithium3;
+    QuantumAlgorithm algorithm = QuantumAlgorithm::ML_DSA_87;
     bytes::vector quantumSignature;
     bytes::vector classicalSignature;
     bool isHybridSignature = false;
-    QuantumSecurityLevel achievedSecurityLevel = QuantumSecurityLevel::Level3;
+    QuantumSecurityLevel achievedSecurityLevel = QuantumSecurityLevel::Level5;
 };
 
 // Quantum-enhanced TSM interface
@@ -192,7 +192,7 @@ public:
     virtual base::expected<QuantumTSMEncryptionResult, QuantumTSMResult> quantumEncrypt(
         const QString &keyId,
         const bytes::const_span &plaintext,
-        QuantumAlgorithm algorithm = QuantumAlgorithm::Kyber768,
+        QuantumAlgorithm algorithm = QuantumAlgorithm::ML_KEM_1024,
         const bytes::const_span &additionalData = {}) = 0;
 
     virtual base::expected<bytes::vector, QuantumTSMResult> quantumDecrypt(
@@ -203,7 +203,7 @@ public:
     virtual base::expected<QuantumTSMSignatureResult, QuantumTSMResult> quantumSign(
         const QString &keyId,
         const bytes::const_span &data,
-        QuantumAlgorithm algorithm = QuantumAlgorithm::Dilithium3) = 0;
+        QuantumAlgorithm algorithm = QuantumAlgorithm::ML_DSA_87) = 0;
 
     virtual base::expected<bool, QuantumTSMResult> quantumVerify(
         const QString &keyId,
@@ -251,7 +251,7 @@ public:
 
     // Quantum-specific device attestation
     virtual base::expected<TSMAttestationResult, QuantumTSMResult> generateQuantumAttestation(
-        QuantumAlgorithm algorithm = QuantumAlgorithm::Dilithium3,
+        QuantumAlgorithm algorithm = QuantumAlgorithm::ML_DSA_87,
         const bytes::const_span &challenge = {}) = 0;
 
     virtual base::expected<bool, QuantumTSMResult> verifyQuantumAttestation(
@@ -358,7 +358,7 @@ public:
     base::expected<QuantumTSMEncryptionResult, QuantumTSMResult> quantumEncrypt(
         const QString &keyId,
         const bytes::const_span &plaintext,
-        QuantumAlgorithm algorithm = QuantumAlgorithm::Kyber768,
+        QuantumAlgorithm algorithm = QuantumAlgorithm::ML_KEM_1024,
         const bytes::const_span &additionalData = {}) override;
 
     base::expected<bytes::vector, QuantumTSMResult> quantumDecrypt(
@@ -369,7 +369,7 @@ public:
     base::expected<QuantumTSMSignatureResult, QuantumTSMResult> quantumSign(
         const QString &keyId,
         const bytes::const_span &data,
-        QuantumAlgorithm algorithm = QuantumAlgorithm::Dilithium3) override;
+        QuantumAlgorithm algorithm = QuantumAlgorithm::ML_DSA_87) override;
 
     base::expected<bool, QuantumTSMResult> quantumVerify(
         const QString &keyId,
@@ -414,7 +414,7 @@ public:
         const QString &password) override;
 
     base::expected<TSMAttestationResult, QuantumTSMResult> generateQuantumAttestation(
-        QuantumAlgorithm algorithm = QuantumAlgorithm::Dilithium3,
+        QuantumAlgorithm algorithm = QuantumAlgorithm::ML_DSA_87,
         const bytes::const_span &challenge = {}) override;
 
     base::expected<bool, QuantumTSMResult> verifyQuantumAttestation(
