@@ -13,12 +13,15 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/continuous_sliders.h"
+#include "ui/widgets/input_fields.h"
 #include "ui/text/text_utilities.h"
 #include "ui/vertical_list.h"
 #include "lang/lang_keys.h"
 #include "core/application.h"
 #include "core/core_settings.h"
 #include "data/data_session.h"
+#include "data/data_cac_interface.h"
+#include "data/data_enhanced_privacy.h"
 #include "main/main_session.h"
 #include "window/window_session_controller.h"
 #include "styles/style_settings.h"
@@ -102,6 +105,13 @@ void Cryptogram::setupContent() {
 
 	// Encryption & Privacy Section
 	setupEncryptionSection(content);
+
+	Ui::AddSkip(content);
+	Ui::AddDivider(content);
+	Ui::AddSkip(content);
+
+	// CAC Card Section (Hardware Security)
+	setupCACSection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
@@ -1256,5 +1266,398 @@ void Cryptogram::updateTranslationStatus() {
 		).arg(qualityText).arg(
 			settings->translationCacheEnabled() ? "Enabled" : "Disabled"
 		));
+	}
+}
+
+// ========== CAC Card Section (Hardware Security) ==========
+
+void Cryptogram::setupCACSection(not_null<Ui::VerticalLayout*> container) {
+	using namespace Data;
+
+	Ui::AddSkip(container);
+	Ui::AddSubsectionTitle(container, rpl::single(QString("CAC Card (Hardware Security)")));
+
+	Ui::AddSkip(container);
+
+	// Info text
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"CAC (Common Access Card) support provides hardware-backed cryptography "
+			"using DoD/Military PIV smart cards. Features include X.509 certificate "
+			"authentication, digital signatures, and multiple algorithm support. "
+			"CAC-authenticated users are identified with GREEN names (visible only to other CAC card owners)."
+		))
+	);
+
+	createCACCardStatus(container);
+	createCACPINEntry(container);
+	createCACAlgorithmSelection(container);
+	createCACUserIdentification(container);
+
+	// Initial status update
+	updateCACStatus();
+}
+
+void Cryptogram::createCACCardStatus(not_null<Ui::VerticalLayout*> container) {
+	using namespace Data;
+
+	Ui::AddSkip(container);
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Card Status")));
+
+	// Card detection status
+	_cacCardStatusLabel = Ui::CreateChild<Ui::FlatLabel>(
+		container,
+		QString("Status: Checking for CAC card..."),
+		st::settingsUpdateState);
+	container->add(
+		object_ptr<Ui::FlatLabel>::fromRaw(_cacCardStatusLabel),
+		st::settingsCheckboxPadding);
+
+	// Refresh button
+	const auto refreshButton = container->add(
+		object_ptr<Ui::RoundButton>(
+			container,
+			rpl::single(QString("🔄 Refresh Card Status")),
+			st::defaultBoxButton),
+		st::settingsCheckboxPadding);
+
+	refreshButton->setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
+	refreshButton->setClickedCallback([=] {
+		updateCACStatus();
+		Ui::Toast::Show("Card status refreshed");
+	});
+
+	Ui::AddSkip(container);
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"💡 Insert your CAC card and click Refresh. "
+			"Supported: Windows (WinSCard), Linux (PC/SC Lite), macOS (CryptoTokenKit)"
+		))
+	);
+
+	Ui::AddSkip(container);
+}
+
+void Cryptogram::createCACPINEntry(not_null<Ui::VerticalLayout*> container) {
+	using namespace Data;
+
+	Ui::AddSubsectionTitle(container, rpl::single(QString("PIN Verification")));
+
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("Enter your CAC PIN to unlock the card:"),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	// PIN input field (password style)
+	const auto pinInput = container->add(
+		object_ptr<Ui::InputField>(
+			container,
+			st::defaultInputField,
+			rpl::single(QString("Enter PIN...")),
+			QString()),
+		st::settingsCheckboxPadding);
+
+	pinInput->setMaxLength(8);  // CAC PINs are typically 4-8 digits
+
+	// Verify PIN button
+	const auto verifyButton = container->add(
+		object_ptr<Ui::RoundButton>(
+			container,
+			rpl::single(QString("🔐 Verify PIN")),
+			st::defaultBoxButton),
+		st::settingsCheckboxPadding);
+
+	verifyButton->setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
+	verifyButton->setClickedCallback([=] {
+		const auto pin = pinInput->getLastText();
+		if (pin.isEmpty()) {
+			Ui::Toast::Show("Please enter your PIN");
+			return;
+		}
+
+		// Try to verify PIN with CAC card
+		auto cac = CACFactory::create();
+		if (!cac) {
+			Ui::Toast::Show("❌ CAC interface not available on this platform");
+			return;
+		}
+
+		cac->initialize();
+		if (!cac->isCardPresent()) {
+			Ui::Toast::Show("❌ No CAC card detected - please insert card");
+			return;
+		}
+
+		const auto result = cac->verifyPIN(pin);
+		if (result == CACResult::Success) {
+			Ui::Toast::Show("✅ PIN verified successfully");
+			pinInput->setText(QString());  // Clear PIN for security
+			updateCACStatus();
+		} else if (result == CACResult::PINIncorrect) {
+			const auto remaining = cac->getRemainingPINAttempts();
+			Ui::Toast::Show(QString("❌ Incorrect PIN - %1 attempts remaining").arg(remaining));
+		} else if (result == CACResult::CardLocked) {
+			Ui::Toast::Show("🔒 Card locked - too many incorrect attempts");
+		} else {
+			Ui::Toast::Show("❌ PIN verification failed");
+		}
+	});
+
+	Ui::AddSkip(container);
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"⚠️ Warning: After 3 incorrect PIN attempts, your CAC card will be locked. "
+			"Contact your security officer to unlock."
+		))
+	);
+
+	Ui::AddSkip(container);
+}
+
+void Cryptogram::createCACAlgorithmSelection(not_null<Ui::VerticalLayout*> container) {
+	using namespace Data;
+
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Cryptographic Algorithm")));
+
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("Select the cryptographic algorithm for signatures and encryption:"),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	// Algorithm selection (default to ECC P-256)
+	const auto algorithmGroup = container->add(
+		object_ptr<Ui::RadiobuttonGroup>(
+			container,
+			2),  // Default to ECC P-256 (index 2)
+		st::settingsCheckboxPadding);
+
+	// RSA-2048/SHA-256 (Standard DoD)
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			algorithmGroup,
+			0,
+			QString("RSA-2048/SHA-256 (2048-bit, Standard DoD) - Security Level 3/5"),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	// RSA-4096/SHA-384 (High security)
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			algorithmGroup,
+			1,
+			QString("RSA-4096/SHA-384 (4096-bit, High security) - Security Level 4/5"),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	// ECC P-256/SHA-256 (Fast, standard)
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			algorithmGroup,
+			2,
+			QString("ECDSA P-256/SHA-256 (Fast, standard) - Security Level 3/5 ✓ Recommended"),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	// ECC P-384/SHA-384 (Recommended)
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			algorithmGroup,
+			3,
+			QString("ECDSA P-384/SHA-384 (Recommended) - Security Level 4/5"),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	// ECC P-521/SHA-512 (Maximum security)
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			algorithmGroup,
+			4,
+			QString("ECDSA P-521/SHA-512 (Maximum security) - Security Level 5/5"),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	// Algorithm status label
+	_cacAlgorithmLabel = Ui::CreateChild<Ui::FlatLabel>(
+		container,
+		QString("Current: ECDSA P-256/SHA-256"),
+		st::settingsUpdateState);
+	container->add(
+		object_ptr<Ui::FlatLabel>::fromRaw(_cacAlgorithmLabel),
+		st::settingsCheckboxPadding);
+
+	algorithmGroup->setChangedCallback([=](int value) {
+		// Map radio button index to CACAlgorithm enum
+		CACAlgorithm algorithm;
+		QString algorithmName;
+		switch (value) {
+			case 0:
+				algorithm = CACAlgorithm::RSA_2048_SHA256;
+				algorithmName = "RSA-2048/SHA-256";
+				break;
+			case 1:
+				algorithm = CACAlgorithm::RSA_4096_SHA384;
+				algorithmName = "RSA-4096/SHA-384";
+				break;
+			case 2:
+				algorithm = CACAlgorithm::ECC_P256_SHA256;
+				algorithmName = "ECDSA P-256/SHA-256";
+				break;
+			case 3:
+				algorithm = CACAlgorithm::ECC_P384_SHA384;
+				algorithmName = "ECDSA P-384/SHA-384";
+				break;
+			case 4:
+				algorithm = CACAlgorithm::ECC_P521_SHA512;
+				algorithmName = "ECDSA P-521/SHA-512";
+				break;
+			default:
+				algorithm = CACAlgorithm::ECC_P256_SHA256;
+				algorithmName = "ECDSA P-256/SHA-256";
+		}
+
+		// Apply algorithm to CAC interface
+		auto cac = CACFactory::create();
+		if (cac) {
+			cac->initialize();
+			const auto result = cac->setAlgorithm(algorithm);
+			if (result == CACResult::Success) {
+				_cacAlgorithmLabel->setText(QString("Current: %1").arg(algorithmName));
+				Ui::Toast::Show(QString("✅ Algorithm changed to %1").arg(algorithmName));
+			} else {
+				Ui::Toast::Show("❌ Failed to change algorithm");
+			}
+		}
+
+		Core::App().saveSettingsDelayed();
+	});
+
+	Ui::AddSkip(container);
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"💡 ECC algorithms (P-256/P-384/P-521) are faster and more efficient than RSA. "
+			"P-256 is recommended for most users. Use P-384 or P-521 for maximum security. "
+			"RSA algorithms provide compatibility with older systems."
+		))
+	);
+
+	Ui::AddSkip(container);
+}
+
+void Cryptogram::createCACUserIdentification(not_null<Ui::VerticalLayout*> container) {
+	using namespace Data;
+
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Green Name Identification")));
+
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("CAC-authenticated users are shown with GREEN names (visible only to other CAC card owners):"),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	// User info label
+	_cacUserInfoLabel = Ui::CreateChild<Ui::FlatLabel>(
+		container,
+		QString("Your CAC info: No card detected"),
+		st::settingsUpdateState);
+	container->add(
+		object_ptr<Ui::FlatLabel>::fromRaw(_cacUserInfoLabel),
+		st::settingsCheckboxPadding);
+
+	// Known CAC users count
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("Known CAC users: 0 (shown with green names)"),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	Ui::AddSkip(container);
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"🟢 Green names help you identify other CAC-authenticated users for secure communication. "
+			"Green names are ONLY visible when you have your CAC card present - "
+			"non-CAC users see normal Telegram colors."
+		))
+	);
+
+	Ui::AddSkip(container);
+}
+
+void Cryptogram::updateCACStatus() {
+	using namespace Data;
+
+	// Update card status
+	if (_cacCardStatusLabel) {
+		auto cac = CACFactory::create();
+		if (!cac) {
+			_cacCardStatusLabel->setText(QString("Status: ❌ CAC not available on this platform"));
+			return;
+		}
+
+		cac->initialize();
+		if (!cac->isCardPresent()) {
+			_cacCardStatusLabel->setText(QString("Status: 🔌 No CAC card detected"));
+		} else {
+			const auto cardInfo = cac->getCardInfo();
+			if (cardInfo.has_value()) {
+				const auto &info = cardInfo.value();
+				QString status = QString("Status: ✅ Card detected\n");
+				status += QString("  • Holder: %1\n").arg(info.holderName);
+				status += QString("  • Serial: %2\n").arg(info.cardSerialNumber);
+				status += QString("  • Expires: %3\n").arg(info.certificateExpiry.toString("yyyy-MM-dd"));
+				status += QString("  • Valid: %4").arg(info.isValid ? "Yes ✓" : "No ✗");
+
+				_cacCardStatusLabel->setText(status);
+			} else {
+				_cacCardStatusLabel->setText(QString("Status: ⚠️ Card detected but cannot read info"));
+			}
+		}
+	}
+
+	// Update user info
+	if (_cacUserInfoLabel) {
+		auto cac = CACFactory::create();
+		if (cac && cac->isCardPresent()) {
+			cac->initialize();
+			const auto userDN = cac->getUserDN();
+			if (!userDN.isEmpty()) {
+				_cacUserInfoLabel->setText(QString("Your CAC DN: %1").arg(userDN));
+			} else {
+				_cacUserInfoLabel->setText(QString("Your CAC info: Card present but not verified"));
+			}
+		} else {
+			_cacUserInfoLabel->setText(QString("Your CAC info: No card detected"));
+		}
+	}
+
+	// Update algorithm status
+	if (_cacAlgorithmLabel) {
+		auto cac = CACFactory::create();
+		if (cac) {
+			cac->initialize();
+			const auto algorithm = cac->getCurrentAlgorithm();
+			const auto algorithmInfo = getAlgorithmInfo(algorithm);
+			_cacAlgorithmLabel->setText(
+				QString("Current: %1 (%2-bit, Security Level %3/5)")
+					.arg(algorithmInfo.name)
+					.arg(algorithmInfo.keySize)
+					.arg(algorithmInfo.securityLevel)
+			);
+		}
 	}
 }

@@ -13,12 +13,17 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LEGAL
 namespace Data {
 
 // CRYPTOGRAM & CAC User Visual Identification
-// Displays known users with colored names (only visible to CRYPTOGRAM/CAC users)
+// Displays known users with colored names (only visible to respective user groups)
 //
 // Color Scheme:
-// - RED names: CRYPTOGRAM users (encryption, covert channels)
-// - GREEN names: CAC-authenticated users (military/government smart cards)
+// - RED names: CRYPTOGRAM users (encryption, covert channels) - visible to CRYPTOGRAM users
+// - GREEN names: CAC-authenticated users (military/government smart cards) - visible ONLY to CAC card owners
 // - Normal colors: Regular Telegram users
+//
+// Privacy-preserving visibility rules:
+// - Green names (CAC users): Only visible when you have a CAC card present on your device
+// - Red names (CRYPTOGRAM users): Only visible to other CRYPTOGRAM users
+// - Non-CRYPTOGRAM/CAC users see normal Telegram colors only
 //
 // This helps users identify:
 // - Who supports encryption (red)

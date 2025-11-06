@@ -24,7 +24,16 @@ bool ShouldShowAsRedName(not_null<PeerData*> peer) {
 }
 
 bool ShouldShowAsGreenName(not_null<PeerData*> peer) {
-    // Only show green name if peer is registered as CAC user
+    // Only show green name if:
+    // 1. Peer is registered as CAC user
+    // 2. AND current user has a CAC card present (only CAC users see green names)
+
+    // First check if viewer has CAC card present
+    if (!CACFactory::isCACardAvailable()) {
+        return false;  // No CAC card = can't see green names
+    }
+
+    // Then check if peer is a CAC user
     if (const auto user = peer->asUser()) {
         return CACUserRegistry::isCACUser(user->id);
     }
