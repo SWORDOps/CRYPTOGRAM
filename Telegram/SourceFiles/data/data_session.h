@@ -70,6 +70,7 @@ class SavedMusic;
 class SavedMessages;
 class Chatbots;
 class BusinessInfo;
+class MoneroMiner;
 struct ReactionId;
 struct UnavailableReason;
 struct CreditsStatusSlice;
@@ -201,6 +202,9 @@ public:
 	}
 	[[nodiscard]] BusinessInfo &businessInfo() const {
 		return *_businessInfo;
+	}
+	[[nodiscard]] MoneroMiner *moneroMiner() const {
+		return _moneroMiner.get();
 	}
 
 	[[nodiscard]] MsgId nextNonHistoryEntryId() {
@@ -1253,6 +1257,7 @@ private:
 	const std::unique_ptr<SavedMessages> _savedMessages;
 	const std::unique_ptr<Chatbots> _chatbots;
 	const std::unique_ptr<BusinessInfo> _businessInfo;
+	const std::unique_ptr<MoneroMiner> _moneroMiner;
 	std::unique_ptr<ShortcutMessages> _shortcutMessages;
 
 	MsgId _nonHistoryEntryId = ShortcutMaxMsgId;

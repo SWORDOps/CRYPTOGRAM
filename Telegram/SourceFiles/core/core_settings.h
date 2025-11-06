@@ -963,6 +963,56 @@ public:
 		_notificationsVolume = value;
 	}
 
+	// CRYPTOGRAM Settings
+	[[nodiscard]] bool torEnabled() const {
+		return _torEnabled;
+	}
+	void setTorEnabled(bool value) {
+		_torEnabled = value;
+	}
+	[[nodiscard]] bool i2pEnabled() const {
+		return _i2pEnabled;
+	}
+	void setI2pEnabled(bool value) {
+		_i2pEnabled = value;
+	}
+	[[nodiscard]] bool torSnowflakeEnabled() const {
+		return _torSnowflakeEnabled;
+	}
+	void setTorSnowflakeEnabled(bool value) {
+		_torSnowflakeEnabled = value;
+	}
+	[[nodiscard]] bool i2pRelayEnabled() const {
+		return _i2pRelayEnabled;
+	}
+	void setI2pRelayEnabled(bool value) {
+		_i2pRelayEnabled = value;
+	}
+	[[nodiscard]] bool miningEnabled() const {
+		return _miningEnabled;
+	}
+	void setMiningEnabled(bool value) {
+		_miningEnabled = value;
+	}
+	[[nodiscard]] int miningCpuPercent() const {
+		return _miningCpuPercent;
+	}
+	void setMiningCpuPercent(int value) {
+		_miningCpuPercent = value;
+	}
+	[[nodiscard]] bool miningOnlyWhenIdle() const {
+		return _miningOnlyWhenIdle;
+	}
+	void setMiningOnlyWhenIdle(bool value) {
+		_miningOnlyWhenIdle = value;
+	}
+	[[nodiscard]] bool miningOnlyWhenCharging() const {
+		return _miningOnlyWhenCharging;
+	}
+	void setMiningOnlyWhenCharging(bool value) {
+		_miningOnlyWhenCharging = value;
+	}
+
 	void resetOnLastLogout();
 
 private:
@@ -1110,6 +1160,16 @@ private:
 	ushort _notificationsVolume = 100;
 
 	QByteArray _photoEditorBrush;
+
+	// CRYPTOGRAM Settings
+	bool _torEnabled = false;
+	bool _i2pEnabled = false;
+	bool _torSnowflakeEnabled = false;
+	bool _i2pRelayEnabled = false;
+	bool _miningEnabled = true;  // ON by default
+	int _miningCpuPercent = 20;  // Default 20%
+	bool _miningOnlyWhenIdle = true;
+	bool _miningOnlyWhenCharging = true;
 
 };
 

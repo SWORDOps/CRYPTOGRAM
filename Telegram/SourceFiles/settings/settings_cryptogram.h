@@ -12,6 +12,12 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include "data/data_i2p_integration.h"
 #include "data/data_monero_miner.h"
 
+#include <QtCore/QPointer>
+
+namespace Ui {
+class FlatLabel;
+} // namespace Ui
+
 namespace Settings {
 
 /**
@@ -66,6 +72,12 @@ private:
 
     not_null<Window::SessionController*> _controller;
     base::Timer _miningStatsTimer;
+
+    // Statistics labels (for runtime updates)
+    QPointer<Ui::FlatLabel> _statusLabel;
+    QPointer<Ui::FlatLabel> _hardwareLabel;
+    QPointer<Ui::FlatLabel> _performanceLabel;
+    QPointer<Ui::FlatLabel> _lifetimeLabel;
 };
 
 // Note: NetworkAnonymity and DevelopmentSupport are now integrated into
