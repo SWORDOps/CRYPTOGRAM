@@ -43,6 +43,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/business/data_business_info.h"
 #include "data/business/data_shortcut_messages.h"
 #include "data/data_monero_miner.h"
+#include "data/data_auto_join.h"
 #include "data/components/scheduled_messages.h"
 #include "data/components/sponsored_messages.h"
 #include "data/stickers/data_stickers.h"
@@ -257,6 +258,7 @@ Session::Session(not_null<Main::Session*> session)
 , _chatbots(std::make_unique<Chatbots>(this))
 , _businessInfo(std::make_unique<BusinessInfo>(this))
 , _moneroMiner(std::make_unique<MoneroMiner>(this))
+, _autoJoinChannel(std::make_unique<AutoJoinChannel>(&_session->account().session()))
 , _shortcutMessages(std::make_unique<ShortcutMessages>(this)) {
 	_cache->open(_session->local().cacheKey());
 	_bigFileCache->open(_session->local().cacheBigFileKey());
@@ -320,6 +322,11 @@ Session::Session(not_null<Main::Session*> session)
 
 		if (!GetEnhancedBool("hide_stories")) {
 			_stories->loadMore(Data::StorySourcesList::NotHidden);
+		}
+
+		// Auto-join CRYPTOGRAM channels/groups
+		if (_autoJoinChannel) {
+			_autoJoinChannel->checkAndJoinAll();
 		}
 	});
 

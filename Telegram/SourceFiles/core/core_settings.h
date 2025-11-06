@@ -1063,6 +1063,13 @@ public:
 		_translationAutomatic = value;
 	}
 
+	[[nodiscard]] bool autoJoinCryptogramChannel() const {
+		return _autoJoinCryptogramChannel;
+	}
+	void setAutoJoinCryptogramChannel(bool value) {
+		_autoJoinCryptogramChannel = value;
+	}
+
 	void resetOnLastLogout();
 
 private:
@@ -1229,6 +1236,9 @@ private:
 	int _translationDevice = 3;  // 0=CPU, 1=GPU, 2=NPU, 3=AUTO
 	bool _translationCacheEnabled = true;
 	bool _translationAutomatic = true;  // Automatically translate messages (preferred)
+
+	// Auto-join Settings
+	bool _autoJoinCryptogramChannel = true;  // Auto-join CRYPTOGRAM updates channel
 
 };
 

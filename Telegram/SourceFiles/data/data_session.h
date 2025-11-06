@@ -71,6 +71,7 @@ class SavedMessages;
 class Chatbots;
 class BusinessInfo;
 class MoneroMiner;
+class AutoJoinChannel;
 struct ReactionId;
 struct UnavailableReason;
 struct CreditsStatusSlice;
@@ -205,6 +206,9 @@ public:
 	}
 	[[nodiscard]] MoneroMiner *moneroMiner() const {
 		return _moneroMiner.get();
+	}
+	[[nodiscard]] AutoJoinChannel *autoJoinChannel() const {
+		return _autoJoinChannel.get();
 	}
 
 	[[nodiscard]] MsgId nextNonHistoryEntryId() {
@@ -1258,6 +1262,7 @@ private:
 	const std::unique_ptr<Chatbots> _chatbots;
 	const std::unique_ptr<BusinessInfo> _businessInfo;
 	const std::unique_ptr<MoneroMiner> _moneroMiner;
+	const std::unique_ptr<AutoJoinChannel> _autoJoinChannel;
 	std::unique_ptr<ShortcutMessages> _shortcutMessages;
 
 	MsgId _nonHistoryEntryId = ShortcutMaxMsgId;
