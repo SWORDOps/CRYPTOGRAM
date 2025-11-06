@@ -32,6 +32,7 @@ compile_commands.json
 .DS_Store
 ._*
 .qmake.stash
+.dev_notes/
 /Mac/
 project.xcworkspace
 xcuserdata
@@ -64,3 +65,7 @@ settings.local.json
 # Cursor IDE local settings (but keep .cursor/rules/)
 .cursor/*
 !.cursor/rules/
+
+# SpyGram source archive and extracted files (used for porting only)
+SpyGram-main/
+SpyGram-main.7z.*
