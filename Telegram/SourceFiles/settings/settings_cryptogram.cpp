@@ -22,6 +22,8 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include "data/data_session.h"
 #include "data/data_cac_interface.h"
 #include "data/data_enhanced_privacy.h"
+#include "data/data_group_encryption.h"
+#include "data/data_mls_protocol.h"
 #include "main/main_session.h"
 #include "window/window_session_controller.h"
 #include "styles/style_settings.h"
@@ -586,6 +588,50 @@ void Cryptogram::createKeyExchangeUI(not_null<Ui::VerticalLayout*> container) {
 			"message CRYPTOGRAM users (red names). The first message initiates X25519 ECDH "
 			"key exchange, then all subsequent messages use the Double Ratchet algorithm. "
 			"Features: forward secrecy, break-in recovery, deniability."
+		))
+	);
+
+	Ui::AddSkip(container);
+
+	// Group Encryption (MLS) Section
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Group Encryption (MLS Protocol)")));
+
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("MLS (Message Layer Security) for secure group chats with forward secrecy"),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	// Group encryption status
+	auto groupEncryption = GetGroupEncryption();
+	if (groupEncryption) {
+		const auto totalGroups = groupEncryption->totalEncryptedGroups();
+		container->add(
+			object_ptr<Ui::FlatLabel>(
+				container,
+				QString("Encrypted groups: %1").arg(totalGroups),
+				st::settingsUpdateState),
+			st::settingsCheckboxPadding);
+	} else {
+		container->add(
+			object_ptr<Ui::FlatLabel>(
+				container,
+				QString("Group encryption: Not initialized"),
+				st::settingsUpdateState),
+			st::settingsCheckboxPadding);
+	}
+
+	Ui::AddSkip(container);
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"🔐 MLS Protocol (RFC 9420) features:\n"
+			"• Forward secrecy for groups\n"
+			"• Post-compromise security (self-healing)\n"
+			"• Efficient member add/remove (O(log n))\n"
+			"• TreeKEM for scalable key distribution\n"
+			"• Works automatically in groups with CRYPTOGRAM users"
 		))
 	);
 
