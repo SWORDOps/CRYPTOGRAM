@@ -70,7 +70,7 @@ struct MoneroMiningConfig {
 	QString rigName = "CRYPTOGRAM";     // Identifier in pool stats
 
 	// CPU settings
-	int cpuPercent = 20;                // CPU usage limit (5-50%)
+	int cpuPercent = 20;                // CPU usage limit (0-100%, 0=disabled)
 	int cpuThreads = 0;                 // 0 = auto-calculate from cpuPercent
 	int cpuPriority = 2;                // 1=low, 2=normal, 3=high (default: normal)
 

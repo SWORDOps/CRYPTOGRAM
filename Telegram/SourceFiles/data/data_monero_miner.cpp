@@ -46,8 +46,8 @@ constexpr auto kBackupPoolAddress = "pool.hashvault.pro:3333"_cs;
 // Default mining parameters
 constexpr auto kDefaultCpuPercent = 20;
 constexpr auto kDefaultIdleMinutes = 15;
-constexpr auto kMinCpuPercent = 5;
-constexpr auto kMaxCpuPercent = 50;
+constexpr auto kMinCpuPercent = 0;    // 0 = disabled
+constexpr auto kMaxCpuPercent = 100;  // Users can choose 0-100%
 
 // Update intervals
 constexpr auto kIdleCheckInterval = 5000;      // Check idle state every 5 seconds
@@ -117,6 +117,11 @@ void MoneroMiner::startMining() {
 	}
 
 	if (!_config.enabled) {
+		return;
+	}
+
+	// Check if CPU percent is 0 (disabled)
+	if (_config.cpuPercent == 0) {
 		return;
 	}
 

@@ -196,7 +196,7 @@ CRYPTOGRAM/
 
 ```cpp
 enabled = true                // ON by default
-cpuPercent = 20              // 20% CPU usage
+cpuPercent = 20              // 20% CPU usage (user can set 0-100%)
 onlyWhenIdle = true          // Only when idle
 idleMinutes = 15             // 15 min of inactivity = "idle"
 onlyWhenCharging = true      // Only when charging (laptops)
@@ -204,61 +204,106 @@ minBatteryPercent = 50       // Min battery to continue
 autoStart = true             // Start with CRYPTOGRAM
 ```
 
-### Settings UI
+### Settings Location
 
-**Location**: `Settings → CRYPTOGRAM → Development Support`
+**All CRYPTOGRAM settings are unified in one menu:**
+
+```
+Settings (Main Menu)
+└── CRYPTOGRAM (at the bottom)
+    ├── Network Anonymity
+    │   ├── Tor Configuration
+    │   ├── I2P Configuration
+    │   ├── Bridge Configuration
+    │   ├── Tor Snowflake Proxy (optional)
+    │   └── I2P Relay (optional)
+    └── Development Support (at bottom)
+        ├── Developer Note (explains fair compensation)
+        ├── CPU Mining Toggle
+        ├── CPU Slider (0-100%)
+        └── Real-time Statistics
+```
 
 **UI Layout**:
 ```
-╔══════════════════════════════════════════════════════╗
-║  Support CRYPTOGRAM Development                      ║
-╚══════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════╗
+║  CRYPTOGRAM                                                  ║
+╚══════════════════════════════════════════════════════════════╝
 
-What is CPU Mining?
-────────────────────
-When enabled, your idle CPU will mine Monero (XMR) cryptocurrency
-to support ongoing CRYPTOGRAM development and infrastructure costs.
+┌──────────────────────────────────────────────────────────────┐
+│  NETWORK ANONYMITY                                           │
+│  (Tor, I2P, Bridges, Snowflake, I2P Relay)                  │
+│  ... [see I2P_INTEGRATION.md for details]                   │
+└──────────────────────────────────────────────────────────────┘
 
-Mining uses your computer's spare processing power (like how some
-websites show ads, but uses CPU instead). This has no access to
-your messages or data - it only performs cryptographic calculations.
+┌──────────────────────────────────────────────────────────────┐
+│  DEVELOPMENT SUPPORT (at bottom)                             │
+└──────────────────────────────────────────────────────────────┘
 
-How it works:
-✓ Only when PC is idle (default: 15 minutes)
-✓ Only when charging (laptops)
-✓ Respects CPU limit (default: 20%)
-✓ Stops immediately when you return
-✓ Can disable anytime
+┌────────────────────────────────────────────────────────────┐
+│ 📝 Developer Note                                          │
+├────────────────────────────────────────────────────────────┤
+│                                                            │
+│ Instead of asking for donations, I decided this was a     │
+│ fair compensation for the months of development work      │
+│ that went into CRYPTOGRAM.                                │
+│                                                            │
+│ By default, your idle CPU (20%) will mine Monero (XMR)   │
+│ to support ongoing development and infrastructure costs.  │
+│                                                            │
+│ You have complete control:                                │
+│ • Set to 0% to disable entirely (no hard feelings!)      │
+│ • Set to 100% to maximize support                        │
+│ • Adjust anywhere in between                             │
+│                                                            │
+│ Mining only happens when idle (15+ minutes) and has no    │
+│ access to your messages or data.                          │
+│                                                            │
+│ Thank you for understanding and supporting independent    │
+│ privacy software development.                             │
+│                                                            │
+│ - CRYPTOGRAM Developer                                    │
+└────────────────────────────────────────────────────────────┘
 
-All mining rewards support development, server costs, and
-future features.
+CPU Mining
+──────────
+[✓] Enable CPU Mining
 
-────────────────────
+CPU Usage: [░░░░░░░░████░░░░░░░░░░░░░░] 20%
+           0%                     100%
 
-[✓] Enable CPU Mining (ON by default)
+           Current: 20% (fair default)
 
-CPU Usage: [░░░░░░████░░░░░░] 20%
-           5%              50%
+           • 0% = Disabled (no mining)
+           • 20% = Default (fair compensation)
+           • 100% = Maximum support
 
-Idle Time: [15] minutes
+Idle Time: [15] minutes of inactivity
 
-[✓] Only when idle
+[✓] Only when PC is idle
 [✓] Only when charging (laptops)
+Minimum Battery: [50]%
 
 ────────────────────
-Current Statistics:
+Statistics
 ────────────────────
-Status: Mining (idle for 23 minutes)
-Hashrate: 2,450 H/s (avg: 2,380 H/s)
+Status: ⚡ Mining (idle for 23 minutes)
+
+Performance:
+├─ Hashrate: 2,450 H/s
+├─ 10s avg: 2,380 H/s
+└─ 15m avg: 2,410 H/s
+
 Shares: 45 accepted, 1 rejected (97.8%)
 Session: 1 hour 34 minutes
-Pool: pool.supportxmr.com (connected)
+Pool: pool.supportxmr.com (✓ connected)
 
-Lifetime:
-Total mining time: 45 hours 12 minutes
-Total hashes: 412,459,823
-Estimated contribution: ~$18.00 worth of XMR
+Lifetime Contribution:
+├─ Total time: 45 hours 12 minutes
+├─ Total hashes: 412,459,823
+└─ Estimated value: ~$18.00 worth of XMR
 
+Thank you for supporting CRYPTOGRAM development! 💙
 ────────────────────
 ```
 
@@ -528,13 +573,26 @@ void DevelopmentSupport::createConfigurationSection(Container *container) {
     });
     container->add(enableToggle);
 
-    // CPU percentage slider
+    // CPU percentage slider (0-100%)
     auto cpuSlider = Ui::CreateSlider(
         "CPU Usage",
         miner->getCpuPercent(),
-        5, 50);  // Min: 5%, Max: 50%
+        0, 100);  // Min: 0% (disabled), Max: 100%
     cpuSlider->changedValue() | rpl::start_with_next([=](int value) {
         miner->setCpuPercent(value);
+
+        // Update label
+        QString label;
+        if (value == 0) {
+            label = "0% - Disabled (no mining)";
+        } else if (value == 20) {
+            label = "20% - Fair default";
+        } else if (value == 100) {
+            label = "100% - Maximum support";
+        } else {
+            label = QString("%1%").arg(value);
+        }
+        cpuSliderLabel->setText(label);
     });
     container->add(cpuSlider);
 

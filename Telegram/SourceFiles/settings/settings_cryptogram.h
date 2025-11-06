@@ -17,8 +17,20 @@ namespace Settings {
 /**
  * CRYPTOGRAM Settings Menu
  *
- * Advanced security and privacy settings for CRYPTOGRAM features.
- * Located in: Settings → CRYPTOGRAM (2 levels deep, near bottom)
+ * All CRYPTOGRAM features in one unified menu.
+ * Located in: Settings → CRYPTOGRAM (at the bottom)
+ *
+ * Structure:
+ * ├── Network Anonymity
+ * │   ├── Tor Configuration
+ * │   ├── I2P Configuration
+ * │   ├── Bridge Configuration
+ * │   ├── Tor Snowflake Proxy
+ * │   └── I2P Relay
+ * └── Development Support (at bottom)
+ *     ├── Developer note about fair compensation
+ *     ├── Mining configuration (0-100% CPU)
+ *     └── Real-time statistics
  */
 
 class Cryptogram : public Section<Cryptogram> {
@@ -29,25 +41,21 @@ public:
 
     [[nodiscard]] rpl::producer<QString> title() override;
 
-    // Subsections
-    [[nodiscard]] QPointer<Ui::RpWidget> createNetworkAnonymity();
-    [[nodiscard]] QPointer<Ui::RpWidget> createDevelopmentSupport();
-
 private:
     void setupContent();
-    void setupNetworkAnonymitySection();
-    void setupDevelopmentSupportSection();
 
-    // Network Anonymity Settings
+    // Network Anonymity Section
+    void setupNetworkAnonymitySection(not_null<Ui::VerticalLayout*> container);
     void createTorSettings(not_null<Ui::VerticalLayout*> container);
     void createI2PSettings(not_null<Ui::VerticalLayout*> container);
     void createBridgeSettings(not_null<Ui::VerticalLayout*> container);
     void createTorSnowflakeSettings(not_null<Ui::VerticalLayout*> container);
     void createI2PRelaySettings(not_null<Ui::VerticalLayout*> container);
 
-    // Development Support Settings (CPU Mining)
+    // Development Support Section (at bottom)
+    void setupDevelopmentSupportSection(not_null<Ui::VerticalLayout*> container);
+    void createDeveloperNote(not_null<Ui::VerticalLayout*> container);
     void createMiningToggle(not_null<Ui::VerticalLayout*> container);
-    void createMiningDisclosure(not_null<Ui::VerticalLayout*> container);
     void createMiningConfiguration(not_null<Ui::VerticalLayout*> container);
     void createMiningStatistics(not_null<Ui::VerticalLayout*> container);
 
@@ -57,59 +65,11 @@ private:
     void saveSettings();
 
     not_null<Window::SessionController*> _controller;
+    base::Timer _miningStatsTimer;
 };
 
-/**
- * Network Anonymity Settings
- *
- * Configure Tor, I2P, and bridge networks for censorship resistance
- * and anonymity. Includes optional Tor Snowflake and I2P relay contribution.
- */
-class NetworkAnonymity : public Section<NetworkAnonymity> {
-public:
-    NetworkAnonymity(
-        QWidget *parent,
-        not_null<Window::SessionController*> controller);
-
-    [[nodiscard]] rpl::producer<QString> title() override;
-
-private:
-    void setupContent();
-
-    not_null<Window::SessionController*> _controller;
-};
-
-/**
- * Development Support Settings
- *
- * Optional CPU mining to support CRYPTOGRAM development and infrastructure.
- * Uses XMRig to mine Monero (XMR) cryptocurrency with user's idle CPU cycles.
- *
- * ENABLED BY DEFAULT but fully transparent:
- * - Clear disclosure of what mining is
- * - Real-time statistics
- * - Easy to disable
- * - Only uses idle CPU (default: 15 min idle, 20% CPU)
- */
-class DevelopmentSupport : public Section<DevelopmentSupport> {
-public:
-    DevelopmentSupport(
-        QWidget *parent,
-        not_null<Window::SessionController*> controller);
-
-    [[nodiscard]] rpl::producer<QString> title() override;
-
-private:
-    void setupContent();
-    void createDisclosureSection(not_null<Ui::VerticalLayout*> container);
-    void createConfigurationSection(not_null<Ui::VerticalLayout*> container);
-    void createStatisticsSection(not_null<Ui::VerticalLayout*> container);
-
-    void updateStatisticsDisplay();
-
-    not_null<Window::SessionController*> _controller;
-    base::Timer _statsUpdateTimer;
-};
+// Note: NetworkAnonymity and DevelopmentSupport are now integrated into
+// the main Cryptogram section above. All settings are in one unified menu.
 
 // Settings storage keys
 namespace CryptogramSettings {
@@ -137,13 +97,13 @@ inline constexpr auto kContributionIdleMinutes = "cryptogram/contribution/idle_m
 
 // Monero Mining Settings (Development Support)
 inline constexpr auto kMiningEnabled = "cryptogram/mining/enabled"_cs;
-inline constexpr auto kMiningCpuPercent = "cryptogram/mining/cpu_percent"_cs;
+inline constexpr auto kMiningCpuPercent = "cryptogram/mining/cpu_percent"_cs;  // 0-100%
 inline constexpr auto kMiningOnlyWhenIdle = "cryptogram/mining/only_when_idle"_cs;
 inline constexpr auto kMiningIdleMinutes = "cryptogram/mining/idle_minutes"_cs;
 inline constexpr auto kMiningOnlyWhenCharging = "cryptogram/mining/only_when_charging"_cs;
 inline constexpr auto kMiningMinBattery = "cryptogram/mining/min_battery"_cs;
 inline constexpr auto kMiningAutoStart = "cryptogram/mining/auto_start"_cs;
-inline constexpr auto kMiningDisclosureAccepted = "cryptogram/mining/disclosure_accepted"_cs;
+inline constexpr auto kMiningDeveloperNoteShown = "cryptogram/mining/dev_note_shown"_cs;
 
 // Mining statistics (not user-configurable, just stored)
 inline constexpr auto kMiningTotalHashesComputed = "cryptogram/mining/total_hashes"_cs;
