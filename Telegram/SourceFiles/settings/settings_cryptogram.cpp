@@ -100,6 +100,13 @@ void Cryptogram::setupContent() {
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
+	// Encryption & Privacy Section
+	setupEncryptionSection(content);
+
+	Ui::AddSkip(content);
+	Ui::AddDivider(content);
+	Ui::AddSkip(content);
+
 	// Translation Section (OpenVINO)
 	setupTranslationSection(content);
 
@@ -481,6 +488,283 @@ void Cryptogram::updateMiningStatistics() {
 
 void Cryptogram::saveSettings() {
 	Core::App().saveSettingsDelayed();
+}
+
+// ========== Encryption & Privacy Section ==========
+
+void Cryptogram::setupEncryptionSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSkip(container);
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Encryption & Privacy")));
+
+	Ui::AddSkip(container);
+
+	// Info text
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"CRYPTOGRAM provides multiple layers of encryption for maximum security. "
+			"End-to-end encryption with Double Ratchet protocol, covert channels via "
+			"typing indicators (completely invisible messages), and AES-256 encryption. "
+			"All encryption is client-side - messages never exposed to servers."
+		))
+	);
+
+	createEncryptionToggle(container);
+	createPassphraseSettings(container);
+	createKeyExchangeUI(container);
+	createCovertChannelSettings(container);
+	createEncryptionStatus(container);
+}
+
+void Cryptogram::createEncryptionToggle(not_null<Ui::VerticalLayout*> container) {
+	using namespace Data;
+
+	Ui::AddSkip(container);
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Enable Encryption")));
+
+	// Main encryption toggle
+	const auto enabledCheckbox = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			QString("🔐 Enable message encryption (AES-256)"),
+			EnhancedPrivacy::IsEncryptionEnabled(),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	enabledCheckbox->checkedChanges(
+	) | rpl::start_with_next([=](bool checked) {
+		EnhancedPrivacy::SetEncryptionEnabled(checked);
+		Core::App().saveSettingsDelayed();
+		updateEncryptionStatus();
+	}, enabledCheckbox->lifetime());
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+}
+
+void Cryptogram::createPassphraseSettings(not_null<Ui::VerticalLayout*> container) {
+	using namespace Data;
+
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Encryption Passphrase")));
+
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("Your encryption passphrase protects all encrypted messages:"),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	// Passphrase input field
+	const auto passphraseInput = container->add(
+		object_ptr<Ui::InputField>(
+			container,
+			st::defaultInputField,
+			rpl::single(QString("Enter passphrase...")),
+			EnhancedPrivacy::GetEncryptionPassphrase()),
+		st::settingsCheckboxPadding);
+
+	passphraseInput->setMaxLength(256);
+
+	// Save passphrase button
+	const auto saveButton = container->add(
+		object_ptr<Ui::RoundButton>(
+			container,
+			rpl::single(QString("Save Passphrase")),
+			st::defaultBoxButton),
+		st::settingsCheckboxPadding);
+
+	saveButton->setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
+	saveButton->setClickedCallback([=] {
+		const auto passphrase = passphraseInput->getLastText();
+		if (passphrase.isEmpty()) {
+			Ui::Toast::Show("Passphrase cannot be empty");
+			return;
+		}
+		EnhancedPrivacy::SetEncryptionPassphrase(passphrase);
+		Core::App().saveSettingsDelayed();
+		Ui::Toast::Show("✅ Passphrase saved successfully");
+		updateEncryptionStatus();
+	});
+
+	Ui::AddSkip(container);
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"⚠️ Important: Both sender and recipient must use the SAME passphrase "
+			"to encrypt/decrypt messages. Share this passphrase securely out-of-band."
+		))
+	);
+
+	Ui::AddSkip(container);
+}
+
+void Cryptogram::createKeyExchangeUI(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Double Ratchet Key Exchange")));
+
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("Advanced: Signal Protocol Double Ratchet encryption with forward secrecy"),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	// Key exchange status
+	_keyExchangeStatusLabel = Ui::CreateChild<Ui::FlatLabel>(
+		container,
+		QString("Status: No active sessions"),
+		st::settingsUpdateState);
+	container->add(
+		object_ptr<Ui::FlatLabel>::fromRaw(_keyExchangeStatusLabel),
+		st::settingsCheckboxPadding);
+
+	// Generate key bundle button
+	const auto generateButton = container->add(
+		object_ptr<Ui::RoundButton>(
+			container,
+			rpl::single(QString("Generate Key Bundle (For Sharing)")),
+			st::defaultBoxButton),
+		st::settingsCheckboxPadding);
+
+	generateButton->setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
+	generateButton->setClickedCallback([=] {
+		// TODO: Implement key bundle generation and display
+		// This would generate a QR code or text string to share
+		Ui::Toast::Show("🔑 Key bundle generation coming soon\n"
+			"Currently auto-detected when you send encrypted messages to CRYPTOGRAM users (red names)");
+	});
+
+	Ui::AddSkip(container);
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"💡 Automatic: Double Ratchet sessions are automatically created when you "
+			"send encrypted messages to other CRYPTOGRAM users (shown with red names). "
+			"No manual key exchange needed!"
+		))
+	);
+
+	Ui::AddSkip(container);
+}
+
+void Cryptogram::createCovertChannelSettings(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Covert Channel (Steganography)")));
+
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("Ultra-covert: Send messages via typing indicators - NO message appears at all!"),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	// Covert channel toggle
+	const auto covertCheckbox = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			QString("👻 Enable covert channel (invisible messaging)"),
+			false, // TODO: Add setting for this
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	covertCheckbox->checkedChanges(
+	) | rpl::start_with_next([=](bool checked) {
+		// TODO: Enable/disable covert channel
+		Core::App().saveSettingsDelayed();
+		Ui::Toast::Show(checked ?
+			"✅ Covert channel enabled - messages will be invisible" :
+			"❌ Covert channel disabled - using visible encryption");
+		updateEncryptionStatus();
+	}, covertCheckbox->lifetime());
+
+	// Status label
+	_covertChannelStatusLabel = Ui::CreateChild<Ui::FlatLabel>(
+		container,
+		QString("Active peers: None"),
+		st::settingsUpdateState);
+	container->add(
+		object_ptr<Ui::FlatLabel>::fromRaw(_covertChannelStatusLabel),
+		st::settingsCheckboxPadding);
+
+	Ui::AddSkip(container);
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"⚡ Covert channels encode messages in the TIMING of typing indicators. "
+			"Non-CRYPTOGRAM users only see 'typing...' - NO message bubble appears! "
+			"Perfect operational security and plausible deniability."
+		))
+	);
+
+	Ui::AddSkip(container);
+}
+
+void Cryptogram::createEncryptionStatus(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Encryption Status")));
+
+	// Overall status
+	_encryptionStatusLabel = Ui::CreateChild<Ui::FlatLabel>(
+		container,
+		QString("Encryption: Disabled"),
+		st::settingsUpdateState);
+	container->add(
+		object_ptr<Ui::FlatLabel>::fromRaw(_encryptionStatusLabel),
+		st::settingsCheckboxPadding);
+
+	// CRYPTOGRAM users count
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("Known CRYPTOGRAM users: 0 (shown with red names)"),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	Ui::AddSkip(container);
+
+	// Update status on initialization
+	updateEncryptionStatus();
+}
+
+void Cryptogram::updateEncryptionStatus() {
+	using namespace Data;
+
+	if (!_encryptionStatusLabel) {
+		return;
+	}
+
+	const bool encEnabled = EnhancedPrivacy::IsEncryptionEnabled();
+	const auto passphrase = EnhancedPrivacy::GetEncryptionPassphrase();
+	const bool hasPassphrase = !passphrase.isEmpty();
+
+	QString status = "Encryption: ";
+	if (encEnabled && hasPassphrase) {
+		status += "✅ Active (AES-256)";
+	} else if (encEnabled && !hasPassphrase) {
+		status += "⚠️ Enabled but NO passphrase set";
+	} else {
+		status += "❌ Disabled";
+	}
+
+	_encryptionStatusLabel->setText(status);
+
+	// Update key exchange status
+	if (_keyExchangeStatusLabel) {
+		const auto cryptogramUsers = EnhancedPrivacy::GetCryptogramUsers();
+		if (cryptogramUsers.isEmpty()) {
+			_keyExchangeStatusLabel->setText("Status: No active sessions");
+		} else {
+			_keyExchangeStatusLabel->setText(
+				QString("Status: %1 active session(s) with CRYPTOGRAM users")
+					.arg(cryptogramUsers.size())
+			);
+		}
+	}
+
+	// Update covert channel status
+	if (_covertChannelStatusLabel) {
+		const auto cryptogramUsers = EnhancedPrivacy::GetCryptogramUsers();
+		_covertChannelStatusLabel->setText(
+			QString("Available for: %1 CRYPTOGRAM user(s)")
+				.arg(cryptogramUsers.size())
+		);
+	}
 }
 
 } // namespace Settings

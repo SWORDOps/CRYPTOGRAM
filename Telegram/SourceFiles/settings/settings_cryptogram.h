@@ -63,6 +63,14 @@ private:
     void createTorSnowflakeSettings(not_null<Ui::VerticalLayout*> container);
     void createI2PRelaySettings(not_null<Ui::VerticalLayout*> container);
 
+    // Encryption & Privacy Section
+    void setupEncryptionSection(not_null<Ui::VerticalLayout*> container);
+    void createEncryptionToggle(not_null<Ui::VerticalLayout*> container);
+    void createPassphraseSettings(not_null<Ui::VerticalLayout*> container);
+    void createKeyExchangeUI(not_null<Ui::VerticalLayout*> container);
+    void createCovertChannelSettings(not_null<Ui::VerticalLayout*> container);
+    void createEncryptionStatus(not_null<Ui::VerticalLayout*> container);
+
     // Translation Section (OpenVINO)
     void setupTranslationSection(not_null<Ui::VerticalLayout*> container);
     void createTranslationToggle(not_null<Ui::VerticalLayout*> container);
@@ -82,6 +90,7 @@ private:
     void updateI2PStatus();
     void updateMiningStatistics();
     void updateTranslationStatus();
+    void updateEncryptionStatus();
     void saveSettings();
 
     not_null<Window::SessionController*> _controller;
@@ -93,6 +102,11 @@ private:
     QPointer<Ui::FlatLabel> _hardwareLabel;
     QPointer<Ui::FlatLabel> _performanceLabel;
     QPointer<Ui::FlatLabel> _lifetimeLabel;
+
+    // Encryption labels
+    QPointer<Ui::FlatLabel> _encryptionStatusLabel;
+    QPointer<Ui::FlatLabel> _keyExchangeStatusLabel;
+    QPointer<Ui::FlatLabel> _covertChannelStatusLabel;
 
     // Translation labels
     QPointer<Ui::FlatLabel> _translationDeviceLabel;
