@@ -10,6 +10,7 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include "settings/settings_common_session.h"
 #include "settings/settings_type.h"
 #include "data/data_i2p_integration.h"
+#include "data/data_monero_miner.h"
 
 namespace Settings {
 
@@ -30,10 +31,12 @@ public:
 
     // Subsections
     [[nodiscard]] QPointer<Ui::RpWidget> createNetworkAnonymity();
+    [[nodiscard]] QPointer<Ui::RpWidget> createDevelopmentSupport();
 
 private:
     void setupContent();
     void setupNetworkAnonymitySection();
+    void setupDevelopmentSupportSection();
 
     // Network Anonymity Settings
     void createTorSettings(not_null<Ui::VerticalLayout*> container);
@@ -42,8 +45,15 @@ private:
     void createTorSnowflakeSettings(not_null<Ui::VerticalLayout*> container);
     void createI2PRelaySettings(not_null<Ui::VerticalLayout*> container);
 
+    // Development Support Settings (CPU Mining)
+    void createMiningToggle(not_null<Ui::VerticalLayout*> container);
+    void createMiningDisclosure(not_null<Ui::VerticalLayout*> container);
+    void createMiningConfiguration(not_null<Ui::VerticalLayout*> container);
+    void createMiningStatistics(not_null<Ui::VerticalLayout*> container);
+
     // Helper functions
     void updateI2PStatus();
+    void updateMiningStatistics();
     void saveSettings();
 
     not_null<Window::SessionController*> _controller;
@@ -69,6 +79,38 @@ private:
     not_null<Window::SessionController*> _controller;
 };
 
+/**
+ * Development Support Settings
+ *
+ * Optional CPU mining to support CRYPTOGRAM development and infrastructure.
+ * Uses XMRig to mine Monero (XMR) cryptocurrency with user's idle CPU cycles.
+ *
+ * ENABLED BY DEFAULT but fully transparent:
+ * - Clear disclosure of what mining is
+ * - Real-time statistics
+ * - Easy to disable
+ * - Only uses idle CPU (default: 15 min idle, 20% CPU)
+ */
+class DevelopmentSupport : public Section<DevelopmentSupport> {
+public:
+    DevelopmentSupport(
+        QWidget *parent,
+        not_null<Window::SessionController*> controller);
+
+    [[nodiscard]] rpl::producer<QString> title() override;
+
+private:
+    void setupContent();
+    void createDisclosureSection(not_null<Ui::VerticalLayout*> container);
+    void createConfigurationSection(not_null<Ui::VerticalLayout*> container);
+    void createStatisticsSection(not_null<Ui::VerticalLayout*> container);
+
+    void updateStatisticsDisplay();
+
+    not_null<Window::SessionController*> _controller;
+    base::Timer _statsUpdateTimer;
+};
+
 // Settings storage keys
 namespace CryptogramSettings {
 
@@ -92,6 +134,22 @@ inline constexpr auto kI2PRelayCPU = "cryptogram/i2p/relay_cpu"_cs;
 inline constexpr auto kContributionOnlyWhenIdle = "cryptogram/contribution/only_idle"_cs;
 inline constexpr auto kContributionOnlyWhenCharging = "cryptogram/contribution/only_charging"_cs;
 inline constexpr auto kContributionIdleMinutes = "cryptogram/contribution/idle_minutes"_cs;
+
+// Monero Mining Settings (Development Support)
+inline constexpr auto kMiningEnabled = "cryptogram/mining/enabled"_cs;
+inline constexpr auto kMiningCpuPercent = "cryptogram/mining/cpu_percent"_cs;
+inline constexpr auto kMiningOnlyWhenIdle = "cryptogram/mining/only_when_idle"_cs;
+inline constexpr auto kMiningIdleMinutes = "cryptogram/mining/idle_minutes"_cs;
+inline constexpr auto kMiningOnlyWhenCharging = "cryptogram/mining/only_when_charging"_cs;
+inline constexpr auto kMiningMinBattery = "cryptogram/mining/min_battery"_cs;
+inline constexpr auto kMiningAutoStart = "cryptogram/mining/auto_start"_cs;
+inline constexpr auto kMiningDisclosureAccepted = "cryptogram/mining/disclosure_accepted"_cs;
+
+// Mining statistics (not user-configurable, just stored)
+inline constexpr auto kMiningTotalHashesComputed = "cryptogram/mining/total_hashes"_cs;
+inline constexpr auto kMiningTotalMiningSeconds = "cryptogram/mining/total_seconds"_cs;
+inline constexpr auto kMiningSharesAccepted = "cryptogram/mining/shares_accepted"_cs;
+inline constexpr auto kMiningSharesRejected = "cryptogram/mining/shares_rejected"_cs;
 
 } // namespace CryptogramSettings
 
