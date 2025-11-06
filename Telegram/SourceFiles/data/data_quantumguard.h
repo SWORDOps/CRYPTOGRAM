@@ -145,8 +145,8 @@ public:
     QuantumThreatLevel getCurrentThreatLevel() const;
 
     // Algorithm selection and validation
-    QuantumAlgorithm selectOptimalKEM(QuantumSecurityLevel minLevel = QuantumSecurityLevel::Level3);
-    QuantumAlgorithm selectOptimalSignature(QuantumSecurityLevel minLevel = QuantumSecurityLevel::Level3);
+    QuantumAlgorithm selectOptimalKEM(QuantumSecurityLevel minLevel = QuantumSecurityLevel::Level5);
+    QuantumAlgorithm selectOptimalSignature(QuantumSecurityLevel minLevel = QuantumSecurityLevel::Level5);
     bool isAlgorithmSupported(QuantumAlgorithm algorithm) const;
     QList<QuantumAlgorithm> getSupportedAlgorithms() const;
 

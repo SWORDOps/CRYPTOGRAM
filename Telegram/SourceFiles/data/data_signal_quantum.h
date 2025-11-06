@@ -44,9 +44,9 @@ public:
         bytes::vector quantumSignature;
 
         // Hybrid metadata
-        QuantumAlgorithm kemAlgorithm = QuantumAlgorithm::Kyber768;
-        QuantumAlgorithm signatureAlgorithm = QuantumAlgorithm::Dilithium3;
-        QuantumSecurityLevel securityLevel = QuantumSecurityLevel::Level3;
+        QuantumAlgorithm kemAlgorithm = QuantumAlgorithm::ML_KEM_1024;
+        QuantumAlgorithm signatureAlgorithm = QuantumAlgorithm::ML_DSA_87;
+        QuantumSecurityLevel securityLevel = QuantumSecurityLevel::Level5;
         bool isHybridBundle = true;
         QDateTime created;
         QDateTime expires;
@@ -70,14 +70,14 @@ public:
         // Quantum key encapsulation
         bytes::vector kemSharedSecret;
         bytes::vector kemEncapsulation;
-        QuantumAlgorithm kemAlgorithm = QuantumAlgorithm::Kyber768;
+        QuantumAlgorithm kemAlgorithm = QuantumAlgorithm::ML_KEM_1024;
 
         // Quantum signatures
         bytes::vector quantumSignatureKey;
-        QuantumAlgorithm signatureAlgorithm = QuantumAlgorithm::Dilithium3;
+        QuantumAlgorithm signatureAlgorithm = QuantumAlgorithm::ML_DSA_87;
 
         // Security metadata
-        QuantumSecurityLevel achievedSecurityLevel = QuantumSecurityLevel::Level3;
+        QuantumSecurityLevel achievedSecurityLevel = QuantumSecurityLevel::Level5;
         QuantumThreatLevel threatAssessment = QuantumThreatLevel::Moderate;
         bool isQuantumReady = false;
         bool isHybridSession = true;
@@ -106,9 +106,9 @@ public:
         bytes::vector quantumSignature;
 
         // Algorithm information
-        QuantumAlgorithm kemAlgorithm = QuantumAlgorithm::Kyber768;
-        QuantumAlgorithm signatureAlgorithm = QuantumAlgorithm::Dilithium3;
-        QuantumSecurityLevel securityLevel = QuantumSecurityLevel::Level3;
+        QuantumAlgorithm kemAlgorithm = QuantumAlgorithm::ML_KEM_1024;
+        QuantumAlgorithm signatureAlgorithm = QuantumAlgorithm::ML_DSA_87;
+        QuantumSecurityLevel securityLevel = QuantumSecurityLevel::Level5;
 
         // Security flags
         bool isQuantumProtected = true;
@@ -228,8 +228,8 @@ public:
         double averageHybridOverhead = 0.0;
         double averageKeyRotationTime = 0.0;
 
-        QuantumAlgorithm fastestKEM = QuantumAlgorithm::Kyber768;
-        QuantumAlgorithm fastestSignature = QuantumAlgorithm::Dilithium3;
+        QuantumAlgorithm fastestKEM = QuantumAlgorithm::ML_KEM_1024;
+        QuantumAlgorithm fastestSignature = QuantumAlgorithm::ML_DSA_87;
 
         QDateTime lastQuantumOperation;
         QString lastThreatDetected;
