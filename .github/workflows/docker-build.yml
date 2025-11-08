@@ -68,7 +68,7 @@ jobs:
             --release
 
       - name: Upload Linux binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cryptogram-linux-x64
           path: out/CRYPTOGRAM-linux-x64
@@ -125,7 +125,7 @@ jobs:
 
       - name: Upload Windows binary
         if: success()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cryptogram-windows-x64
           path: out/CRYPTOGRAM-windows-x64.exe
@@ -185,7 +185,7 @@ jobs:
           cp build/Release/CRYPTOGRAM.exe out/ || cp build/Release/Telegram.exe out/CRYPTOGRAM.exe
 
       - name: Upload Windows binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cryptogram-windows-x64-native
           path: out/CRYPTOGRAM.exe
