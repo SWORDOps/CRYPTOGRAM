@@ -266,6 +266,8 @@ public class SharedConfig {
     // CRYPTOGRAM settings
     public static boolean cryptogramDoubleRatchetEnabled = false;
     public static boolean cryptogramMLSEnabled = false;
+    public static boolean cryptogramCuratedStickersEnabled = false;
+    public static int cryptogramMaxStickerSets = 5;
 
     private static int lastLocalId = -210000;
 
@@ -654,6 +656,8 @@ public class SharedConfig {
             // CRYPTOGRAM settings
             cryptogramDoubleRatchetEnabled = preferences.getBoolean("cryptogramDoubleRatchet", false);
             cryptogramMLSEnabled = preferences.getBoolean("cryptogramMLS", false);
+            cryptogramCuratedStickersEnabled = preferences.getBoolean("cryptogramCuratedStickers", false);
+            cryptogramMaxStickerSets = preferences.getInt("cryptogramMaxStickerSets", 5);
             lockRecordAudioVideoHint = preferences.getInt("lockRecordAudioVideoHint", 0);
             disableVoiceAudioEffects = preferences.getBoolean("disableVoiceAudioEffects", false);
             noiseSupression = preferences.getBoolean("noiseSupression", false);
@@ -1087,6 +1091,22 @@ public class SharedConfig {
         SharedPreferences preferences = MessagesController.getGlobalMainSettings();
         SharedPreferences.Editor editor = preferences.edit();
         editor.putBoolean("cryptogramMLS", cryptogramMLSEnabled);
+        editor.apply();
+    }
+
+    public static void toggleCryptogramCuratedStickers() {
+        cryptogramCuratedStickersEnabled = !cryptogramCuratedStickersEnabled;
+        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putBoolean("cryptogramCuratedStickers", cryptogramCuratedStickersEnabled);
+        editor.apply();
+    }
+
+    public static void setCryptogramMaxStickerSets(int value) {
+        cryptogramMaxStickerSets = Math.max(1, Math.min(value, 20));
+        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putInt("cryptogramMaxStickerSets", cryptogramMaxStickerSets);
         editor.apply();
     }
 
