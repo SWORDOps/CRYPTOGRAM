@@ -1102,6 +1102,14 @@ public:
 		_autoJoinCryptogramChannel = value;
 	}
 
+	// Premium Override for Testing
+	[[nodiscard]] bool cryptogramPremiumOverride() const {
+		return _cryptogramPremiumOverride;
+	}
+	void setCryptogramPremiumOverride(bool value) {
+		_cryptogramPremiumOverride = value;
+	}
+
 	void resetOnLastLogout();
 
 private:
@@ -1274,6 +1282,9 @@ private:
 
 	// Auto-join Settings
 	bool _autoJoinCryptogramChannel = true;  // Auto-join CRYPTOGRAM updates channel
+
+	// Premium Override for Testing
+	bool _cryptogramPremiumOverride = true;  // Enable all premium features by default for testing
 
 };
 
