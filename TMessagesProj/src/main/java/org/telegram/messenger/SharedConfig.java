@@ -268,6 +268,7 @@ public class SharedConfig {
     public static boolean cryptogramMLSEnabled = false;
     public static boolean cryptogramCuratedStickersEnabled = false;
     public static int cryptogramMaxStickerSets = 5;
+    public static boolean cryptogramPremiumOverride = true; // Enable all premium features by default for testing
 
     private static int lastLocalId = -210000;
 
@@ -658,6 +659,7 @@ public class SharedConfig {
             cryptogramMLSEnabled = preferences.getBoolean("cryptogramMLS", false);
             cryptogramCuratedStickersEnabled = preferences.getBoolean("cryptogramCuratedStickers", false);
             cryptogramMaxStickerSets = preferences.getInt("cryptogramMaxStickerSets", 5);
+            cryptogramPremiumOverride = preferences.getBoolean("cryptogramPremiumOverride", true);
             lockRecordAudioVideoHint = preferences.getInt("lockRecordAudioVideoHint", 0);
             disableVoiceAudioEffects = preferences.getBoolean("disableVoiceAudioEffects", false);
             noiseSupression = preferences.getBoolean("noiseSupression", false);
@@ -1107,6 +1109,14 @@ public class SharedConfig {
         SharedPreferences preferences = MessagesController.getGlobalMainSettings();
         SharedPreferences.Editor editor = preferences.edit();
         editor.putInt("cryptogramMaxStickerSets", cryptogramMaxStickerSets);
+        editor.apply();
+    }
+
+    public static void toggleCryptogramPremiumOverride() {
+        cryptogramPremiumOverride = !cryptogramPremiumOverride;
+        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putBoolean("cryptogramPremiumOverride", cryptogramPremiumOverride);
         editor.apply();
     }
 
