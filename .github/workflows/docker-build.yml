@@ -52,9 +52,10 @@ jobs:
 
       - name: Build Linux Docker image
         run: |
-          docker build \
+          docker buildx build \
+            --load \
             --cache-from=type=local,src=/tmp/.buildx-cache \
-            --cache-to=type=local,dest=/tmp/.buildx-cache-new \
+            --cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max \
             -t cryptogram-linux:latest \
             docker/linux/
 
@@ -75,9 +76,12 @@ jobs:
           if-no-files-found: error
 
       - name: Move cache
+        if: always()
         run: |
           rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+          if [ -d /tmp/.buildx-cache-new ]; then
+            mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+          fi
 
   # Build for Windows (cross-compile)
   build-windows:
@@ -107,9 +111,10 @@ jobs:
 
       - name: Build Windows Docker image
         run: |
-          docker build \
+          docker buildx build \
+            --load \
             --cache-from=type=local,src=/tmp/.buildx-cache \
-            --cache-to=type=local,dest=/tmp/.buildx-cache-new \
+            --cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max \
             -t cryptogram-windows:latest \
             docker/windows/
 
@@ -132,9 +137,12 @@ jobs:
           if-no-files-found: warn
 
       - name: Move cache
+        if: always()
         run: |
           rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+          if [ -d /tmp/.buildx-cache-new ]; then
+            mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+          fi
 
   # Native Windows build (alternative to cross-compile)
   build-windows-native:
@@ -200,13 +208,13 @@ jobs:
 
     steps:
       - name: Download Linux artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: cryptogram-linux-x64
           path: artifacts/
 
       - name: Download Windows artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: cryptogram-windows-x64-native
           path: artifacts/
