@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - claude/port-spygram-double-ratchet-*
+      - claude/organize-readme-sections-*
       - main
       - master
     paths:
       - 'TMessagesProj/**'
+      - 'telegram-android'
       - '.github/workflows/build-android.yml'
   pull_request:
     branches:
@@ -15,6 +17,7 @@ on:
       - master
     paths:
       - 'TMessagesProj/**'
+      - 'telegram-android'
       - '.github/workflows/build-android.yml'
   workflow_dispatch:  # Allow manual trigger
 
@@ -51,13 +54,40 @@ jobs:
           echo "Installing CMake..."
           sdkmanager --install "cmake;3.22.1"
 
+      - name: Copy CRYPTOGRAM files to Android base
+        run: |
+          echo "Copying CRYPTOGRAM modifications..."
+          # Copy JNI C++ files
+          cp -rv TMessagesProj/jni/cryptogram telegram-android/TMessagesProj/jni/
+          cp -v TMessagesProj/jni/CMakeLists.txt telegram-android/TMessagesProj/jni/
+
+          # Copy Java/Kotlin files
+          mkdir -p telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram
+          cp -rv TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/* \
+                 telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/
+
+          # Copy modified core files
+          cp -v TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java \
+                telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/ || true
+          cp -v TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java \
+                telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/ || true
+          cp -v TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java \
+                telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/ || true
+
+          # Copy UI files
+          cp -v TMessagesProj/src/main/java/org/telegram/ui/CryptogramSettingsActivity.java \
+                telegram-android/TMessagesProj/src/main/java/org/telegram/ui/ || true
+          cp -v TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java \
+                telegram-android/TMessagesProj/src/main/java/org/telegram/ui/ || true
+          mkdir -p telegram-android/TMessagesProj/src/main/java/org/telegram/ui/Components
+          cp -v TMessagesProj/src/main/java/org/telegram/ui/Components/CryptogramIndicator.java \
+                telegram-android/TMessagesProj/src/main/java/org/telegram/ui/Components/ || true
+
+          echo "✅ CRYPTOGRAM files copied successfully"
+
       - name: Grant execute permission for gradlew
         run: |
-          if [ -f "TMessagesProj/gradlew" ]; then
-            chmod +x TMessagesProj/gradlew
-          elif [ -f "gradlew" ]; then
-            chmod +x gradlew
-          fi
+          chmod +x telegram-android/gradlew
 
       - name: Cache Gradle packages
         uses: actions/cache@v3
@@ -71,15 +101,15 @@ jobs:
 
       - name: Build Debug APK
         run: |
-          cd TMessagesProj
-          ./gradlew assembleDebug --stacktrace --no-daemon
+          cd telegram-android
+          ./gradlew assembleAfat_armeabi_v7aDebug --stacktrace --no-daemon
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
 
       - name: Build Release APK (unsigned)
         run: |
-          cd TMessagesProj
-          ./gradlew assembleRelease --stacktrace --no-daemon
+          cd telegram-android
+          ./gradlew assembleAfat_armeabi_v7aRelease --stacktrace --no-daemon
         continue-on-error: true  # Release might fail without signing key
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
@@ -88,9 +118,9 @@ jobs:
         id: find-apk
         run: |
           echo "Finding APK files..."
-          find TMessagesProj/build/outputs/apk -name "*.apk" -type f || true
-          DEBUG_APK=$(find TMessagesProj/build/outputs/apk/debug -name "*.apk" -type f | head -1)
-          RELEASE_APK=$(find TMessagesProj/build/outputs/apk/release -name "*.apk" -type f | head -1)
+          find telegram-android/TMessagesProj*/build/outputs/apk -name "*.apk" -type f || true
+          DEBUG_APK=$(find telegram-android/TMessagesProj*/build/outputs/apk -name "*debug*.apk" -type f | head -1)
+          RELEASE_APK=$(find telegram-android/TMessagesProj*/build/outputs/apk -name "*release*.apk" -type f | head -1)
           echo "debug_apk=$DEBUG_APK" >> $GITHUB_OUTPUT
           echo "release_apk=$RELEASE_APK" >> $GITHUB_OUTPUT
 
