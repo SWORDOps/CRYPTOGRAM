@@ -102,14 +102,14 @@ jobs:
       - name: Build Debug APK
         run: |
           cd telegram-android
-          ./gradlew assembleAfat_armeabi_v7aDebug --stacktrace --no-daemon
+          ./gradlew assembleAfatDebug --stacktrace --no-daemon
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
 
       - name: Build Release APK (unsigned)
         run: |
           cd telegram-android
-          ./gradlew assembleAfat_armeabi_v7aRelease --stacktrace --no-daemon
+          ./gradlew assembleAfatRelease --stacktrace --no-daemon
         continue-on-error: true  # Release might fail without signing key
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
