@@ -225,6 +225,6 @@ If CRYPTOGRAM helps protect your privacy, please star this repository!
 
 ---
 
-**Built with ❤️ and 🔐 for a more private world**
+**Built with 🖕 and 🔐 for a more private world**
 
 **Available on Desktop and Android** 🖥️ 📱
