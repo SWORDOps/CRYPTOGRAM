@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 BUILD_TYPE="Release"
 JOBS=$(nproc)
 SOURCE_DIR="/build/CRYPTOGRAM"
-BUILD_DIR="${SOURCE_DIR}/build-linux"
+BUILD_DIR="/tmp/build-linux"
 OUTPUT_DIR="/output"
 
 # Parse arguments
@@ -103,7 +103,7 @@ cmake \
     -DCMAKE_CXX_FLAGS="-fuse-ld=lld" \
     -DTDESKTOP_API_ID=611335 \
     -DTDESKTOP_API_HASH=d524b414d21f4d37f08684c1df41ac9c \
-    ..
+    "${SOURCE_DIR}"
 
 # Build
 echo -e "${GREEN}Building CRYPTOGRAM...${NC}"

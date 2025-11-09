@@ -14,7 +14,7 @@ NC='\033[0m'
 BUILD_TYPE="Release"
 JOBS=$(nproc)
 SOURCE_DIR="/build/CRYPTOGRAM"
-BUILD_DIR="${SOURCE_DIR}/build-windows"
+BUILD_DIR="/tmp/build-windows"
 OUTPUT_DIR="/output"
 TOOLCHAIN_FILE="/opt/mingw-w64-toolchain.cmake"
 
@@ -117,7 +117,7 @@ cmake \
     -DCMAKE_INSTALL_PREFIX="/usr/x86_64-w64-mingw32" \
     -DTDESKTOP_API_ID=611335 \
     -DTDESKTOP_API_HASH=d524b414d21f4d37f08684c1df41ac9c \
-    .. || {
+    "${SOURCE_DIR}" || {
         echo -e "${RED}CMake configuration failed${NC}"
         echo -e "${YELLOW}This is expected if Qt for Windows is not available${NC}"
         exit 1
