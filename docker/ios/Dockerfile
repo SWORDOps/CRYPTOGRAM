@@ -31,7 +31,6 @@ WORKDIR /build
 # Install dependencies for OSXCross
 RUN apt-get update && apt-get install -y \
     build-essential \
-    cmake \
     ninja-build \
     git \
     wget \
@@ -49,6 +48,14 @@ RUN apt-get update && apt-get install -y \
     patch \
     cpio \
     && rm -rf /var/lib/apt/lists/*
+
+# Install CMake 3.25+ (Ubuntu 22.04 only has 3.22)
+# Using Kitware's official installer
+RUN wget -q https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.28.1-linux-x86_64.sh -O /tmp/cmake-install.sh && \
+    chmod +x /tmp/cmake-install.sh && \
+    /tmp/cmake-install.sh --skip-license --prefix=/usr/local && \
+    rm /tmp/cmake-install.sh && \
+    cmake --version
 
 # OSXCross setup (for macOS/iOS cross-compilation)
 # User must provide Xcode SDK (not included due to licensing)
