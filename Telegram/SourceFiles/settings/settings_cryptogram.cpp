@@ -126,12 +126,7 @@ void Cryptogram::setupContent() {
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// CAC Card Section (Hardware Security)
-	setupCACSection(content);
-
-	Ui::AddSkip(content);
-	Ui::AddDivider(content);
-	Ui::AddSkip(content);
+	setupDeviceTrustSection(content);
 
 	// Translation Section (OpenVINO)
 	setupTranslationSection(content);
