@@ -806,6 +806,7 @@ FROM builder AS ada
 RUN git clone -b v3.2.4 --depth=1 https://github.com/ada-url/ada.git \
 	&& cd ada \
 	&& cmake -B build . \
+        -D CMAKE_INSTALL_PREFIX=/usr/local \
         -D ADA_TESTING=OFF \
         -D ADA_TOOLS=OFF \
         -D ADA_INCLUDE_URL_PATTERN=OFF \
