@@ -14,7 +14,7 @@ CRYPTOGRAM goes beyond traditional encrypted messaging with advanced features fo
 
 | Feature | Signal | WhatsApp | Telegram | CRYPTOGRAM |
 |---------|--------|----------|----------|------------|
-| End-to-End Encryption | ✅ | ✅ | 🟡 Secret Chats Only | ✅ |
+| End-to-End Encryption | ✅ | ✅ | 🟡 Secret Chats Only(lol) | ✅ |
 | Post-Quantum Cryptography | ❌ | ❌ | ❌ | ✅ **UNIQUE** |
 | AES-256-GCM Encryption | ✅ | ✅ | 🟡 | ✅ |
 | Signal Protocol | ✅ | ✅ | ❌ | ✅ |
