@@ -7,7 +7,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20Android-lightgrey.svg)](#platforms)
 [![Security](https://img.shields.io/badge/security-military--grade-green.svg)](#security)
 
-CRYPTOGRAM goes beyond traditional encrypted messaging with advanced features for journalists, activists, whistleblowers, and anyone who values digital privacy.
+CRYPTOGRAM goes beyond traditional encrypted messaging with advanced features for journalists, activists, whistleblowers, and anyone who values digital privacy like **that one guy whose account has been banned 150 times**
 
 ---
 
