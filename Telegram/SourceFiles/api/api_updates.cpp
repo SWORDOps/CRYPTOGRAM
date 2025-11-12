@@ -23,6 +23,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "mtproto/mtproto_dc_options.h"
 #include "data/business/data_shortcut_messages.h"
 #include "data/components/credits.h"
+#include "data/components/promo_suggestions.h"
 #include "data/components/scheduled_messages.h"
 #include "data/components/top_peers.h"
 #include "data/notify/data_notify_settings.h"
@@ -50,8 +51,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "history/history_item.h"
 #include "history/history_item_helpers.h"
+#include "history/history_streamed_drafts.h"
 #include "history/history_unread_things.h"
 #include "core/application.h"
+#include "core/core_settings.h"
 #include "storage/storage_account.h"
 #include "storage/storage_facade.h"
 #include "storage/storage_user_photos.h"
@@ -303,14 +306,19 @@ void Updates::feedUpdateVector(
 	auto list = updates.v;
 	const auto hasGroupCallParticipantUpdates = ranges::contains(
 		list,
-		mtpc_updateGroupCallParticipants,
-		&MTPUpdate::type);
+		true,
+		[](const MTPUpdate &update) {
+			return update.type() == mtpc_updateGroupCallParticipants
+				|| update.type() == mtpc_updateGroupCallChainBlocks;
+		});
 	if (hasGroupCallParticipantUpdates) {
 		ranges::stable_sort(list, std::less<>(), [](const MTPUpdate &entry) {
-			if (entry.type() == mtpc_updateGroupCallParticipants) {
+			if (entry.type() == mtpc_updateGroupCallChainBlocks) {
 				return 0;
-			} else {
+			} else if (entry.type() == mtpc_updateGroupCallParticipants) {
 				return 1;
+			} else {
+				return 2;
 			}
 		});
 	} else if (policy == SkipUpdatePolicy::SkipExceptGroupCallParticipants) {
@@ -324,7 +332,8 @@ void Updates::feedUpdateVector(
 		if ((policy == SkipUpdatePolicy::SkipMessageIds
 			&& type == mtpc_updateMessageID)
 			|| (policy == SkipUpdatePolicy::SkipExceptGroupCallParticipants
-				&& type != mtpc_updateGroupCallParticipants)) {
+				&& type != mtpc_updateGroupCallParticipants
+				&& type != mtpc_updateGroupCallChainBlocks)) {
 			continue;
 		}
 		feedUpdate(entry);
@@ -954,7 +963,8 @@ void Updates::applyGroupCallParticipantUpdates(const MTPUpdates &updates) {
 			data.vupdates(),
 			SkipUpdatePolicy::SkipExceptGroupCallParticipants);
 	}, [&](const MTPDupdateShort &data) {
-		if (data.vupdate().type() == mtpc_updateGroupCallParticipants) {
+		if (data.vupdate().type() == mtpc_updateGroupCallParticipants
+			|| data.vupdate().type() == mtpc_updateGroupCallChainBlocks) {
 			feedUpdate(data.vupdate());
 		}
 	}, [](const auto &) {
@@ -1010,18 +1020,22 @@ void Updates::updateOnline(crl::time lastNonIdleTime, bool gotOtherOffline) {
 
 		_lastWasOnline = isOnline;
 		_lastSetOnline = ms;
-		if (!Core::Quitting()) {
-			_onlineRequest = api().request(MTPaccount_UpdateStatus(
-				MTP_bool(!isOnline)
-			)).send();
-		} else {
-			_onlineRequest = api().request(MTPaccount_UpdateStatus(
-				MTP_bool(!isOnline)
-			)).done([=] {
-				Core::App().quitPreventFinished();
-			}).fail([=] {
-				Core::App().quitPreventFinished();
-			}).send();
+
+		// CRYPTOGRAM: Check if user wants to hide online status
+		if (!Core::App().settings().cryptogramHideOnlineStatus()) {
+			if (!Core::Quitting()) {
+				_onlineRequest = api().request(MTPaccount_UpdateStatus(
+					MTP_bool(!isOnline)
+				)).send();
+			} else {
+				_onlineRequest = api().request(MTPaccount_UpdateStatus(
+					MTP_bool(!isOnline)
+				)).done([=] {
+					Core::App().quitPreventFinished();
+				}).fail([=] {
+					Core::App().quitPreventFinished();
+				}).send();
+			}
 		}
 
 		const auto self = session().user();
@@ -1088,6 +1102,9 @@ void Updates::handleSendActionUpdate(
 	const auto from = (fromId == session().userPeerId())
 		? session().user().get()
 		: session().data().peerLoaded(fromId);
+	const auto when = requestingDifference()
+		? 0
+		: base::unixtime::now();
 	if (action.type() == mtpc_speakingInGroupCallAction) {
 		handleSpeakingInCall(peer, fromId, from);
 	}
@@ -1100,10 +1117,11 @@ void Updates::handleSendActionUpdate(
 		const auto &data = action.c_sendMessageEmojiInteractionSeen();
 		handleEmojiInteraction(peer, qs(data.vemoticon()));
 		return;
+	} else if (action.type() == mtpc_sendMessageTextDraftAction) {
+		const auto &data = action.c_sendMessageTextDraftAction();
+		history->streamedDrafts().apply(rootId, fromId, when, data);
+		return;
 	}
-	const auto when = requestingDifference()
-		? 0
-		: base::unixtime::now();
 	session().data().sendActionManager().registerFor(
 		history,
 		rootId,
@@ -1219,7 +1237,9 @@ void Updates::applyUpdatesNoPtsCheck(const MTPUpdates &updates) {
 				MTPint(), // quick_reply_shortcut_id
 				MTPlong(), // effect
 				MTPFactCheck(),
-				MTPint()), // report_delivery_until_date
+				MTPint(), // report_delivery_until_date
+				MTPlong(), // paid_message_stars
+				MTPSuggestedPost()),
 			MessageFlags(),
 			NewMessageType::Unread);
 	} break;
@@ -1257,7 +1277,9 @@ void Updates::applyUpdatesNoPtsCheck(const MTPUpdates &updates) {
 				MTPint(), // quick_reply_shortcut_id
 				MTPlong(), // effect
 				MTPFactCheck(),
-				MTPint()), // report_delivery_until_date
+				MTPint(), // report_delivery_until_date
+				MTPlong(), // paid_message_stars
+				MTPSuggestedPost()),
 			MessageFlags(),
 			NewMessageType::Unread);
 	} break;
@@ -1307,7 +1329,7 @@ void Updates::applyUpdateNoPtsCheck(const MTPUpdate &update) {
 							user->madeAction(base::unixtime::now());
 						}
 					}
-					ClearMediaAsExpired(item);
+					item->clearMediaAsExpired();
 				}
 			} else {
 				// Perhaps it was an unread mention!
@@ -1610,6 +1632,17 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 		auto &d = update.c_updateNewChannelMessage();
 		auto channel = session().data().channelLoaded(peerToChannel(PeerFromMessage(d.vmessage())));
 		const auto isDataLoaded = AllDataLoadedForMessage(&session(), d.vmessage());
+		{
+			// Todo delete.
+			const auto messageId = IdFromMessage(d.vmessage());
+			if (const auto history = channel ? session().data().historyLoaded(channel) : nullptr) {
+				if (history->isUnknownMessageDeleted(messageId)) {
+					LOG(("Unknown message deleted detected for channel %1, message %2")
+						.arg(channel->id.value & PeerId::kChatTypeMask)
+						.arg(messageId.bare));
+				}
+			}
+		}
 		if (!requestingDifference() && (!channel || isDataLoaded != DataIsLoadedResult::Ok)) {
 			MTP_LOG(0, ("getDifference "
 				"{ good - after not all data loaded in updateNewChannelMessage }%1"
@@ -1906,7 +1939,7 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 
 		// Update web page anyway.
 		session().data().processWebpage(d.vwebpage());
-		session().data().sendWebPageGamePollNotifications();
+		session().data().sendWebPageGamePollTodoListNotifications();
 
 		updateAndApply(d.vpts().v, d.vpts_count().v, update);
 	} break;
@@ -1916,7 +1949,7 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 
 		// Update web page anyway.
 		session().data().processWebpage(d.vwebpage());
-		session().data().sendWebPageGamePollNotifications();
+		session().data().sendWebPageGamePollTodoListNotifications();
 
 		auto channel = session().data().channelLoaded(d.vchannel_id());
 		if (channel && !_handlingChannelDifference) {
@@ -1939,7 +1972,7 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 		auto &d = update.c_updateUserTyping();
 		handleSendActionUpdate(
 			peerFromUser(d.vuser_id()),
-			0,
+			d.vtop_msg_id().value_or_empty(),
 			peerFromUser(d.vuser_id()),
 			d.vaction());
 	} break;
@@ -2059,6 +2092,7 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 
 	case mtpc_updateConfig: {
 		session().mtp().requestConfig();
+		session().promoSuggestions().invalidate();
 	} break;
 
 	case mtpc_updateUserPhone: {
@@ -2108,8 +2142,11 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 	case mtpc_updatePhoneCall:
 	case mtpc_updatePhoneCallSignalingData:
 	case mtpc_updateGroupCallParticipants:
+	case mtpc_updateGroupCallChainBlocks:
 	case mtpc_updateGroupCallConnection:
-	case mtpc_updateGroupCall: {
+	case mtpc_updateGroupCall:
+	case mtpc_updateGroupCallMessage:
+	case mtpc_updateGroupCallEncryptedMessage: {
 		Core::App().calls().handleUpdate(&session(), update);
 	} break;
 
@@ -2197,6 +2234,10 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 				channel->setPendingRequestsCount(count, requesters);
 			}
 		}
+	} break;
+
+	case mtpc_updateNewAuthorization: {
+		session().api().authorizations().apply(update);
 	} break;
 
 	case mtpc_updateServiceNotification: {
@@ -2430,6 +2471,32 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 		session().data().updateRepliesReadTill({ id, readTillId, true });
 	} break;
 
+	case mtpc_updateReadMonoForumInbox: {
+		const auto &d = update.c_updateReadMonoForumInbox();
+		const auto parentChatId = ChannelId(d.vchannel_id());
+		const auto sublistPeerId = peerFromMTP(d.vsaved_peer_id());
+		const auto readTillId = d.vread_max_id().v;
+		session().data().updateSublistReadTill({
+			parentChatId,
+			sublistPeerId,
+			readTillId,
+			false,
+		});
+	} break;
+
+	case mtpc_updateReadMonoForumOutbox: {
+		const auto &d = update.c_updateReadMonoForumOutbox();
+		const auto parentChatId = ChannelId(d.vchannel_id());
+		const auto sublistPeerId = peerFromMTP(d.vsaved_peer_id());
+		const auto readTillId = d.vread_max_id().v;
+		session().data().updateSublistReadTill({
+			parentChatId,
+			sublistPeerId,
+			readTillId,
+			true,
+		});
+	} break;
+
 	case mtpc_updateChannelAvailableMessages: {
 		auto &d = update.c_updateChannelAvailableMessages();
 		if (const auto channel = session().data().channelLoaded(d.vchannel_id())) {
@@ -2440,9 +2507,9 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 		}
 	} break;
 
-	case mtpc_updateChannelPinnedTopic: {
-		const auto &d = update.c_updateChannelPinnedTopic();
-		const auto peerId = peerFromChannel(d.vchannel_id());
+	case mtpc_updatePinnedForumTopic: {
+		const auto &d = update.c_updatePinnedForumTopic();
+		const auto peerId = peerFromMTP(d.vpeer());
 		if (const auto peer = session().data().peerLoaded(peerId)) {
 			const auto rootId = d.vtopic_id().v;
 			if (const auto topic = peer->forumTopicFor(rootId)) {
@@ -2453,9 +2520,9 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 		}
 	} break;
 
-	case mtpc_updateChannelPinnedTopics: {
-		const auto &d = update.c_updateChannelPinnedTopics();
-		const auto peerId = peerFromChannel(d.vchannel_id());
+	case mtpc_updatePinnedForumTopics: {
+		const auto &d = update.c_updatePinnedForumTopics();
+		const auto peerId = peerFromMTP(d.vpeer());
 		if (const auto peer = session().data().peerLoaded(peerId)) {
 			if (const auto forum = peer->forum()) {
 				const auto done = [&] {
@@ -2649,13 +2716,22 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 		const auto &data = update.c_updateDraftMessage();
 		const auto peerId = peerFromMTP(data.vpeer());
 		const auto topicRootId = data.vtop_msg_id().value_or_empty();
+		const auto monoforumPeerId = data.vsaved_peer_id()
+			? peerFromMTP(*data.vsaved_peer_id())
+			: PeerId();
 		data.vdraft().match([&](const MTPDdraftMessage &data) {
-			Data::ApplyPeerCloudDraft(&session(), peerId, topicRootId, data);
+			Data::ApplyPeerCloudDraft(
+				&session(),
+				peerId,
+				topicRootId,
+				monoforumPeerId,
+				data);
 		}, [&](const MTPDdraftMessageEmpty &data) {
 			Data::ClearPeerCloudDraft(
 				&session(),
 				peerId,
 				topicRootId,
+				monoforumPeerId,
 				data.vdate().value_or_empty());
 		});
 	} break;
@@ -2709,8 +2785,8 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 
 	case mtpc_updatePaidReactionPrivacy: {
 		const auto &data = update.c_updatePaidReactionPrivacy();
-		_session->api().globalPrivacy().updatePaidReactionAnonymous(
-			mtpIsTrue(data.vprivate()));
+		_session->api().globalPrivacy().updatePaidReactionShownPeer(
+			Api::ParsePaidReactionShownPeer(_session, data.vprivate()));
 	} break;
 
 	}

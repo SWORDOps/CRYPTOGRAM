@@ -57,7 +57,8 @@ void ProcessCreditsPayment(
 				onstack(CheckoutResult::Cancelled);
 			}
 			return;
-		} else if (form->starGiftForm) {
+		} else if (form->starGiftForm
+			|| IsPremiumForStarsInvoice(form->id)) {
 			const auto done = [=](std::optional<QString> error) {
 				const auto onstack = maybeReturnToBot;
 				if (error) {
@@ -76,6 +77,14 @@ void ProcessCreditsPayment(
 							show->showToast(
 								tr::lng_gift_sold_out_title(tr::now));
 						}
+					} else if (*error == u"STARGIFT_USER_USAGE_LIMITED"_q) {
+						show->showToast({
+							.text = tr::lng_gift_sent_finished(
+								tr::now,
+								lt_count,
+								std::max(form->starGiftPerUserLimit, 1),
+								Ui::Text::RichLangValue),
+						});
 					} else {
 						show->showToast(*error);
 					}
@@ -86,7 +95,7 @@ void ProcessCreditsPayment(
 					onstack(CheckoutResult::Paid);
 				}
 			};
-			Ui::SendStarGift(&show->session(), form, done);
+			Ui::SendStarsForm(&show->session(), form, done);
 			return;
 		}
 		const auto unsuccessful = std::make_shared<bool>(true);
@@ -117,7 +126,7 @@ void ProcessCreditsPayment(
 	auto source = !starGift
 		? SmallBalanceSource(SmallBalanceBot{ .botId = form->botId })
 		: SmallBalanceSource(SmallBalanceStarGift{
-			.userId = peerToUser(starGift->user->id)
+			.recipientId = starGift->recipient->id,
 		});
 	MaybeRequestBalanceIncrease(show, form->invoice.credits, source, done);
 }

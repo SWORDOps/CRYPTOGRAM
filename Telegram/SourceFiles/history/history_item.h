@@ -22,18 +22,15 @@ struct HistoryMessageMarkupData;
 struct HistoryMessageReplyMarkup;
 struct HistoryMessageTranslation;
 struct HistoryMessageForwarded;
-struct HistoryMessageSavedMediaData;
-struct HistoryMessageFactcheck;
+struct HistoryMessageSuggestedPost;
 struct HistoryServiceDependentData;
+struct HistoryServiceTodoCompletions;
 enum class HistorySelfDestructType;
 struct PreparedServiceText;
 struct MessageFactcheck;
 class ReplyKeyboard;
 struct LanguageId;
-
-namespace Api {
-struct SendOptions;
-} // namespace Api
+enum class SuggestionActions : uchar;
 
 namespace base {
 template <typename Enum>
@@ -44,15 +41,6 @@ namespace Storage {
 enum class SharedMediaType : signed char;
 using SharedMediaTypesMask = base::enum_mask<SharedMediaType>;
 } // namespace Storage
-
-namespace Ui {
-class RippleAnimation;
-} // namespace Ui
-
-namespace style {
-struct BotKeyboardButton;
-struct RippleAnimation;
-} // namespace style
 
 namespace Data {
 struct MessagePosition;
@@ -71,30 +59,21 @@ struct PaidReactionSend;
 struct SendError;
 } // namespace Data
 
-namespace Main {
-class Session;
-} // namespace Main
-
-namespace Window {
-class SessionController;
-} // namespace Window
-
 namespace HistoryUnreadThings {
 enum class AddType;
 } // namespace HistoryUnreadThings
 
 namespace HistoryView {
-struct TextState;
-struct StateRequest;
-enum class CursorState : char;
-enum class PointState : char;
-enum class Context : char;
 class ElementDelegate;
 class Element;
 class Message;
 class Service;
 class ServiceMessagePainter;
 } // namespace HistoryView
+
+namespace Ui {
+struct ColorCollectible;
+} // namespace Ui
 
 struct HistoryItemCommonFields {
 	MsgId id = 0;
@@ -103,11 +82,13 @@ struct HistoryItemCommonFields {
 	FullReplyTo replyTo;
 	TimeId date = 0;
 	BusinessShortcutId shortcutId = 0;
+	int starsPaid = 0;
 	UserId viaBotId = 0;
 	QString postAuthor;
 	uint64 groupedId = 0;
 	EffectId effectId = 0;
 	HistoryMessageMarkupData markup;
+	HistoryMessageSuggestInfo suggest;
 	bool ignoreForwardFrom = false;
 	bool ignoreForwardCaptions = false;
 };
@@ -116,6 +97,12 @@ enum class HistoryReactionSource : char {
 	Selector,
 	Quick,
 	Existing,
+};
+
+enum class PaidPostType : uchar {
+	None,
+	Stars,
+	Ton,
 };
 
 class HistoryItem final : public RuntimeComposer<HistoryItem> {
@@ -201,13 +188,16 @@ public:
 
 	[[nodiscard]] UserData *viaBot() const;
 	[[nodiscard]] UserData *getMessageBot() const;
+	[[nodiscard]] bool hideLinks() const;
 	[[nodiscard]] bool isHistoryEntry() const;
 	[[nodiscard]] bool isAdminLogEntry() const;
 	[[nodiscard]] bool isFromScheduled() const;
 	[[nodiscard]] bool isScheduled() const;
 	[[nodiscard]] bool isSponsored() const;
+	[[nodiscard]] bool canLookupMessageAuthor() const;
 	[[nodiscard]] bool skipNotification() const;
 	[[nodiscard]] bool isUserpicSuggestion() const;
+	[[nodiscard]] bool isSavedMusicItem() const;
 	[[nodiscard]] BusinessShortcutId shortcutId() const;
 	[[nodiscard]] bool isBusinessShortcut() const;
 	void setRealShortcutId(BusinessShortcutId id);
@@ -251,6 +241,9 @@ public:
 	[[nodiscard]] bool invertMedia() const {
 		return _flags & MessageFlag::InvertMedia;
 	}
+	[[nodiscard]] bool storyInProfile() const {
+		return _flags & MessageFlag::StoryInProfile;
+	}
 	[[nodiscard]] bool unread(not_null<Data::Thread*> thread) const;
 	[[nodiscard]] bool showNotification() const;
 	void markClientSideAsRead();
@@ -266,6 +259,7 @@ public:
 	void markMediaAndMentionRead();
 	bool markContentsRead(bool fromThisClient = false);
 	void setIsPinned(bool isPinned);
+	void setStoryInProfile(bool inProfile);
 
 	// For edit media in history_message.
 	void returnSavedMedia();
@@ -321,6 +315,9 @@ public:
 	[[nodiscard]] bool hideEditedBadge() const {
 		return (_flags & MessageFlag::HideEdited);
 	}
+	[[nodiscard]] bool hideDisplayDate() const {
+		return isEmpty() || (_flags & MessageFlag::HideDisplayDate);
+	}
 	[[nodiscard]] bool isLocal() const {
 		return _flags & MessageFlag::Local;
 	}
@@ -343,6 +340,7 @@ public:
 	[[nodiscard]] bool hasUnpaidContent() const;
 	[[nodiscard]] bool inHighlightProcess() const;
 	void highlightProcessDone();
+	[[nodiscard]] PaidPostType paidType() const;
 
 	void setCommentsInboxReadTill(MsgId readTillId);
 	void setCommentsMaxId(MsgId maxId);
@@ -373,8 +371,12 @@ public:
 	void overrideMedia(std::unique_ptr<Data::Media> media);
 
 	void applyEditionToHistoryCleared();
-	void updateReplyMarkup(HistoryMessageMarkupData &&markup);
+	void updateReplyMarkup(
+		HistoryMessageMarkupData &&markup,
+		bool ignoreSuggestButtons = false);
 	void contributeToSlowmode(TimeId realDate = 0);
+
+	void clearMediaAsExpired();
 
 	void addToUnreadThings(HistoryUnreadThings::AddType type);
 	void destroyHistoryEntry();
@@ -422,6 +424,9 @@ public:
 	void incrementReplyToTopCounter();
 	void applyEffectWatchedOnUnreadKnown();
 
+	void setHasHiddenLinks(bool has) const;
+	[[nodiscard]] bool hasHiddenLinks() const;
+
 	[[nodiscard]] bool emptyText() const {
 		return _text.empty();
 	}
@@ -445,6 +450,8 @@ public:
 	[[nodiscard]] bool requiresSendInlineRight() const;
 	[[nodiscard]] Data::SendError errorTextForForward(
 		not_null<Data::Thread*> to) const;
+	[[nodiscard]] Data::SendError errorTextForForwardIgnoreRights(
+		not_null<Data::Thread*> to) const;
 	[[nodiscard]] const HistoryMessageTranslation *translation() const;
 	[[nodiscard]] bool translationShowRequiresCheck(LanguageId to) const;
 	bool translationShowRequiresRequest(LanguageId to);
@@ -454,7 +461,7 @@ public:
 	void toggleReaction(
 		const Data::ReactionId &reaction,
 		HistoryReactionSource source);
-	void addPaidReaction(int count, std::optional<bool> anonymous = {});
+	void addPaidReaction(int count, std::optional<PeerId> shownPeer = {});
 	void cancelScheduledPaidReaction();
 	[[nodiscard]] Data::PaidReactionSend startPaidReactionSending();
 	void finishPaidReactionSending(
@@ -472,7 +479,7 @@ public:
 	[[nodiscard]] auto topPaidReactionsWithLocal() const
 		-> std::vector<Data::MessageReactionsTopPaid>;
 	[[nodiscard]] int reactionsPaidScheduled() const;
-	[[nodiscard]] bool reactionsLocalAnonymous() const;
+	[[nodiscard]] PeerId reactionsLocalShownPeer() const;
 	[[nodiscard]] bool canViewReactions() const;
 	[[nodiscard]] std::vector<Data::ReactionId> chosenReactions() const;
 	[[nodiscard]] Data::ReactionId lookupUnreadReaction(
@@ -513,7 +520,7 @@ public:
 	[[nodiscard]] MsgId originalId() const;
 
 	[[nodiscard]] Data::SavedSublist *savedSublist() const;
-	[[nodiscard]] PeerData *savedSublistPeer() const;
+	[[nodiscard]] PeerId sublistPeerId() const;
 	[[nodiscard]] PeerData *savedFromSender() const;
 	[[nodiscard]] const HiddenSenderInfo *savedFromHiddenSenderInfo() const;
 
@@ -542,12 +549,21 @@ public:
 	[[nodiscard]] bool isDiscussionPost() const;
 	[[nodiscard]] HistoryItem *lookupDiscussionPostOriginal() const;
 	[[nodiscard]] PeerData *displayFrom() const;
+
 	[[nodiscard]] uint8 colorIndex() const;
+	[[nodiscard]] DocumentId backgroundEmojiId() const;
+	[[nodiscard]] auto colorCollectible() const
+		-> const std::shared_ptr<Ui::ColorCollectible> &;
 
 	// In forwards we show name in sender's color, but the message
 	// content uses the color of the original sender.
 	[[nodiscard]] PeerData *contentColorsFrom() const;
 	[[nodiscard]] uint8 contentColorIndex() const;
+	[[nodiscard]] DocumentId contentBackgroundEmojiId() const;
+	[[nodiscard]] auto contentColorCollectible() const
+		-> const std::shared_ptr<Ui::ColorCollectible> &;
+
+	[[nodiscard]] int starsPaid() const;
 
 	[[nodiscard]] std::unique_ptr<HistoryView::Element> createView(
 		not_null<HistoryView::ElementDelegate*> delegate,
@@ -556,6 +572,13 @@ public:
 	void updateDate(TimeId newDate);
 	[[nodiscard]] bool canUpdateDate() const;
 	void customEmojiRepaint();
+
+	[[nodiscard]] SuggestionActions computeSuggestionActions() const;
+	[[nodiscard]] SuggestionActions computeSuggestionActions(
+		const HistoryMessageSuggestedPost *suggest) const;
+	[[nodiscard]] SuggestionActions computeSuggestionActions(
+		bool accepted,
+		bool rejected) const;
 
 	[[nodiscard]] bool needsUpdateForVideoQualities(const MTPMessage &data);
 
@@ -598,9 +621,12 @@ private:
 		return _flags & MessageFlag::Legacy;
 	}
 
-	[[nodiscard]] bool checkCommentsLinkedChat(ChannelId id) const;
+	[[nodiscard]] bool checkDiscussionLink(ChannelId id) const;
 
-	void setReplyMarkup(HistoryMessageMarkupData &&markup);
+	void setReplyMarkup(
+		HistoryMessageMarkupData &&markup,
+		bool ignoreSuggestButtons = false);
+	void updateSuggestControls(const HistoryMessageSuggestedPost *suggest);
 
 	void changeReplyToTopCounter(
 		not_null<HistoryMessageReply*> reply,
@@ -672,6 +698,17 @@ private:
 		CallId linkCallId);
 	[[nodiscard]] PreparedServiceText prepareCallScheduledText(
 		TimeId scheduleDate);
+	[[nodiscard]] PreparedServiceText prepareTodoCompletionsText();
+	[[nodiscard]] PreparedServiceText prepareTodoAppendTasksText();
+
+	[[nodiscard]] PreparedServiceText composeTodoIncompleted(
+		not_null<HistoryServiceTodoCompletions*> done);
+	[[nodiscard]] PreparedServiceText composeTodoCompleted(
+		not_null<HistoryServiceTodoCompletions*> done);
+
+	[[nodiscard]] PreparedServiceText prepareServiceTextForMessage(
+		const MTPMessageMedia &media,
+		bool unread);
 
 	void flagSensitiveContent();
 	[[nodiscard]] PeerData *computeDisplayFrom() const;
@@ -692,6 +729,7 @@ private:
 	TimeId _date = 0;
 	TimeId _ttlDestroyAt = 0;
 	int _boostsApplied = 0;
+	int _starsPaid = 0;
 	BusinessShortcutId _shortcutId = 0;
 
 	MessageGroupId _groupId = MessageGroupId();

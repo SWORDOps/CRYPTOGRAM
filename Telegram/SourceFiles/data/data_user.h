@@ -7,21 +7,29 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
-#include "core/stars_amount.h"
+#include "core/credits_amount.h"
+#include "data/components/credits.h"
 #include "data/data_birthday.h"
 #include "data/data_peer.h"
 #include "data/data_chat_participant_status.h"
 #include "data/data_lastseen_status.h"
 #include "data/data_user_names.h"
 #include "dialogs/dialogs_key.h"
+#include "base/flags.h"
 
 namespace Data {
+class Forum;
 struct BotCommand;
 struct BusinessDetails;
 } // namespace Data
 
+namespace Api {
+enum class DisallowedGiftType : uchar;
+using DisallowedGiftTypes = base::flags<DisallowedGiftType>;
+} // namespace Api
+
 struct StarRefProgram {
-	StarsAmount revenuePerUser;
+	CreditsAmount revenuePerUser;
 	TimeId endDate = 0;
 	ushort commission = 0;
 	uint8 durationMonths = 0;
@@ -48,6 +56,11 @@ struct BotVerifierSettings {
 
 struct BotInfo {
 	BotInfo();
+	~BotInfo();
+
+	void ensureForum(not_null<UserData*> that);
+	[[nodiscard]] Data::Forum *forum() const;
+	[[nodiscard]] std::unique_ptr<Data::Forum> takeForumData();
 
 	QString description;
 	QString inlinePlaceholder;
@@ -85,6 +98,10 @@ struct BotInfo {
 	bool canManageEmojiStatus : 1 = false;
 	bool supportsBusiness : 1 = false;
 	bool hasMainApp : 1 = false;
+
+private:
+	std::unique_ptr<Data::Forum> _forum;
+
 };
 
 enum class UserDataFlag : uint32 {
@@ -109,10 +126,13 @@ enum class UserDataFlag : uint32 {
 	StoriesHidden = (1 << 18),
 	HasActiveStories = (1 << 19),
 	HasUnreadStories = (1 << 20),
-	MeRequiresPremiumToWrite = (1 << 21),
-	SomeRequirePremiumToWrite = (1 << 22),
-	RequirePremiumToWriteKnown = (1 << 23),
-	ReadDatesPrivate = (1 << 24),
+	RequiresPremiumToWrite = (1 << 21),
+	HasRequirePremiumToWrite = (1 << 22),
+	HasStarsPerMessage = (1 << 23),
+	MessageMoneyRestrictionsKnown = (1 << 24),
+	ReadDatesPrivate = (1 << 25),
+	StoriesCorrespondent = (1 << 26),
+	Forum = (1ULL << 27),
 };
 inline constexpr bool is_flag_type(UserDataFlag) { return true; };
 using UserDataFlags = base::flags<UserDataFlag>;
@@ -173,11 +193,27 @@ public:
 	[[nodiscard]] bool applyMinPhoto() const;
 	[[nodiscard]] bool hasPersonalPhoto() const;
 	[[nodiscard]] bool hasStoriesHidden() const;
-	[[nodiscard]] bool someRequirePremiumToWrite() const;
-	[[nodiscard]] bool meRequiresPremiumToWrite() const;
-	[[nodiscard]] bool requirePremiumToWriteKnown() const;
-	[[nodiscard]] bool canSendIgnoreRequirePremium() const;
+	[[nodiscard]] bool hasRequirePremiumToWrite() const;
+	[[nodiscard]] bool hasStarsPerMessage() const;
+	[[nodiscard]] bool requiresPremiumToWrite() const;
+	[[nodiscard]] bool messageMoneyRestrictionsKnown() const;
+	[[nodiscard]] bool canSendIgnoreMoneyRestrictions() const;
 	[[nodiscard]] bool readDatesPrivate() const;
+	[[nodiscard]] bool isForum() const {
+		return flags() & Flag::Forum;
+	}
+	[[nodiscard]] Data::Forum *forum() const {
+		return botInfo ? botInfo->forum() : nullptr;
+	}
+
+	void setStoriesCorrespondent(bool is);
+	[[nodiscard]] bool storiesCorrespondent() const;
+
+	void setStarsPerMessage(int stars);
+	[[nodiscard]] int starsPerMessage() const;
+
+	void setStarsRating(Data::StarsRating value);
+	[[nodiscard]] Data::StarsRating starsRating() const;
 
 	[[nodiscard]] bool canShareThisContact() const;
 	[[nodiscard]] bool canAddContact() const;
@@ -258,6 +294,14 @@ public:
 
 	std::unique_ptr<BotInfo> botInfo;
 
+	[[nodiscard]] Api::DisallowedGiftTypes disallowedGiftTypes() const {
+		return _disallowedGiftTypes;
+	}
+	void setDisallowedGiftTypes(Api::DisallowedGiftTypes types);
+
+	[[nodiscard]] const TextWithEntities &note() const;
+	void setNote(const TextWithEntities &note);
+
 private:
 	auto unavailableReasons() const
 		-> const std::vector<Data::UnavailableReason> & override;
@@ -270,6 +314,7 @@ private:
 	Data::Birthday _birthday;
 	int _commonChatsCount = 0;
 	int _peerGiftsCount = 0;
+	int _starsPerMessage = 0;
 	ContactStatus _contactStatus = ContactStatus::Unknown;
 	CallsStatus _callsStatus = CallsStatus::Unknown;
 
@@ -280,6 +325,7 @@ private:
 	QString _phone;
 	QString _privateForwardName;
 	std::unique_ptr<Ui::BotVerifyDetails> _botVerifyDetails;
+	Data::StarsRating _starsRating;
 
 	ChannelId _personalChannelId = 0;
 	MsgId _personalChannelMessageId = 0;
@@ -287,6 +333,9 @@ private:
 	uint64 _accessHash = 0;
 	static constexpr auto kInaccessibleAccessHashOld
 		= 0xFFFFFFFFFFFFFFFFULL;
+
+	Api::DisallowedGiftTypes _disallowedGiftTypes;
+	TextWithEntities _note;
 
 };
 

@@ -317,29 +317,32 @@ Row::~Row() {
 	clearTopicJumpRipple();
 }
 
-void Row::recountHeight(float64 narrowRatio, FilterId filterId) {
-	if (const auto history = _id.history()) {
-		const auto hasTags = _id.entry()->hasChatsFilterTags(filterId);
-		_height = history->isForum()
-			? anim::interpolate(
-				hasTags
-					? st::taggedForumDialogRow.height
-					: st::forumDialogRow.height,
-				st::defaultDialogRow.height,
-				narrowRatio)
+const style::DialogRow &Row::ComputeSt(
+		not_null<const Entry*> entry,
+		FilterId filterId) {
+	if (const auto history = entry->asHistory()) {
+		const auto hasTags = entry->hasChatsFilterTags(filterId);
+		const auto wideRow = history->isForum()
+			|| history->amMonoforumAdmin();
+		return wideRow
+			? (hasTags ? st::taggedForumDialogRow : st::forumDialogRow)
 			: hasTags
-			? anim::interpolate(
-				st::taggedDialogRow.height,
-				st::defaultDialogRow.height,
-				narrowRatio)
-			: st::defaultDialogRow.height;
-	} else if (_id.folder()) {
-		_height = st::defaultDialogRow.height;
-	} else if (_id.topic()) {
-		_height = st::forumTopicRow.height;
-	} else {
-		_height = st::defaultDialogRow.height;
+			? st::taggedDialogRow
+			: st::defaultDialogRow;
+	} else if (entry->asTopic()) {
+		return st::forumTopicRow;
 	}
+	return st::defaultDialogRow;
+}
+
+void Row::recountHeight(float64 narrowRatio, FilterId filterId) {
+	const auto &st = ComputeSt(_id.entry(), filterId);
+	_height = ((&st == &st::defaultDialogRow) || !_id.history())
+		? st::defaultDialogRow.height
+		: anim::interpolate(
+			st.height,
+			st::defaultDialogRow.height,
+			narrowRatio);
 }
 
 uint64 Row::sortKey(FilterId filterId) const {
@@ -471,7 +474,13 @@ void Row::PaintCornerBadgeFrame(
 		for (auto i = 0; i != storiesUnreadCount; ++i) {
 			segments.push_back({ storiesUnreadBrush, storiesUnread });
 		}
-		Ui::PaintOutlineSegments(q, outline, segments);
+		if (peer && (peer->forum() || peer->monoforum())) {
+			const auto radius = context.st->photoSize
+				* Ui::ForumUserpicRadiusMultiplier();
+			Ui::PaintOutlineSegments(q, outline, radius, segments);
+		} else {
+			Ui::PaintOutlineSegments(q, outline, segments);
+		}
 	}
 
 	if (subscribed) {

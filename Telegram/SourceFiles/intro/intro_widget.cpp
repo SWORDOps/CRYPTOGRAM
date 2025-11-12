@@ -24,6 +24,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "history/history_item.h"
 #include "data/data_user.h"
+#include "data/components/promo_suggestions.h"
 #include "countries/countries_instance.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/text/format_values.h" // Ui::FormatPhone
@@ -117,6 +118,18 @@ Widget::Widget(
 
 	fixOrder();
 
+	if (_account->mtp().isTestMode()) {
+		_testModeLabel.create(
+			this,
+			object_ptr<Ui::FlatLabel>(
+				this,
+				u"Test Mode"_q,
+				st::defaultFlatLabel));
+		_testModeLabel->entity()->setTextColorOverride(
+			st::windowSubTextFg->c);
+		_testModeLabel->show(anim::type::instant);
+	}
+
 	Lang::CurrentCloudManager().firstLanguageSuggestion(
 	) | rpl::start_with_next([=] {
 		createLanguageLink();
@@ -128,6 +141,7 @@ Widget::Widget(
 	}, lifetime());
 
 	_back->entity()->setClickedCallback([=] { backRequested(); });
+	_back->entity()->accessibilitySetName(tr::lng_go_back(tr::now));
 	_back->hide(anim::type::instant);
 
 	if (_changeLanguage) {
@@ -237,6 +251,9 @@ void Widget::handleUpdate(const MTPUpdate &update) {
 		_account->mtp().dcOptions().addFromList(data.vdc_options());
 	}, [&](const MTPDupdateConfig &data) {
 		_account->mtp().requestConfig();
+		if (_account->sessionExists()) {
+			_account->session().promoSuggestions().invalidate();
+		}
 	}, [&](const MTPDupdateServiceNotification &data) {
 		const auto text = TextWithEntities{
 			qs(data.vmessage()),
@@ -388,6 +405,9 @@ void Widget::historyMove(StackAction action, Animate animate) {
 
 	auto stepHasCover = getStep()->hasCover();
 	_settings->toggle(!stepHasCover, anim::type::normal);
+	if (_testModeLabel) {
+		_testModeLabel->toggle(!stepHasCover, anim::type::normal);
+	}
 	if (_update) {
 		_update->toggle(!stepHasCover, anim::type::normal);
 	}
@@ -399,7 +419,7 @@ void Widget::historyMove(StackAction action, Animate animate) {
 }
 
 void Widget::hideAndDestroy(object_ptr<Ui::FadeWrap<Ui::RpWidget>> widget) {
-	const auto weak = Ui::MakeWeak(widget.data());
+	const auto weak = base::make_weak(widget.data());
 	widget->hide(anim::type::normal);
 	widget->shownValue(
 	) | rpl::start_with_next([=](bool shown) {
@@ -621,7 +641,7 @@ void Widget::showTerms(Fn<void()> callback) {
 	if (getData()->termsLock.text.text.isEmpty()) {
 		return;
 	}
-	const auto weak = Ui::MakeWeak(this);
+	const auto weak = base::make_weak(this);
 	const auto box = Ui::show(callback
 		? Box<Window::TermsBox>(
 			getData()->termsLock,
@@ -674,6 +694,9 @@ void Widget::showControls() {
 	_connecting->setForceHidden(false);
 	auto hasCover = getStep()->hasCover();
 	_settings->toggle(!hasCover, anim::type::instant);
+	if (_testModeLabel) {
+		_testModeLabel->toggle(!hasCover, anim::type::instant);
+	}
 	if (_update) {
 		_update->toggle(!hasCover, anim::type::instant);
 	}
@@ -723,6 +746,7 @@ void Widget::hideControls() {
 	_next->hide(anim::type::instant);
 	_connecting->setForceHidden(true);
 	_settings->hide(anim::type::instant);
+	if (_testModeLabel) _testModeLabel->hide(anim::type::instant);
 	if (_update) _update->hide(anim::type::instant);
 	if (_changeLanguage) _changeLanguage->hide(anim::type::instant);
 	if (_terms) _terms->hide(anim::type::instant);
@@ -793,6 +817,13 @@ void Widget::updateControlsGeometry() {
 		getStep()->hasCover() ? st::introCoverHeight : 0,
 		shown);
 	_settings->moveToRight(skip, controlsTop + skip);
+	if (_testModeLabel) {
+		_testModeLabel->moveToRight(
+			skip + _settings->width() + skip,
+			_settings->y()
+				+ (_settings->height()
+				- _testModeLabel->height()) / 2);
+	}
 	if (_update) {
 		_update->moveToRight(
 			skip + _settings->width() + skip,

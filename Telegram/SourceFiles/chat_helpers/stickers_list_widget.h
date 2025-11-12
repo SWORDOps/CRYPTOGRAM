@@ -254,6 +254,7 @@ private:
 	void refreshRecentStickers(bool resize = true);
 	void refreshEffects();
 	void refreshFavedStickers();
+	void refreshCuratedStickers();
 	enum class GroupStickersPlace {
 		Visible,
 		Hidden,

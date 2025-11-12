@@ -544,7 +544,7 @@ QString autoupdatePrefixFile() {
 	return cWorkingDir() + "tdata/prefix";
 }
 
-const QString &readAutoupdatePrefixRaw() {
+QString readAutoupdatePrefixRaw() {
 	Expects(!Core::UpdaterDisabled());
 
 	//const auto &result = AutoupdatePrefix();
@@ -558,6 +558,12 @@ const QString &readAutoupdatePrefixRaw() {
 	//		return AutoupdatePrefix(value);
 	//	}
 	//}
+
+	QString value = GetEnhancedString("update_url");
+	if (!value.isEmpty())
+	{
+		return value;
+	}
 	return AutoupdatePrefix("https://updates.64gr.am");
 }
 

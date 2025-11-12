@@ -45,6 +45,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_session_controller.h"
 #include "window/window_peer_menu.h"
 #include "main/main_session.h"
+#include "ui/layers/generic_box.h"
 #include "ui/widgets/popup_menu.h"
 #include "ui/widgets/scroll_area.h"
 #include "ui/toast/toast.h"
@@ -58,6 +59,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/ui_utility.h"
 #include "lang/lang_keys.h"
 #include "boxes/delete_messages_box.h"
+#include "boxes/moderate_messages_box.h"
 #include "boxes/premium_preview_box.h"
 #include "boxes/peers/edit_participant_box.h"
 #include "core/crash_reports.h"
@@ -75,6 +77,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_message_reactions.h"
 #include "data/data_peer_values.h"
 #include "styles/style_chat.h"
+#include "styles/style_window.h" // columnMaximalWidthLeft
 
 #include <QtWidgets/QApplication>
 #include <QtCore/QMimeData>
@@ -94,8 +97,6 @@ constexpr auto kClearUserpicsAfter = 50;
 }
 
 } // namespace
-
-const crl::time ListWidget::kItemRevealDuration = crl::time(150);
 
 WindowListDelegate::WindowListDelegate(
 	not_null<Window::SessionController*> window)
@@ -715,12 +716,21 @@ std::optional<int> ListWidget::scrollTopForView(
 	const auto heightLeft = (available - height);
 	if (heightLeft >= 0) {
 		return std::max(top - (heightLeft / 2), 0);
-	} else if (const auto sel = _highlighter.state(view->data()).range
-		; !sel.empty() && !IsSubGroupSelection(sel)) {
+	} else if (const auto highlight = _highlighter.state(view->data())
+		; (!highlight.range.empty() || highlight.todoItemId)
+		&& !IsSubGroupSelection(highlight.range)) {
+		const auto sel = highlight.range;
 		const auto single = st::messageTextStyle.font->height;
-		const auto begin = HistoryView::FindViewY(view, sel.from) - single;
-		const auto end = HistoryView::FindViewY(view, sel.to, begin + single)
-			+ 2 * single;
+		const auto todoy = sel.empty()
+			? HistoryView::FindViewTaskY(view, highlight.todoItemId)
+			: 0;
+		const auto begin = sel.empty()
+			? (todoy - 4 * single)
+			: HistoryView::FindViewY(view, sel.from) - single;
+		const auto end = sel.empty()
+			? (todoy + 4 * single)
+			: (HistoryView::FindViewY(view, sel.to, begin + single)
+				+ 2 * single);
 		auto result = top;
 		if (end > available) {
 			result = std::max(result, top + end - available);
@@ -817,10 +827,9 @@ bool ListWidget::isBelowPosition(Data::MessagePosition position) const {
 
 void ListWidget::highlightMessage(
 		FullMsgId itemId,
-		const TextWithEntities &part,
-		int partOffsetHint) {
+		const MessageHighlightId &highlight) {
 	if (const auto view = viewForItem(itemId)) {
-		_highlighter.highlight({ view->data(), part, partOffsetHint });
+		_highlighter.highlight({ view->data(), highlight });
 	}
 }
 
@@ -898,11 +907,8 @@ bool ListWidget::showAtPositionNow(
 	}
 	if (position != Data::MaxMessagePosition
 		&& position != Data::UnreadMessagePosition) {
-		const auto hasHighlight = !params.highlightPart.empty();
-		highlightMessage(
-			position.fullId,
-			params.highlightPart,
-			params.highlightPartOffsetHint);
+		const auto hasHighlight = !params.highlight.empty();
+		highlightMessage(position.fullId, params.highlight);
 		if (hasHighlight) {
 			// We may want to scroll to a different part of the message.
 			scrollTop = scrollTopForPosition(position);
@@ -1488,7 +1494,7 @@ void ListWidget::cancelSelection() {
 void ListWidget::selectItem(not_null<HistoryItem*> item) {
 	if (hasSelectRestriction()) {
 		return;
-	} else if (const auto view = viewForItem(item)) {
+	} else if ([[maybe_unused]] const auto view = viewForItem(item)) {
 		clearTextSelection();
 		changeSelection(
 			_selected,
@@ -1501,7 +1507,7 @@ void ListWidget::selectItem(not_null<HistoryItem*> item) {
 void ListWidget::selectItemAsGroup(not_null<HistoryItem*> item) {
 	if (hasSelectRestriction()) {
 		return;
-	} else if (const auto view = viewForItem(item)) {
+	} else if ([[maybe_unused]] const auto view = viewForItem(item)) {
 		clearTextSelection();
 		changeSelectionAsGroup(
 			_selected,
@@ -1645,8 +1651,9 @@ bool ListWidget::showCopyRestrictionForSelected() {
 }
 
 bool ListWidget::hasSelectRestriction() const {
-	return _delegate->listSelectRestrictionType()
-		!= CopyRestrictionType::None;
+	return session().frozen()
+		|| (_delegate->listSelectRestrictionType()
+			!= CopyRestrictionType::None);
 }
 
 Element *ListWidget::lookupItemByY(int y) const {
@@ -1896,8 +1903,10 @@ void ListWidget::elementHandleViaClick(not_null<UserData*> bot) {
 	_delegate->listHandleViaClick(bot);
 }
 
-bool ListWidget::elementIsChatWide() {
-	return _overrideIsChatWide.value_or(_isChatWide);
+ElementChatMode ListWidget::elementChatMode() {
+	return _overrideChatMode.value_or(_isChatWide
+		? ElementChatMode::Wide
+		: ElementChatMode::Default);
 }
 
 not_null<Ui::PathShiftGradient*> ListWidget::elementPathShiftGradient() {
@@ -1984,7 +1993,7 @@ void ListWidget::updateSize() {
 
 void ListWidget::resizeToWidth(int newWidth, int minHeight) {
 	_minHeight = minHeight;
-	TWidget::resizeToWidth(newWidth);
+	RpWidget::resizeToWidth(newWidth);
 	restoreScrollPosition();
 }
 
@@ -2000,8 +2009,8 @@ void ListWidget::startItemRevealAnimations() {
 					[=] { revealItemsCallback(); },
 					0.,
 					1.,
-					kItemRevealDuration,
-					anim::easeOutCirc);
+					st::itemRevealDuration,
+					anim::easeOutQuint);
 				if (view->data()->out()) {
 					_delegate->listChatTheme()->rotateComplexGradientBackground();
 				}
@@ -2012,6 +2021,11 @@ void ListWidget::startItemRevealAnimations() {
 
 void ListWidget::startMessageSendingAnimation(
 		not_null<HistoryItem*> item) {
+	if (elementChatMode() == HistoryView::ElementChatMode::Default
+		&& width() > st::columnMaximalWidthLeft
+		&& !item->media()) {
+		return;
+	}
 	const auto sendingAnimation = _delegate->listSendingAnimation();
 	if (!sendingAnimation || !sendingAnimation->checkExpectedType(item)) {
 		return;
@@ -2810,7 +2824,9 @@ void ListWidget::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 	}
 
 	const auto link = ClickHandler::getActive();
-	if (link
+	if (controller()->showFrozenError()) {
+		return;
+	} else if (link
 		&& !link->property(
 			kSendReactionEmojiProperty).value<Data::ReactionId>().empty()
 		&& _reactionsManager
@@ -2953,6 +2969,7 @@ void ListWidget::mousePressEvent(QMouseEvent *e) {
 		e->accept();
 		return; // ignore mouse press, that was hiding context menu
 	}
+	_mouseActive = true;
 	mouseActionStart(e->globalPos(), e->button());
 }
 
@@ -3111,7 +3128,7 @@ void ListWidget::touchEvent(QTouchEvent *e) {
 			return;
 		}
 		_touchInProgress = false;
-		auto weak = Ui::MakeWeak(this);
+		auto weak = base::make_weak(this);
 		const auto notMoved = (_touchPos - _touchStart).manhattanLength()
 			< QApplication::startDragDistance();
 		if (_touchSelect) {
@@ -3160,6 +3177,7 @@ void ListWidget::mouseMoveEvent(QMouseEvent *e) {
 		mouseReleaseEvent(e);
 	}
 	if (reallyMoved) {
+		_mouseActive = true;
 		lastGlobalPosition = e->globalPos();
 		if (!buttonsPressed
 			|| (_scrollDateLink
@@ -3190,8 +3208,9 @@ rpl::producer<bool> ListWidget::touchMaybeSelectingValue() const {
 }
 
 void ListWidget::enterEventHook(QEnterEvent *e) {
+	_mouseActive = true;
 	mouseActionUpdate(QCursor::pos());
-	return TWidget::enterEventHook(e);
+	return RpWidget::enterEventHook(e);
 }
 
 void ListWidget::leaveEventHook(QEvent *e) {
@@ -3210,7 +3229,8 @@ void ListWidget::leaveEventHook(QEvent *e) {
 		_cursor = style::cur_default;
 		setCursor(_cursor);
 	}
-	return TWidget::leaveEventHook(e);
+	_mouseActive = false;
+	return RpWidget::leaveEventHook(e);
 }
 
 void ListWidget::updateDragSelection() {
@@ -3610,10 +3630,8 @@ void ListWidget::mouseActionFinish(
 ClickHandlerContext ListWidget::prepareClickHandlerContext(FullMsgId id) {
 	return {
 		.itemId = id,
-		.elementDelegate = [weak = Ui::MakeWeak(this)] {
-			return weak
-				? (ElementDelegate*)weak
-				: nullptr;
+		.elementDelegate = [weak = base::make_weak(this)] {
+			return (ElementDelegate*)weak.get();
 		},
 		.sessionWindow = base::make_weak(controller()),
 	};
@@ -3642,6 +3660,10 @@ int ListWidget::SelectionViewOffset(
 
 
 void ListWidget::mouseActionUpdate() {
+	if (!_mouseActive && !window()->isActiveWindow()) {
+		return;
+	}
+
 	auto mousePosition = mapFromGlobal(_mousePosition);
 	auto point = QPoint(
 		std::clamp(mousePosition.x(), 0, width()),
@@ -4065,7 +4087,8 @@ void ListWidget::refreshAttachmentsFromTill(int from, int till) {
 			const auto viewDate = view->dateTime();
 			const auto nextDate = next->dateTime();
 			next->setDisplayDate(_context != Context::ShortcutMessages
-				&& nextDate.date() != viewDate.date());
+				&& (nextDate.date() != viewDate.date()
+					|| view->data()->hideDisplayDate()));
 			auto attached = next->computeIsAttachToPrevious(view);
 			next->setAttachToPrevious(attached, view);
 			view->setAttachToNext(attached, next);
@@ -4271,8 +4294,8 @@ void ListWidget::setEmptyInfoWidget(base::unique_qptr<Ui::RpWidget> &&w) {
 	}
 }
 
-void ListWidget::overrideIsChatWide(bool isWide) {
-	_overrideIsChatWide = isWide;
+void ListWidget::overrideChatMode(std::optional<ElementChatMode> mode) {
+	_overrideChatMode = mode;
 }
 
 ListWidget::~ListWidget() {
@@ -4290,18 +4313,30 @@ void ConfirmDeleteSelectedItems(not_null<ListWidget*> widget) {
 	if (items.empty()) {
 		return;
 	}
+	const auto controller = widget->controller();
+	const auto owner = &controller->session().data();
+	auto historyItems = std::vector<not_null<HistoryItem*>>();
+	historyItems.reserve(items.size());
 	for (const auto &item : items) {
 		if (!item.canDelete) {
 			return;
+		} else if (const auto i = owner->message(item.msgId)) {
+			historyItems.push_back(i);
 		}
 	}
-	auto box = Box<DeleteMessagesBox>(
-		&widget->session(),
-		widget->getSelectedIds());
-	box->setDeleteConfirmedCallback(crl::guard(widget, [=] {
+	const auto confirmed = crl::guard(widget, [=] {
 		widget->cancelSelection();
-	}));
-	widget->controller()->show(std::move(box));
+	});
+	if (CanCreateModerateMessagesBox(historyItems)) {
+		controller->show(
+			Box(CreateModerateMessagesBox, historyItems, confirmed));
+	} else {
+		auto box = Box<DeleteMessagesBox>(
+			&widget->session(),
+			widget->getSelectedIds());
+		box->setDeleteConfirmedCallback(confirmed);
+		controller->show(std::move(box));
+	}
 }
 
 void ConfirmOldForwardSelectedItems(not_null<ListWidget*> widget) {
@@ -4315,9 +4350,9 @@ void ConfirmOldForwardSelectedItems(not_null<ListWidget*> widget) {
 		}
 	}
 	auto ids = widget->getSelectedIds();
-	const auto weak = Ui::MakeWeak(widget);
+	const auto weak = base::make_weak(widget);
 	Window::ShowForwardMessagesBox(widget->controller(), std::move(ids), [=] {
-		if (const auto strong = weak.data()) {
+		if (const auto strong = weak.get()) {
 			strong->cancelSelection();
 		}
 	});
@@ -4334,7 +4369,12 @@ void ConfirmForwardSelectedItems(not_null<ListWidget*> widget) {
 		}
 	}
 	auto ids = widget->getSelectedIds();
-	Window::ShowNewForwardMessagesBox(widget->controller(), std::move(ids), false);
+	const auto weak = base::make_weak(widget);
+	Window::ShowNewForwardMessagesBox(widget->controller(), std::move(ids), false, [=] {
+		if (const auto strong = weak.get()) {
+			strong->cancelSelection();
+		}
+	});
 }
 
 void ConfirmForwardNoQuoteSelectedItems(not_null<ListWidget*> widget) {
@@ -4348,7 +4388,12 @@ void ConfirmForwardNoQuoteSelectedItems(not_null<ListWidget*> widget) {
 		}
 	}
 	auto ids = widget->getSelectedIds();
-	Window::ShowNewForwardMessagesBox(widget->controller(), std::move(ids), true);
+	const auto weak = base::make_weak(widget);
+	Window::ShowNewForwardMessagesBox(widget->controller(), std::move(ids), true, [=] {
+		if (const auto strong = weak.get()) {
+			strong->cancelSelection();
+		}
+	});
 }
 
 MessageIdsList ExtractIdsList(const SelectedItems &items) {
@@ -4369,7 +4414,7 @@ void ConfirmForwardSelectedToSavedMessagesItems(not_null<ListWidget*> widget) {
 			return;
 		}
 	}
-	const auto weak = Ui::MakeWeak(widget);
+	const auto weak = base::make_weak(widget);
 
 	const auto itemsList = ExtractIdsList(items);
 	const auto item = widget->controller()->session().data().message(itemsList[0]);
@@ -4388,7 +4433,7 @@ void ConfirmForwardSelectedToSavedMessagesItems(not_null<ListWidget*> widget) {
 	api->forwardMessages(std::move(resolved), action, [=] {
 		Ui::Toast::Show(tr::lng_share_done(tr::now));
 
-		if (const auto strong = weak.data()) {
+		if (const auto strong = weak.get()) {
 			strong->cancelSelection();
 		}
 	});
@@ -4417,8 +4462,8 @@ void ConfirmSendNowSelectedItems(not_null<ListWidget*> widget) {
 	if (!history) {
 		return;
 	}
-	const auto clearSelection = [weak = Ui::MakeWeak(widget)] {
-		if (const auto strong = weak.data()) {
+	const auto clearSelection = [weak = base::make_weak(widget)] {
+		if (const auto strong = weak.get()) {
 			strong->cancelSelection();
 		}
 	};

@@ -270,9 +270,7 @@ public:
 	}
 
 	// Internal links.
-	void checkStartUrl();
-	void checkSendPaths();
-	void checkFileOpen();
+	void checkStartUrls();
 	bool openLocalUrl(const QString &url, QVariant context);
 	bool openInternalUrl(const QString &url, QVariant context);
 	[[nodiscard]] QString changelogLink() const;
@@ -437,7 +435,7 @@ private:
 	const std::unique_ptr<Lang::CloudManager> _langCloudManager;
 	const std::unique_ptr<ChatHelpers::EmojiKeywords> _emojiKeywords;
 	std::unique_ptr<Lang::Translator> _translator;
-	QPointer<Ui::BoxContent> _badProxyDisableBox;
+	base::weak_qptr<Ui::BoxContent> _badProxyDisableBox;
 
 	const std::unique_ptr<Tray> _tray;
 
@@ -451,8 +449,7 @@ private:
 	crl::time _shouldLockAt = 0;
 	base::Timer _autoLockTimer;
 
-	QStringList _filesToOpen;
-	base::Timer _fileOpenTimer;
+	QList<QUrl> _urlsToOpen;
 
 	std::optional<base::Timer> _saveSettingsTimer;
 

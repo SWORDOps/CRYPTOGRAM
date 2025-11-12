@@ -62,8 +62,14 @@ public:
 	// For cloud-stored faved stickers.
 	static constexpr auto FavedSetId = 0xFFFFFFFFFFFFFFFAULL;
 
+	// CRYPTOGRAM: For user-curated favorite stickers.
+	static constexpr auto CuratedSetId = 0xFFFFFFFFFFFFFFEEULL;
+
 	// For setting up megagroup sticker set.
 	static constexpr auto MegagroupSetId = 0xFFFFFFFFFFFFFFEFULL;
+
+	// For collectible emoji statuses.
+	static constexpr auto CollectibleSetId = 0xFFFFFFFFFFFFFFF8ULL;
 
 	void notifyUpdated(StickersType type);
 	[[nodiscard]] rpl::producer<StickersType> updated() const;
@@ -244,6 +250,8 @@ public:
 	[[nodiscard]] auto getEmojiListFromSet(not_null<DocumentData*> document)
 		-> std::optional<std::vector<not_null<EmojiPtr>>>;
 
+	[[nodiscard]] not_null<StickersSet*> collectibleSet();
+
 	not_null<StickersSet*> feedSet(const MTPStickerSet &data);
 	not_null<StickersSet*> feedSet(const MTPStickerSetCovered &data);
 	not_null<StickersSet*> feedSetFull(const MTPDmessages_stickerSet &data);
@@ -286,7 +294,7 @@ private:
 	void setPackAndEmoji(
 		StickersSet &set,
 		StickersPack &&pack,
-		const std::vector<TimeId> &&dates,
+		std::vector<TimeId> &&dates,
 		const QVector<MTPStickerPack> &packs);
 	void somethingReceived(
 		const QVector<MTPStickerSet> &list,

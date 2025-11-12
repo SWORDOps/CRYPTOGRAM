@@ -153,8 +153,7 @@ void SaveChannelAdmin(
 	channel->session().api().request(MTPchannels_EditAdmin(
 		channel->inputChannel,
 		user->inputUser,
-		MTP_chatAdminRights(MTP_flags(
-			MTPDchatAdminRights::Flags::from_raw(uint32(newRights.flags)))),
+		AdminRightsToMTP(newRights),
 		MTP_string(rank)
 	)).done([=](const MTPUpdates &result) {
 		channel->session().api().applyUpdates(result);
@@ -462,6 +461,7 @@ void ParticipantsAdditionalData::setExternal(
 		_adminRights.erase(user);
 		_adminCanEdit.erase(user);
 		_adminPromotedBy.erase(user);
+		_adminRanks.erase(user);
 		_admins.erase(user);
 	}
 	_restrictedRights.erase(participant);
@@ -539,6 +539,7 @@ void ParticipantsAdditionalData::fillFromChannel(
 			_adminRights.erase(user);
 			_adminCanEdit.erase(user);
 			_adminPromotedBy.erase(user);
+			_adminRanks.erase(user);
 			_restrictedRights.emplace(user, restricted->second.rights);
 		}
 	}
@@ -690,7 +691,7 @@ UserData *ParticipantsAdditionalData::applyAdmin(
 	const auto user = _peer->owner().userLoaded(data.userId());
 	if (!user) {
 		return nullptr;
-	} else if (const auto chat = _peer->asChat()) {
+	} else if (_peer->isChat()) {
 		// This can come from saveAdmin callback.
 		_admins.emplace(user);
 		return user;
@@ -734,7 +735,7 @@ UserData *ParticipantsAdditionalData::applyRegular(const Api::ChatParticipant &d
 	const auto user = _peer->owner().userLoaded(data.userId());
 	if (!user) {
 		return nullptr;
-	} else if (const auto chat = _peer->asChat()) {
+	} else if (_peer->isChat()) {
 		// This can come from saveAdmin or saveRestricted callback.
 		_admins.erase(user);
 		return user;
@@ -751,6 +752,7 @@ UserData *ParticipantsAdditionalData::applyRegular(const Api::ChatParticipant &d
 	_adminRights.erase(user);
 	_adminCanEdit.erase(user);
 	_adminPromotedBy.erase(user);
+	_adminRanks.erase(user);
 	_restrictedRights.erase(user);
 	_kicked.erase(user);
 	_restrictedBy.erase(user);
@@ -769,6 +771,7 @@ PeerData *ParticipantsAdditionalData::applyBanned(
 		_adminRights.erase(user);
 		_adminCanEdit.erase(user);
 		_adminPromotedBy.erase(user);
+		_adminRanks.erase(user);
 	}
 	if (data.isKicked()) {
 		_kicked.emplace(participant);
@@ -921,7 +924,7 @@ void ParticipantsBoxController::setupListChangeViewers() {
 				return;
 			}
 		}
-		if (const auto row = delegate()->peerListFindRow(user->id.value)) {
+		if (delegate()->peerListFindRow(user->id.value)) {
 			delegate()->peerListPartitionRows([&](const PeerListRow &row) {
 				return (row.peer() == user);
 			});
@@ -1278,6 +1281,33 @@ void ParticipantsBoxController::prepare() {
 	} else {
 		rebuild();
 	}
+
+	_peer->session().changes().chatAdminChanges(
+	) | rpl::start_with_next([=](const Data::ChatAdminChange &update) {
+		if (update.peer != _peer) {
+			return;
+		}
+		const auto user = update.user;
+		const auto rights = ChatAdminRightsInfo(update.rights);
+		const auto rank = update.rank;
+		_additional.applyAdminLocally(user, rights, rank);
+		if (!_additional.isCreator(user) || !user->isSelf()) {
+			if (!rights.flags) {
+				if (_role == Role::Admins) {
+					removeRow(user);
+				}
+			} else {
+				if (_role == Role::Admins) {
+					prependRow(user);
+				} else if (_role == Role::Kicked
+					|| _role == Role::Restricted) {
+					removeRow(user);
+				}
+			}
+		}
+		recomputeTypeFor(user);
+		refreshRows();
+	}, lifetime());
 }
 
 void ParticipantsBoxController::unload() {
@@ -1302,9 +1332,9 @@ void ParticipantsBoxController::rebuild() {
 	refreshRows();
 }
 
-QPointer<Ui::BoxContent> ParticipantsBoxController::showBox(
+base::weak_qptr<Ui::BoxContent> ParticipantsBoxController::showBox(
 		object_ptr<Ui::BoxContent> box) const {
-	const auto weak = Ui::MakeWeak(box.data());
+	const auto weak = base::make_weak(box.data());
 	delegate()->peerListUiShow()->showBox(std::move(box));
 	return weak;
 }
@@ -1832,23 +1862,8 @@ void ParticipantsBoxController::editAdminDone(
 	if (_editParticipantBox) {
 		_editParticipantBox->closeBox();
 	}
-
-	_additional.applyAdminLocally(user, rights, rank);
-	if (!_additional.isCreator(user) || !user->isSelf()) {
-		if (!rights.flags) {
-			if (_role == Role::Admins) {
-				removeRow(user);
-			}
-		} else {
-			if (_role == Role::Admins) {
-				prependRow(user);
-			} else if (_role == Role::Kicked || _role == Role::Restricted) {
-				removeRow(user);
-			}
-		}
-	}
-	recomputeTypeFor(user);
-	refreshRows();
+	const auto flags = rights.flags;
+	user->session().changes().chatAdminChanged(_peer, user, flags, rank);
 }
 
 void ParticipantsBoxController::showRestricted(not_null<UserData*> user) {

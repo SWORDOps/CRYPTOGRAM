@@ -106,6 +106,8 @@ PeerShortInfoCover::PeerShortInfoCover(
 , _statusStyle(std::make_unique<CustomLabelStyle>(_st.status))
 , _status(_widget.get(), std::move(status), _statusStyle->st)
 , _roundMask(Images::CornersMask(_st.radius))
+, _roundMaskRetina(
+	Images::CornersMask(_st.radius / style::DevicePixelRatio()))
 , _videoPaused(std::move(videoPaused)) {
 	_widget->setCursor(_cursor);
 
@@ -190,7 +192,7 @@ void PeerShortInfoCover::paint(QPainter &p) {
 	if (!frame.isNull()) {
 		frame = Images::Round(
 			std::move(frame),
-			_roundMask,
+			_roundMaskRetina,
 			RectPart::TopLeft | RectPart::TopRight);
 	} else if (_userpicImage.isNull()) {
 		auto image = QImage(
@@ -226,10 +228,15 @@ void PeerShortInfoCover::paintCoverImage(QPainter &p, const QImage &image) {
 	const auto top = _widget->height() - fill;
 	const auto factor = style::DevicePixelRatio();
 	if (fill > 0) {
+		const auto t = roundedHeight + _scrollTop;
 		p.drawImage(
-			QRect(0, top, roundedWidth, fill),
+			QRect(0, t, roundedWidth, roundedWidth - t),
 			image,
-			QRect(0, top * factor, roundedWidth * factor, fill * factor));
+			QRect(
+				0,
+				t * factor,
+				roundedWidth * factor,
+				(roundedWidth - t) * factor));
 	}
 	if (covered <= 0) {
 		return;
@@ -240,7 +247,7 @@ void PeerShortInfoCover::paintCoverImage(QPainter &p, const QImage &image) {
 	q.drawImage(
 		QRect(0, 0, roundedWidth, rounded),
 		image,
-		QRect(0, from * factor, roundedWidth * factor, rounded * factor));
+		QRect(0, _scrollTop * factor, roundedWidth * factor, rounded * factor));
 	q.end();
 	_roundedTopImage = Images::Round(
 		std::move(_roundedTopImage),
@@ -812,6 +819,10 @@ void PeerShortInfoBox::prepareRows() {
 		birthdayLabel(),
 		birthdayValue() | Ui::Text::ToWithEntities(),
 		tr::lng_mediaview_copy(tr::now));
+	addInfoLine(
+		tr::lng_info_notes_label(),
+		noteValue(),
+		_st.labeled);
 }
 
 void PeerShortInfoBox::resizeEvent(QResizeEvent *e) {
@@ -916,6 +927,12 @@ rpl::producer<QString> PeerShortInfoBox::birthdayValue() const {
 rpl::producer<TextWithEntities> PeerShortInfoBox::aboutValue() const {
 	return _fields.value() | rpl::map([](const PeerShortInfoFields &fields) {
 		return fields.about;
+	}) | rpl::distinct_until_changed();
+}
+
+rpl::producer<TextWithEntities> PeerShortInfoBox::noteValue() const {
+	return _fields.value() | rpl::map([](const PeerShortInfoFields &fields) {
+		return fields.note;
 	}) | rpl::distinct_until_changed();
 }
 

@@ -15,6 +15,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 class History;
 
+namespace Api {
+struct SendOptions;
+} // namespace Api
+
 namespace Ui {
 class RpWidget;
 class BoxContent;
@@ -28,6 +32,8 @@ class Folder;
 class Session;
 struct ForwardDraft;
 class ForumTopic;
+class SavedMessages;
+class SavedSublist;
 class Thread;
 } // namespace Data
 
@@ -36,6 +42,7 @@ class MainList;
 struct EntryState;
 struct UnreadState;
 class Key;
+class Entry;
 } // namespace Dialogs
 
 namespace ChatHelpers {
@@ -46,6 +53,10 @@ namespace InlineBots {
 enum class PeerType : uint8;
 using PeerTypes = base::flags<PeerType>;
 } // namespace InlineBots
+
+namespace Main {
+class SessionShow;
+} // namespace Main
 
 namespace Window {
 
@@ -86,7 +97,9 @@ void MenuAddMarkAsReadChatListAction(
 
 void PeerMenuHidePinnedMessage(not_null<PeerData*> peer);
 void PeerMenuUnhidePinnedMessage(not_null<PeerData*> peer);
-void PeerMenuExportChat(not_null<PeerData*> peer);
+void PeerMenuExportChat(
+	not_null<Window::SessionController*> controller,
+	not_null<PeerData*> peer);
 void PeerMenuDeleteContact(
 	not_null<Window::SessionController*> controller,
 	not_null<UserData*> user);
@@ -100,10 +113,31 @@ void PeerMenuCreatePoll(
 	not_null<Window::SessionController*> controller,
 	not_null<PeerData*> peer,
 	FullReplyTo replyTo = FullReplyTo(),
+	SuggestPostOptions suggest = SuggestPostOptions(),
 	PollData::Flags chosen = PollData::Flags(),
 	PollData::Flags disabled = PollData::Flags(),
 	Api::SendType sendType = Api::SendType::Normal,
 	SendMenu::Details sendMenuDetails = SendMenu::Details());
+enum class TodoWantsPremium {
+	Create,
+	Add,
+	Mark,
+};
+void PeerMenuTodoWantsPremium(TodoWantsPremium type);
+void PeerMenuCreateTodoList(
+	not_null<Window::SessionController*> controller,
+	not_null<PeerData*> peer,
+	FullReplyTo replyTo = FullReplyTo(),
+	SuggestPostOptions suggest = SuggestPostOptions(),
+	Api::SendType sendType = Api::SendType::Normal,
+	SendMenu::Details sendMenuDetails = SendMenu::Details());
+void PeerMenuEditTodoList(
+	not_null<Window::SessionController*> controller,
+	not_null<HistoryItem*> item);
+[[nodiscard]] bool PeerMenuShowAddTodoListTasks(not_null<HistoryItem*> item);
+void PeerMenuAddTodoListTasks(
+	not_null<Window::SessionController*> controller,
+	not_null<HistoryItem*> item);
 void PeerMenuDeleteTopicWithConfirmation(
 	not_null<Window::SessionNavigation*> navigation,
 	not_null<Data::ForumTopic*> topic);
@@ -141,14 +175,18 @@ Fn<void()> ClearHistoryHandler(
 Fn<void()> DeleteAndLeaveHandler(
 	not_null<Window::SessionController*> controller,
 	not_null<PeerData*> peer);
+Fn<void()> DeleteSublistHandler(
+	not_null<Window::SessionController*> controller,
+	not_null<Data::SavedSublist*> sublist);
 
 [[nodiscard]] Api::SendAction prepareSendAction(
 		History *history, Api::SendOptions options);
 
-void ShowNewForwardMessagesBox(
+QPointer<Ui::BoxContent> ShowNewForwardMessagesBox(
 	not_null<Window::SessionNavigation*> navigation,
 	MessageIdsList &&items,
-	bool no_quote);
+	bool no_quote,
+	FnMut<void()>&& successCallback = nullptr);
 
 object_ptr<Ui::BoxContent> PrepareChooseRecipientBox(
 	not_null<Main::Session*> session,
@@ -156,41 +194,48 @@ object_ptr<Ui::BoxContent> PrepareChooseRecipientBox(
 	rpl::producer<QString> titleOverride = nullptr,
 	FnMut<void()> &&successCallback = nullptr,
 	InlineBots::PeerTypes typesRestriction = 0,
-	Fn<void(std::vector<not_null<Data::Thread*>>)> sendMany = nullptr);
-QPointer<Ui::BoxContent> ShowChooseRecipientBox(
+	Fn<void(
+		std::vector<not_null<Data::Thread*>>,
+		Api::SendOptions)> sendMany = nullptr);
+base::weak_qptr<Ui::BoxContent> ShowChooseRecipientBox(
 	not_null<Window::SessionNavigation*> navigation,
 	FnMut<bool(not_null<Data::Thread*>)> &&chosen,
 	rpl::producer<QString> titleOverride = nullptr,
 	FnMut<void()> &&successCallback = nullptr,
 	InlineBots::PeerTypes typesRestriction = 0);
-QPointer<Ui::BoxContent> ShowForwardMessagesBox(
+base::weak_qptr<Ui::BoxContent> ShowForwardMessagesBox(
 	std::shared_ptr<ChatHelpers::Show> show,
 	Data::ForwardDraft &&draft,
 	Fn<void()> &&successCallback = nullptr);
-QPointer<Ui::BoxContent> ShowForwardMessagesBox(
+base::weak_qptr<Ui::BoxContent> ShowForwardMessagesBox(
 	not_null<Window::SessionNavigation*> navigation,
 	Data::ForwardDraft &&draft,
 	Fn<void()> &&successCallback = nullptr);
-QPointer<Ui::BoxContent> ShowForwardMessagesBox(
+base::weak_qptr<Ui::BoxContent> ShowForwardMessagesBox(
 	not_null<Window::SessionNavigation*> navigation,
 	MessageIdsList &&items,
 	Fn<void()> &&successCallback = nullptr);
-QPointer<Ui::BoxContent> ShowShareUrlBox(
+base::weak_qptr<Ui::BoxContent> ShowShareUrlBox(
 	not_null<Window::SessionNavigation*> navigation,
 	const QString &url,
 	const QString &text,
 	FnMut<void()> &&successCallback = nullptr);
-QPointer<Ui::BoxContent> ShowShareGameBox(
+base::weak_qptr<Ui::BoxContent> ShowShareGameBox(
 	not_null<Window::SessionNavigation*> navigation,
 	not_null<UserData*> bot,
 	QString shortName);
-QPointer<Ui::BoxContent> ShowDropMediaBox(
+base::weak_qptr<Ui::BoxContent> ShowDropMediaBox(
 	not_null<Window::SessionNavigation*> navigation,
 	std::shared_ptr<QMimeData> data,
 	not_null<Data::Forum*> forum,
 	FnMut<void()> &&successCallback = nullptr);
+base::weak_qptr<Ui::BoxContent> ShowDropMediaBox(
+	not_null<Window::SessionNavigation*> navigation,
+	std::shared_ptr<QMimeData> data,
+	not_null<Data::SavedMessages*> monoforum,
+	FnMut<void()> &&successCallback = nullptr);
 
-QPointer<Ui::BoxContent> ShowSendNowMessagesBox(
+base::weak_qptr<Ui::BoxContent> ShowSendNowMessagesBox(
 	not_null<Window::SessionNavigation*> navigation,
 	not_null<History*> history,
 	MessageIdsList &&items,
@@ -200,10 +245,16 @@ void ToggleMessagePinned(
 	not_null<Window::SessionNavigation*> navigation,
 	FullMsgId itemId,
 	bool pin);
+void TogglePinnedThread(
+	not_null<Window::SessionController*> controller,
+	not_null<Dialogs::Entry*> entry,
+	FilterId filterId,
+	Fn<void()> onToggled);
 void HidePinnedBar(
 	not_null<Window::SessionNavigation*> navigation,
 	not_null<PeerData*> peer,
 	MsgId topicRootId,
+	PeerId monoforumPeerId,
 	Fn<void()> onHidden);
 void UnpinAllMessages(
 	not_null<Window::SessionNavigation*> navigation,
@@ -213,5 +264,19 @@ void UnpinAllMessages(
 void MarkAsReadThread(not_null<Data::Thread*> thread);
 
 void AddSeparatorAndShiftUp(const PeerMenuCallback &addAction);
+
+[[nodiscard]] bool IsArchived(not_null<History*> history);
+[[nodiscard]] bool CanArchive(History *history, PeerData *peer);
+
+void PeerMenuConfirmToggleFee(
+	not_null<Window::SessionNavigation*> navigation,
+	std::shared_ptr<rpl::variable<int>> paidAmount,
+	not_null<PeerData*> peer,
+	not_null<UserData*> user,
+	bool removeFee);
+
+void ForwardToSelf(
+	std::shared_ptr<Main::SessionShow> show,
+	const Data::ForwardDraft &draft);
 
 } // namespace Window
