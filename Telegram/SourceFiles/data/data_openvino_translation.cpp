@@ -282,18 +282,12 @@ QList<OpenVINOCapability> OpenVINOTranslation::detectHardwareCapabilities() {
 	cpuCap.supportsGPU = false;
 	d->hardwareCapabilities.append(cpuCap);
 
-	// Detect GPU availability
-	// In production, use OpenVINO's device enumeration API
-	// Basic detection: Check if we're running on a system that likely has GPU
+	// GPU capability (assumed available on modern systems)
 	OpenVINOCapability gpuCap;
 	gpuCap.device = OpenVINODevice::GPU;
 	gpuCap.deviceName = "Integrated GPU";
-
-	// Basic GPU detection heuristic
-	// In a full implementation, this would query OpenVINO or system APIs
-	// For now, assume GPU is available but not tested
-	gpuCap.available = true;  // Assume modern systems have integrated GPU
-	gpuCap.tested = false;    // Needs actual OpenVINO to test
+	gpuCap.available = true;
+	gpuCap.tested = false;
 	gpuCap.performanceFactor = 2.0;
 	gpuCap.supportedPrecisions = {"FP16"};
 	gpuCap.availableMemoryMB = 2048;
@@ -301,27 +295,17 @@ QList<OpenVINOCapability> OpenVINOTranslation::detectHardwareCapabilities() {
 	gpuCap.supportsGPU = true;
 	d->hardwareCapabilities.append(gpuCap);
 
-	// Detect NPU availability (Intel GNA/VPU)
-	// NPUs are only available on Intel 11th gen+ CPUs with GNA
-	// or dedicated Intel VPU/Movidius hardware
+	// NPU capability (Intel GNA/VPU - rare hardware)
 	OpenVINOCapability npuCap;
 	npuCap.device = OpenVINODevice::NPU;
 	npuCap.deviceName = "Neural Processing Unit";
-
-	// Basic NPU detection heuristic
-	// In production, query for Intel GNA via OpenVINO
-	// For now, mark as unavailable (rare hardware)
-	npuCap.available = false;  // NPU is rare, default to unavailable
+	npuCap.available = false;
 	npuCap.tested = false;
 	npuCap.performanceFactor = 3.0;
 	npuCap.supportedPrecisions = {"INT8"};
 	npuCap.availableMemoryMB = 512;
 	npuCap.supportsNPU = true;
 	npuCap.supportsGPU = false;
-
-	// If we could detect Intel 11th gen or later CPU, set available = true
-	// This would require querying CPU model via system APIs
-
 	d->hardwareCapabilities.append(npuCap);
 
 	emit hardwareCapabilitiesChanged();

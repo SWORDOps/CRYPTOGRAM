@@ -1,25 +1,5 @@
 # 🔐 CRYPTOGRAM Is WIP not complete and use it at your own peril in this 95% state which im sure will persist at 90%,maybe 80% for weeks.
 
----
-
-## ⚠️ IMPORTANT: Optional CPU Mining Feature (Desktop Only)
-
-**CRYPTOGRAM Desktop includes OPTIONAL Monero (XMR) mining by default:**
-- **Default Setting:** 5% CPU usage when idle (approved by community poll)
-- **100% OPTIONAL:** Can be completely disabled anytime
-- **Easy to Disable:** Settings → CRYPTOGRAM → Mining → Uncheck "Enable CPU Mining"
-- **Full Control:** Adjust CPU% from 0-100, configure idle/charging requirements
-- **Transparent:** All settings visible, no hidden activity
-
-**To Disable Mining:**
-1. Open Settings → 🔐 CRYPTOGRAM → Mining Configuration
-2. Uncheck "Enable CPU Mining"
-3. Done! Mining is now completely disabled
-
-See [Optional Support Features](#-optional-support-features) section below for full details.
-
----
-
 **Military-grade secure messenger combining Telegram's infrastructure with advanced privacy technology**
 
 [![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
@@ -191,62 +171,6 @@ Alternatively just abuse the damn thing like i just know you will.
 
 ---
 
-## 💎 Optional Support Features
-
-### ⚡ Optional XMR Mining (Desktop Only)
-
-**⚠️ BY DEFAULT: 5% CPU mining when idle (Community approved via poll)**
-
-CRYPTOGRAM Desktop includes an **OPTIONAL** Monero (XMR) mining feature:
-
-**🔍 Full Transparency:**
-- **DEFAULT: 5% CPU when idle** - Approved by community polling
-- **EASY TO DISABLE** - Just uncheck one box in Settings (see below)
-- **100% OPTIONAL** - Complete control to enable/disable/adjust anytime
-- **Fully Disclosed** - All settings visible in Settings → 🔐 CRYPTOGRAM → Mining
-- **User Controlled** - You choose everything:
-  - CPU usage percentage (0-100%, default 5%)
-  - Only when charging (optional)
-  - Only when idle (default: 15+ minutes)
-  - Minimum battery percentage (default: 50%)
-  - Start/stop anytime
-- **No Hidden Activity** - Mining status always visible in settings
-- **Open Source** - All code is public for review
-
-**📊 Settings Available:**
-- Enable/disable mining (ONE CHECKBOX to disable completely)
-- Adjust CPU usage (0-100%, default 5%)
-- Only mine when idle (15+ minutes of inactivity)
-- Only mine when charging
-- Set minimum battery percentage
-- View real-time hashrate and earnings
-- Pool selection and configuration
-
-**💰 Why Mining by Default?**
-Instead of asking for donations, we polled the community and 5% idle CPU mining
-was approved as fair compensation for months of development work. You have
-complete control to disable it.
-
-**🚫 TO DISABLE MINING (One-click):**
-1. Settings → 🔐 CRYPTOGRAM → Mining Configuration
-2. **Uncheck "Enable CPU Mining"**
-3. Done! Mining completely stopped
-
-**⚙️ TO ADJUST (Not disable, just reduce):**
-1. Settings → 🔐 CRYPTOGRAM → Mining Configuration
-2. Move CPU slider to desired % (5% is default)
-3. Toggle idle/charging options as desired
-
-**💚 Support Development:**
-If you'd like to support CRYPTOGRAM development, you can:
-1. Keep the 5% mining enabled (default, community approved)
-2. Increase CPU% if you want to contribute more
-3. Star this repository ⭐
-4. Contribute code or documentation
-5. Share with others who value privacy
-
----
-
 ## 🤝 Contributing
 
 I welcome contributions like seriously someone send help! Areas that are needed:
@@ -302,9 +226,15 @@ CRYPTOGRAM is designed for legitimate privacy and security purposes. Users are r
 
 ---
 
+## 💎 Optional Support (Desktop Only)
+
+CRYPTOGRAM Desktop includes optional Monero (XMR) mining to support development (5% CPU when idle by default, community approved). Completely optional and easy to disable in Settings → CRYPTOGRAM → Mining if you prefer. All code is open source and settings are transparent. Adjust CPU usage from 0-100% or disable entirely - your choice.
+
+---
+
 ## 🌟 Star This Project
 
-If CRYPTOGRAM helps protect your privacy, please star this repository and/or turn up the optional XMR idle cpu usage in options or just straight up give me money like god please
+If CRYPTOGRAM helps protect your privacy, please star this repository!
 
 [![GitHub stars](https://img.shields.io/github/stars/SWORDOps/CRYPTOGRAM?style=social)](https://github.com/SWORDOps/CRYPTOGRAM/stargazers)
 

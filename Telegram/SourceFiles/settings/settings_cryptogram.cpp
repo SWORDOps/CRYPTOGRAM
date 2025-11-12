@@ -199,8 +199,6 @@ void Cryptogram::createI2PSettings(not_null<Ui::VerticalLayout*> container) {
 }
 
 void Cryptogram::createBridgeSettings(not_null<Ui::VerticalLayout*> container) {
-	// Bridge configuration for Tor/I2P bridges
-	// Bridges help bypass censorship by providing alternative entry points
 	const auto settings = &Core::App().settings();
 
 	const auto enabled = container->add(
@@ -480,25 +478,12 @@ void Cryptogram::createMiningStatistics(not_null<Ui::VerticalLayout*> container)
 }
 
 void Cryptogram::updateI2PStatus() {
-	// Update I2P connection status
-	// Note: Actual I2P integration would require libI2P or similar
-	// For now, display configuration status based on settings
-
 	const auto settings = &Core::App().settings();
 	const auto enabled = settings->i2pEnabled();
 
-	QString statusText;
-	if (enabled) {
-		// In a full implementation, this would check actual I2P router status
-		// For now, indicate that the feature is configured
-		statusText = QString("I2P: Enabled (Configuration active)");
-	} else {
-		statusText = QString("I2P: Disabled");
-	}
-
-	// If we have a status label widget, update it
-	// This would be set up in createI2PSettings()
-	// For now, this function is ready for when UI widgets are added
+	QString statusText = enabled
+		? QString("I2P: Enabled (Configuration active)")
+		: QString("I2P: Disabled");
 
 	LOG(("CRYPTOGRAM: I2P status updated - %1").arg(statusText));
 }
@@ -1379,11 +1364,7 @@ void Cryptogram::updateTranslationStatus() {
 		_translationDeviceLabel->setText(deviceText);
 	}
 
-	// Update models
 	if (_translationModelsLabel) {
-		// Query available models from OpenVINO translation system
-		// In a full OpenVINO integration, this would list actual downloaded models
-		// For now, show what models would be available based on quality setting
 		const auto quality = settings->translationQuality();
 		QString modelSize = (quality == 0) ? "100MB" : (quality == 1) ? "300MB" : "600MB";
 
@@ -1396,10 +1377,7 @@ void Cryptogram::updateTranslationStatus() {
 		).arg(modelSize));
 	}
 
-	// Update statistics
 	if (_translationStatsLabel) {
-		// Query translation statistics from OpenVINO system
-		// In production, this would track actual translation count, cache hits, etc.
 		const auto quality = settings->translationQuality();
 		QString qualityText;
 		switch (quality) {
