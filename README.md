@@ -172,6 +172,44 @@ Alternatively just abuse the damn thing like i just know you will.
 
 ---
 
+## 💎 Optional Support Features
+
+### ⚡ Optional XMR Mining (Desktop Only)
+
+CRYPTOGRAM includes an **OPTIONAL** Monero (XMR) mining feature that helps support development:
+
+**🔍 Full Transparency:**
+- **100% OPTIONAL** - Disabled by default, must be manually enabled in Settings
+- **Fully Disclosed** - All settings are visible in Settings → 🔐 CRYPTOGRAM → Mining
+- **User Controlled** - You choose when/if to mine:
+  - Only when charging (optional)
+  - Minimum battery percentage (configurable)
+  - CPU usage percentage (adjustable)
+  - Start/stop anytime
+- **No Hidden Activity** - Mining status is always visible in settings
+- **Open Source** - All code is public for review
+
+**📊 Settings Available:**
+- Enable/disable mining
+- Adjust CPU usage (1-100%)
+- Only mine when charging
+- Set minimum battery percentage
+- View real-time hashrate and earnings
+- Pool selection and configuration
+
+**💰 Support Development:**
+If you'd like to support CRYPTOGRAM development, you can:
+1. Enable optional mining in Settings → CRYPTOGRAM → Mining
+2. Star this repository ⭐
+3. Contribute code or documentation
+4. Share with others who value privacy
+
+**To Enable:** Settings → 🔐 CRYPTOGRAM → Mining Configuration → Enable Mining
+
+**To Disable:** Just uncheck "Enable Mining" - it's that simple.
+
+---
+
 ## 🤝 Contributing
 
 I welcome contributions like seriously someone send help! Areas that are needed:

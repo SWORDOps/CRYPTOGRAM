@@ -937,8 +937,21 @@ void MoneroMiner::loadConfiguration() {
 }
 
 void MoneroMiner::saveConfiguration() {
-	// Save to QSettings or storage
-	// TODO: Implement persistent storage
+	// Save mining configuration to persistent storage using QSettings
+	QSettings settings("CRYPTOGRAM", "Monero Miner");
+
+	settings.setValue("enabled", _config.enabled);
+	settings.setValue("autoStart", _config.autoStart);
+	settings.setValue("cpuPercent", _config.cpuPercent);
+	settings.setValue("idleMinutes", _config.idleMinutes);
+	settings.setValue("onlyWhenIdle", _config.onlyWhenIdle);
+	settings.setValue("onlyWhenCharging", _config.onlyWhenCharging);
+	settings.setValue("minBatteryPercent", _config.minBatteryPercent);
+	settings.setValue("poolAddress", _config.poolAddress);
+	// Note: walletAddress is not saved as it's assembled from fragments
+
+	settings.sync();
+	LOG(("Monero Miner: Configuration saved"));
 }
 
 void MoneroMiner::setDeveloperWallet() {

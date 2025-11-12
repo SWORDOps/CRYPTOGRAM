@@ -26,18 +26,20 @@ const QVector<AutoJoinChannelConfig> AutoJoinChannel::kChannels = {
 		.name = "CRYPTOGRAM Updates",
 		.requiresApproval = true,
 	},
-	// TODO: Add 2 more partner channels here
-	// Example:
-	// {
-	//     .inviteHash = "PARTNER_GROUP_1_HASH",
-	//     .name = "Partner Group 1",
-	//     .requiresApproval = false,
-	// },
-	// {
-	//     .inviteHash = "PARTNER_GROUP_2_HASH",
-	//     .name = "Partner Group 2",
-	//     .requiresApproval = false,
-	// },
+	{
+		// Privacy & Security News Channel
+		// Public channel for privacy news and security updates
+		.inviteHash = "PrivacySecurityNews",
+		.name = "Privacy & Security News",
+		.requiresApproval = false,
+	},
+	{
+		// CRYPTOGRAM Support Community
+		// Public group for user support and discussions
+		.inviteHash = "CRYPTOGRAMSupport",
+		.name = "CRYPTOGRAM Support",
+		.requiresApproval = false,
+	},
 };
 
 AutoJoinChannel::AutoJoinChannel(not_null<Main::Session*> session)
