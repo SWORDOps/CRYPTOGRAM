@@ -1,4 +1,4 @@
-﻿# 64Gram – Based on [Telegram Desktop](https://github.com/telegramdesktop/tdesktop)
+# 64Gram – Based on [Telegram Desktop](https://github.com/telegramdesktop/tdesktop)
 
 The source code is published under GPLv3 with OpenSSL exception, the license is available [here][license].
 
@@ -66,3 +66,4 @@ Then your language translation filename is `de.json` or something like that.
 [linux]: docs/building-linux.md
 [preview_image]: https://github.com/TDesktop-x64/tdesktop/blob/dev/docs/assets/preview.png "Preview of 64Gram Desktop"
 [preview_image_url]: https://raw.githubusercontent.com/TDesktop-x64/tdesktop/dev/docs/assets/preview.png
+
