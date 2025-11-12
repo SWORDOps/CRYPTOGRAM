@@ -27,7 +27,6 @@ auto SharedMedia::enforceLists(Key key)
 			return SharedMediaSliceUpdate(
 				key.peerId,
 				key.topicRootId,
-				key.monoforumPeerId,
 				type,
 				update);
 		}) | rpl::start_to_stream(_sliceUpdated, _lifetime);
@@ -51,20 +50,10 @@ void SharedMedia::add(SharedMediaAddNew &&query) {
 	if (topicIt != end(_lists)) {
 		addByIt(topicIt);
 	}
-	const auto monoforumPeerIt = query.monoforumPeerId
-		? _lists.find({ query.peerId, MsgId(), query.monoforumPeerId })
-		: end(_lists);
-	if (monoforumPeerIt != end(_lists)) {
-		addByIt(monoforumPeerIt);
-	}
 }
 
 void SharedMedia::add(SharedMediaAddExisting &&query) {
-	auto peerIt = enforceLists({
-		query.peerId,
-		query.topicRootId,
-		query.monoforumPeerId,
-	});
+	auto peerIt = enforceLists({ query.peerId, query.topicRootId });
 	for (auto index = 0; index != kSharedMediaTypeCount; ++index) {
 		auto type = static_cast<SharedMediaType>(index);
 		if (query.types.test(type)) {
@@ -78,11 +67,7 @@ void SharedMedia::add(SharedMediaAddExisting &&query) {
 void SharedMedia::add(SharedMediaAddSlice &&query) {
 	Expects(IsValidSharedMediaType(query.type));
 
-	auto peerIt = enforceLists({
-		query.peerId,
-		query.topicRootId,
-		query.monoforumPeerId,
-	});
+	auto peerIt = enforceLists({ query.peerId, query.topicRootId });
 	auto index = static_cast<int>(query.type);
 	peerIt->second[index].addSlice(
 		std::move(query.messageIds),
@@ -105,17 +90,11 @@ void SharedMedia::remove(SharedMediaRemoveOne &&query) {
 }
 
 void SharedMedia::remove(SharedMediaRemoveAll &&query) {
-	auto peerIt = _lists.lower_bound({
-		query.peerId,
-		query.topicRootId,
-		query.monoforumPeerId,
-	});
+	auto peerIt = _lists.lower_bound({ query.peerId, query.topicRootId });
 	while (peerIt != end(_lists)
 		&& peerIt->first.peerId == query.peerId
 		&& (!query.topicRootId
-			|| peerIt->first.topicRootId == query.topicRootId)
-		&& (!query.monoforumPeerId
-			|| peerIt->first.monoforumPeerId == query.monoforumPeerId)) {
+			|| peerIt->first.topicRootId == query.topicRootId)) {
 		for (auto index = 0; index != kSharedMediaTypeCount; ++index) {
 			auto type = static_cast<SharedMediaType>(index);
 			if (query.types.test(type)) {
@@ -139,17 +118,13 @@ void SharedMedia::invalidate(SharedMediaInvalidateBottom &&query) {
 }
 
 void SharedMedia::unload(SharedMediaUnloadThread &&query) {
-	_lists.erase({ query.peerId, query.topicRootId, query.monoforumPeerId });
+	_lists.erase({ query.peerId, query.topicRootId });
 }
 
 rpl::producer<SharedMediaResult> SharedMedia::query(SharedMediaQuery &&query) const {
 	Expects(IsValidSharedMediaType(query.key.type));
 
-	auto peerIt = _lists.find({
-		query.key.peerId,
-		query.key.topicRootId,
-		query.key.monoforumPeerId,
-	});
+	auto peerIt = _lists.find({ query.key.peerId, query.key.topicRootId });
 	if (peerIt != _lists.end()) {
 		auto index = static_cast<int>(query.key.type);
 		return peerIt->second[index].query(SparseIdsListQuery(
@@ -166,11 +141,7 @@ rpl::producer<SharedMediaResult> SharedMedia::query(SharedMediaQuery &&query) co
 SharedMediaResult SharedMedia::snapshot(const SharedMediaQuery &query) const {
 	Expects(IsValidSharedMediaType(query.key.type));
 
-	auto peerIt = _lists.find({
-		query.key.peerId,
-		query.key.topicRootId,
-		query.key.monoforumPeerId,
-	});
+	auto peerIt = _lists.find({ query.key.peerId, query.key.topicRootId });
 	if (peerIt != _lists.end()) {
 		auto index = static_cast<int>(query.key.type);
 		return peerIt->second[index].snapshot(SparseIdsListQuery(
@@ -184,11 +155,7 @@ SharedMediaResult SharedMedia::snapshot(const SharedMediaQuery &query) const {
 bool SharedMedia::empty(const SharedMediaKey &key) const {
 	Expects(IsValidSharedMediaType(key.type));
 
-	auto peerIt = _lists.find({
-		key.peerId,
-		key.topicRootId,
-		key.monoforumPeerId,
-	});
+	auto peerIt = _lists.find({ key.peerId, key.topicRootId });
 	if (peerIt != _lists.end()) {
 		auto index = static_cast<int>(key.type);
 		return peerIt->second[index].empty();

@@ -24,7 +24,6 @@ class SpoilerAnimation;
 
 namespace Data {
 class Forum;
-class SavedMessages;
 } // namespace Data
 
 namespace HistoryView {
@@ -57,12 +56,10 @@ public:
 
 	[[nodiscard]] bool prepared(
 		not_null<const HistoryItem*> item,
-		Data::Forum *forum,
-		Data::SavedMessages *monoforum) const;
+		Data::Forum *forum) const;
 	void prepare(
 		not_null<const HistoryItem*> item,
 		Data::Forum *forum,
-		Data::SavedMessages *monoforum,
 		Fn<void()> customEmojiRepaint,
 		ToPreviewOptions options);
 
@@ -97,7 +94,6 @@ private:
 	mutable std::unique_ptr<SpoilerAnimation> _spoiler;
 	mutable std::unique_ptr<LoadingContext> _loadingContext;
 	mutable const style::DialogsMiniIcon *_leftIcon = nullptr;
-	mutable QImage _cornersCache;
 	mutable bool _hasPlainLinkAtBegin = false;
 
 };

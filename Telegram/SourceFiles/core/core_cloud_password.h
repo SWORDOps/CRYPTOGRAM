@@ -135,7 +135,6 @@ struct CloudPasswordState {
 	bool outdatedClient = false;
 	QString hint;
 	QString unconfirmedPattern;
-	QString loginEmailPattern;
 	TimeId pendingResetDate = 0;
 };
 

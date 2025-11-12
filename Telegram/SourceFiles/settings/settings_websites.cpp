@@ -112,29 +112,45 @@ void InfoBox(
 	});
 
 	const auto userpic = box->addRow(
-		object_ptr<Ui::UserpicButton>(
+		object_ptr<Ui::CenterWrap<Ui::UserpicButton>>(
 			box,
-			data.bot,
-			st::websiteBigUserpic),
-		st::sessionBigCoverPadding,
-		style::al_top);
-	userpic->overrideShape(Ui::PeerUserpicShape::Forum);
+			object_ptr<Ui::UserpicButton>(
+				box,
+				data.bot,
+				st::websiteBigUserpic)),
+		st::sessionBigCoverPadding)->entity();
+	userpic->forceForumShape(true);
 	userpic->setAttribute(Qt::WA_TransparentForMouseEvents);
 
-	box->addRow(
-		object_ptr<Ui::FlatLabel>(
+	const auto nameWrap = box->addRow(
+		object_ptr<Ui::FixedHeightWidget>(
 			box,
-			rpl::single(data.bot->name()),
-			st::sessionBigName),
-		style::al_top);
+			st::sessionBigName.maxHeight));
+	const auto name = Ui::CreateChild<Ui::FlatLabel>(
+		nameWrap,
+		rpl::single(data.bot->name()),
+		st::sessionBigName);
+	nameWrap->widthValue(
+	) | rpl::start_with_next([=](int width) {
+		name->resizeToWidth(width);
+		name->move((width - name->width()) / 2, 0);
+	}, name->lifetime());
 
-	box->addRow(
-		object_ptr<Ui::FlatLabel>(
+	const auto domainWrap = box->addRow(
+		object_ptr<Ui::FixedHeightWidget>(
 			box,
-			rpl::single(data.domain),
-			st::sessionDateLabel),
-		style::margins(0, 0, 0, st::sessionDateSkip),
-		style::al_top);
+			st::sessionDateLabel.style.font->height),
+		style::margins(0, 0, 0, st::sessionDateSkip));
+	const auto domain = Ui::CreateChild<Ui::FlatLabel>(
+		domainWrap,
+		rpl::single(data.domain),
+		st::sessionDateLabel);
+	rpl::combine(
+		domainWrap->widthValue(),
+		domain->widthValue()
+	) | rpl::start_with_next([=](int outer, int inner) {
+		domain->move((outer - inner) / 2, 0);
+	}, domain->lifetime());
 
 	using namespace Settings;
 	const auto container = box->verticalLayout();
@@ -166,7 +182,7 @@ void InfoBox(
 	box->addButton(tr::lng_about_done(), [=] { box->closeBox(); });
 	if (const auto hash = data.hash) {
 		box->addLeftButton(tr::lng_settings_disconnect(), [=] {
-			const auto weak = base::make_weak(box.get());
+			const auto weak = Ui::MakeWeak(box.get());
 			terminate(hash);
 			if (weak) {
 				box->closeBox();
@@ -208,11 +224,25 @@ PaintRoundImageCallback Row::generatePaintUserpicCallback(bool forceRound) {
 	const auto peer = _data.bot;
 	auto userpic = _userpic = peer->createUserpicView();
 	return [=](Painter &p, int x, int y, int outerWidth, int size) mutable {
-		peer->paintUserpic(p, _userpic, {
-			.position = QPoint(x, y),
-			.size = size,
-			.shape = Ui::PeerUserpicShape::Forum,
-		});
+		const auto ratio = style::DevicePixelRatio();
+		if (const auto cloud = peer->userpicCloudImage(userpic)) {
+			Ui::ValidateUserpicCache(
+				userpic,
+				cloud,
+				nullptr,
+				size * ratio,
+				true);
+			p.drawImage(QRect(x, y, size, size), userpic.cached);
+		} else {
+			if (_emptyUserpic.isNull()) {
+				_emptyUserpic = PeerData::GenerateUserpicImage(
+					peer,
+					_userpic,
+					size * ratio,
+					size * ratio * Ui::ForumUserpicRadiusMultiplier());
+			}
+			p.drawImage(QRect(x, y, size, size), _emptyUserpic);
+		}
 	};
 }
 
@@ -318,7 +348,7 @@ private:
 	Api::Websites::List _data;
 
 	object_ptr<Inner> _inner;
-	base::weak_qptr<Ui::BoxContent> _terminateBox;
+	QPointer<Ui::BoxContent> _terminateBox;
 
 	base::Timer _shortPollTimer;
 
@@ -476,7 +506,7 @@ void Content::terminate(
 		rpl::producer<QString> title,
 		rpl::producer<QString> text,
 		QString blockText) {
-	if (const auto strong = _terminateBox.get()) {
+	if (const auto strong = _terminateBox.data()) {
 		strong->deleteLater();
 	}
 	auto box = Box([=](not_null<Ui::GenericBox*> box) {
@@ -501,12 +531,12 @@ void Content::terminate(
 			*block = box->addRow(object_ptr<Ui::Checkbox>(box, blockText));
 		}
 	});
-	_terminateBox = base::make_weak(box.data());
+	_terminateBox = Ui::MakeWeak(box.data());
 	_controller->show(std::move(box));
 }
 
 void Content::terminateOne(uint64 hash) {
-	const auto weak = base::make_weak(this);
+	const auto weak = Ui::MakeWeak(this);
 	const auto i = ranges::find(_data, hash, &EntryData::hash);
 	if (i == end(_data)) {
 		return;
@@ -536,7 +566,7 @@ void Content::terminateOne(uint64 hash) {
 }
 
 void Content::terminateAll() {
-	const auto weak = base::make_weak(this);
+	const auto weak = Ui::MakeWeak(this);
 	auto callback = [=](bool block) {
 		const auto reset = crl::guard(weak, [=] {
 			_websites->cancelCurrentRequest();

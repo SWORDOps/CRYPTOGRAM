@@ -77,7 +77,7 @@ private:
 	QPainterPath _titlePath;
 
 	TextWithEntities _folderTitle;
-	Text::MarkedContext _aboutContext;
+	Fn<std::any(Fn<void()>)> _makeContext;
 	not_null<const style::icon*> _folderIcon;
 	bool _horizontalFilters = false;
 
@@ -90,7 +90,7 @@ private:
 [[nodiscard]] PreviewState GeneratePreview(
 		not_null<Ui::RpWidget*> parent,
 		const TextWithEntities &title,
-		Text::MarkedContext aboutContext,
+		Fn<std::any(Fn<void()>)> makeContext,
 		int badge) {
 	using Tabs = Ui::ChatsFiltersTabs;
 	auto preview = PreviewState();
@@ -126,14 +126,14 @@ private:
 		return state->cache;
 	};
 	const auto raw = &state->tabs;
-	const auto repaint = [=] { state->dirty = true; };
-	auto context = aboutContext;
-	context.repaint = repaint;
+	const auto repaint = [=] {
+		state->dirty = true;
+	};
 	raw->setSections({
 		TextWithEntities{ tr::lng_filters_name_people(tr::now) },
 		title,
 		TextWithEntities{ tr::lng_filters_name_unread(tr::now) },
-	}, context);
+	}, makeContext(repaint));
 	raw->fitWidthToSections();
 	raw->setActiveSectionFast(1);
 	raw->stopAnimation();
@@ -153,7 +153,7 @@ private:
 
 [[nodiscard]] PreviewState GeneratePreview(
 		const TextWithEntities &title,
-		Text::MarkedContext context,
+		Fn<std::any(Fn<void()>)> makeContext,
 		not_null<const style::icon*> icon,
 		int badge) {
 	auto preview = PreviewState();
@@ -165,7 +165,7 @@ private:
 		bool dirty = true;
 	};
 	const auto state = preview.lifetime.make_state<State>();
-	context.repaint = [=] {
+	const auto repaint = [=] {
 		state->dirty = true;
 	};
 
@@ -201,7 +201,7 @@ private:
 			text,
 			kMarkupTextOptions,
 			available,
-			context);
+			makeContext(repaint));
 	};
 	const auto paintName = [=](QPainter &p, int top) {
 		state->string.draw(p, {
@@ -299,7 +299,7 @@ Widget::Widget(
 	rpl::single(descriptor.about.value()),
 	st::filterLinkAbout,
 	st::defaultPopupMenu,
-	descriptor.aboutContext))
+	descriptor.makeAboutContext))
 , _close(CreateChild<IconButton>(this, st::boxTitleClose))
 , _aboutPadding(st::boxRowPadding)
 , _badge(std::move(descriptor.badge))
@@ -307,7 +307,7 @@ Widget::Widget(
 , _titleFont(st::boxTitle.style.font)
 , _titlePadding(st::filterLinkTitlePadding)
 , _folderTitle(descriptor.folderTitle)
-, _aboutContext(descriptor.aboutContext)
+, _makeContext(descriptor.makeAboutContext)
 , _folderIcon(descriptor.folderIcon)
 , _horizontalFilters(descriptor.horizontalFilters) {
 	setMinimumHeight(st::boxTitleHeight);
@@ -417,24 +417,20 @@ void Widget::paintEvent(QPaintEvent *e) {
 		auto hq = PainterHighQualityEnabler(p);
 		if (!_preview.frame) {
 			const auto badge = _badge.current();
-			auto context = _aboutContext;
-			context.repaint = [this, copy = context.repaint] {
-				if (const auto &repaint = copy) {
-					repaint();
-				}
-				update();
+			const auto makeContext = [=](Fn<void()> repaint) {
+				return _makeContext([=] { repaint(); update(); });
 			};
 			if (_horizontalFilters) {
 				_preview = GeneratePreview(
 					this,
 					_folderTitle,
-					context,
+					makeContext,
 					badge);
 				Widget::resizeEvent(nullptr);
 			} else {
 				_preview = GeneratePreview(
 					_folderTitle,
-					context,
+					makeContext,
 					_folderIcon,
 					badge);
 			}
@@ -490,7 +486,7 @@ object_ptr<RoundButton> FilterLinkProcessButton(
 		not_null<QWidget*> parent,
 		FilterLinkHeaderType type,
 		TextWithEntities title,
-		Text::MarkedContext context,
+		Fn<std::any(Fn<void()>)> makeContext,
 		rpl::producer<int> badge) {
 	const auto st = &st::filterInviteBox.button;
 	const auto badgeSt = &st::filterInviteButtonBadgeStyle;
@@ -604,13 +600,12 @@ object_ptr<RoundButton> FilterLinkProcessButton(
 		}
 	}, label->lifetime());
 
-	context.repaint = [=] { label->update(); };
 	std::move(data) | rpl::start_with_next([=](Data data) {
 		label->text.setMarkedText(
 			st::filterInviteButtonStyle,
 			data.text,
 			kMarkupTextOptions,
-			context);
+			makeContext([=] { label->update(); }));
 		label->badge.setText(st::filterInviteButtonBadgeStyle, data.badge);
 		label->update();
 	}, label->lifetime());

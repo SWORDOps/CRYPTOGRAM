@@ -46,12 +46,6 @@ public:
 		int y,
 		int outerWidth,
 		int size) const;
-	void paintMonoforum(
-		QPainter &p,
-		int x,
-		int y,
-		int outerWidth,
-		int size) const;
 	[[nodiscard]] QPixmap generate(int size);
 	[[nodiscard]] std::pair<uint64, uint64> uniqueKey() const;
 
@@ -152,10 +146,5 @@ private:
 	QString _string;
 
 };
-
-void PaintMonoforumShape(QPainter &p, QRect rect);
-[[nodiscard]] QImage MonoforumShapeMask(QSize size);
-[[nodiscard]] const QImage &MonoforumShapeMaskCached(QSize size);
-[[nodiscard]] QImage ApplyMonoforumShape(QImage image);
 
 } // namespace Ui

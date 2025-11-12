@@ -58,7 +58,7 @@ not_null<Ui::AbstractButton*> CreateTab(
 		? nullptr
 		: factory(
 			Data::ReactionEntityData(reaction),
-			{ .repaint = [=] { result->update(); } });
+			[=] { result->update(); });
 
 	result->paintRequest(
 	) | rpl::start_with_next([=] {

@@ -10,8 +10,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/cached_round_corners.h"
 #include "ui/chat/message_bubble.h"
 #include "ui/chat/chat_style_radius.h"
-#include "ui/controls/swipe_handler_data.h"
 #include "ui/style/style_core_palette.h"
+#include "history/history_view_swipe_data.h"
 #include "layout/layout_selection.h"
 #include "styles/style_basic.h"
 
@@ -80,7 +80,6 @@ struct MessageStyle {
 	style::icon historyCallArrowMissed = { Qt::Uninitialized };
 	style::icon historyCallIcon = { Qt::Uninitialized };
 	style::icon historyCallCameraIcon = { Qt::Uninitialized };
-	style::icon historyCallGroupIcon = { Qt::Uninitialized };
 	style::icon historyFilePlay = { Qt::Uninitialized };
 	style::icon historyFileWaiting = { Qt::Uninitialized };
 	style::icon historyFileDownload = { Qt::Uninitialized };
@@ -130,28 +129,6 @@ struct MessageImageStyle {
 	style::icon historyPageEnlarge = { Qt::Uninitialized };
 };
 
-struct ColorCollectible {
-	uint64 collectibleId = 0;
-	uint64 giftEmojiId = 0;
-	uint64 backgroundEmojiId = 0;
-	QColor accentColor;
-	std::vector<QColor> strip;
-	QColor darkAccentColor;
-	std::vector<QColor> darkStrip;
-
-	friend inline bool operator==(
-		const ColorCollectible &,
-		const ColorCollectible &) = default;
-};
-
-struct ColorCollectiblePtrCompare {
-	bool operator()(
-			const std::weak_ptr<ColorCollectible> &a,
-			const std::weak_ptr<ColorCollectible> &b) const {
-		return a.owner_before(b);
-	}
-};
-
 struct ReactionPaintInfo {
 	QPoint position;
 	QPoint effectOffset;
@@ -166,13 +143,7 @@ struct BackgroundEmojiCache {
 struct BackgroundEmojiData {
 	std::unique_ptr<Text::CustomEmoji> emoji;
 	QImage firstFrameMask;
-	base::flat_map<int, BackgroundEmojiCache> caches;
-	base::flat_map<
-		std::weak_ptr<ColorCollectible>,
-		BackgroundEmojiCache,
-		ColorCollectiblePtrCompare> collectibleCaches;
-	std::unique_ptr<Text::CustomEmoji> gift;
-	QImage firstGiftFrame;
+	std::array<BackgroundEmojiCache, 2 * (3 + kColorIndexCount)> caches;
 
 	[[nodiscard]] static int CacheIndex(
 		bool selected,
@@ -185,7 +156,6 @@ struct ChatPaintHighlight {
 	float64 opacity = 0.;
 	float64 collapsion = 0.;
 	TextSelection range;
-	int todoItemId = 0;
 };
 
 struct ChatPaintContext {
@@ -199,7 +169,7 @@ struct ChatPaintContext {
 	QPainterPath *highlightPathCache = nullptr;
 	mutable QRect highlightInterpolateTo;
 	crl::time now = 0;
-	Ui::Controls::SwipeContextData gestureHorizontal;
+	HistoryView::ChatPaintGestureHorizontalData gestureHorizontal;
 
 	void translate(int x, int y) {
 		viewport.translate(x, y);
@@ -216,7 +186,6 @@ struct ChatPaintContext {
 	[[nodiscard]] not_null<const MessageStyle*> messageStyle() const;
 	[[nodiscard]] not_null<const MessageImageStyle*> imageStyle() const;
 	[[nodiscard]] not_null<Text::QuotePaintCache*> quoteCache(
-		const std::shared_ptr<ColorCollectible> &colorCollectible,
 		uint8 colorIndex) const;
 
 	[[nodiscard]] ChatPaintContext translated(int x, int y) const {
@@ -247,12 +216,11 @@ struct ChatPaintContext {
 	};
 
 
-	// This is supported only in unwrapped media and text messages for now.
+	// This is supported only in unwrapped media for now.
 	enum class SkipDrawingParts {
 		None,
 		Content,
 		Surrounding,
-		Bubble,
 	};
 	SkipDrawingParts skipDrawingParts = SkipDrawingParts::None;
 
@@ -348,8 +316,6 @@ public:
 	[[nodiscard]] const MessageImageStyle &imageStyle(bool selected) const;
 
 	[[nodiscard]] int colorPatternIndex(uint8 colorIndex) const;
-	[[nodiscard]] int collectiblePatternIndex(
-		const std::shared_ptr<ColorCollectible> &collectible) const;
 	[[nodiscard]] ColorIndexValues computeColorIndexValues(
 		bool selected,
 		uint8 colorIndex) const;
@@ -361,31 +327,19 @@ public:
 	[[nodiscard]] const ColorIndexValues &coloredValues(
 		bool selected,
 		uint8 colorIndex) const;
-	[[nodiscard]] QColor collectibleNameColor(
-		const std::shared_ptr<ColorCollectible> &collectible) const;
 	[[nodiscard]] not_null<Text::QuotePaintCache*> coloredQuoteCache(
 		bool selected,
 		uint8 colorIndex) const;
 	[[nodiscard]] not_null<Text::QuotePaintCache*> coloredReplyCache(
 		bool selected,
 		uint8 colorIndex) const;
-	[[nodiscard]] not_null<Text::QuotePaintCache*> collectibleQuoteCache(
-		bool selected,
-		const std::shared_ptr<ColorCollectible> &collectible) const;
-	[[nodiscard]] not_null<Text::QuotePaintCache*> collectibleReplyCache(
-		bool selected,
-		const std::shared_ptr<ColorCollectible> &collectible) const;
 
 	[[nodiscard]] const style::TextPalette &coloredTextPalette(
 		bool selected,
 		uint8 colorIndex) const;
-	[[nodiscard]] const style::TextPalette &collectibleTextPalette(
-		bool selected,
-		const std::shared_ptr<ColorCollectible> &collectible) const;
 
 	[[nodiscard]] not_null<BackgroundEmojiData*> backgroundEmojiData(
-		uint64 emojiId,
-		const std::shared_ptr<ColorCollectible> &collectible) const;
+		uint64 id) const;
 
 	[[nodiscard]] const CornersPixmaps &msgBotKbOverBgAddCornersSmall() const;
 	[[nodiscard]] const CornersPixmaps &msgBotKbOverBgAddCornersLarge() const;
@@ -492,21 +446,8 @@ private:
 		kColorIndexCount * 2>;
 
 	struct ColoredPalette {
-		ColoredPalette();
-		ColoredPalette(const ColoredPalette &other);
-		ColoredPalette &operator=(const ColoredPalette &other);
-
 		std::optional<style::owned_color> linkFg;
 		style::TextPalette data;
-	};
-
-	struct CollectibleColors {
-		std::unique_ptr<Text::QuotePaintCache> quote;
-		std::unique_ptr<Text::QuotePaintCache> quoteSelected;
-		std::unique_ptr<Text::QuotePaintCache> reply;
-		std::unique_ptr<Text::QuotePaintCache> replySelected;
-		ColoredPalette palette;
-		ColoredPalette paletteSelected;
 	};
 
 	void assignPalette(not_null<const style::palette*> palette);
@@ -517,11 +458,6 @@ private:
 		ColoredQuotePaintCaches &caches,
 		bool selected,
 		uint8 colorIndex) const;
-	[[nodiscard]] not_null<Text::QuotePaintCache*> collectibleCache(
-		std::unique_ptr<Text::QuotePaintCache> &cache,
-		const std::shared_ptr<ColorCollectible> &collectible) const;
-	[[nodiscard]] CollectibleColors &resolveCollectibleCaches(
-		const std::shared_ptr<ColorCollectible> &collectible) const;
 
 	void make(style::color &my, const style::color &original) const;
 	void make(style::icon &my, const style::icon &original) const;
@@ -587,10 +523,6 @@ private:
 	mutable std::array<
 		ColoredPalette,
 		2 * kColorIndexCount> _coloredTextPalettes;
-	mutable base::flat_map<
-		std::weak_ptr<ColorCollectible>,
-		CollectibleColors,
-		ColorCollectiblePtrCompare> _collectibleCaches;
 	mutable base::flat_map<uint64, BackgroundEmojiData> _backgroundEmojis;
 
 	style::TextPalette _historyPsaForwardPalette;
@@ -642,20 +574,12 @@ private:
 [[nodiscard]] QColor FromNameFg(
 	not_null<const ChatStyle*> st,
 	bool selected,
-	uint8 colorIndex,
-	const std::shared_ptr<Ui::ColorCollectible> &colorCollectible);
+	uint8 colorIndex);
 
 [[nodiscard]] inline QColor FromNameFg(
 		const ChatPaintContext &context,
-		uint8 colorIndex,
-		const std::shared_ptr<Ui::ColorCollectible> &colorCollectible) {
-	return context.outbg
-		? context.messageStyle()->msgServiceFg->c
-		: FromNameFg(
-			context.st,
-			context.selected(),
-			colorIndex,
-			colorCollectible);
+		uint8 colorIndex) {
+	return FromNameFg(context.st, context.selected(), colorIndex);
 }
 
 void FillComplexOverlayRect(

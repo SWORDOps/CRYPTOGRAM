@@ -253,7 +253,6 @@ Descriptor ThreadDescriptor(not_null<Data::Thread*> thread) {
 		.currentSound = currentSound,
 		.updateSound = updateSound,
 		.updateMutePeriod = updateMutePeriod,
-		.volumeController = Data::ThreadRingtonesVolumeController(thread),
 	};
 }
 
@@ -291,7 +290,6 @@ Descriptor DefaultDescriptor(
 		.currentSound = currentSound,
 		.updateSound = updateSound,
 		.updateMutePeriod = updateMutePeriod,
-		.volumeController = DefaultRingtonesVolumeController(session, type),
 	};
 }
 
@@ -306,8 +304,7 @@ void FillMuteMenu(
 				RingtonesBox,
 				session,
 				*currentSound,
-				descriptor.updateSound,
-				descriptor.volumeController));
+				descriptor.updateSound));
 		}
 	};
 	menu->addAction(

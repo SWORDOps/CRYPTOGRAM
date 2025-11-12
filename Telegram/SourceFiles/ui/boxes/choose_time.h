@@ -20,7 +20,6 @@ struct ChooseTimeResult {
 
 ChooseTimeResult ChooseTimeWidget(
 	not_null<RpWidget*> parent,
-	TimeId startSeconds,
-	bool hiddenDaysInput = false);
+	TimeId startSeconds);
 
 } // namespace Ui

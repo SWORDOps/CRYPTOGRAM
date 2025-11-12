@@ -488,9 +488,8 @@ not_null<Ui::RpWidget*> PanelEditDocument::setupContent(
 			}, lifetime());
 		}
 
-		inner->add(object_ptr<Ui::FixedHeightWidget>(
-			inner,
-			st::passportDetailsSkip));
+		inner->add(
+			object_ptr<Ui::FixedHeightWidget>(inner, st::passportDetailsSkip));
 	}
 	if (auto text = _controller->deleteValueLabel()) {
 		inner->add(

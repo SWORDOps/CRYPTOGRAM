@@ -138,27 +138,27 @@ public:
 		not_null<ChannelData*> channel,
 		not_null<PeerData*> participant);
 
-	void loadSimilarPeers(not_null<PeerData*> peer);
+	void loadSimilarChannels(not_null<ChannelData*> channel);
 
-	struct Peers {
-		std::vector<not_null<PeerData*>> list;
+	struct Channels {
+		std::vector<not_null<ChannelData*>> list;
 		int more = 0;
 
 		friend inline bool operator==(
-			const Peers &,
-			const Peers &) = default;
+			const Channels &,
+			const Channels &) = default;
 	};
-	[[nodiscard]] const Peers &similar(not_null<PeerData*> peer);
+	[[nodiscard]] const Channels &similar(not_null<ChannelData*> channel);
 	[[nodiscard]] auto similarLoaded() const
-		-> rpl::producer<not_null<PeerData*>>;
+		-> rpl::producer<not_null<ChannelData*>>;
 
 	void loadRecommendations();
-	[[nodiscard]] const Peers &recommendations() const;
+	[[nodiscard]] const Channels &recommendations() const;
 	[[nodiscard]] rpl::producer<> recommendationsLoaded() const;
 
 private:
-	struct SimilarPeers {
-		Peers peers;
+	struct SimilarChannels {
+		Channels channels;
 		mtpRequestId requestId = 0;
 	};
 
@@ -186,10 +186,10 @@ private:
 		not_null<PeerData*>>;
 	base::flat_map<KickRequest, mtpRequestId> _kickRequests;
 
-	base::flat_map<not_null<PeerData*>, SimilarPeers> _similar;
-	rpl::event_stream<not_null<PeerData*>> _similarLoaded;
+	base::flat_map<not_null<ChannelData*>, SimilarChannels> _similar;
+	rpl::event_stream<not_null<ChannelData*>> _similarLoaded;
 
-	SimilarPeers _recommendations;
+	SimilarChannels _recommendations;
 	rpl::variable<bool> _recommendationsLoaded = false;
 
 };

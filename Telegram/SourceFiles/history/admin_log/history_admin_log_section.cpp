@@ -11,8 +11,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/admin_log/history_admin_log_filter.h"
 #include "profile/profile_back_button.h"
 #include "core/shortcuts.h"
-#include "ui/chat/chat_style.h"
-#include "ui/controls/swipe_handler.h"
 #include "ui/effects/animations.h"
 #include "ui/widgets/scroll_area.h"
 #include "ui/widgets/shadow.h"
@@ -37,7 +35,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace AdminLog {
 
-class FixedBar final : public Ui::RpWidget {
+class FixedBar final : public TWidget {
 public:
 	FixedBar(
 		QWidget *parent,
@@ -109,8 +107,7 @@ object_ptr<Window::SectionWidget> SectionMemento::createWidget(
 FixedBar::FixedBar(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller,
-	not_null<ChannelData*> channel)
-: RpWidget(parent)
+	not_null<ChannelData*> channel) : TWidget(parent)
 , _controller(controller)
 , _channel(channel)
 , _field(this, st::defaultMultiSelectSearchField, tr::lng_dlg_filter())
@@ -277,7 +274,7 @@ void FixedBar::mousePressEvent(QMouseEvent *e) {
 	if (e->button() == Qt::LeftButton) {
 		goBack();
 	} else {
-		RpWidget::mousePressEvent(e);
+		TWidget::mousePressEvent(e);
 	}
 }
 
@@ -344,7 +341,6 @@ Widget::Widget(
 	});
 
 	setupShortcuts();
-	setupSwipeReply();
 }
 
 void Widget::showFilter() {
@@ -418,44 +414,6 @@ void Widget::setupShortcuts() {
 			return true;
 		});
 	}, lifetime());
-}
-
-void Widget::setupSwipeReply() {
-	auto update = [=](Ui::Controls::SwipeContextData data) {
-		if (data.translation > 0) {
-			if (!_swipeBackData.callback) {
-				_swipeBackData = Ui::Controls::SetupSwipeBack(
-					this,
-					[=]() -> std::pair<QColor, QColor> {
-						auto context = _inner->preparePaintContext({});
-						return {
-							context.st->msgServiceBg()->c,
-							context.st->msgServiceFg()->c,
-						};
-					});
-			}
-			_swipeBackData.callback(data);
-			return;
-		} else if (_swipeBackData.lifetime) {
-			_swipeBackData = {};
-		}
-	};
-
-	auto init = [=](int, Qt::LayoutDirection direction) {
-		if (direction == Qt::RightToLeft) {
-			return Ui::Controls::DefaultSwipeBackHandlerFinishData([=] {
-				controller()->showBackFromStack();
-			});
-		}
-		return Ui::Controls::SwipeHandlerFinishData();
-	};
-
-	Ui::Controls::SetupSwipeHandler({
-		.widget = _inner.data(),
-		.scroll = _scroll.data(),
-		.update = std::move(update),
-		.init = std::move(init),
-	});
 }
 
 std::shared_ptr<Window::SectionMemento> Widget::createMemento() {

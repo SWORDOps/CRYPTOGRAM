@@ -87,7 +87,6 @@ using UpdateFlag = StoryUpdate::Flag;
 	}, [&](const MTPDmediaAreaChannelPost &data) {
 	}, [&](const MTPDmediaAreaUrl &data) {
 	}, [&](const MTPDmediaAreaWeather &data) {
-	}, [&](const MTPDmediaAreaStarGift &data) {
 	}, [&](const MTPDinputMediaAreaChannelPost &data) {
 		LOG(("API Error: Unexpected inputMediaAreaChannelPost from API."));
 	}, [&](const MTPDinputMediaAreaVenue &data) {
@@ -111,7 +110,6 @@ using UpdateFlag = StoryUpdate::Flag;
 	}, [&](const MTPDmediaAreaChannelPost &data) {
 	}, [&](const MTPDmediaAreaUrl &data) {
 	}, [&](const MTPDmediaAreaWeather &data) {
-	}, [&](const MTPDmediaAreaStarGift &data) {
 	}, [&](const MTPDinputMediaAreaChannelPost &data) {
 		LOG(("API Error: Unexpected inputMediaAreaChannelPost from API."));
 	}, [&](const MTPDinputMediaAreaVenue &data) {
@@ -135,7 +133,6 @@ using UpdateFlag = StoryUpdate::Flag;
 		});
 	}, [&](const MTPDmediaAreaUrl &data) {
 	}, [&](const MTPDmediaAreaWeather &data) {
-	}, [&](const MTPDmediaAreaStarGift &data) {
 	}, [&](const MTPDinputMediaAreaChannelPost &data) {
 		LOG(("API Error: Unexpected inputMediaAreaChannelPost from API."));
 	}, [&](const MTPDinputMediaAreaVenue &data) {
@@ -157,11 +154,6 @@ using UpdateFlag = StoryUpdate::Flag;
 			.url = qs(data.vurl()),
 		});
 	}, [&](const MTPDmediaAreaWeather &data) {
-	}, [&](const MTPDmediaAreaStarGift &data) {
-		result.emplace(UrlArea{
-			.area = ParseArea(data.vcoordinates()),
-			.url = u"tg://nft?slug="_q + qs(data.vslug()),
-		});
 	}, [&](const MTPDinputMediaAreaChannelPost &data) {
 		LOG(("API Error: Unexpected inputMediaAreaChannelPost from API."));
 	}, [&](const MTPDinputMediaAreaVenue &data) {
@@ -188,7 +180,6 @@ using UpdateFlag = StoryUpdate::Flag;
 				-274.,
 				1'000'000.)),
 		});
-	}, [&](const MTPDmediaAreaStarGift &data) {
 	}, [&](const MTPDinputMediaAreaChannelPost &data) {
 		LOG(("API Error: Unexpected inputMediaAreaChannelPost from API."));
 	}, [&](const MTPDinputMediaAreaVenue &data) {
@@ -367,12 +358,7 @@ bool Story::pinnedToTop() const {
 }
 
 void Story::setInProfile(bool value) {
-	if (_inProfile != value) {
-		_inProfile = value;
-		if (const auto item = _peer->owner().stories().lookupItem(this)) {
-			item->setStoryInProfile(value);
-		}
-	}
+	_inProfile = value;
 }
 
 bool Story::inProfile() const {
@@ -419,7 +405,11 @@ bool Story::canShare() const {
 }
 
 bool Story::canDelete() const {
-	return _peer->canDeleteStories() || (out() && _peer->canPostStories());
+	if (const auto channel = _peer->asChannel()) {
+		return channel->canDeleteStories()
+			|| (out() && channel->canPostStories());
+	}
+	return _peer->isSelf();
 }
 
 bool Story::canReport() const {
@@ -902,14 +892,6 @@ QString Story::repostSourceName() const {
 
 StoryId Story::repostSourceId() const {
 	return _repostSourceId;
-}
-
-const base::flat_set<int> &Story::albumIds() const {
-	return _albumIds;
-}
-
-void Story::setAlbumIds(base::flat_set<int> ids) {
-	_albumIds = std::move(ids);
 }
 
 PeerData *Story::fromPeer() const {

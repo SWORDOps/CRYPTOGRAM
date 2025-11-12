@@ -15,7 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Ui {
 
 void ConfirmBox(not_null<Ui::GenericBox*> box, ConfirmBoxArgs &&args) {
-	const auto weak = base::make_weak(box);
+	const auto weak = Ui::MakeWeak(box);
 	const auto lifetime = box->lifetime().make_state<rpl::lifetime>();
 
 	const auto withTitle = !v::is_null(args.title);
@@ -58,25 +58,14 @@ void ConfirmBox(not_null<Ui::GenericBox*> box, ConfirmBoxArgs &&args) {
 	};
 
 	const auto &defaultButtonStyle = box->getDelegate()->style().button;
-	const auto confirmTextPlain = v::is_null(args.confirmText)
-		|| v::is<rpl::producer<QString>>(args.confirmText)
-		|| v::is<QString>(args.confirmText);
+
 	const auto confirmButton = box->addButton(
-		(confirmTextPlain
-			? v::text::take_plain(
-				std::move(args.confirmText),
-				tr::lng_box_ok())
-			: rpl::single(QString())),
+		v::text::take_plain(std::move(args.confirmText), tr::lng_box_ok()),
 		[=, c = prepareCallback(args.confirmed)]() {
 			lifetime->destroy();
 			c();
 		},
 		args.confirmStyle ? *args.confirmStyle : defaultButtonStyle);
-	if (!confirmTextPlain) {
-		confirmButton->setText(
-			v::text::take_marked(std::move(args.confirmText)));
-	}
-
 	box->events(
 	) | rpl::start_with_next([=](not_null<QEvent*> e) {
 		if ((e->type() != QEvent::KeyPress) || !confirmButton) {

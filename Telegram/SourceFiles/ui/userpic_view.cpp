@@ -8,7 +8,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/userpic_view.h"
 
 #include "ui/empty_userpic.h"
-#include "ui/painter.h"
 #include "ui/image/image_prepare.h"
 
 namespace Ui {
@@ -26,14 +25,14 @@ void ValidateUserpicCache(
 		const QImage *cloud,
 		const EmptyUserpic *empty,
 		int size,
-		PeerUserpicShape shape) {
+		bool forum) {
 	Expects(cloud != nullptr || empty != nullptr);
 
 	const auto full = QSize(size, size);
 	const auto version = style::PaletteVersion();
-	const auto shapeValue = static_cast<uint32>(shape) & 3;
+	const auto forumValue = forum ? 1 : 0;
 	const auto regenerate = (view.cached.size() != QSize(size, size))
-		|| (view.shape != shapeValue)
+		|| (view.forum != forumValue)
 		|| (cloud && !view.empty.null())
 		|| (empty && empty != view.empty.get())
 		|| (empty && view.paletteVersion != version);
@@ -41,7 +40,7 @@ void ValidateUserpicCache(
 		return;
 	}
 	view.empty = empty;
-	view.shape = shapeValue;
+	view.forum = forumValue;
 	view.paletteVersion = version;
 
 	if (cloud) {
@@ -49,9 +48,7 @@ void ValidateUserpicCache(
 			full,
 			Qt::IgnoreAspectRatio,
 			Qt::SmoothTransformation);
-		if (shape == PeerUserpicShape::Monoforum) {
-			view.cached = Ui::ApplyMonoforumShape(std::move(view.cached));
-		} else if (shape == PeerUserpicShape::Forum) {
+		if (forum) {
 			view.cached = Images::Round(
 				std::move(view.cached),
 				Images::CornersMask(size
@@ -67,9 +64,7 @@ void ValidateUserpicCache(
 		view.cached.fill(Qt::transparent);
 
 		auto p = QPainter(&view.cached);
-		if (shape == PeerUserpicShape::Monoforum) {
-			empty->paintMonoforum(p, 0, 0, size, size);
-		} else if (shape == PeerUserpicShape::Forum) {
+		if (forum) {
 			empty->paintRounded(
 				p,
 				0,

@@ -136,24 +136,25 @@ void LocalPasscodeEnter::setupContent() {
 	Ui::AddSkip(content);
 
 	content->add(
-		object_ptr<Ui::FlatLabel>(
+		object_ptr<Ui::CenterWrap<>>(
 			content,
-			isCreate
-				? tr::lng_passcode_create_title()
-				: isCheck
-				? tr::lng_passcode_check_title()
-				: tr::lng_passcode_change_title(),
-			st::changePhoneTitle),
-		st::changePhoneTitlePadding,
-		style::al_top);
+			object_ptr<Ui::FlatLabel>(
+				content,
+				isCreate
+					? tr::lng_passcode_create_title()
+					: isCheck
+					? tr::lng_passcode_check_title()
+					: tr::lng_passcode_change_title(),
+				st::changePhoneTitle)),
+		st::changePhoneTitlePadding);
 
 	const auto addDescription = [&](rpl::producer<QString> &&text) {
 		const auto &st = st::settingLocalPasscodeDescription;
 		content->add(
-			object_ptr<Ui::FlatLabel>(content, std::move(text), st),
-			st::changePhoneDescriptionPadding,
-			style::al_top
-		)->setTryMakeSimilarLines(true);
+			object_ptr<Ui::CenterWrap<>>(
+				content,
+				object_ptr<Ui::FlatLabel>(content, std::move(text), st)),
+			st::changePhoneDescriptionPadding);
 	};
 
 	addDescription(tr::lng_passcode_about1());
@@ -182,13 +183,14 @@ void LocalPasscodeEnter::setupContent() {
 
 	const auto addError = [&](not_null<Ui::PasswordInput*> input) {
 		const auto error = content->add(
-			object_ptr<Ui::FlatLabel>(
+			object_ptr<Ui::CenterWrap<Ui::FlatLabel>>(
 				content,
-				// Set any text to resize.
-				tr::lng_language_name(tr::now),
-				st::settingLocalPasscodeError),
-			st::changePhoneDescriptionPadding,
-			style::al_top);
+				object_ptr<Ui::FlatLabel>(
+					content,
+					// Set any text to resize.
+					tr::lng_language_name(tr::now),
+					st::settingLocalPasscodeError)),
+			st::changePhoneDescriptionPadding)->entity();
 		error->hide();
 		QObject::connect(input.get(), &Ui::MaskedInputField::changed, [=] {
 			error->hide();
@@ -206,16 +208,17 @@ void LocalPasscodeEnter::setupContent() {
 	const auto error = addError(isCheck ? newPasscode : reenterPasscode);
 
 	const auto button = content->add(
-		object_ptr<Ui::RoundButton>(
+		object_ptr<Ui::CenterWrap<Ui::RoundButton>>(
 			content,
-			(isCreate
-				? tr::lng_passcode_create_button()
-				: isCheck
-				? tr::lng_passcode_check_button()
-				: tr::lng_passcode_change_button()),
-			st::changePhoneButton),
-		st::settingLocalPasscodeButtonPadding,
-		style::al_top);
+			object_ptr<Ui::RoundButton>(
+				content,
+				(isCreate
+					? tr::lng_passcode_create_button()
+					: isCheck
+					? tr::lng_passcode_check_button()
+					: tr::lng_passcode_change_button()),
+				st::changePhoneButton)),
+		st::settingLocalPasscodeButtonPadding)->entity();
 	button->setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
 	button->setClickedCallback([=] {
 		const auto newText = newPasscode->text();
@@ -401,7 +404,7 @@ public:
 
 	[[nodiscard]] rpl::producer<std::vector<Type>> removeFromStack() override;
 
-	[[nodiscard]] base::weak_qptr<Ui::RpWidget> createPinnedToBottom(
+	[[nodiscard]] QPointer<Ui::RpWidget> createPinnedToBottom(
 		not_null<Ui::RpWidget*> parent) override;
 
 private:
@@ -603,7 +606,7 @@ void LocalPasscodeManage::setupContent() {
 	Ui::ResizeFitChild(this, content);
 }
 
-base::weak_qptr<Ui::RpWidget> LocalPasscodeManage::createPinnedToBottom(
+QPointer<Ui::RpWidget> LocalPasscodeManage::createPinnedToBottom(
 		not_null<Ui::RpWidget*> parent) {
 	auto callback = [=] {
 		_controller->show(

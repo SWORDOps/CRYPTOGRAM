@@ -34,7 +34,6 @@ public:
 	MemberListRow(not_null<UserData*> user, Type type);
 
 	void setType(Type type);
-	[[nodiscard]] Type type() const;
 	bool rightActionDisabled() const override;
 	QMargins rightActionMargins() const override;
 	void refreshStatus() override;

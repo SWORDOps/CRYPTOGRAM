@@ -137,7 +137,9 @@ OverlayWidget::RendererGL::RendererGL(not_null<OverlayWidget*> owner)
 	});
 }
 
-void OverlayWidget::RendererGL::init(QOpenGLFunctions &f) {
+void OverlayWidget::RendererGL::init(
+		not_null<QOpenGLWidget*> widget,
+		QOpenGLFunctions &f) {
 	constexpr auto kQuads = 9;
 	constexpr auto kQuadVertices = kQuads * 4;
 	constexpr auto kQuadValues = kQuadVertices * 4;
@@ -241,7 +243,9 @@ void OverlayWidget::RendererGL::init(QOpenGLFunctions &f) {
 		renderer ? renderer : "[nullptr]");
 }
 
-void OverlayWidget::RendererGL::deinit(QOpenGLFunctions *f) {
+void OverlayWidget::RendererGL::deinit(
+		not_null<QOpenGLWidget*> widget,
+		QOpenGLFunctions *f) {
 	_textures.destroy(f);
 	_imageProgram = std::nullopt;
 	_texturedVertexShader = nullptr;

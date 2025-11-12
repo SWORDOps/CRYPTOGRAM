@@ -119,12 +119,10 @@ bool FormSummary::showCriticalError(const TextWithEntities &text) {
 		return false;
 	}
 	Ui::AddSkip(_layout.get(), st::paymentsPricesTopSkip);
-	_layout->add(
-		object_ptr<FlatLabel>(
-			_layout.get(),
-			rpl::single(text),
-			st::paymentsCriticalError),
-		style::al_top);
+	_layout->add(object_ptr<FlatLabel>(
+		_layout.get(),
+		rpl::single(text),
+		st::paymentsCriticalError));
 	return true;
 }
 

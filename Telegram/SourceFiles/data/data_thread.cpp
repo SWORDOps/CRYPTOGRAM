@@ -7,13 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_thread.h"
 
-#include "data/data_forum.h"
 #include "data/data_forum_topic.h"
 #include "data/data_changes.h"
-#include "data/data_channel.h"
 #include "data/data_peer.h"
-#include "data/data_saved_messages.h"
-#include "data/data_saved_sublist.h"
 #include "history/history.h"
 #include "history/history_item.h"
 #include "history/history_unread_things.h"
@@ -33,20 +29,6 @@ MsgId Thread::topicRootId() const {
 		return topic->rootId();
 	}
 	return MsgId();
-}
-
-PeerId Thread::monoforumPeerId() const {
-	if (const auto sublist = asSublist()) {
-		return sublist->sublistPeer()->id;
-	}
-	return PeerId();
-}
-
-PeerData *Thread::maybeSublistPeer() const {
-	if (const auto sublist = asSublist()) {
-		return sublist->sublistPeer();
-	}
-	return nullptr;
 }
 
 not_null<PeerData*> Thread::peer() const {
@@ -96,17 +78,6 @@ HistoryUnreadThings::ConstProxy Thread::unreadReactions() const {
 		_unreadThings ? &_unreadThings->reactions : nullptr,
 		!!(_flags & Flag::UnreadThingsKnown),
 	};
-}
-
-bool Thread::canToggleUnread(bool nowUnread) const {
-	if ((asTopic() || asForum()) && !nowUnread) {
-		return false;
-	} else if (asSublist() && owningHistory()->peer->isSelf()) {
-		return false;
-	} else if (asHistory() && peer()->amMonoforumAdmin()) {
-		return false;
-	}
-	return true;
 }
 
 const base::flat_set<MsgId> &Thread::unreadMentionsIds() const {
@@ -201,18 +172,6 @@ void Thread::setHasPinnedMessages(bool has) {
 	session().changes().entryUpdated(
 		this,
 		EntryUpdate::Flag::HasPinnedMessages);
-}
-
-void Thread::saveMeAsActiveSubsectionThread() {
-	if (const auto peer = owningHistory()->peer; peer->useSubsectionTabs()) {
-		if (const auto forum = peer->forum()) {
-			forum->saveActiveSubsectionThread(this);
-		} else if (const auto channel = peer->asChannel()) {
-			if (const auto monoforum = channel->monoforum()) {
-				monoforum->saveActiveSubsectionThread(this);
-			}
-		}
-	}
 }
 
 } // namespace Data

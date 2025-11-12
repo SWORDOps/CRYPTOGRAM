@@ -164,10 +164,10 @@ Row::Row(not_null<RowDelegate*> delegate, const ChatLinkData &data)
 }
 
 void Row::updateStatus(const ChatLinkData &data) {
-	const auto context = Core::TextContext({
+	const auto context = Core::MarkedTextContext{
 		.session = _delegate->rowSession(),
-		.repaint = [=] { _delegate->rowUpdateRow(this); },
-	});
+		.customEmojiRepaint = [=] { _delegate->rowUpdateRow(this); },
+	};
 	_status.setMarkedText(
 		st::messageTextStyle,
 		data.message,

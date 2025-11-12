@@ -241,12 +241,13 @@ void Media::drawPurchasedTag(
 		if (!amount) {
 			return;
 		}
-		auto text = Ui::Text::Colorized(Ui::CreditsEmojiSmall());
+		const auto session = &item->history()->session();
+		auto text = Ui::Text::Colorized(Ui::CreditsEmojiSmall(session));
 		text.append(Lang::FormatCountDecimal(amount));
-		purchased->text.setMarkedText(
-			st::defaultTextStyle,
-			text,
-			kMarkupTextOptions);
+		purchased->text.setMarkedText(st::defaultTextStyle, text, kMarkupTextOptions, Core::MarkedTextContext{
+			.session = session,
+			.customEmojiRepaint = [] {},
+		});
 	}
 
 	const auto st = context.st;
@@ -401,7 +402,8 @@ void Media::drawSpoilerTag(
 				tr::lng_sensitive_tag(tr::now));
 			iconSkip = st::mediaMenuIconStealth.width() * 1.4;
 		} else {
-			auto price = Ui::Text::Colorized(Ui::CreditsEmoji());
+			const auto session = &history()->session();
+			auto price = Ui::Text::Colorized(Ui::CreditsEmoji(session));
 			price.append(Lang::FormatCountDecimal(tag->price));
 			text.setMarkedText(
 				st::semiboldTextStyle,
@@ -410,7 +412,11 @@ void Media::drawSpoilerTag(
 					lt_price,
 					price,
 					Ui::Text::WithEntities),
-				kMarkupTextOptions);
+				kMarkupTextOptions,
+				Core::MarkedTextContext{
+					.session = session,
+					.customEmojiRepaint = [] {},
+				});
 		}
 		const auto width = iconSkip + text.maxWidth();
 		const auto inner = QRect(0, 0, width, text.minHeight());
@@ -535,10 +541,10 @@ Ui::Text::String Media::createCaption(not_null<HistoryItem*> item) const {
 		- st::msgPadding.left()
 		- st::msgPadding.right();
 	auto result = Ui::Text::String(minResizeWidth);
-	const auto context = Core::TextContext({
+	const auto context = Core::MarkedTextContext{
 		.session = &history()->session(),
-		.repaint = [=] { _parent->customEmojiRepaint(); },
-	});
+		.customEmojiRepaint = [=] { _parent->customEmojiRepaint(); },
+	};
 	result.setMarkedText(
 		st::messageTextStyle,
 		item->translatedTextWithLocalEntities(),
@@ -583,10 +589,6 @@ std::unique_ptr<StickerPlayer> Media::stickerTakePlayer(
 
 QImage Media::locationTakeImage() {
 	return QImage();
-}
-
-std::vector<Media::TodoTaskInfo> Media::takeTasksInfo() {
-	return {};
 }
 
 TextState Media::getStateGrouped(

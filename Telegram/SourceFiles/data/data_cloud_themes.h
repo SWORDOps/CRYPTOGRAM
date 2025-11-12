@@ -22,7 +22,6 @@ class Controller;
 
 namespace Data {
 
-struct UniqueGift;
 class DocumentMedia;
 
 enum class CloudThemeType {
@@ -39,7 +38,6 @@ struct CloudTheme {
 	UserId createdBy = 0;
 	int usersCount = 0;
 	QString emoticon;
-	std::shared_ptr<UniqueGift> unique;
 
 	using Type = CloudThemeType;
 	struct Settings {
@@ -53,10 +51,6 @@ struct CloudTheme {
 	static CloudTheme Parse(
 		not_null<Main::Session*> session,
 		const MTPDtheme &data,
-		bool parseSettings = false);
-	static CloudTheme Parse(
-		not_null<Main::Session*> session,
-		const MTPDchatThemeUniqueGift &data,
 		bool parseSettings = false);
 	static CloudTheme Parse(
 		not_null<Main::Session*> session,
@@ -79,18 +73,9 @@ public:
 	void refreshChatThemes();
 	[[nodiscard]] const std::vector<CloudTheme> &chatThemes() const;
 	[[nodiscard]] rpl::producer<> chatThemesUpdated() const;
-
-	void myGiftThemesLoadMore(bool reload = false);
-	[[nodiscard]] const std::vector<QString> &myGiftThemesTokens() const;
-	[[nodiscard]] rpl::producer<> myGiftThemesUpdated() const;
-	[[nodiscard]] QString processGiftThemeGetToken(
-		const MTPDchatThemeUniqueGift &data);
-	[[nodiscard]] bool myGiftThemesReady() const;
-
-	void refreshChatThemesFor(const QString &token);
-	[[nodiscard]] std::optional<CloudTheme> themeForToken(
-		const QString &token) const;
-	[[nodiscard]] auto themeForTokenValue(const QString &token)
+	[[nodiscard]] std::optional<CloudTheme> themeForEmoji(
+		const QString &emoticon) const;
+	[[nodiscard]] auto themeForEmojiValue(const QString &emoticon)
 		-> rpl::producer<std::optional<CloudTheme>>;
 
 	[[nodiscard]] static bool TestingColors();
@@ -154,14 +139,6 @@ private:
 	mtpRequestId _chatThemesRequestId = 0;
 	std::vector<CloudTheme> _chatThemes;
 	rpl::event_stream<> _chatThemesUpdates;
-
-	mtpRequestId _myGiftThemesRequestId = 0;
-	base::flat_map<uint64, CloudTheme> _giftThemes;
-	std::vector<QString> _myGiftThemesTokens;
-	rpl::event_stream<> _myGiftThemesUpdates;
-	uint64 _myGiftThemesHash = 0;
-	QString _myGiftThemesNextOffset;
-	bool _myGiftThemesLoaded = false;
 
 	base::Timer _reloadCurrentTimer;
 	LoadingDocument _updatingFrom;

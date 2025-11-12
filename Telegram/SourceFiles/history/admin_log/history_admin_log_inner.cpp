@@ -743,9 +743,8 @@ void InnerWidget::elementSearchInList(
 void InnerWidget::elementHandleViaClick(not_null<UserData*> bot) {
 }
 
-HistoryView::ElementChatMode InnerWidget::elementChatMode() {
-	using Mode = HistoryView::ElementChatMode;
-	return _isChatWide ? Mode::Wide : Mode::Default;
+bool InnerWidget::elementIsChatWide() {
+	return _isChatWide;
 }
 
 not_null<Ui::PathShiftGradient*> InnerWidget::elementPathShiftGradient() {
@@ -1011,7 +1010,7 @@ void InnerWidget::itemsAdded(Direction direction, int addedCount) {
 }
 
 void InnerWidget::updateSize() {
-	RpWidget::resizeToWidth(width());
+	TWidget::resizeToWidth(width());
 	restoreScrollPosition();
 	updateVisibleTopItem();
 	checkPreloadMore();
@@ -1043,16 +1042,6 @@ void InnerWidget::restoreScrollPosition() {
 	_scrollToSignal.fire_copy(newVisibleTop);
 }
 
-Ui::ChatPaintContext InnerWidget::preparePaintContext(QRect clip) const {
-	return _controller->preparePaintContext({
-		.theme = _theme.get(),
-		.clip = clip,
-		.visibleAreaPositionGlobal = mapToGlobal(QPoint(0, _visibleTop)),
-		.visibleAreaTop = _visibleTop,
-		.visibleAreaWidth = width(),
-	});
-}
-
 void InnerWidget::paintEvent(QPaintEvent *e) {
 	if (_controller->contentOverlapped(this, e)) {
 		return;
@@ -1065,7 +1054,13 @@ void InnerWidget::paintEvent(QPaintEvent *e) {
 	Painter p(this);
 
 	auto clip = e->rect();
-	auto context = preparePaintContext(clip);
+	auto context = _controller->preparePaintContext({
+		.theme = _theme.get(),
+		.clip = clip,
+		.visibleAreaPositionGlobal = mapToGlobal(QPoint(0, _visibleTop)),
+		.visibleAreaTop = _visibleTop,
+		.visibleAreaWidth = width(),
+	});
 	if (_items.empty() && _upLoaded && _downLoaded) {
 		paintEmpty(p, context.st);
 	} else {
@@ -1533,7 +1528,7 @@ void InnerWidget::suggestRestrictParticipant(
 				UserData *by,
 				TimeId since) {
 			auto weak = QPointer<InnerWidget>(this);
-			auto weakBox = std::make_shared<base::weak_qptr<Ui::BoxContent>>();
+			auto weakBox = std::make_shared<QPointer<Ui::BoxContent>>();
 			auto box = Box<EditRestrictedBox>(
 				_channel,
 				user,
@@ -1563,7 +1558,7 @@ void InnerWidget::suggestRestrictParticipant(
 					tr::now,
 					lt_user,
 					participant->name());
-			auto weakBox = std::make_shared<base::weak_qptr<Ui::BoxContent>>();
+			auto weakBox = std::make_shared<QPointer<Ui::BoxContent>>();
 			const auto sure = crl::guard(this, [=] {
 				restrictParticipant(
 					participant,
@@ -1687,7 +1682,7 @@ void InnerWidget::mouseReleaseEvent(QMouseEvent *e) {
 
 void InnerWidget::enterEventHook(QEnterEvent *e) {
 	mouseActionUpdate(QCursor::pos());
-	return RpWidget::enterEventHook(e);
+	return TWidget::enterEventHook(e);
 }
 
 void InnerWidget::leaveEventHook(QEvent *e) {
@@ -1701,7 +1696,7 @@ void InnerWidget::leaveEventHook(QEvent *e) {
 		_cursor = style::cur_default;
 		setCursor(_cursor);
 	}
-	return RpWidget::leaveEventHook(e);
+	return TWidget::leaveEventHook(e);
 }
 
 void InnerWidget::mouseActionStart(const QPoint &screenPos, Qt::MouseButton button) {
@@ -1813,8 +1808,10 @@ void InnerWidget::mouseActionFinish(const QPoint &screenPos, Qt::MouseButton but
 		ActivateClickHandler(window(), activated, {
 			button,
 			QVariant::fromValue(ClickHandlerContext{
-				.elementDelegate = [weak = base::make_weak(this)] {
-					return (ElementDelegate*)weak.get();
+				.elementDelegate = [weak = Ui::MakeWeak(this)] {
+					return weak
+						? (ElementDelegate*)weak
+						: nullptr;
 				},
 				.sessionWindow = base::make_weak(_controller),
 			})

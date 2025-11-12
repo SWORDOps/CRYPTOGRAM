@@ -215,7 +215,7 @@ void AddPremiumTopBarWithDefaultTitleBar(
 				+ st::defaultVerticalListSkip,
 			st::boxDividerBg,
 			RectPart::Bottom),
-		style::margins());
+		{});
 	bar->setPaused(true);
 	bar->setRoundEdges(false);
 	bar->setMaximumHeight(st::giveawayGiftCodeTopHeight);
@@ -348,11 +348,12 @@ void CreateGiveawayBox(
 		Ui::AddSkip(container);
 		Ui::AddSkip(container);
 		container->add(
-			object_ptr<Ui::FlatLabel>(
+			object_ptr<Ui::CenterWrap<Ui::FlatLabel>>(
 				box,
-				tr::lng_contacts_loading(),
-				st::giveawayLoadingLabel),
-			style::al_top);
+				object_ptr<Ui::FlatLabel>(
+					box,
+					tr::lng_contacts_loading(),
+					st::giveawayLoadingLabel)));
 		Ui::AddSkip(container);
 		Ui::AddSkip(container);
 	}
@@ -1065,7 +1066,7 @@ void CreateGiveawayBox(
 			Ui::Premium::AddGiftOptions(
 				listOptions,
 				durationGroup,
-				state->apiOptions.optionsForGiveaway(usersCount),
+				state->apiOptions.options(usersCount),
 				st::giveawayGiftCodeGiftOption,
 				true);
 
@@ -1249,7 +1250,7 @@ void CreateGiveawayBox(
 					rpl::duplicate(creditsValueType),
 					tr::lng_giveaway_additional_credits_about(),
 					tr::lng_giveaway_additional_about()
-				) | Ui::Text::ToWithEntities()));
+				) | rpl::map(Ui::Text::WithEntities)));
 		Ui::AddSkip(additionalWrap);
 	}
 
@@ -1401,7 +1402,7 @@ void CreateGiveawayBox(
 			auto invoice = [&] {
 				if (isPrepaidCredits) {
 					return Payments::InvoicePremiumGiftCode{
-						.giveawayCredits = prepaid->credits,
+						.creditsAmount = prepaid->credits,
 						.randomId = prepaid->id,
 						.users = prepaid->quantity,
 					};
@@ -1411,7 +1412,7 @@ void CreateGiveawayBox(
 					return Payments::InvoicePremiumGiftCode{
 						.currency = option.currency,
 						.storeProduct = option.storeProduct,
-						.giveawayCredits = option.credits,
+						.creditsAmount = option.credits,
 						.randomId = UniqueIdFromCreditsOption(option, peer),
 						.amount = option.amount,
 						.users = state->sliderValue.current(),
@@ -1458,11 +1459,11 @@ void CreateGiveawayBox(
 			}
 			state->confirmButtonBusy = true;
 			const auto show = box->uiShow();
-			const auto weak = base::make_weak(box.get());
+			const auto weak = Ui::MakeWeak(box.get());
 			const auto done = [=](Payments::CheckoutResult result) {
 				const auto isPaid = result == Payments::CheckoutResult::Paid;
 				if (result == Payments::CheckoutResult::Pending || isPaid) {
-					if (const auto strong = weak.get()) {
+					if (const auto strong = weak.data()) {
 						strong->window()->setFocus();
 						strong->closeBox();
 					}

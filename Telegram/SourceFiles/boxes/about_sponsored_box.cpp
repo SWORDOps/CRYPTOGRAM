@@ -10,7 +10,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/file_utilities.h"
 #include "lang/lang_keys.h"
 #include "ui/layers/generic_box.h"
-#include "ui/text/text_utilities.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/labels.h"
 #include "styles/style_boxes.h"
@@ -19,7 +18,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Ui {
 namespace {
 
-constexpr auto kUrl = "https://ads.telegram.org"_cs;
+constexpr auto kUrl = "https://promote.telegram.org"_cs;
 
 } // namespace
 
@@ -55,16 +54,8 @@ void AboutSponsoredBox(not_null<Ui::GenericBox*> box) {
 	};
 
 	const auto &stLabel = st::aboutLabel;
-	auto text1 = tr::lng_sponsored_info_description1_linked(
-		lt_link,
-		rpl::combine(
-			tr::lng_sponsored_info_description1_link(),
-			tr::lng_sponsored_info_description1_url()
-		) | rpl::map([](const QString &text, const QString &url) {
-			return Ui::Text::Link(text, url);
-		}),
-		Ui::Text::RichLangValue);
-	box->addRow(object_ptr<FlatLabel>(box, std::move(text1), stLabel));
+	const auto info1 = box->addRow(object_ptr<FlatLabel>(box, stLabel));
+	info1->setText(tr::lng_sponsored_info_description1(tr::now));
 
 	box->addSkip(st::sponsoredUrlButtonSkip);
 	addUrl();

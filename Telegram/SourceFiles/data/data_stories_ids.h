@@ -19,9 +19,13 @@ namespace Data {
 
 using StoriesIdsSlice = AbstractSparseIds<std::vector<StoryId>>;
 
-[[nodiscard]] rpl::producer<StoriesIdsSlice> AlbumStoriesIds(
+[[nodiscard]] rpl::producer<StoriesIdsSlice> SavedStoriesIds(
 	not_null<PeerData*> peer,
-	int albumId,
+	StoryId aroundId,
+	int limit);
+
+[[nodiscard]] rpl::producer<StoriesIdsSlice> ArchiveStoriesIds(
+	not_null<PeerData*> peer,
 	StoryId aroundId,
 	int limit);
 

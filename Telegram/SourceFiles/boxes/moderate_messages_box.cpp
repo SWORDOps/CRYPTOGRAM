@@ -23,7 +23,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_chat_participant_status.h"
 #include "data/data_histories.h"
 #include "data/data_peer.h"
-#include "data/data_saved_sublist.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
 #include "data/stickers/data_custom_emoji.h"
@@ -72,16 +71,6 @@ ModerateOptions CalculateModerateOptions(const HistoryItemsList &items) {
 		}
 		if (peer != item->history()->peer) {
 			return {};
-		}
-		{
-			const auto author = item->author();
-			if (author == peer) {
-				return {};
-			} else if (const auto channel = author->asChannel()) {
-				if (channel->discussionLink() == peer) {
-					return {};
-				}
-			}
 		}
 		if (!item->suggestBanReport()) {
 			result.allCanBan = false;
@@ -138,8 +127,6 @@ void CreateModerateMessagesBox(
 		not_null<Ui::GenericBox*> box,
 		const HistoryItemsList &items,
 		Fn<void()> confirmed) {
-	Expects(!items.empty());
-
 	using Controller = Ui::ExpandablePeerListController;
 
 	const auto [allCanBan, allCanDelete, participants]
@@ -160,12 +147,8 @@ void CreateModerateMessagesBox(
 				participants.size()).width(),
 			0);
 
-	const auto itemsCount = int(items.size());
-	const auto firstItem = items.front();
-	const auto history = firstItem->history();
-	const auto session = &history->session();
-	const auto historyPeerId = history->peer->id;
-	const auto ids = session->data().itemsToIds(items);
+	const auto session = &items.front()->history()->session();
+	const auto historyPeerId = items.front()->history()->peer->id;
 
 	using Request = Fn<void(not_null<PeerData*>, not_null<ChannelData*>)>;
 	const auto sequentiallyRequest = [=](
@@ -248,11 +231,11 @@ void CreateModerateMessagesBox(
 	const auto title = box->addRow(
 		object_ptr<Ui::FlatLabel>(
 			box,
-			(itemsCount == 1)
+			(items.size() == 1)
 				? tr::lng_selected_delete_sure_this()
 				: tr::lng_selected_delete_sure(
 					lt_count,
-					rpl::single(itemsCount) | tr::to_count()),
+					rpl::single(items.size()) | tr::to_count()),
 			st::boxLabel));
 	Ui::AddSkip(inner);
 	Ui::AddSkip(inner);
@@ -270,6 +253,7 @@ void CreateModerateMessagesBox(
 		Ui::AddExpandablePeerList(report, controller, inner);
 		handleSubmition(report);
 
+		const auto ids = items.front()->from()->owner().itemsToIds(items);
 		handleConfirmation(report, controller, [=](
 				not_null<PeerData*> p,
 				not_null<ChannelData*> c) {
@@ -301,11 +285,12 @@ void CreateModerateMessagesBox(
 					: tr::lng_delete_all_from_user(
 						tr::now,
 						lt_user,
-						Ui::Text::Bold(firstItem->from()->name()),
+						Ui::Text::Bold(items.front()->from()->name()),
 						Ui::Text::WithEntities),
 				false,
 				st::defaultBoxCheckbox),
 			st::boxRowPadding + buttonPadding);
+		const auto history = items.front()->history();
 		auto messagesCounts = MessagesCountValue(history, participants);
 
 		const auto controller = box->lifetime().make_state<Controller>(
@@ -315,10 +300,6 @@ void CreateModerateMessagesBox(
 			});
 		Ui::AddExpandablePeerList(deleteAll, controller, inner);
 		{
-			auto itemFromIds = items | ranges::views::transform([](
-					const auto &item) {
-				return item->from()->id;
-			}) | ranges::to_vector;
 			tr::lng_selected_delete_sure(
 				lt_count,
 				rpl::combine(
@@ -328,7 +309,7 @@ void CreateModerateMessagesBox(
 						: rpl::merge(
 							controller->toggleRequestsFromInner.events(),
 							controller->checkAllRequests.events())
-				) | rpl::map([=](const auto &map, bool c) {
+				) | rpl::map([=, s = items.size()](const auto &map, bool c) {
 					const auto checked = (isSingle && !c)
 						? Participants()
 						: controller->collectRequests
@@ -343,9 +324,9 @@ void CreateModerateMessagesBox(
 							}
 						}
 					}
-					for (const auto &fromId : itemFromIds) {
+					for (const auto &item : items) {
 						for (const auto &peer : checked) {
-							if (peer->id == fromId) {
+							if (peer->id == item->from()->id) {
 								result--;
 								break;
 							}
@@ -373,14 +354,9 @@ void CreateModerateMessagesBox(
 		}
 	}
 	if (allCanBan) {
-		const auto peer = items.front()->history()->peer;
-		auto ownedWrap = peer->isMonoforum()
-			? nullptr
-			: object_ptr<Ui::SlideWrap<Ui::VerticalLayout>>(
-				inner,
-				object_ptr<Ui::VerticalLayout>(inner));
-		auto computeRestrictions = Fn<ChatRestrictions()>();
-		const auto wrap = ownedWrap.data();
+		auto ownedWrap = object_ptr<Ui::SlideWrap<Ui::VerticalLayout>>(
+			inner,
+			object_ptr<Ui::VerticalLayout>(inner));
 
 		Ui::AddSkip(inner);
 		Ui::AddSkip(inner);
@@ -388,12 +364,8 @@ void CreateModerateMessagesBox(
 			object_ptr<Ui::Checkbox>(
 				box,
 				rpl::conditional(
-					(ownedWrap
-						? ownedWrap->toggledValue()
-						: rpl::single(false) | rpl::type_erased()),
-					tr::lng_restrict_user(
-						lt_count,
-						rpl::single(participants.size()) | tr::to_count()),
+					ownedWrap->toggledValue(),
+					tr::lng_context_restrict_user(),
 					rpl::conditional(
 						rpl::single(isSingle),
 						tr::lng_ban_user(),
@@ -409,127 +381,139 @@ void CreateModerateMessagesBox(
 		Ui::AddSkip(inner);
 		Ui::AddSkip(inner);
 
-		if (ownedWrap) {
-			inner->add(std::move(ownedWrap));
+		const auto wrap = inner->add(std::move(ownedWrap));
+		const auto container = wrap->entity();
+		wrap->toggle(false, anim::type::instant);
 
-			const auto container = wrap->entity();
-			wrap->toggle(false, anim::type::instant);
+		const auto session = &participants.front()->session();
+		const auto emojiMargin = QMargins(
+			-st::moderateBoxExpandInnerSkip,
+			-st::moderateBoxExpandInnerSkip / 2,
+			0,
+			0);
+		const auto emojiUp = Ui::Text::SingleCustomEmoji(
+			session->data().customEmojiManager().registerInternalEmoji(
+				st::moderateBoxExpandIcon,
+				emojiMargin,
+				false));
+		const auto emojiDown = Ui::Text::SingleCustomEmoji(
+			session->data().customEmojiManager().registerInternalEmoji(
+				st::moderateBoxExpandIconDown,
+				emojiMargin,
+				false));
 
-			const auto emojiUp = Ui::Text::IconEmoji(
-				&st::moderateBoxExpandIcon);
-			const auto emojiDown = Ui::Text::IconEmoji(
-				&st::moderateBoxExpandIconDown);
+		auto label = object_ptr<Ui::FlatLabel>(
+			inner,
+			QString(),
+			st::moderateBoxDividerLabel);
+		const auto raw = label.data();
 
-			auto label = object_ptr<Ui::FlatLabel>(
-				inner,
-				QString(),
-				st::moderateBoxDividerLabel);
-			const auto raw = label.data();
-
-			auto &lifetime = wrap->lifetime();
-			const auto scrollLifetime = lifetime.make_state<rpl::lifetime>();
-			label->setClickHandlerFilter([=](
-					const ClickHandlerPtr &handler,
-					Qt::MouseButton button) {
-				if (button != Qt::LeftButton) {
-					return false;
-				}
-				wrap->toggle(!wrap->toggled(), anim::type::normal);
-				{
-					inner->heightValue() | rpl::start_with_next([=] {
-						if (!wrap->animating()) {
-							scrollLifetime->destroy();
-							Ui::PostponeCall(crl::guard(box, [=] {
-								box->scrollToY(std::numeric_limits<int>::max());
-							}));
-						} else {
+		auto &lifetime = wrap->lifetime();
+		const auto scrollLifetime = lifetime.make_state<rpl::lifetime>();
+		label->setClickHandlerFilter([=](
+				const ClickHandlerPtr &handler,
+				Qt::MouseButton button) {
+			if (button != Qt::LeftButton) {
+				return false;
+			}
+			wrap->toggle(!wrap->toggled(), anim::type::normal);
+			{
+				inner->heightValue() | rpl::start_with_next([=] {
+					if (!wrap->animating()) {
+						scrollLifetime->destroy();
+						Ui::PostponeCall(crl::guard(box, [=] {
 							box->scrollToY(std::numeric_limits<int>::max());
-						}
-					}, *scrollLifetime);
-				}
-				return true;
-			});
-			wrap->toggledValue(
-			) | rpl::map([isSingle, emojiUp, emojiDown](bool toggled) {
-				return ((toggled && isSingle)
-					? tr::lng_restrict_user_part
-					: (toggled && !isSingle)
-					? tr::lng_restrict_users_part
-					: isSingle
-					? tr::lng_restrict_user_full
-					: tr::lng_restrict_users_full)(
-						lt_emoji,
-						rpl::single(toggled ? emojiUp : emojiDown),
-						Ui::Text::WithEntities);
-			}) | rpl::flatten_latest(
-			) | rpl::start_with_next([=](const TextWithEntities &text) {
-				raw->setMarkedText(Ui::Text::Link(text, u"internal:"_q));
-			}, label->lifetime());
+						}));
+					} else {
+						box->scrollToY(std::numeric_limits<int>::max());
+					}
+				}, *scrollLifetime);
+			}
+			return true;
+		});
+		wrap->toggledValue(
+		) | rpl::map([isSingle, emojiUp, emojiDown](bool toggled) {
+			return ((toggled && isSingle)
+				? tr::lng_restrict_user_part
+				: (toggled && !isSingle)
+				? tr::lng_restrict_users_part
+				: isSingle
+				? tr::lng_restrict_user_full
+				: tr::lng_restrict_users_full)(
+					lt_emoji,
+					rpl::single(toggled ? emojiUp : emojiDown),
+					Ui::Text::WithEntities);
+		}) | rpl::flatten_latest(
+		) | rpl::start_with_next([=](const TextWithEntities &text) {
+			raw->setMarkedText(
+				Ui::Text::Link(text, u"internal:"_q),
+				Core::MarkedTextContext{
+					.session = session,
+					.customEmojiRepaint = [=] { raw->update(); },
+				});
+		}, label->lifetime());
 
-			Ui::AddSkip(inner);
-			inner->add(object_ptr<Ui::DividerLabel>(
-				inner,
-				std::move(label),
-				st::defaultBoxDividerLabelPadding,
-				RectPart::Top | RectPart::Bottom));
+		Ui::AddSkip(inner);
+		inner->add(object_ptr<Ui::DividerLabel>(
+			inner,
+			std::move(label),
+			st::defaultBoxDividerLabelPadding,
+			RectPart::Top | RectPart::Bottom));
 
-			using Flag = ChatRestriction;
-			using Flags = ChatRestrictions;
-			const auto chat = peer->asChat();
-			const auto channel = peer->asChannel();
-			const auto defaultRestrictions = chat
-				? chat->defaultRestrictions()
-				: channel->defaultRestrictions();
-			const auto prepareFlags = FixDependentRestrictions(
-				defaultRestrictions
-				| ((channel && channel->isPublic())
-					? (Flag::ChangeInfo | Flag::PinMessages)
-					: Flags(0)));
-			const auto disabledMessages = [&] {
-				auto result = base::flat_map<Flags, QString>();
-				{
-					const auto disabled = FixDependentRestrictions(
-						defaultRestrictions
-						| ((channel && channel->isPublic())
-							? (Flag::ChangeInfo | Flag::PinMessages)
-							: Flags(0)));
-					result.emplace(
-						disabled,
-						tr::lng_rights_restriction_for_all(tr::now));
-				}
-				return result;
-			}();
+		using Flag = ChatRestriction;
+		using Flags = ChatRestrictions;
+		const auto peer = items.front()->history()->peer;
+		const auto chat = peer->asChat();
+		const auto channel = peer->asChannel();
+		const auto defaultRestrictions = chat
+			? chat->defaultRestrictions()
+			: channel->defaultRestrictions();
+		const auto prepareFlags = FixDependentRestrictions(
+			defaultRestrictions
+			| ((channel && channel->isPublic())
+				? (Flag::ChangeInfo | Flag::PinMessages)
+				: Flags(0)));
+		const auto disabledMessages = [&] {
+			auto result = base::flat_map<Flags, QString>();
+			{
+				const auto disabled = FixDependentRestrictions(
+					defaultRestrictions
+					| ((channel && channel->isPublic())
+						? (Flag::ChangeInfo | Flag::PinMessages)
+						: Flags(0)));
+				result.emplace(
+					disabled,
+					tr::lng_rights_restriction_for_all(tr::now));
+			}
+			return result;
+		}();
 
-			Ui::AddSubsectionTitle(
-				inner,
-				rpl::conditional(
-					rpl::single(isSingle),
-					tr::lng_restrict_users_part_single_header(),
-					tr::lng_restrict_users_part_header(
-						lt_count,
-						rpl::single(participants.size()) | tr::to_count())));
-			auto [checkboxes, getRestrictions, changes] = CreateEditRestrictions(
-				box,
-				prepareFlags,
-				disabledMessages,
-				{ .isForum = peer->isForum() });
-			computeRestrictions = getRestrictions;
-			std::move(changes) | rpl::start_with_next([=] {
-				ban->setChecked(true);
-			}, ban->lifetime());
-			Ui::AddSkip(container);
-			Ui::AddDivider(container);
-			Ui::AddSkip(container);
-			container->add(std::move(checkboxes));
-		}
+		Ui::AddSubsectionTitle(
+			inner,
+			rpl::conditional(
+				rpl::single(isSingle),
+				tr::lng_restrict_users_part_single_header(),
+				tr::lng_restrict_users_part_header(
+					lt_count,
+					rpl::single(participants.size()) | tr::to_count())));
+		auto [checkboxes, getRestrictions, changes] = CreateEditRestrictions(
+			box,
+			prepareFlags,
+			disabledMessages,
+			{ .isForum = peer->isForum() });
+		std::move(changes) | rpl::start_with_next([=] {
+			ban->setChecked(true);
+		}, ban->lifetime());
+		Ui::AddSkip(container);
+		Ui::AddDivider(container);
+		Ui::AddSkip(container);
+		container->add(std::move(checkboxes));
 
 		// Handle confirmation manually.
 		confirms->events() | rpl::start_with_next([=] {
 			if (ban->checked() && controller->collectRequests) {
-				const auto kick = !wrap || !wrap->toggled();
-				const auto restrictions = computeRestrictions
-					? computeRestrictions()
-					: ChatRestrictions();
+				const auto kick = !wrap->toggled();
+				const auto restrictions = getRestrictions();
 				const auto request = [=](
 						not_null<PeerData*> peer,
 						not_null<ChannelData*> channel) {
@@ -542,15 +526,10 @@ void CreateModerateMessagesBox(
 							nullptr,
 							nullptr);
 					} else {
-						const auto block = channel->isMonoforum()
-							? channel->monoforumBroadcast()
-							: channel.get();
-						if (block) {
-							block->session().api().chatParticipants().kick(
-								block,
-								peer,
-								{ block->restrictions(), 0 });
-						}
+						channel->session().api().chatParticipants().kick(
+							channel,
+							peer,
+							{ channel->restrictions(), 0 });
 					}
 				};
 				sequentiallyRequest(request, controller->collectRequests());
@@ -581,7 +560,15 @@ bool CanCreateModerateMessagesBox(const HistoryItemsList &items) {
 		&& !options.participants.empty();
 }
 
-void SafeSubmitOnEnter(not_null<Ui::GenericBox*> box) {
+void DeleteChatBox(not_null<Ui::GenericBox*> box, not_null<PeerData*> peer) {
+	const auto container = box->verticalLayout();
+
+	const auto maybeUser = peer->asUser();
+	const auto isBot = maybeUser && maybeUser->isBot();
+
+	Ui::AddSkip(container);
+	Ui::AddSkip(container);
+
 	base::install_event_filter(box, [=](not_null<QEvent*> event) {
 		if (event->type() == QEvent::KeyPress) {
 			if (const auto k = static_cast<QKeyEvent*>(event.get())) {
@@ -595,31 +582,17 @@ void SafeSubmitOnEnter(not_null<Ui::GenericBox*> box) {
 						},
 						.confirmText = tr::lng_box_yes(),
 						.cancelText = tr::lng_box_no(),
-						}));
+					}));
 				}
 			}
 		}
 		return base::EventFilterResult::Continue;
 	});
-}
-
-void DeleteChatBox(not_null<Ui::GenericBox*> box, not_null<PeerData*> peer) {
-	const auto container = box->verticalLayout();
-
-	const auto userpicPeer = peer->userpicPaintingPeer();
-	const auto maybeUser = peer->asUser();
-	const auto isBot = maybeUser && maybeUser->isBot();
-
-	Ui::AddSkip(container);
-	Ui::AddSkip(container);
-
-	SafeSubmitOnEnter(box);
 
 	const auto userpic = Ui::CreateChild<Ui::UserpicButton>(
 		container,
-		userpicPeer,
-		st::mainMenuUserpic,
-		peer->userpicShape());
+		peer,
+		st::mainMenuUserpic);
 	userpic->showSavedMessagesOnSelf(true);
 	Ui::IconWithTitle(
 		container,
@@ -631,7 +604,7 @@ void DeleteChatBox(not_null<Ui::GenericBox*> box, not_null<PeerData*> peer) {
 				: maybeUser
 				? tr::lng_profile_delete_conversation() | Ui::Text::ToBold()
 				: rpl::single(
-					userpicPeer->name()
+					peer->name()
 				) | Ui::Text::ToBold() | rpl::type_erased(),
 			box->getDelegate()->style().title));
 
@@ -772,57 +745,6 @@ void DeleteChatBox(not_null<Ui::GenericBox*> box, not_null<PeerData*> peer) {
 		//	peer->session().api().deleteConversation(from, false);
 		//}
 		peer->session().api().deleteConversation(peer, revoke);
-		close();
-	}, st::attentionBoxButton);
-	box->addButton(tr::lng_cancel(), close);
-}
-
-void DeleteSublistBox(
-		not_null<Ui::GenericBox*> box,
-		not_null<Data::SavedSublist*> sublist) {
-	const auto container = box->verticalLayout();
-
-	const auto weak = base::make_weak(sublist.get());
-	const auto peer = sublist->sublistPeer();
-
-	Ui::AddSkip(container);
-	Ui::AddSkip(container);
-
-	SafeSubmitOnEnter(box);
-
-	const auto userpic = Ui::CreateChild<Ui::UserpicButton>(
-		container,
-		peer,
-		st::mainMenuUserpic);
-	Ui::IconWithTitle(
-		container,
-		userpic,
-		Ui::CreateChild<Ui::FlatLabel>(
-			container,
-			tr::lng_profile_delete_conversation() | Ui::Text::ToBold(),
-			box->getDelegate()->style().title));
-
-	Ui::AddSkip(container);
-	Ui::AddSkip(container);
-
-	box->addRow(
-		object_ptr<Ui::FlatLabel>(
-			container,
-			tr::lng_sure_delete_history(
-				lt_contact,
-				rpl::single(peer->name())),
-			st::boxLabel));
-
-	Ui::AddSkip(container);
-
-	const auto close = crl::guard(box, [=] { box->closeBox(); });
-	box->addButton(tr::lng_box_delete(), [=] {
-		const auto strong = weak.get();
-		const auto parentChat = strong ? strong->parentChat() : nullptr;
-		if (!parentChat) {
-			return;
-		}
-		peer->session().api().deleteSublistHistory(parentChat, peer);
 		close();
 	}, st::attentionBoxButton);
 	box->addButton(tr::lng_cancel(), close);

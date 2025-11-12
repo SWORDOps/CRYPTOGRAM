@@ -31,21 +31,21 @@ public:
 
 class LoadingText final : public LoadingElement {
 public:
-	LoadingText(const style::TextStyle &st);
+	LoadingText(const style::FlatLabel &st);
 
 	[[nodiscard]] int height() const override;
 	void paint(QPainter &p, int width) override;
 
 private:
-	const style::TextStyle &_st;
+	const style::FlatLabel &_st;
 
 };
 
-LoadingText::LoadingText(const style::TextStyle &st) : _st(st) {
+LoadingText::LoadingText(const style::FlatLabel &st) : _st(st) {
 }
 
 int LoadingText::height() const {
-	return _st.lineHeight;
+	return _st.style.lineHeight;
 }
 
 void LoadingText::paint(QPainter &p, int width) {
@@ -54,10 +54,10 @@ void LoadingText::paint(QPainter &p, int width) {
 	p.setPen(Qt::NoPen);
 
 	p.setBrush(st::windowBgOver);
-	const auto h = _st.font->ascent;
+	const auto h = _st.style.font->ascent;
 	p.drawRoundedRect(
 		0,
-		height() - h - (height() - _st.font->height),
+		height() - h - (height() - _st.style.font->height),
 		width,
 		h,
 		h / 2,
@@ -68,9 +68,6 @@ void LoadingText::paint(QPainter &p, int width) {
 		rpl::lifetime &lifetime,
 		const style::DialogRow &st) {
 	using namespace style;
-	const auto button = lifetime.make_state<OutlineButton>(OutlineButton{
-		.textBgOver = st::windowBgOver,
-	});
 	const auto item = lifetime.make_state<PeerListItem>(PeerListItem{
 		.height = st.height,
 		.photoPosition = QPoint(st.padding.left(), st.padding.top()),
@@ -78,7 +75,6 @@ void LoadingText::paint(QPainter &p, int width) {
 		.nameStyle = st::semiboldTextStyle,
 		.statusPosition = QPoint(st.textLeft, st.textTop),
 		.photoSize = st.photoSize,
-		.button = { *button },
 	});
 	return *item;
 }
@@ -102,7 +98,7 @@ public:
 			- (style.lineHeight - style.font->height);
 
 		p.setPen(Qt::NoPen);
-		p.setBrush(_st.button.textBgOver);
+		p.setBrush(st::windowBgOver);
 
 		p.drawEllipse(
 			_st.photoPosition.x(),
@@ -146,7 +142,6 @@ template <typename Element, typename ...ElementArgs>
 object_ptr<Ui::RpWidget> CreateLoadingElementWidget(
 		not_null<Ui::RpWidget*> parent,
 		int lines,
-		QColor bg,
 		rpl::producer<bool> rtl,
 		ElementArgs &&...args) {
 	auto widget = object_ptr<Ui::RpWidget>(parent);
@@ -208,7 +203,7 @@ object_ptr<Ui::RpWidget> CreateLoadingElementWidget(
 	) | rpl::start_with_next([=](int width) {
 		state->glare.width = width;
 		state->glare.validate(
-			bg,
+			st::dialogsBg->c,
 			[=] { raw->update(); },
 			kTimeout,
 			kDuration);
@@ -224,13 +219,12 @@ object_ptr<Ui::RpWidget> CreateLoadingElementWidget(
 
 object_ptr<Ui::RpWidget> CreateLoadingTextWidget(
 		not_null<Ui::RpWidget*> parent,
-		const style::TextStyle &st,
+		const style::FlatLabel &st,
 		int lines,
 		rpl::producer<bool> rtl) {
 	return CreateLoadingElementWidget<LoadingText>(
 		parent,
 		lines,
-		st::dialogsBg->c,
 		std::move(rtl),
 		st);
 }
@@ -238,12 +232,10 @@ object_ptr<Ui::RpWidget> CreateLoadingTextWidget(
 object_ptr<Ui::RpWidget> CreateLoadingPeerListItemWidget(
 		not_null<Ui::RpWidget*> parent,
 		const style::PeerListItem &st,
-		int lines,
-		std::optional<QColor> bgOverride) {
+		int lines) {
 	return CreateLoadingElementWidget<LoadingPeerListItem>(
 		parent,
 		lines,
-		bgOverride.value_or(st::dialogsBg->c),
 		rpl::single(false),
 		st);
 }
@@ -255,7 +247,6 @@ object_ptr<Ui::RpWidget> CreateLoadingDialogRowWidget(
 	return CreateLoadingElementWidget<LoadingPeerListItem>(
 		parent,
 		lines,
-		st::dialogsBg->c,
 		rpl::single(false),
 		st);
 }

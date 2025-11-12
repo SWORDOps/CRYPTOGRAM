@@ -15,7 +15,6 @@ struct MessageSendingAnimationFrom {
 		Sticker,
 		Gif,
 		Emoji,
-		Text,
 	};
 	Type type = Type::None;
 	std::optional<MsgId> localId;

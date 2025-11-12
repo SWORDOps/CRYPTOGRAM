@@ -9,7 +9,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "api/api_text_entities.h"
 #include "base/qt/qt_key_modifiers.h"
-#include "base/options.h"
 #include "lang/lang_keys.h"
 #include "ui/effects/ripple_animation.h"
 #include "ui/effects/spoiler_mess.h"
@@ -21,7 +20,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/chat/chat_style.h"
 #include "ui/chat/chat_theme.h"
 #include "ui/painter.h"
-#include "ui/rect.h"
 #include "ui/power_saving.h"
 #include "history/history.h"
 #include "history/history_item.h"
@@ -48,14 +46,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_file_click_handler.h"
 #include "data/data_session.h"
 #include "data/data_stories.h"
-#include "data/data_todo_list.h"
 #include "main/main_session.h"
 #include "window/window_session_controller.h"
 #include "api/api_bot.h"
-#include "support/support_helper.h"
 #include "styles/style_boxes.h"
 #include "styles/style_chat.h"
-#include "styles/style_credits.h"
 #include "styles/style_dialogs.h" // dialogsMiniReplyStory.
 #include "styles/style_settings.h"
 #include "styles/style_widgets.h"
@@ -66,51 +61,7 @@ namespace {
 
 const auto kPsaForwardedPrefix = "cloud_lng_forwarded_psa_";
 
-base::options::toggle FastButtonsModeOption({
-	.id = kOptionFastButtonsMode,
-	.name = "Fast buttons mode",
-	.description = "Trigger inline keyboard buttons by 1-9 keyboard keys.",
-});
-
-[[nodiscard]] TextWithEntities ComposeTodoTasksList(
-		int fullCount,
-		const std::vector<TextWithEntities> &names) {
-	const auto count = int(names.size());
-	if (!count) {
-		return tr::lng_action_todo_tasks_fallback(
-			tr::now,
-			lt_count,
-			fullCount,
-			Ui::Text::WithEntities);
-	} else if (count == 1) {
-		return names.front();
-	}
-	auto full = names.front();
-	for (auto i = 1; i != count - 1; ++i) {
-		full = tr::lng_action_todo_tasks_and_one(
-			tr::now,
-			lt_tasks,
-			full,
-			lt_task,
-			names[i],
-			Ui::Text::WithEntities);
-	}
-	return tr::lng_action_todo_tasks_and_last(
-		tr::now,
-		lt_tasks,
-		full,
-		lt_task,
-		names.back(),
-		Ui::Text::WithEntities);
-}
-
 } // namespace
-
-const char kOptionFastButtonsMode[] = "fast-buttons-mode";
-
-bool FastButtonsMode() {
-	return FastButtonsModeOption.value();
-}
 
 void HistoryMessageVia::create(
 		not_null<Data::Session*> owner,
@@ -230,7 +181,7 @@ bool HiddenSenderInfo::paintCustomUserpic(
 		image.isNull() ? nullptr : &image,
 		image.isNull() ? &emptyUserpic : nullptr,
 		size * style::DevicePixelRatio(),
-		Ui::PeerUserpicShape::Circle);
+		false);
 	p.drawImage(QRect(x, y, size, size), view.cached);
 	return valid;
 }
@@ -239,9 +190,7 @@ void HistoryMessageForwarded::create(
 		const HistoryMessageVia *via,
 		not_null<const HistoryItem*> item) const {
 	auto phrase = TextWithEntities();
-	auto context = Core::TextContext({
-		.session = &item->history()->session(),
-	});
+	auto context = Core::MarkedTextContext{};
 	const auto fromChannel = originalSender
 		&& originalSender->isChannel()
 		&& !originalSender->isMegagroup();
@@ -251,7 +200,8 @@ void HistoryMessageForwarded::create(
 			: originalHiddenSenderInfo->name)
 	};
 	if (const auto copy = originalSender) {
-		context.repaint = [=] {
+		context.session = &copy->owner().session();
+		context.customEmojiRepaint = [=] {
 			// It is important to capture here originalSender by value,
 			// not capture the HistoryMessageForwarded* and read the
 			// originalSender field, because the components themselves
@@ -260,7 +210,7 @@ void HistoryMessageForwarded::create(
 			copy->owner().requestItemRepaint(item);
 		};
 		phrase = Ui::Text::SingleCustomEmoji(
-			copy->owner().customEmojiManager().peerUserpicEmojiData(
+			context.session->data().customEmojiManager().peerUserpicEmojiData(
 				copy,
 				st::fwdTextUserpicPadding));
 	}
@@ -387,7 +337,6 @@ ReplyFields ReplyFieldsFromMTP(
 				= data.vreply_to_top_id().value_or(result.messageId.bare);
 			result.topicPost = data.is_forum_topic() ? 1 : 0;
 		}
-		result.todoItemId = data.vtodo_item_id().value_or_empty();
 		if (const auto header = data.vreply_from()) {
 			const auto &data = header->data();
 			result.externalPostAuthor
@@ -452,13 +401,6 @@ FullReplyTo ReplyToFromMTP(
 			};
 		}
 		return FullReplyTo();
-	}, [&](const MTPDinputReplyToMonoForum &data) {
-		const auto parsed = Data::PeerFromInputMTP(
-			&history->owner(),
-			data.vmonoforum_peer_id());
-		return FullReplyTo{
-			.monoforumPeerId = parsed ? parsed->id : PeerId(),
-		};
 	});
 }
 
@@ -755,6 +697,11 @@ ReplyKeyboard::ReplyKeyboard(
 		const auto context = _item->fullId();
 		const auto rowCount = int(markup->data.rows.size());
 		_rows.reserve(rowCount);
+		const auto buttonEmoji = Ui::Text::SingleCustomEmoji(
+			owner->customEmojiManager().registerInternalEmoji(
+				st::settingsPremiumIconStar,
+				QMargins(0, -st::moderateBoxExpandInnerSkip, 0, 0),
+				true));
 		for (auto i = 0; i != rowCount; ++i) {
 			const auto &row = markup->data.rows[i];
 			const auto rowSize = int(row.size());
@@ -763,34 +710,24 @@ ReplyKeyboard::ReplyKeyboard(
 			for (auto j = 0; j != rowSize; ++j) {
 				auto button = Button();
 				using Type = HistoryMessageMarkupButton::Type;
+				const auto isBuy = (row[j].type == Type::Buy);
 				static const auto RegExp = QRegularExpression("\\b"
 					+ Ui::kCreditsCurrency
 					+ "\\b");
-				const auto type = row[j].type;
-				const auto text = (type == Type::Buy)
+				const auto text = isBuy
 					? base::duplicate(row[j].text).replace(
 						RegExp,
 						QChar(0x2B50))
 					: row[j].text;
-				const auto withEmoji = [&](const style::IconEmoji &icon) {
-					return Ui::Text::IconEmoji(&icon).append(text);
-				};
 				const auto textWithEntities = [&] {
-					if (type == Type::SuggestAccept) {
-						return withEmoji(st::chatSuggestAcceptIcon);
-					} else if (type == Type::SuggestDecline) {
-						return withEmoji(st::chatSuggestDeclineIcon);
-					} else if (type == Type::SuggestChange) {
-						return withEmoji(st::chatSuggestChangeIcon);
-					} else if (type != Type::Buy) {
+					if (!isBuy) {
 						return TextWithEntities();
 					}
 					auto result = TextWithEntities();
 					auto firstPart = true;
 					for (const auto &part : text.split(QChar(0x2B50))) {
 						if (!firstPart) {
-							result.append(Ui::Text::IconEmoji(
-								&st::starIconEmojiLarge));
+							result.append(buttonEmoji);
 						}
 						result.append(part);
 						firstPart = false;
@@ -799,7 +736,7 @@ ReplyKeyboard::ReplyKeyboard(
 						? TextWithEntities()
 						: result;
 				}();
-				button.type = type;
+				button.type = row.at(j).type;
 				button.link = std::make_shared<ReplyMarkupClickHandler>(
 					owner,
 					i,
@@ -809,7 +746,11 @@ ReplyKeyboard::ReplyKeyboard(
 					button.text.setMarkedText(
 						_st->textStyle(),
 						TextUtilities::SingleLine(textWithEntities),
-						kMarkupTextOptions);
+						kMarkupTextOptions,
+						Core::MarkedTextContext{
+							.session = &item->history()->owner().session(),
+							.customEmojiRepaint = [=] { _st->repaint(item); },
+						});
 				} else {
 					button.text.setText(
 						_st->textStyle(),
@@ -945,17 +886,12 @@ void ReplyKeyboard::paint(
 	Assert(_width > 0);
 
 	_st->startPaint(p, st);
-	auto number = hasFastButtonMode() ? 1 : 0;
 	for (auto y = 0, rowsCount = int(_rows.size()); y != rowsCount; ++y) {
 		for (auto x = 0, count = int(_rows[y].size()); x != count; ++x) {
-			const auto guard = gsl::finally([&] { if (number) ++number; });
 			const auto &button = _rows[y][x];
 			const auto rect = button.rect;
-			if (rect.y() >= clip.y() + clip.height()) {
-				return;
-			} else if (rect.y() + rect.height() < clip.y()) {
-				continue;
-			}
+			if (rect.y() >= clip.y() + clip.height()) return;
+			if (rect.y() + rect.height() < clip.y()) continue;
 
 			// just ignore the buttons that didn't layout well
 			if (rect.x() + rect.width() > _width) break;
@@ -974,25 +910,8 @@ void ReplyKeyboard::paint(
 				? Corner::Large
 				: Corner::Small;
 			_st->paintButton(p, st, outerWidth, button, buttonRounding);
-
-			if (number) {
-				p.setFont(st::dialogsUnreadFont);
-				p.setPen(st->msgServiceFg());
-				p.drawText(
-					rect.x() + st::msgBotKbIconPadding,
-					rect.y() + st::dialogsUnreadFont->ascent,
-					QString::number(number));
-			}
 		}
 	}
-}
-
-bool ReplyKeyboard::hasFastButtonMode() const {
-	return FastButtonsMode()
-		&& _item->inlineReplyKeyboard()
-		&& (_item == _item->history()->lastMessage())
-		&& _item->history()->session().fastButtonsBots().enabled(
-			_item->history()->peer);
 }
 
 ClickHandlerPtr ReplyKeyboard::getLink(QPoint point) const {
@@ -1009,19 +928,6 @@ ClickHandlerPtr ReplyKeyboard::getLink(QPoint point) const {
 				_savedCoords = point;
 				return button.link;
 			}
-		}
-	}
-	return ClickHandlerPtr();
-}
-
-ClickHandlerPtr ReplyKeyboard::getLinkByIndex(int index) const {
-	auto number = 1;
-	for (const auto &row : _rows) {
-		for (const auto &button : row) {
-			if (number == index + 1) {
-				return button.link;
-			}
-			++number;
 		}
 	}
 	return ClickHandlerPtr();
@@ -1181,22 +1087,7 @@ void ReplyKeyboard::Style::paintButton(
 		tx += (tw - st::botKbStyle.font->elidew) / 2;
 		tw = st::botKbStyle.font->elidew;
 	}
-	button.text.drawElided(
-		p,
-		tx,
-		rect.y() + _st->textTop + ((rect.height() - _st->height) / 2),
-		tw,
-		1,
-		style::al_top);
-	if (button.type == HistoryMessageMarkupButton::Type::SimpleWebView) {
-		const auto &icon = st::markupWebview;
-		st::markupWebview.paint(
-			p,
-			rect::right(rect) - icon.width() - _st->padding / 2,
-			rect.y() + _st->padding / 2,
-			rect.width(),
-			p.pen().color());
-	}
+	button.text.drawElided(p, tx, rect.y() + _st->textTop + ((rect.height() - _st->height) / 2), tw, 1, style::al_top);
 }
 
 void HistoryMessageReplyMarkup::createForwarded(
@@ -1222,95 +1113,6 @@ bool HistoryMessageReplyMarkup::hiddenBy(Data::Media *media) const {
 		}
 	}
 	return false;
-}
-
-void HistoryMessageReplyMarkup::updateSuggestControls(
-		SuggestionActions actions) {
-	if (actions == SuggestionActions::AcceptAndDecline) {
-		data.flags |= ReplyMarkupFlag::SuggestionAccept;
-	} else {
-		data.flags &= ~ReplyMarkupFlag::SuggestionAccept;
-	}
-	if (actions == SuggestionActions::None) {
-		data.flags &= ~ReplyMarkupFlag::SuggestionDecline;
-	} else {
-		data.flags |= ReplyMarkupFlag::Inline
-			| ReplyMarkupFlag::SuggestionDecline;
-	}
-	using Type = HistoryMessageMarkupButton::Type;
-	const auto has = [&](Type type) {
-		return !data.rows.empty()
-			&& ranges::contains(
-				data.rows.back(),
-				type,
-				&HistoryMessageMarkupButton::type);
-	};
-	if (actions == SuggestionActions::AcceptAndDecline) {
-		//     ... rows ...
-		// [decline] | [accept]
-		//   [suggestchanges]
-		if (has(Type::SuggestChange)) {
-			// Nothing changed.
-		} else {
-			if (has(Type::SuggestDecline)) {
-				data.rows.pop_back();
-			}
-			data.rows.push_back({
-				{
-					Type::SuggestDecline,
-					tr::lng_suggest_action_decline(tr::now),
-				},
-				{
-					Type::SuggestAccept,
-					tr::lng_suggest_action_accept(tr::now),
-				},
-			});
-			data.rows.push_back({ {
-				Type::SuggestChange,
-				tr::lng_suggest_action_change(tr::now),
-			} });
-			data.flags |= ReplyMarkupFlag::SuggestionAccept
-				| ReplyMarkupFlag::SuggestionDecline;
-		}
-		if (data.rows.size() > 2) {
-			data.flags |= ReplyMarkupFlag::SuggestionSeparator;
-		} else {
-			data.flags &= ~ReplyMarkupFlag::SuggestionSeparator;
-		}
-	} else {
-		while (!data.rows.empty()) {
-			if (has(Type::SuggestChange) || has(Type::SuggestAccept)) {
-				data.rows.pop_back();
-			} else if (has(Type::SuggestDecline)
-				&& actions == SuggestionActions::None) {
-				data.rows.pop_back();
-			} else {
-				break;
-			}
-		}
-		data.flags &= ~ReplyMarkupFlag::SuggestionAccept;
-		if (actions == SuggestionActions::None) {
-			data.flags &= ~ReplyMarkupFlag::SuggestionDecline;
-			data.flags &= ~ReplyMarkupFlag::SuggestionSeparator;
-		} else {
-			if (!has(Type::SuggestDecline)) {
-				// ... rows ...
-				//  [decline]
-				data.rows.push_back({ {
-					Type::SuggestDecline,
-					tr::lng_suggest_action_decline(tr::now),
-				} });
-				data.flags |= ReplyMarkupFlag::SuggestionDecline;
-			}
-			if (data.rows.size() > 1) {
-				data.flags |= ReplyMarkupFlag::SuggestionSeparator;
-			} else {
-				data.flags &= ~ReplyMarkupFlag::SuggestionSeparator;
-			}
-		}
-	}
-
-	inlineKeyboard = nullptr;
 }
 
 HistoryMessageLogEntryOriginal::HistoryMessageLogEntryOriginal() = default;
@@ -1343,7 +1145,11 @@ MessageFactcheck FromMTP(
 	}
 	const auto &data = factcheck->data();
 	if (const auto text = data.vtext()) {
-		result.text = Api::ParseTextWithEntities(session, *text);
+		const auto &data = text->data();
+		result.text = {
+			qs(data.vtext()),
+			Api::EntitiesFromMTP(session, data.ventities().v),
+		};
 	}
 	if (const auto country = data.vcountry()) {
 		result.country = qs(country->v);
@@ -1351,38 +1157,6 @@ MessageFactcheck FromMTP(
 	result.hash = data.vhash().v;
 	result.needCheck = data.is_need_check();
 	return result;
-}
-
-TextWithEntities ComposeTodoTasksList(
-		HistoryItem *itemWithList,
-		const std::vector<int> &ids) {
-	const auto media = itemWithList ? itemWithList->media() : nullptr;
-	const auto list = media ? media->todolist() : nullptr;
-	auto names = std::vector<TextWithEntities>();
-	if (list) {
-		names.reserve(ids.size());
-		for (const auto &id : ids) {
-			const auto i = ranges::find(list->items, id, &TodoListItem::id);
-			if (i == end(list->items)) {
-				names.clear();
-				break;
-			}
-			names.push_back(
-				TextWithEntities().append('"').append(i->text).append('"'));
-		}
-	}
-	return ComposeTodoTasksList(ids.size(), names);
-}
-
-TextWithEntities ComposeTodoTasksList(
-		not_null<HistoryServiceTodoAppendTasks*> append) {
-	auto names = std::vector<TextWithEntities>();
-	names.reserve(append->list.size());
-	for (const auto &task : append->list) {
-		names.push_back(
-			TextWithEntities().append('"').append(task.text).append('"'));
-	}
-	return ComposeTodoTasksList(names.size(), names);
 }
 
 HistoryDocumentCaptioned::HistoryDocumentCaptioned()

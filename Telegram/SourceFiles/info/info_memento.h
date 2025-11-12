@@ -23,7 +23,6 @@ enum class SharedMediaType : signed char;
 
 namespace Data {
 class ForumTopic;
-class SavedSublist;
 struct ReactionId;
 } // namespace Data
 
@@ -50,8 +49,6 @@ public:
 	Memento(not_null<PeerData*> peer, Section section);
 	explicit Memento(not_null<Data::ForumTopic*> topic);
 	Memento(not_null<Data::ForumTopic*> topic, Section section);
-	explicit Memento(not_null<Data::SavedSublist*> sublist);
-	Memento(not_null<Data::SavedSublist*> sublist, Section section);
 	Memento(Settings::Tag settings, Section section);
 	Memento(not_null<PollData*> poll, FullMsgId contextId);
 	Memento(
@@ -98,9 +95,6 @@ private:
 		not_null<Data::ForumTopic*> topic,
 		Section section);
 	static std::vector<std::shared_ptr<ContentMemento>> DefaultStack(
-		not_null<Data::SavedSublist*> sublist,
-		Section section);
-	static std::vector<std::shared_ptr<ContentMemento>> DefaultStack(
 		Settings::Tag settings,
 		Section section);
 	static std::vector<std::shared_ptr<ContentMemento>> DefaultStack(
@@ -116,9 +110,6 @@ private:
 		Section section);
 	static std::shared_ptr<ContentMemento> DefaultContent(
 		not_null<Data::ForumTopic*> topic,
-		Section section);
-	static std::shared_ptr<ContentMemento> DefaultContent(
-		not_null<Data::SavedSublist*> sublist,
 		Section section);
 
 	std::vector<std::shared_ptr<ContentMemento>> _stack;

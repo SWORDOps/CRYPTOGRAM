@@ -152,7 +152,6 @@ rpl::producer<SparseIdsMergedSlice> HistoryMergedViewer(
 	auto createSimpleViewer = [=](
 			PeerId peerId,
 			MsgId topicRootId,
-			PeerId monoforumPeerId,
 			SparseIdsSlice::Key simpleKey,
 			int limitBefore,
 			int limitAfter) {
@@ -162,10 +161,11 @@ rpl::producer<SparseIdsMergedSlice> HistoryMergedViewer(
 		return HistoryViewer(chosen, simpleKey, limitBefore, limitAfter);
 	};
 	const auto peerId = history->peer->id;
+	const auto topicRootId = MsgId();
 	const auto migratedPeerId = migrateFrom ? migrateFrom->id : PeerId(0);
 	using Key = SparseIdsMergedSlice::Key;
 	return SparseIdsMergedSlice::CreateViewer(
-		Key(peerId, MsgId(), PeerId(), migratedPeerId, universalAroundId),
+		Key(peerId, topicRootId, migratedPeerId, universalAroundId),
 		limitBefore,
 		limitAfter,
 		std::move(createSimpleViewer));

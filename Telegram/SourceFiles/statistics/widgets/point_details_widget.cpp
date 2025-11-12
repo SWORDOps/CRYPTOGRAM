@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "statistics/widgets/point_details_widget.h"
 
+#include "data/data_channel_earn.h" // Data::kEarnMultiplier.
 #include "info/channel_statistics/earn/earn_format.h"
 #include "lang/lang_keys.h"
 #include "statistics/statistics_common.h"
@@ -178,7 +179,7 @@ PointDetailsWidget::PointDetailsWidget(
 	const auto maxValueTextWidth = [&] {
 		if (hasUsdLine) {
 			auto maxValueWidth = 0;
-			const auto multiplier = float64(kOneStarInNano);
+			const auto multiplier = float64(Data::kEarnMultiplier);
 			for (const auto &value : _chartData.lines.front().y) {
 				const auto valueText = Ui::Text::String(
 					_textStyle,
@@ -186,7 +187,7 @@ PointDetailsWidget::PointDetailsWidget(
 				const auto usdText = Ui::Text::String(
 					_textStyle,
 					Info::ChannelEarn::ToUsd(
-						value / multiplier,
+						value,
 						_chartData.currencyRate,
 						0));
 				const auto width = std::max(
@@ -213,8 +214,6 @@ PointDetailsWidget::PointDetailsWidget(
 
 	const auto calculatedWidth = [&]{
 		auto maxNameTextWidth = 0;
-		const auto isCredits
-			= _chartData.currency == Data::StatisticalCurrency::Credits;
 		for (const auto &dataLine : _chartData.lines) {
 			const auto maxNameText = Ui::Text::String(
 				_textStyle,
@@ -223,12 +222,10 @@ PointDetailsWidget::PointDetailsWidget(
 				maxNameText.maxWidth(),
 				maxNameTextWidth);
 			if (hasUsdLine) {
-				const auto text = isCredits
-					? tr::lng_channel_earn_chart_overriden_detail_credits
-					: tr::lng_channel_earn_chart_overriden_detail_currency;
 				const auto currency = Ui::Text::String(
 					_textStyle,
-					text(tr::now));
+					tr::lng_channel_earn_chart_overriden_detail_currency(
+						tr::now));
 				const auto usd = Ui::Text::String(
 					_textStyle,
 					tr::lng_channel_earn_chart_overriden_detail_usd(
@@ -303,7 +300,6 @@ void PointDetailsWidget::setXIndex(int xIndex) {
 	if (xIndex < 0) {
 		return;
 	}
-	Assert(xIndex < _chartData.x.size());
 	{
 		constexpr auto kOneDay = 3600 * 24 * 1000;
 		const auto timestamp = _chartData.x[xIndex];
@@ -325,11 +321,9 @@ void PointDetailsWidget::setXIndex(int xIndex) {
 			nullptr,
 			{ float64(xIndex), float64(xIndex) }).parts
 		: std::vector<PiePartData::Part>();
-	const auto isCredits
-		= (_chartData.currency == Data::StatisticalCurrency::Credits);
+	const auto multiplier = float64(Data::kEarnMultiplier);
 	for (auto i = 0; i < _chartData.lines.size(); i++) {
 		const auto &dataLine = _chartData.lines[i];
-		Assert(xIndex < dataLine.y.size());
 		auto textLine = Line();
 		textLine.id = dataLine.id;
 		if (_maxPercentageWidth) {
@@ -347,27 +341,21 @@ void PointDetailsWidget::setXIndex(int xIndex) {
 			copy.valueColor = QColor(dataLine.color);
 			copy.name.setText(
 				_textStyle,
-				(isCredits
-					? tr::lng_channel_earn_chart_overriden_detail_credits
-					: tr::lng_channel_earn_chart_overriden_detail_currency)(
-						tr::now));
-			const auto provided = dataLine.y[xIndex];
-			const auto value = isCredits
-				? CreditsAmount(provided, CreditsType::Stars)
-				: CreditsAmount(
-					provided / kOneStarInNano,
-					provided % kOneStarInNano,
-					CreditsType::Ton);
+				tr::lng_channel_earn_chart_overriden_detail_currency(
+					tr::now));
 			copy.value.setText(
 				_textStyle,
-				Lang::FormatCreditsAmountDecimal(value));
+				Lang::FormatExactCountDecimal(
+					dataLine.y[xIndex] / multiplier));
 			_lines.push_back(std::move(copy));
 			textLine.name.setText(
 				_textStyle,
 				tr::lng_channel_earn_chart_overriden_detail_usd(tr::now));
 			textLine.value.setText(
 				_textStyle,
-				Info::ChannelEarn::ToUsd(value, _chartData.currencyRate, 0));
+				Info::ChannelEarn::ToUsd(
+					dataLine.y[xIndex],
+					_chartData.currencyRate, 0));
 		}
 		_lines.push_back(std::move(textLine));
 	}
@@ -476,7 +464,7 @@ void PointDetailsWidget::paintEvent(QPaintEvent *e) {
 				p.drawImage(
 					valueContext.position.x()
 						- _valueIcon.width() / style::DevicePixelRatio(),
-					lineY + st::lineWidth,
+					lineY,
 					_valueIcon);
 			}
 			const auto nameContext = Ui::Text::PaintContext{

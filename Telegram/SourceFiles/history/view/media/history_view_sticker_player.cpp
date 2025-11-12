@@ -21,10 +21,6 @@ LottiePlayer::LottiePlayer(std::unique_ptr<Lottie::SinglePlayer> lottie)
 }
 
 void LottiePlayer::setRepaintCallback(Fn<void()> callback) {
-	if (!callback) {
-		_repaintLifetime.destroy();
-		return;
-	}
 	_repaintLifetime = _lottie->updates(
 	) | rpl::start_with_next([=](Lottie::Update update) {
 		v::match(update.data, [&](const Lottie::Information &) {
@@ -86,9 +82,7 @@ void WebmPlayer::clipCallback(ClipNotification notification) {
 	case ClipNotification::Repaint: break;
 	}
 
-	if (const auto onstack = _repaintCallback) {
-		onstack();
-	}
+	_repaintCallback();
 }
 
 void WebmPlayer::setRepaintCallback(Fn<void()> callback) {
@@ -139,9 +133,7 @@ StaticStickerPlayer::StaticStickerPlayer(
 }
 
 void StaticStickerPlayer::setRepaintCallback(Fn<void()> callback) {
-	if (callback) {
-		callback();
-	}
+	callback();
 }
 
 bool StaticStickerPlayer::ready() {

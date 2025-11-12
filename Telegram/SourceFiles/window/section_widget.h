@@ -194,9 +194,6 @@ public:
 		return nullptr;
 	}
 
-	virtual void validateSubsectionTabs() {
-	}
-
 	static void PaintBackground(
 		not_null<SessionController*> controller,
 		not_null<Ui::ChatTheme*> theme,
@@ -207,14 +204,12 @@ public:
 		not_null<QWidget*> widget,
 		int fillHeight,
 		int fromy,
-		QRect clip,
-		bool paused = false);
+		QRect clip);
 	static void PaintBackground(
 		QPainter &p,
 		not_null<Ui::ChatTheme*> theme,
 		QSize fill,
-		QRect clip,
-		bool paused = false);
+		QRect clip);
 
 protected:
 	void paintEvent(QPaintEvent *e) override;

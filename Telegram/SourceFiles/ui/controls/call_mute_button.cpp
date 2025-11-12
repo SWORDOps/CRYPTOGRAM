@@ -75,8 +75,7 @@ constexpr auto kOverlapProgressRadialHide = 1.2;
 constexpr auto kRadialFinishArcShift = 1200;
 
 [[nodiscard]] CallMuteButtonType TypeForIcon(CallMuteButtonType type) {
-	return (type == CallMuteButtonType::Connecting
-		|| type == CallMuteButtonType::ConferenceForceMuted)
+	return (type == CallMuteButtonType::Connecting)
 		? CallMuteButtonType::Muted
 		: (type == CallMuteButtonType::RaisedHand)
 		? CallMuteButtonType::ForceMuted
@@ -158,7 +157,6 @@ auto Colors() {
 	const auto forceMutedTypes = {
 		CallMuteButtonType::ForceMuted,
 		CallMuteButtonType::RaisedHand,
-		CallMuteButtonType::ConferenceForceMuted,
 		CallMuteButtonType::ScheduledCanStart,
 		CallMuteButtonType::ScheduledNotify,
 		CallMuteButtonType::ScheduledSilent,
@@ -1042,7 +1040,6 @@ CallMuteButton::HandleMouseState CallMuteButton::HandleMouseStateFromType(
 	case CallMuteButtonType::ScheduledCanStart:
 	case CallMuteButtonType::ScheduledNotify:
 	case CallMuteButtonType::ScheduledSilent:
-	case CallMuteButtonType::ConferenceForceMuted:
 	case CallMuteButtonType::ForceMuted:
 	case CallMuteButtonType::RaisedHand:
 		return HandleMouseState::Enabled;

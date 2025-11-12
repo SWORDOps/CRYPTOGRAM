@@ -32,7 +32,6 @@ struct ListItemSelectionData {
 	bool canForward = false;
 	bool canToggleStoryPin = false;
 	bool canUnpinStory = false;
-	bool storyInProfile = false;
 
 	friend inline bool operator==(
 		ListItemSelectionData,
@@ -91,8 +90,7 @@ using UniversalMsgId = MsgId;
 bool ChangeItemSelection(
 	ListSelectedMap &selected,
 	not_null<const HistoryItem*> item,
-	ListItemSelectionData selectionData,
-	int limit = 0);
+	ListItemSelectionData selectionData);
 
 class ListSectionDelegate {
 public:

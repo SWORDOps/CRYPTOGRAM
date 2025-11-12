@@ -42,7 +42,6 @@ public:
 		not_null<Window::SessionController*> controller,
 		PollData::Flags chosen,
 		PollData::Flags disabled,
-		rpl::producer<int> starsRequired,
 		Api::SendType sendType,
 		SendMenu::Details sendMenuDetails);
 
@@ -77,7 +76,6 @@ private:
 	const PollData::Flags _disabled = PollData::Flags();
 	const Api::SendType _sendType = Api::SendType();
 	const Fn<SendMenu::Details()> _sendMenuDetails;
-	rpl::variable<int> _starsRequired;
 	base::unique_qptr<ChatHelpers::TabbedPanel> _emojiPanel;
 	Fn<void()> _setInnerFocus;
 	Fn<rpl::producer<bool>()> _dataIsValidValue;

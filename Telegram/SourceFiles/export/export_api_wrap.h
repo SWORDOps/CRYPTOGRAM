@@ -40,9 +40,7 @@ struct Settings;
 
 class ApiWrap {
 public:
-	ApiWrap(
-		base::weak_qptr<MTP::Instance> weak,
-		Fn<void(FnMut<void()>)> runner);
+	ApiWrap(QPointer<MTP::Instance> weak, Fn<void(FnMut<void()>)> runner);
 
 	rpl::producer<MTP::Error> errors() const;
 	rpl::producer<Output::Result> ioErrors() const;

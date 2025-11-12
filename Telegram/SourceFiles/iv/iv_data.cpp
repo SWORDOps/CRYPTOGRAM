@@ -102,11 +102,7 @@ QString SiteNameFromUrl(const QString &url) {
 }
 
 bool ShowButton() {
-	static const auto Supported = [&] {
-		const auto availability = Webview::Availability();
-		return availability.customSchemeRequests
-			&& availability.customRangeRequests;
-	}();
+	static const auto Supported = Webview::NavigateToDataSupported();
 	return Supported;
 }
 

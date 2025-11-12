@@ -63,11 +63,11 @@ public:
 	}
 
 	template <typename BoxType>
-	base::weak_qptr<BoxType> show(
+	QPointer<BoxType> show(
 			object_ptr<BoxType> box,
 			Ui::LayerOptions options = Ui::LayerOption::KeepOther,
 			anim::type animated = anim::type::normal) {
-		auto result = base::weak_qptr<BoxType>(box.data());
+		auto result = QPointer<BoxType>(box.data());
 		showBox(std::move(box), options, animated);
 		return result;
 	}

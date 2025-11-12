@@ -11,7 +11,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/admin_log/history_admin_log_filter.h"
 #include "core/ui_integration.h"
 #include "data/stickers/data_custom_emoji.h"
-#include "data/business/data_business_chatbots.h"
 #include "data/data_channel.h"
 #include "data/data_chat.h"
 #include "data/data_session.h"
@@ -32,12 +31,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "info/profile/info_profile_values.h"
 #include "boxes/peers/edit_participants_box.h"
 #include "boxes/peers/edit_peer_info_box.h"
-#include "boxes/edit_privacy_box.h"
 #include "settings/settings_power_saving.h"
 #include "window/window_session_controller.h"
 #include "window/window_controller.h"
 #include "main/main_session.h"
-#include "mtproto/mtproto_config.h" // megagroupSizeMax
 #include "apiwrap.h"
 #include "settings/settings_common.h"
 #include "styles/style_layers.h"
@@ -50,10 +47,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace {
 
-constexpr auto kSlowmodeValues = 8;
+constexpr auto kSlowmodeValues = 7;
 constexpr auto kBoostsUnrestrictValues = 5;
+constexpr auto kSuggestGigagroupThreshold = 199000;
 constexpr auto kForceDisableTooltipDuration = 3 * crl::time(1000);
-constexpr auto kDefaultChargeStars = 10;
 
 [[nodiscard]] auto Dependencies(PowerSaving::Flags)
 -> std::vector<std::pair<PowerSaving::Flag, PowerSaving::Flag>> {
@@ -62,11 +59,6 @@ constexpr auto kDefaultChargeStars = 10;
 
 [[nodiscard]] auto Dependencies(AdminLog::FilterValue::Flags) {
 	using Flag = AdminLog::FilterValue::Flag;
-	return std::vector<std::pair<Flag, Flag>>{};
-}
-
-[[nodiscard]] auto Dependencies(Data::ChatbotsPermissions) {
-	using Flag = Data::ChatbotsPermission;
 	return std::vector<std::pair<Flag, Flag>>{};
 }
 
@@ -164,15 +156,11 @@ constexpr auto kDefaultChargeStars = 10;
 	auto stories = std::vector<AdminRightLabel>{
 		{ Flag::PostStories, tr::lng_rights_channel_post_stories(tr::now) },
 		{ Flag::EditStories, tr::lng_rights_channel_edit_stories(tr::now) },
-		{
-			Flag::DeleteStories,
-			tr::lng_rights_channel_delete_stories(tr::now),
-		},
+		{ Flag::DeleteStories, tr::lng_rights_channel_delete_stories(tr::now) },
 	};
 	auto second = std::vector<AdminRightLabel>{
 		{ Flag::InviteByLinkOrAdd, tr::lng_rights_group_invite(tr::now) },
 		{ Flag::ManageCall, tr::lng_rights_channel_manage_calls(tr::now) },
-		{ Flag::ManageDirect, tr::lng_rights_channel_manage_direct(tr::now) },
 		{ Flag::AddAdmins, tr::lng_rights_add_admins(tr::now) },
 	};
 	return {
@@ -188,13 +176,12 @@ int SlowmodeDelayByIndex(int index) {
 
 	switch (index) {
 	case 0: return 0;
-	case 1: return 5;
-	case 2: return 10;
-	case 3: return 30;
-	case 4: return 60;
-	case 5: return 5 * 60;
-	case 6: return 15 * 60;
-	case 7: return 60 * 60;
+	case 1: return 10;
+	case 2: return 30;
+	case 3: return 60;
+	case 4: return 5 * 60;
+	case 5: return 15 * 60;
+	case 6: return 60 * 60;
 	}
 	Unexpected("Index in SlowmodeDelayByIndex.");
 }
@@ -675,7 +662,7 @@ template <typename Flags>
 				checkView->setChecked(false, anim::type::instant);
 			} else if (locked.has_value()) {
 				if (checked != toggled) {
-					if (!state->toast && !locked->isEmpty()) {
+					if (!state->toast) {
 						state->toast = Ui::Toast::Show(container, {
 							.text = { *locked },
 							.duration = kForceDisableTooltipDuration,
@@ -872,18 +859,33 @@ rpl::producer<int> AddSlowmodeSlider(
 	return secondsCount->value();
 }
 
-void AddBoostsUnrestrictLabels(not_null<Ui::VerticalLayout*> container) {
+void AddBoostsUnrestrictLabels(
+		not_null<Ui::VerticalLayout*> container,
+		not_null<Main::Session*> session) {
 	const auto labels = container->add(
 		object_ptr<Ui::FixedHeightWidget>(container, st::normalFont->height),
 		st::slowmodeLabelsMargin);
-	const auto one = Ui::Text::IconEmoji(&st::boostMessageIcon);
-	const auto many = Ui::Text::IconEmoji(&st::boostsMessageIcon);
+	const auto manager = &session->data().customEmojiManager();
+	const auto one = Ui::Text::SingleCustomEmoji(
+		manager->registerInternalEmoji(
+			st::boostMessageIcon,
+			st::boostMessageIconPadding));
+	const auto many = Ui::Text::SingleCustomEmoji(
+		manager->registerInternalEmoji(
+			st::boostsMessageIcon,
+			st::boostsMessageIconPadding));
+	const auto context = Core::MarkedTextContext{
+		.session = session,
+		.customEmojiRepaint = [] {},
+		.customEmojiLoopLimit = 1,
+	};
 	for (auto i = 0; i != kBoostsUnrestrictValues; ++i) {
 		const auto label = Ui::CreateChild<Ui::FlatLabel>(
 			labels,
 			st::boostsUnrestrictLabel);
 		label->setMarkedText(
-			TextWithEntities(i ? many : one).append(QString::number(i + 1)));
+			TextWithEntities(i ? many : one).append(QString::number(i + 1)),
+			context);
 		rpl::combine(
 			labels->widthValue(),
 			label->widthValue()
@@ -923,7 +925,9 @@ rpl::producer<int> AddBoostsUnrestrictSlider(
 	const auto boostsUnrestrict = lifetime.make_state<rpl::variable<int>>(
 		channel ? channel->boostsUnrestrict() : 0);
 
-	Ui::AddSkip(container);
+	container->add(
+		object_ptr<Ui::BoxContentDivider>(container),
+		{ 0, st::infoProfileSkip, 0, st::infoProfileSkip });
 
 	auto enabled = boostsUnrestrict->value(
 	) | rpl::map(_1 > 0);
@@ -949,7 +953,7 @@ rpl::producer<int> AddBoostsUnrestrictSlider(
 
 	const auto inner = outer->entity();
 
-	AddBoostsUnrestrictLabels(inner);
+	AddBoostsUnrestrictLabels(inner, &peer->session());
 
 	const auto slider = inner->add(
 		object_ptr<Ui::MediaSlider>(inner, st::localStorageLimitSlider),
@@ -987,20 +991,19 @@ rpl::producer<int> AddBoostsUnrestrictWrapped(
 		object_ptr<Ui::SlideWrap<Ui::VerticalLayout>>(
 			container,
 			object_ptr<Ui::VerticalLayout>(container)));
-	wrap->toggleOn(std::move(shown), anim::type::normal);
+	wrap->toggleOn(rpl::duplicate(shown), anim::type::normal);
 	wrap->finishAnimating();
 
-	const auto inner = wrap->entity();
-
-	auto result = AddBoostsUnrestrictSlider(inner, peer);
-
-	const auto skip = st::defaultVerticalListSkip;
-	const auto divider = inner->add(
+	auto result = AddBoostsUnrestrictSlider(wrap->entity(), peer);
+	const auto divider = container->add(
 		object_ptr<Ui::SlideWrap<Ui::BoxContentDivider>>(
-			inner,
-			object_ptr<Ui::BoxContentDivider>(inner),
-			QMargins{ 0, skip, 0, skip }));
-	divider->toggleOn(rpl::duplicate(result) | rpl::map(!rpl::mappers::_1));
+			container,
+			object_ptr<Ui::BoxContentDivider>(container),
+			QMargins{ 0, st::infoProfileSkip, 0, st::infoProfileSkip }));
+	divider->toggleOn(rpl::combine(
+		std::move(shown),
+		rpl::duplicate(result),
+		!rpl::mappers::_1 || !rpl::mappers::_2));
 	divider->finishAnimating();
 
 	return result;
@@ -1115,7 +1118,7 @@ void ShowEditPeerPermissionsBox(
 				result.emplace(
 					Flag::ChangeInfo | Flag::PinMessages,
 					tr::lng_rights_permission_unavailable(tr::now));
-			} else if (channel->isMegagroup() && channel->discussionLink()) {
+			} else if (channel->isMegagroup() && channel->linkedChat()) {
 				result.emplace(
 					Flag::ChangeInfo | Flag::PinMessages,
 					tr::lng_rights_permission_in_discuss(tr::now));
@@ -1139,44 +1142,7 @@ void ShowEditPeerPermissionsBox(
 		rpl::variable<int> slowmodeSeconds;
 		rpl::variable<int> boostsUnrestrict;
 		rpl::variable<bool> hasSendRestrictions;
-		rpl::variable<int> starsPerMessage;
 	};
-	const auto state = inner->lifetime().make_state<State>();
-	const auto channel = peer->asChannel();
-	const auto available = channel && channel->paidMessagesAvailable();
-
-	Ui::AddSkip(inner);
-	Ui::AddDivider(inner);
-	auto charging = (Ui::SettingsButton*)nullptr;
-	if (available) {
-		Ui::AddSkip(inner);
-		const auto starsPerMessage = peer->isChannel()
-			? peer->asChannel()->commonStarsPerMessage()
-			: 0;
-		charging = inner->add(object_ptr<Ui::SettingsButton>(
-			inner,
-			tr::lng_rights_charge_stars(),
-			st::settingsButtonNoIcon));
-		charging->toggleOn(rpl::single(starsPerMessage > 0));
-		Ui::AddSkip(inner);
-		Ui::AddDividerText(inner, tr::lng_rights_charge_stars_about());
-
-		const auto chargeWrap = inner->add(
-			object_ptr<Ui::SlideWrap<Ui::VerticalLayout>>(
-				inner,
-				object_ptr<Ui::VerticalLayout>(inner)));
-		chargeWrap->toggleOn(charging->toggledValue());
-		chargeWrap->finishAnimating();
-		const auto chargeInner = chargeWrap->entity();
-
-		Ui::AddSkip(chargeInner);
-		state->starsPerMessage = SetupChargeSlider(
-			chargeInner,
-			peer,
-			(starsPerMessage > 0) ? starsPerMessage : std::optional<int>(),
-			kDefaultChargeStars);
-	}
-
 	static constexpr auto kSendRestrictions = Flag::EmbedLinks
 		| Flag::SendGames
 		| Flag::SendGifs
@@ -1190,6 +1156,7 @@ void ShowEditPeerPermissionsBox(
 		| Flag::SendVoiceMessages
 		| Flag::SendFiles
 		| Flag::SendOther;
+	const auto state = inner->lifetime().make_state<State>();
 	state->hasSendRestrictions = ((restrictions & kSendRestrictions) != 0)
 		|| (peer->isChannel() && peer->asChannel()->slowmodeSeconds() > 0);
 	state->boostsUnrestrict = AddBoostsUnrestrictWrapped(
@@ -1207,11 +1174,8 @@ void ShowEditPeerPermissionsBox(
 	});
 
 	if (const auto channel = peer->asChannel()) {
-		constexpr auto kThresholdOffset = int(1000);
-		const auto threshold =  -kThresholdOffset
-			+ channel->session().serverConfig().megagroupSizeMax;
 		if (channel->amCreator()
-			&& channel->membersCount() >= threshold) {
+			&& channel->membersCount() >= kSuggestGigagroupThreshold) {
 			AddSuggestGigagroup(
 				inner,
 				AboutGigagroupCallback(
@@ -1230,14 +1194,10 @@ void ShowEditPeerPermissionsBox(
 		const auto boostsUnrestrict = hasRestrictions
 			? state->boostsUnrestrict.current()
 			: 0;
-		const auto starsPerMessage = (charging && charging->toggled())
-			? state->starsPerMessage.current()
-			: 0;
 		done({
 			restrictions,
 			slowmodeSeconds,
 			boostsUnrestrict,
-			starsPerMessage,
 		});
 	});
 	box->addButton(tr::lng_cancel(), [=] { box->closeBox(); });
@@ -1467,23 +1427,6 @@ EditFlagsControl<AdminLog::FilterValue::Flags> CreateEditAdminLogFilter(
 	auto result = CreateEditFlags(
 		widget.data(),
 		flags,
-		std::move(descriptor));
-	result.widget = std::move(widget);
-
-	return result;
-}
-
-EditFlagsControl<Data::ChatbotsPermissions> CreateEditChatbotPermissions(
-		QWidget *parent,
-		Data::ChatbotsPermissions flags) {
-	auto widget = object_ptr<Ui::VerticalLayout>(parent);
-	auto descriptor = Data::ChatbotsPermissionsLabels();
-	descriptor.disabledMessages.emplace(
-		Data::ChatbotsPermission::ViewMessages,
-		QString());
-	auto result = CreateEditFlags(
-		widget.data(),
-		flags | Data::ChatbotsPermission::ViewMessages,
 		std::move(descriptor));
 	result.widget = std::move(widget);
 

@@ -233,6 +233,7 @@ void AppendRecentStickers(
 		: 0;
 	if (cloudCount > 0) {
 		to.emplace_back(PickerScrubberItem(cloudIt->second->title));
+		auto count = 0;
 		for (const auto document : cloudIt->second->stickers) {
 			if (document->owner().stickers().isFaved(document)) {
 				continue;

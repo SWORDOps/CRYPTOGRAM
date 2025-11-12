@@ -29,7 +29,7 @@ public:
 
 	[[nodiscard]] rpl::producer<QString> title() override;
 
-	[[nodiscard]] base::weak_qptr<Ui::RpWidget> createPinnedToTop(
+	[[nodiscard]] QPointer<Ui::RpWidget> createPinnedToTop(
 		not_null<QWidget*> parent) override;
 
 private:

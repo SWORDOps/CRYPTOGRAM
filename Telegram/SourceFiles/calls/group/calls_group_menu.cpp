@@ -418,13 +418,10 @@ void LeaveBox(
 		not_null<GroupCall*> call,
 		bool discardChecked,
 		BoxContext context) {
-	const auto conference = call->conference();
 	const auto livestream = call->peer()->isBroadcast();
 	const auto scheduled = (call->scheduleDate() != 0);
 	if (!scheduled) {
-		box->setTitle(conference
-			? tr::lng_group_call_leave_title_call()
-			: livestream
+		box->setTitle(livestream
 			? tr::lng_group_call_leave_title_channel()
 			: tr::lng_group_call_leave_title());
 	}
@@ -436,14 +433,12 @@ void LeaveBox(
 				? (livestream
 					? tr::lng_group_call_close_sure_channel()
 					: tr::lng_group_call_close_sure())
-				: (conference
-					? tr::lng_group_call_leave_sure_call()
-					: livestream
+				: (livestream
 					? tr::lng_group_call_leave_sure_channel()
 					: tr::lng_group_call_leave_sure())),
 			(inCall ? st::groupCallBoxLabel : st::boxLabel)),
 		scheduled ? st::boxPadding : st::boxRowPadding);
-	const auto discard = call->canManage()
+	const auto discard = call->peer()->canManageGroupCall()
 		? box->addRow(object_ptr<Ui::Checkbox>(
 			box.get(),
 			(scheduled
@@ -497,25 +492,22 @@ void FillMenu(
 		Fn<void(object_ptr<Ui::BoxContent>)> showBox) {
 	const auto weak = base::make_weak(call);
 	const auto resolveReal = [=] {
-		if (const auto strong = weak.get()) {
-			if (const auto real = strong->lookupReal()) {
-				return real;
-			}
-		}
-		return (Data::GroupCall*)nullptr;
+		const auto real = peer->groupCall();
+		const auto strong = weak.get();
+		return (real && strong && (real->id() == strong->id()))
+			? real
+			: nullptr;
 	};
 	const auto real = resolveReal();
 	if (!real) {
 		return;
 	}
 
-	const auto conference = call->conference();
 	const auto addEditJoinAs = call->showChooseJoinAs();
-	const auto addEditTitle = !conference && call->canManage();
-	const auto addEditRecording = !conference
-		&& call->canManage()
-		&& !real->scheduleDate();
-	const auto addScreenCast = call->videoIsWorking()
+	const auto addEditTitle = call->canManage();
+	const auto addEditRecording = call->canManage() && !real->scheduleDate();
+	const auto addScreenCast = !wide
+		&& call->videoIsWorking()
 		&& !real->scheduleDate();
 	if (addEditJoinAs) {
 		menu->addAction(MakeJoinAsAction(

@@ -73,7 +73,6 @@ private:
 	std::optional<QPoint> _pressPosition;
 	std::optional<QPoint> _dragStartPosition;
 	int _dragStartInnerLeft = 0;
-	int _giftsFinishAt = 0;
 	bool _initialInnerLeftApplied = false;
 
 	rpl::variable<bool> _shouldBeShown = false;

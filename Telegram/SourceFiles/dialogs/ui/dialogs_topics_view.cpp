@@ -8,16 +8,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "dialogs/ui/dialogs_topics_view.h"
 
 #include "dialogs/ui/dialogs_layout.h"
-#include "data/stickers/data_custom_emoji.h"
 #include "data/data_forum.h"
 #include "data/data_forum_topic.h"
-#include "data/data_peer.h"
-#include "data/data_saved_messages.h"
-#include "data/data_saved_sublist.h"
-#include "data/data_session.h"
 #include "core/ui_integration.h"
 #include "lang/lang_keys.h"
-#include "main/main_session.h"
 #include "ui/painter.h"
 #include "ui/power_saving.h"
 #include "ui/text/text_options.h"
@@ -32,35 +26,29 @@ constexpr auto kIconLoopCount = 1;
 
 } // namespace
 
-TopicsView::TopicsView(Data::Forum *forum, Data::SavedMessages *monoforum)
-: _forum(forum)
-, _monoforum(monoforum) {
+TopicsView::TopicsView(not_null<Data::Forum*> forum)
+: _forum(forum) {
 }
 
 TopicsView::~TopicsView() = default;
 
 bool TopicsView::prepared() const {
-	const auto version = _forum
-		? _forum->recentTopicsListVersion()
-		: _monoforum->recentSublistsListVersion();
-	return (_version == version);
+	return (_version == _forum->recentTopicsListVersion());
 }
 
 void TopicsView::prepare(MsgId frontRootId, Fn<void()> customEmojiRepaint) {
-	Expects(_forum != nullptr);
-
 	const auto &list = _forum->recentTopics();
 	_version = _forum->recentTopicsListVersion();
 	_titles.reserve(list.size());
 	auto index = 0;
 	for (const auto &topic : list) {
 		const auto from = begin(_titles) + index;
-		const auto key = topic->rootId().bare;
+		const auto rootId = topic->rootId();
 		const auto i = ranges::find(
 			from,
 			end(_titles),
-			key,
-			&Title::key);
+			rootId,
+			&Title::topicRootId);
 		if (i != end(_titles)) {
 			if (i != from) {
 				ranges::rotate(from, i, i + 1);
@@ -70,18 +58,18 @@ void TopicsView::prepare(MsgId frontRootId, Fn<void()> customEmojiRepaint) {
 		}
 		auto &title = _titles[index++];
 		const auto unread = topic->chatListBadgesState().unread;
-		if (title.key == key
+		if (title.topicRootId == rootId
 			&& title.unread == unread
 			&& title.version == topic->titleVersion()) {
 			continue;
 		}
-		const auto context = Core::TextContext({
+		const auto context = Core::MarkedTextContext{
 			.session = &topic->session(),
-			.repaint = customEmojiRepaint,
+			.customEmojiRepaint = customEmojiRepaint,
 			.customEmojiLoopLimit = kIconLoopCount,
-		});
+		};
 		auto topicTitle = topic->titleWithIcon();
-		title.key = key;
+		title.topicRootId = rootId;
 		title.version = topic->titleVersion();
 		title.unread = unread;
 		title.title.setMarkedText(
@@ -99,7 +87,7 @@ void TopicsView::prepare(MsgId frontRootId, Fn<void()> customEmojiRepaint) {
 		_titles.pop_back();
 	}
 	const auto i = frontRootId
-		? ranges::find(_titles, frontRootId.bare, &Title::key)
+		? ranges::find(_titles, frontRootId, &Title::topicRootId)
 		: end(_titles);
 	_jumpToTopic = (i != end(_titles));
 	if (_jumpToTopic) {
@@ -110,80 +98,6 @@ void TopicsView::prepare(MsgId frontRootId, Fn<void()> customEmojiRepaint) {
 			_jumpToTopic = false;
 		}
 	}
-	_allLoaded = _forum->topicsList()->loaded();
-}
-
-void TopicsView::prepare(PeerId frontPeerId, Fn<void()> customEmojiRepaint) {
-	Expects(_monoforum != nullptr);
-
-	const auto &list = _monoforum->recentSublists();
-	const auto manager = &_monoforum->session().data().customEmojiManager();
-	_version = _monoforum->recentSublistsListVersion();
-	_titles.reserve(list.size());
-	auto index = 0;
-	for (const auto &sublist : list) {
-		const auto from = begin(_titles) + index;
-		const auto peer = sublist->sublistPeer();
-		const auto key = peer->id.value;
-		const auto i = ranges::find(
-			from,
-			end(_titles),
-			key,
-			&Title::key);
-		if (i != end(_titles)) {
-			if (i != from) {
-				ranges::rotate(from, i, i + 1);
-			}
-		} else if (index >= _titles.size()) {
-			_titles.emplace_back();
-		}
-		auto &title = _titles[index++];
-		const auto unread = sublist->chatListBadgesState().unread;
-		if (title.key == key
-			&& title.unread == unread
-			&& title.version == peer->nameVersion()) {
-			continue;
-		}
-		const auto context = Core::TextContext({
-			.session = &sublist->session(),
-			.repaint = customEmojiRepaint,
-			.customEmojiLoopLimit = kIconLoopCount,
-		});
-		auto topicTitle = TextWithEntities().append(
-			Ui::Text::SingleCustomEmoji(
-				manager->peerUserpicEmojiData(peer),
-				u"@"_q)
-		).append(' ').append(peer->shortName());
-		title.key = key;
-		title.version = peer->nameVersion();
-		title.unread = unread;
-		title.title.setMarkedText(
-			st::dialogsTextStyle,
-			(unread
-				? Ui::Text::Colorized(
-					Ui::Text::Wrapped(
-						std::move(topicTitle),
-						EntityType::Bold))
-				: std::move(topicTitle)),
-			DialogTextOptions(),
-			context);
-	}
-	while (_titles.size() > index) {
-		_titles.pop_back();
-	}
-	const auto i = frontPeerId
-		? ranges::find(_titles, frontPeerId.value, &Title::key)
-		: end(_titles);
-	_jumpToTopic = (i != end(_titles));
-	if (_jumpToTopic) {
-		if (i != begin(_titles)) {
-			ranges::rotate(begin(_titles), i, i + 1);
-		}
-		if (!_titles.front().unread) {
-			_jumpToTopic = false;
-		}
-	}
-	_allLoaded = _monoforum->chatsList()->loaded();
 }
 
 int TopicsView::jumpToTopicWidth() const {
@@ -209,13 +123,10 @@ void TopicsView::paint(
 	rect.setWidth(rect.width() - _lastTopicJumpGeometry.rightCut);
 	auto skipBig = _jumpToTopic && !context.active;
 	if (_titles.empty()) {
-		const auto text = (_monoforum && _allLoaded)
-			? tr::lng_filters_no_chats(tr::now)
-			: tr::lng_contacts_loading(tr::now);
 		p.drawText(
 			rect.x(),
 			rect.y() + st::normalFont->ascent,
-			text);
+			tr::lng_contacts_loading(tr::now));
 		return;
 	}
 	for (const auto &title : _titles) {

@@ -349,8 +349,5 @@ void ReportRequested(
 [[nodiscard]] ClickHandlerPtr MakeChannelPostHandler(
 	not_null<Main::Session*> session,
 	FullMsgId item);
-[[nodiscard]] ClickHandlerPtr MakeUrlAreaHandler(
-	base::weak_ptr<Controller> weak,
-	const QString &url);
 
 } // namespace Media::Stories

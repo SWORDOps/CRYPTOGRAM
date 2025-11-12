@@ -87,7 +87,7 @@ void ConfirmPhone::resolve(
 				sentCodeLength,
 				fragmentUrl,
 				timeout);
-			const auto boxWeak = base::make_weak(box.data());
+			const auto boxWeak = Ui::MakeWeak(box.data());
 			using LoginCode = rpl::event_stream<QString>;
 			const auto codeHandles = box->lifetime().make_state<LoginCode>();
 			controller->session().account().setHandleLoginCode([=](
@@ -149,9 +149,6 @@ void ConfirmPhone::resolve(
 			controller->show(std::move(box), Ui::LayerOption::CloseOther);
 		}, [](const MTPDauth_sentCodeSuccess &) {
 			LOG(("API Error: Unexpected auth.sentCodeSuccess "
-				"(Api::ConfirmPhone)."));
-		}, [](const MTPDauth_sentCodePaymentRequired &) {
-			LOG(("API Error: Unexpected auth.sentCodePaymentRequired "
 				"(Api::ConfirmPhone)."));
 		});
 	}).fail([=](const MTP::Error &error) {

@@ -84,9 +84,9 @@ Entry::Entry(not_null<Data::Session*> owner, Type type)
 , _flags((type == Type::History)
 	? (Flag::IsThread | Flag::IsHistory)
 	: (type == Type::ForumTopic)
-	? (Flag::IsThread | Flag::IsForumTopic)
+	? Flag::IsThread
 	: (type == Type::SavedSublist)
-	? (Flag::IsThread | Flag::IsSavedSublist)
+	? Flag::IsSavedSublist
 	: Flag(0)) {
 }
 
@@ -113,7 +113,7 @@ Data::Forum *Entry::asForum() {
 }
 
 Data::Folder *Entry::asFolder() {
-	return (_flags & Flag::IsThread)
+	return (_flags & (Flag::IsThread | Flag::IsSavedSublist))
 		? nullptr
 		: static_cast<Data::Folder*>(this);
 }
@@ -125,7 +125,7 @@ Data::Thread *Entry::asThread() {
 }
 
 Data::ForumTopic *Entry::asTopic() {
-	return (_flags & Flag::IsForumTopic)
+	return ((_flags & Flag::IsThread) && !(_flags & Flag::IsHistory))
 		? static_cast<Data::ForumTopic*>(this)
 		: nullptr;
 }
@@ -229,13 +229,6 @@ uint64 Entry::computeSortPosition(FilterId filterId) const {
 }
 
 void Entry::updateChatListExistence() {
-	if (const auto history = asHistory()) {
-		if (history->peer->asMonoforum()) {
-			if (!folderKnown()) {
-				history->clearFolder();
-			}
-		}
-	}
 	setChatListExistence(shouldBeInChatList());
 }
 
@@ -287,10 +280,6 @@ void Entry::notifyUnreadStateChange(const UnreadState &wasState) {
 				}
 			}
 		}
-	} else if (const auto sublist = asSublist()) {
-		session().changes().sublistUpdated(
-			sublist,
-			Data::SublistUpdate::Flag::UnreadView);
 	}
 	updateChatListEntryPostponed();
 }
@@ -459,7 +448,7 @@ void Entry::updateChatListEntryHeight() {
 	session().changes().entryUpdated(this, Data::EntryUpdate::Flag::Height);
 }
 
-bool Entry::hasChatsFilterTags(FilterId exclude) const {
+[[nodiscard]] bool Entry::hasChatsFilterTags(FilterId exclude) const {
 	if (!owner().chatsFilters().tagsEnabled()) {
 		return false;
 	}

@@ -86,7 +86,6 @@ void PinnedTracker::refreshViewer() {
 			SparseIdsMergedSlice::Key(
 				peer->id,
 				_thread->topicRootId(),
-				_thread->monoforumPeerId(),
 				_migratedPeer ? _migratedPeer->id : 0,
 				_viewerAroundId),
 			Storage::SharedMediaType::Pinned),

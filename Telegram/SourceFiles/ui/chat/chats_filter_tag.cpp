@@ -174,6 +174,7 @@ bool ScaledCustomEmoji::readyInDefaultState() {
 		ChatsFilterTagContext &context) {
 	auto i = text.entities.begin();
 	auto ch = text.text.constData();
+	auto &integration = Integration::Instance();
 	context.loading = false;
 	const auto end = text.text.constData() + text.text.size();
 	const auto adjust = [&](EntityInText &entity) {
@@ -186,7 +187,9 @@ bool ScaledCustomEmoji::readyInDefaultState() {
 		}
 		auto &emoji = context.emoji[data];
 		if (!emoji) {
-			emoji = Text::MakeCustomEmoji(data, context.textContext);
+			emoji = integration.createCustomEmoji(
+				data,
+				context.textContext);
 		}
 		if (!emoji->ready()) {
 			context.loading = true;

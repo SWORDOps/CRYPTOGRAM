@@ -52,12 +52,6 @@ rpl::producer<SparseIdsMergedSlice> SharedScheduledMediaViewer(
 	int limitBefore,
 	int limitAfter);
 
-rpl::producer<SparseIdsMergedSlice> SavedMusicMediaViewer(
-	not_null<Main::Session*> session,
-	SharedMediaMergedKey key,
-	int limitBefore,
-	int limitAfter);
-
 rpl::producer<SparseIdsMergedSlice> SharedMediaMergedViewer(
 	not_null<Main::Session*> session,
 	SharedMediaMergedKey key,
@@ -76,19 +70,15 @@ public:
 
 	static constexpr auto kScheduledTopicId
 		= SparseIdsMergedSlice::kScheduledTopicId;
-	static constexpr auto kSavedMusicTopicId
-		= SparseIdsMergedSlice::kSavedMusicTopicId;
 	struct Key {
 		Key(
 			PeerId peerId,
 			MsgId topicRootId,
-			PeerId monoforumPeerId,
 			PeerId migratedPeerId,
 			Type type,
 			UniversalMsgId universalId)
 		: peerId(peerId)
 		, topicRootId(topicRootId)
-		, monoforumPeerId(monoforumPeerId)
 		, migratedPeerId(migratedPeerId)
 		, type(type)
 		, universalId(universalId) {
@@ -101,7 +91,6 @@ public:
 
 		PeerId peerId = 0;
 		MsgId topicRootId = 0;
-		PeerId monoforumPeerId = 0;
 		PeerId migratedPeerId = 0;
 		Type type = Type::kCount;
 		UniversalMsgId universalId;
@@ -131,7 +120,6 @@ public:
 		return {
 			key.peerId,
 			key.topicRootId,
-			key.monoforumPeerId,
 			key.migratedPeerId,
 			v::is<MessageId>(key.universalId)
 				? v::get<MessageId>(key.universalId)
@@ -142,7 +130,6 @@ public:
 		return {
 			key.peerId,
 			key.topicRootId,
-			key.monoforumPeerId,
 			key.migratedPeerId,
 			ServerMaxMsgId - 1
 		};

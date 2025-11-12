@@ -87,10 +87,10 @@ MessagePreview::MessagePreview(
 		st::defaultPeerListItem.nameStyle,
 		item->toPreview({ .generateImages = false }).text,
 		Ui::DialogTextOptions(),
-		Core::TextContext({
+		Core::MarkedTextContext{
 			.session = &item->history()->session(),
-			.repaint = [=] { update(); },
-		}));
+			.customEmojiRepaint = [=] { update(); },
+		});
 	if (item->media() && item->media()->hasSpoiler()) {
 		_spoiler = std::make_unique<Ui::SpoilerAnimation>([=] { update(); });
 	}
@@ -131,10 +131,10 @@ MessagePreview::MessagePreview(
 		st::defaultPeerListItem.nameStyle,
 		{ tr::lng_in_dlg_story(tr::now) },
 		Ui::DialogTextOptions(),
-		Core::TextContext({
+		Core::MarkedTextContext{
 			.session = &story->peer()->session(),
-			.repaint = [=] { update(); },
-		}));
+			.customEmojiRepaint = [=] { update(); },
+		});
 	if (_preview.isNull()) {
 		if (const auto photo = story->photo()) {
 			_photoMedia = photo->createMediaView();

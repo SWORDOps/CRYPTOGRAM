@@ -129,7 +129,6 @@ public:
 		QRect geometry,
 		int narrowWidth,
 		float64 narrowRatio);
-	void showPeerMenu();
 
 protected:
 	void paintEvent(QPaintEvent *e) override;
@@ -153,6 +152,7 @@ private:
 
 	void call();
 	void groupCall();
+	void showPeerMenu();
 	void showGroupCallMenu(not_null<PeerData*> peer);
 	void toggleInfoSection();
 
@@ -245,7 +245,7 @@ private:
 	object_ptr<Ui::IconButton> _menuToggle;
 	base::unique_qptr<Ui::PopupMenu> _menu;
 
-	object_ptr<RpWidget> _membersShowArea = { nullptr };
+	object_ptr<TWidget> _membersShowArea = { nullptr };
 	rpl::event_stream<bool> _membersShowAreaActive;
 
 	float64 _narrowRatio = 0.;

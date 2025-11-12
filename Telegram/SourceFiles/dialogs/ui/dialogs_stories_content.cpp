@@ -215,7 +215,7 @@ void FillSourceMenu(
 		add(tr::lng_stories_archive_button(tr::now), [=] {
 			controller->showSection(Info::Stories::Make(
 				peer,
-				Info::Stories::ArchiveId()));
+				Info::Stories::Tab::Archive));
 		}, &st::menuIconStoriesArchiveSection);
 		add(tr::lng_stories_my_title(tr::now), [=] {
 			controller->showSection(Info::Stories::Make(peer));

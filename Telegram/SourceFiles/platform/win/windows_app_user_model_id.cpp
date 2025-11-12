@@ -493,7 +493,14 @@ const std::wstring &Id() {
 		return BaseId;
 	}
 	static const auto PortableId = [] {
-		const auto h = Core::Launcher::Instance().instanceHash();
+		std::string h(32, 0);
+		if (Core::Launcher::Instance().customWorkingDir()) {
+			const auto d = QFile::encodeName(QDir(cWorkingDir()).absolutePath());
+			hashMd5Hex(d.constData(), d.size(), h.data());
+		} else {
+			const auto exePath = QFile::encodeName(cExeDir() + cExeName());
+			hashMd5Hex(exePath.constData(), exePath.size(), h.data());
+		}
 		return BaseId + L'.' + std::wstring(h.begin(), h.end());
 	}();
 	return PortableId;

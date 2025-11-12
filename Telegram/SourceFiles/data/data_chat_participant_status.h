@@ -36,7 +36,6 @@ enum class ChatAdminRight {
 	PostStories = (1 << 14),
 	EditStories = (1 << 15),
 	DeleteStories = (1 << 16),
-	ManageDirect = (1 << 17),
 };
 inline constexpr bool is_flag_type(ChatAdminRight) { return true; }
 using ChatAdminRights = base::flags<ChatAdminRight>;
@@ -76,8 +75,6 @@ struct ChatAdminRightsInfo {
 	ChatAdminRights flags;
 };
 
-[[nodiscard]] MTPChatAdminRights AdminRightsToMTP(ChatAdminRightsInfo info);
-
 struct ChatRestrictionsInfo {
 	ChatRestrictionsInfo() = default;
 	ChatRestrictionsInfo(ChatRestrictions flags, TimeId until)
@@ -89,9 +86,6 @@ struct ChatRestrictionsInfo {
 	ChatRestrictions flags;
 	TimeId until = 0;
 };
-
-[[nodiscard]] MTPChatBannedRights RestrictionsToMTP(
-	ChatRestrictionsInfo info);
 
 namespace Data {
 
@@ -196,30 +190,24 @@ struct SendError {
 	struct Args {
 		QString text;
 		int boostsToLift = 0;
-		bool monoforumAdmin = false;
 		bool premiumToLift = false;
-		bool frozen = false;
 	};
 	SendError(Args &&args)
 	: text(std::move(args.text))
 	, boostsToLift(args.boostsToLift)
-	, monoforumAdmin(args.monoforumAdmin)
-	, premiumToLift(args.premiumToLift)
-	, frozen(args.frozen) {
+	, premiumToLift(args.premiumToLift) {
 	}
 
 	QString text;
 	int boostsToLift = 0;
-	bool monoforumAdmin = false;
 	bool premiumToLift = false;
-	bool frozen = false;
 
 	[[nodiscard]] SendError value_or(SendError other) const {
 		return *this ? *this : other;
 	}
 
 	explicit operator bool() const {
-		return monoforumAdmin || !text.isEmpty();
+		return !text.isEmpty();
 	}
 	[[nodiscard]] bool has_value() const {
 		return !text.isEmpty();

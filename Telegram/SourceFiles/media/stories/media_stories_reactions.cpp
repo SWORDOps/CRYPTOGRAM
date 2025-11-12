@@ -576,10 +576,9 @@ void WeatherView::setAreaGeometry(QRect geometry, float64 radius) {
 	const auto diagxdiag = (geometry.width() * geometry.width())
 		+ (geometry.height() * geometry.height());
 	const auto diag = std::sqrt(diagxdiag);
-	const auto shift = diag * 2 / 3.;
 	const auto topleft = QRectF(geometry).center()
-		- QPointF(shift, shift);
-	const auto bottomright = topleft + QPointF(shift, shift) * 2;
+		- QPointF(diag / 2., diag / 2.);
+	const auto bottomright = topleft + QPointF(diag, diag);
 	const auto left = int(std::floor(topleft.x()));
 	const auto top = int(std::floor(topleft.y()));
 	const auto right = int(std::ceil(bottomright.x()));
@@ -702,7 +701,7 @@ void WeatherView::cacheBackground() {
 	p.translate(-center);
 
 	const auto format = [](float64 value) {
-		return QString::number(int(base::SafeRound(value)));
+		return QString::number(int(base::SafeRound(value * 10)) / 10.);
 	};
 	const auto text = [&] {
 		const auto celsius = _data.millicelsius / 1000.;
@@ -713,11 +712,11 @@ void WeatherView::cacheBackground() {
 		return format(fahrenheit);
 	}().append(QChar(0xb0)).append(_celsius ? "C" : "F");
 	const auto metrics = QFontMetrics(_font);
-	const auto textWidth = qCeil(metrics.horizontalAdvance(text));
-	_padding = int(_rect.height() / 5);
-	const auto fullWidth = (_emoji ? (_emojiSize - _padding) : 0)
+	const auto textWidth = metrics.horizontalAdvance(text);
+	_padding = int(_rect.height() / 6);
+	const auto fullWidth = (_emoji ? _emojiSize : 0)
 		+ textWidth
-		+ (4 * _padding);
+		+ (2 * _padding);
 	const auto left = _rect.x() + (_rect.width() - fullWidth) / 2;
 	_wrapped = QRect(left, _rect.y(), fullWidth, _rect.height());
 
@@ -726,13 +725,41 @@ void WeatherView::cacheBackground() {
 	p.setPen(_fg);
 	p.setFont(_font);
 	p.drawText(_wrapped.marginsRemoved(
-		{ 2 * _padding + (_emoji ? (_emojiSize - _padding) : 0), 0, 2 * _padding, 0 }),
+		{ _padding + (_emoji ? _emojiSize : 0), 0, _padding, 0 }),
 		text,
 		style::al_center);
 }
 
 [[nodiscard]] Data::ReactionId HeartReactionId() {
 	return { QString() + QChar(10084) };
+}
+
+[[nodiscard]] Data::PossibleItemReactionsRef LookupPossibleReactions(
+		not_null<Main::Session*> session) {
+	auto result = Data::PossibleItemReactionsRef();
+	const auto reactions = &session->data().reactions();
+	const auto &full = reactions->list(Data::Reactions::Type::Active);
+	const auto &top = reactions->list(Data::Reactions::Type::Top);
+	const auto &recent = reactions->list(Data::Reactions::Type::Recent);
+	const auto premiumPossible = session->premiumPossible();
+	auto added = base::flat_set<Data::ReactionId>();
+	result.recent.reserve(full.size());
+	for (const auto &reaction : ranges::views::concat(top, recent, full)) {
+		if (premiumPossible || !reaction.id.custom()) {
+			if (added.emplace(reaction.id).second) {
+				result.recent.push_back(&reaction);
+			}
+		}
+	}
+	result.customAllowed = premiumPossible;
+	const auto i = ranges::find(
+		result.recent,
+		reactions->favoriteId(),
+		&Data::Reaction::id);
+	if (i != end(result.recent) && i != begin(result.recent)) {
+		std::rotate(begin(result.recent), i, i + 1);
+	}
+	return result;
 }
 
 HistoryView::Context ReactionView::elementContext() {
@@ -879,7 +906,7 @@ void Reactions::Panel::attachToReactionButton(
 }
 
 void Reactions::Panel::create() {
-	auto reactions = Data::LookupPossibleReactions(
+	auto reactions = LookupPossibleReactions(
 		&_controller->uiShow()->session());
 	if (reactions.recent.empty()) {
 		return;
@@ -1125,7 +1152,7 @@ auto Reactions::attachToMenu(
 		desiredPosition,
 		st::storiesReactionsPan,
 		show,
-		Data::LookupPossibleReactions(&show->session()),
+		LookupPossibleReactions(&show->session()),
 		TextWithEntities());
 	if (!result) {
 		return result.error();

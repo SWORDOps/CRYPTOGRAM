@@ -226,8 +226,8 @@ void AddDownloadFilesAction(
 			return;
 		}
 	}
-	const auto done = [weak = base::make_weak(list)] {
-		if (const auto strong = weak.get()) {
+	const auto done = [weak = Ui::MakeWeak(list)] {
+		if (const auto strong = weak.data()) {
 			strong->cancelSelection();
 		}
 	};
@@ -237,24 +237,20 @@ void AddDownloadFilesAction(
 void AddDownloadFilesAction(
 		not_null<Ui::PopupMenu*> menu,
 		not_null<Window::SessionController*> window,
-		const base::flat_map<HistoryItem*, TextSelection, std::less<>> &items,
+		const std::map<HistoryItem*, TextSelection, std::less<>> &items,
 		not_null<HistoryInner*> list) {
 	if (items.empty()) {
 		return;
 	}
-	auto sortedItems = ranges::views::all(items)
-		| ranges::views::keys
-		| ranges::to<std::vector>();
-	ranges::sort(sortedItems, {}, &HistoryItem::fullId);
 	auto docs = Documents();
 	auto photos = Photos();
-	for (const auto &item : sortedItems) {
-		if (!Added(item, docs, photos)) {
+	for (const auto &pair : items) {
+		if (!Added(pair.first, docs, photos)) {
 			return;
 		}
 	}
-	const auto done = [weak = base::make_weak(list)] {
-		if (const auto strong = weak.get()) {
+	const auto done = [weak = Ui::MakeWeak(list)] {
+		if (const auto strong = weak.data()) {
 			strong->clearSelected();
 		}
 	};

@@ -31,10 +31,6 @@ public:
 		not_null<Main::Account*> account,
 		not_null<Data*> data);
 
-	QAccessible::Role accessibilityRole() override {
-		return QAccessible::Role::Dialog;
-	}
-
 	bool hasBack() const override {
 		return true;
 	}
@@ -57,8 +53,6 @@ private:
 	void checkRequest();
 
 	int errorTop() const override;
-
-	[[nodiscard]] bool isEmailVerification() const;
 
 	void updateCallText();
 	void refreshLang();

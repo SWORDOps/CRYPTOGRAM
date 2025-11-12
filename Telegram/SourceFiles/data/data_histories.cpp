@@ -10,15 +10,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_text_entities.h"
 #include "data/business/data_shortcut_messages.h"
 #include "data/components/scheduled_messages.h"
+#include "data/data_session.h"
 #include "data/data_channel.h"
 #include "data/data_chat.h"
-#include "data/data_document.h"
 #include "data/data_folder.h"
 #include "data/data_forum.h"
 #include "data/data_forum_topic.h"
-#include "data/data_saved_music.h"
-#include "data/data_saved_sublist.h"
-#include "data/data_session.h"
 #include "data/data_user.h"
 #include "base/unixtime.h"
 #include "base/random.h"
@@ -29,7 +26,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_item_helpers.h"
 #include "history/view/history_view_element.h"
 #include "core/application.h"
-#include "core/core_settings.h"
 #include "apiwrap.h"
 
 namespace Data {
@@ -64,14 +60,6 @@ MTPInputReplyTo ReplyToForMTP(
 			&& (to->history() != history || to->id != replyingToTopicId))
 			? to->topicRootId()
 			: replyingToTopicId;
-		const auto possibleMonoforumPeerId = (to && to->sublistPeerId())
-			? to->sublistPeerId()
-			: replyTo.monoforumPeerId
-			? replyTo.monoforumPeerId
-			: history->session().user()->id;
-		const auto replyToMonoforumPeerId = history->peer->amMonoforumAdmin()
-			? possibleMonoforumPeerId
-			: PeerId();
 		const auto external = replyTo.messageId
 			&& (replyTo.messageId.peer != history->peer->id
 				|| replyingToTopicId != replyToTopicId);
@@ -86,13 +74,9 @@ MTPInputReplyTo ReplyToForMTP(
 				| (replyTo.quote.text.isEmpty()
 					? Flag()
 					: (Flag::f_quote_text | Flag::f_quote_offset))
-				| (replyToMonoforumPeerId
-					? Flag::f_monoforum_peer_id
-					: Flag())
 				| (quoteEntities.v.isEmpty()
 					? Flag()
-					: Flag::f_quote_entities)
-				| (replyTo.todoItemId ? Flag::f_todo_item_id : Flag())),
+					: Flag::f_quote_entities)),
 			MTP_int(replyTo.messageId ? replyTo.messageId.msg : 0),
 			MTP_int(replyTo.topicRootId),
 			(external
@@ -100,17 +84,7 @@ MTPInputReplyTo ReplyToForMTP(
 				: MTPInputPeer()),
 			MTP_string(replyTo.quote.text),
 			quoteEntities,
-			MTP_int(replyTo.quoteOffset),
-			(replyToMonoforumPeerId
-				? history->owner().peer(replyToMonoforumPeerId)->input
-				: MTPInputPeer()),
-			MTP_int(replyTo.todoItemId));
-	} else if (history->peer->amMonoforumAdmin()
-		&& replyTo.monoforumPeerId) {
-		const auto replyToMonoforumPeer = replyTo.monoforumPeerId
-			? history->owner().peer(replyTo.monoforumPeerId)
-			: history->session().user();
-		return MTP_inputReplyToMonoForum(replyToMonoforumPeer->input);
+			MTP_int(replyTo.quoteOffset));
 	}
 	return MTPInputReplyTo();
 }
@@ -507,26 +481,7 @@ void Histories::changeDialogUnreadMark(
 	using Flag = MTPmessages_MarkDialogUnread::Flag;
 	session().api().request(MTPmessages_MarkDialogUnread(
 		MTP_flags(unread ? Flag::f_unread : Flag(0)),
-		MTPInputPeer(), // parent_peer
 		MTP_inputDialogPeer(history->peer->input)
-	)).send();
-}
-
-void Histories::changeSublistUnreadMark(
-		not_null<Data::SavedSublist*> sublist,
-		bool unread) {
-	const auto parent = sublist->parentChat();
-	if (!parent) {
-		return;
-	}
-	sublist->setUnreadMark(unread);
-
-	using Flag = MTPmessages_MarkDialogUnread::Flag;
-	session().api().request(MTPmessages_MarkDialogUnread(
-		MTP_flags(Flag::f_parent_peer
-			| (unread ? Flag::f_unread : Flag(0))),
-		parent->input,
-		MTP_inputDialogPeer(sublist->sublistPeer()->input)
 	)).send();
 }
 
@@ -555,7 +510,6 @@ void Histories::requestFakeChatListMessage(
 			_fakeChatListRequests.erase(history);
 			history->setFakeChatListMessageFrom(MTP_messages_messages(
 				MTP_vector<MTPMessage>(0),
-				MTP_vector<MTPForumTopic>(0),
 				MTP_vector<MTPChat>(0),
 				MTP_vector<MTPUser>(0)));
 			finish();
@@ -701,14 +655,6 @@ void Histories::sendReadRequests() {
 void Histories::sendReadRequest(not_null<History*> history, State &state) {
 	Expects(state.willReadTill > state.sentReadTill);
 
-	// CRYPTOGRAM: Check if user wants to hide read receipts
-	if (Core::App().settings().cryptogramHideReadReceipts()) {
-		// Don't send read receipt, but still update local state
-		state.willReadTill = 0;
-		state.willReadWhen = 0;
-		return;
-	}
-
 	const auto tillId = state.sentReadTill = base::take(state.willReadTill);
 	state.willReadWhen = 0;
 	state.sentReadDone = false;
@@ -731,7 +677,6 @@ void Histories::sendReadRequest(not_null<History*> history, State &state) {
 			} else {
 				Assert(!state->sentReadTill || state->sentReadTill > tillId);
 			}
-			history->validateMonoAndForumUnread(tillId);
 			sendReadRequests();
 			finish();
 		};
@@ -833,7 +778,7 @@ void Histories::deleteAllMessages(
 				channel->inputChannel,
 				MTP_int(deleteTillId)
 			)).done(finish).fail(finish).send();
-		} else if (!justClear && revoke && chat && chat->amCreator()) {
+		} else if (revoke && chat && chat->amCreator()) {
 			return session().api().request(MTPmessages_DeleteChat(
 				chat->inputChat
 			)).done(finish).fail([=](const MTP::Error &error) {
@@ -903,10 +848,10 @@ void Histories::deleteMessagesByDates(
 }
 
 void Histories::deleteMessagesByDates(
-	not_null<History*> history,
-	TimeId minDate,
-	TimeId maxDate,
-	bool revoke) {
+		not_null<History*> history,
+		TimeId minDate,
+		TimeId maxDate,
+		bool revoke) {
 	sendRequest(history, RequestType::Delete, [=](Fn<void()> finish) {
 		const auto peer = history->peer;
 		using Flag = MTPmessages_DeleteHistory::Flag;
@@ -939,14 +884,10 @@ void Histories::deleteMessages(const MessageIdsList &ids, bool revoke) {
 	base::flat_map<not_null<History*>, QVector<MTPint>> idsByPeer;
 	base::flat_map<not_null<PeerData*>, QVector<MTPint>> scheduledIdsByPeer;
 	base::flat_map<BusinessShortcutId, QVector<MTPint>> quickIdsByShortcut;
-	base::flat_set<not_null<DocumentData*>> savedMusic;
 	for (const auto &itemId : ids) {
 		if (const auto item = _owner->message(itemId)) {
 			const auto history = item->history();
-			if (item->isSavedMusicItem()) {
-				savedMusic.emplace(item->media()->document());
-				continue;
-			} else if (item->isScheduled()) {
+			if (item->isScheduled()) {
 				const auto wasOnServer = !item->isSending()
 					&& !item->hasFailed();
 				auto &scheduled = _owner->session().scheduledMessages();
@@ -994,9 +935,6 @@ void Histories::deleteMessages(const MessageIdsList &ids, bool revoke) {
 		)).done([=](const MTPUpdates &result) {
 			api->applyUpdates(result);
 		}).send();
-	}
-	for (const auto &document : savedMusic) {
-		document->owner().savedMusic().remove(document);
 	}
 
 	for (const auto item : remove) {
@@ -1059,6 +997,8 @@ int Histories::sendRequest(
 void Histories::sendCreateTopicRequest(
 		not_null<History*> history,
 		MsgId rootId) {
+	Expects(history->peer->isChannel());
+
 	const auto forum = history->asForum();
 	Assert(forum != nullptr);
 	const auto topic = forum->topicFor(rootId);
@@ -1068,12 +1008,11 @@ void Histories::sendCreateTopicRequest(
 		randomId,
 		{ history->peer->id, rootId });
 	const auto api = &session().api();
-	using Flag = MTPmessages_CreateForumTopic::Flag;
-	api->request(MTPmessages_CreateForumTopic(
+	using Flag = MTPchannels_CreateForumTopic::Flag;
+	api->request(MTPchannels_CreateForumTopic(
 		MTP_flags(Flag::f_icon_color
-			| (topic->iconId() ? Flag::f_icon_emoji_id : Flag())
-			| (history->peer->isBot() ? Flag::f_title_missing : Flag())),
-		history->peer->input,
+			| (topic->iconId() ? Flag::f_icon_emoji_id : Flag(0))),
+		history->peer->asChannel()->inputChannel,
 		MTP_string(topic->title()),
 		MTP_int(topic->colorId()),
 		MTP_long(topic->iconId()),
@@ -1121,12 +1060,13 @@ int Histories::sendPreparedMessage(
 		_creatingTopicRequests.emplace(id);
 		return id;
 	}
-	auto realReplyTo = replyTo;
-	const auto topicReplyToId = [&](const auto &id) {
-		return convertTopicReplyToId(history, id);
+	const auto realReplyTo = FullReplyTo{
+		.messageId = convertTopicReplyToId(history, replyTo.messageId),
+		.quote = replyTo.quote,
+		.storyId = replyTo.storyId,
+		.topicRootId = convertTopicReplyToId(history, replyTo.topicRootId),
+		.quoteOffset = replyTo.quoteOffset,
 	};
-	realReplyTo.messageId = topicReplyToId(replyTo.messageId);
-	realReplyTo.topicRootId = topicReplyToId(replyTo.topicRootId);
 	return v::match(message(history, realReplyTo), [&](const auto &request) {
 		const auto type = RequestType::Send;
 		return sendRequest(history, type, [=](Fn<void()> finish) {

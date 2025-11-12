@@ -24,15 +24,10 @@ namespace {
 [[nodiscard]] bool IsOldForPin(
 		MsgId id,
 		not_null<PeerData*> peer,
-		MsgId topicRootId,
-		PeerId monoforumPeerId) {
+		MsgId topicRootId) {
 	const auto normal = peer->migrateToOrMe();
 	const auto migrated = normal->migrateFrom();
-	const auto top = Data::ResolveTopPinnedId(
-		normal,
-		topicRootId,
-		monoforumPeerId,
-		migrated);
+	const auto top = Data::ResolveTopPinnedId(normal, topicRootId, migrated);
 	if (!top) {
 		return false;
 	} else if (peer == migrated) {
@@ -50,22 +45,15 @@ void PinMessageBox(
 		not_null<Ui::GenericBox*> box,
 		not_null<HistoryItem*> item) {
 	struct State {
-		base::weak_qptr<Ui::Checkbox> pinForPeer;
-		base::weak_qptr<Ui::Checkbox> notify;
+		QPointer<Ui::Checkbox> pinForPeer;
+		QPointer<Ui::Checkbox> notify;
 		mtpRequestId requestId = 0;
 	};
 
 	const auto peer = item->history()->peer;
 	const auto msgId = item->id;
 	const auto topicRootId = item->topic() ? item->topicRootId() : MsgId();
-	const auto monoforumPeerId = item->history()->peer->amMonoforumAdmin()
-		? item->sublistPeerId()
-		: PeerId();
-	const auto pinningOld = IsOldForPin(
-		msgId,
-		peer,
-		topicRootId,
-		monoforumPeerId);
+	const auto pinningOld = IsOldForPin(msgId, peer, topicRootId);
 	const auto state = box->lifetime().make_state<State>();
 	const auto api = box->lifetime().make_state<MTP::Sender>(
 		&peer->session().mtp());
@@ -81,18 +69,16 @@ void PinMessageBox(
 				false,
 				st::urlAuthCheckbox);
 			object->setAllowTextLines();
-			state->pinForPeer = base::make_weak(object.data());
+			state->pinForPeer = Ui::MakeWeak(object.data());
 			return object;
-		} else if (!pinningOld
-			&& (peer->isChat() || peer->isMegagroup())
-			&& !peer->isMonoforum()) {
+		} else if (!pinningOld && (peer->isChat() || peer->isMegagroup())) {
 			auto object = object_ptr<Ui::Checkbox>(
 				box,
 				tr::lng_pinned_notify(tr::now),
 				true,
 				st::urlAuthCheckbox);
 			object->setAllowTextLines();
-			state->notify = base::make_weak(object.data());
+			state->notify = Ui::MakeWeak(object.data());
 			return object;
 		}
 		return { nullptr };

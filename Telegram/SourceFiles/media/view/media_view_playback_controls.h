@@ -19,13 +19,14 @@ class MediaSlider;
 class PopupMenu;
 } // namespace Ui
 
-namespace Media::Player {
+namespace Media {
+namespace Player {
 struct TrackState;
 class SettingsButton;
 class SpeedController;
-} // namespace Media::Player
+} // namespace Player
 
-namespace Media::View {
+namespace View {
 
 class PlaybackProgress;
 
@@ -130,4 +131,5 @@ private:
 
 };
 
-} // namespace Media::View
+} // namespace View
+} // namespace Media

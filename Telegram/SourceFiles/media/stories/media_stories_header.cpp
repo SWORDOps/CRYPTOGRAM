@@ -276,7 +276,10 @@ struct MadePrivacyBadge {
 		not_null<Data::Session*> owner,
 		PeerData *peer,
 		QString name) {
-	auto result = Ui::Text::IconEmoji(&st::storiesRepostIcon);
+	auto result = Ui::Text::SingleCustomEmoji(
+		owner->customEmojiManager().registerInternalEmoji(
+			st::storiesRepostIcon,
+			st::storiesRepostIconPadding));
 	if (peer) {
 		result.append(Ui::Text::SingleCustomEmoji(
 			owner->customEmojiManager().peerUserpicEmojiData(
@@ -400,7 +403,10 @@ void Header::show(HeaderData data) {
 		const auto prefix = data.fromPeer ? data.fromPeer : data.repostPeer;
 		_repost->setMarkedText(
 			(prefix ? Ui::Text::Link(prefixName) : prefixName),
-			Core::TextContext({ .session = &data.peer->session() }));
+			Core::MarkedTextContext{
+				.session = &data.peer->session(),
+				.customEmojiRepaint = [=] { _repost->update(); },
+			});
 		if (prefix) {
 			_repost->setClickHandlerFilter([=](const auto &...) {
 				_controller->uiShow()->show(PrepareShortInfoBox(prefix));
@@ -596,11 +602,7 @@ void Header::createVolumeToggle() {
 		bool dropdownOver = false;
 	};
 	_volumeToggle = std::make_unique<Ui::RpWidget>(_widget.get());
-	_volume = std::make_unique<Ui::FadeWrap<Ui::RpWidget>>(
-		_widget->parentWidget(),
-		object_ptr<Ui::RpWidget>(_widget->parentWidget()));
-
-	auto &lifetime = _volume->lifetime();
+	auto &lifetime = _volumeToggle->lifetime();
 	const auto state = lifetime.make_state<VolumeState>();
 	state->silent = _data->silent;
 	state->hideTimer.setCallback([=] {
@@ -638,6 +640,9 @@ void Header::createVolumeToggle() {
 	}, lifetime);
 	updateVolumeIcon();
 
+	_volume = std::make_unique<Ui::FadeWrap<Ui::RpWidget>>(
+		_widget->parentWidget(),
+		object_ptr<Ui::RpWidget>(_widget->parentWidget()));
 	_volume->toggle(false, anim::type::instant);
 	_volume->events(
 	) | rpl::start_with_next([=](not_null<QEvent*> e) {
@@ -739,9 +744,9 @@ void Header::toggleTooltip(Tooltip type, bool show) {
 			st::storiesInfoTooltipLabel),
 		st::storiesInfoTooltip);
 	const auto tooltip = _tooltip.get();
-	const auto weak = base::make_weak(tooltip);
+	const auto weak = QPointer<QWidget>(tooltip);
 	const auto destroy = [=] {
-		delete weak.get();
+		delete weak.data();
 	};
 	tooltip->setAttribute(Qt::WA_TransparentForMouseEvents);
 	tooltip->setHiddenCallback(destroy);

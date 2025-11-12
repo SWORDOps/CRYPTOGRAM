@@ -31,7 +31,6 @@ void ResolveDocument(
 	Window::SessionController *controller,
 	not_null<DocumentData*> document,
 	HistoryItem *item,
-	MsgId topicRootId,
-	PeerId monoforumPeerId);
+	MsgId topicRootId);
 
 } // namespace Data

@@ -16,7 +16,6 @@ class VerticalLayout;
 
 namespace Data {
 class ForumTopic;
-class SavedSublist;
 } // namespace Data
 
 namespace Info {
@@ -26,7 +25,6 @@ class Controller;
 namespace Info::Profile {
 
 extern const char kOptionShowPeerIdBelowAbout[];
-extern const char kOptionShowChannelJoinedBelowAbout[];
 
 class Cover;
 struct Origin;
@@ -56,14 +54,12 @@ Cover *AddCover(
 	not_null<Ui::VerticalLayout*> container,
 	not_null<Controller*> controller,
 	not_null<PeerData*> peer,
-	Data::ForumTopic *topic,
-	Data::SavedSublist *sublist);
+	Data::ForumTopic *topic);
 void AddDetails(
 	not_null<Ui::VerticalLayout*> container,
 	not_null<Controller*> controller,
 	not_null<PeerData*> peer,
 	Data::ForumTopic *topic,
-	Data::SavedSublist *sublist,
 	Origin origin);
 
 } // namespace Info::Profile

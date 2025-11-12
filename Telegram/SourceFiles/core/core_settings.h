@@ -9,14 +9,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "core/core_settings_proxy.h"
 #include "media/media_common.h"
-#include "dialogs/ui/dialogs_quick_action.h"
 #include "window/themes/window_themes_embedded.h"
 #include "ui/chat/attach/attach_send_files_way.h"
 #include "base/flags.h"
 #include "emoji.h"
-
-#include <algorithm>
-#include <vector>
 
 enum class RectPart;
 struct LanguageId;
@@ -112,11 +108,6 @@ public:
 		WindowAndTray = 0,
 		TrayOnly = 1,
 		WindowOnly = 2,
-	};
-	enum class CloseBehavior {
-		Quit = 0,
-		CloseToTaskbar = 1,
-		RunInBackground = 2,
 	};
 
 	static constexpr auto kDefaultVolume = 0.9;
@@ -243,12 +234,6 @@ public:
 	}
 	void setNotificationsCorner(ScreenCorner corner) {
 		_notificationsCorner = corner;
-	}
-	[[nodiscard]] int32 notificationsDisplayChecksum() const {
-		return _notificationsDisplayChecksum;
-	}
-	void setNotificationsDisplayChecksum(int32 checksum) {
-		_notificationsDisplayChecksum = checksum;
 	}
 	[[nodiscard]] bool includeMutedCounter() const {
 		return _includeMutedCounter;
@@ -486,35 +471,6 @@ public:
 	}
 	void setSuggestAnimatedEmoji(bool value) {
 		_suggestAnimatedEmoji = value;
-	}
-	[[nodiscard]] bool curatedStickersEnabled() const {
-		return _curatedStickersEnabled;
-	}
-	void setCuratedStickersEnabled(bool value) {
-		_curatedStickersEnabled = value;
-	}
-	[[nodiscard]] int maxStickerSets() const {
-		return _maxStickerSets;
-	}
-	void setMaxStickerSets(int value) {
-		_maxStickerSets = std::clamp(value, 1, 20);
-	}
-	[[nodiscard]] const std::vector<uint64>& curatedStickerSetIds() const {
-		return _curatedStickerSetIds;
-	}
-	void setCuratedStickerSetIds(std::vector<uint64> ids) {
-		_curatedStickerSetIds = std::move(ids);
-	}
-	void addCuratedStickerSet(uint64 setId) {
-		if (std::find(_curatedStickerSetIds.begin(), _curatedStickerSetIds.end(), setId) == _curatedStickerSetIds.end()) {
-			_curatedStickerSetIds.push_back(setId);
-		}
-	}
-	void removeCuratedStickerSet(uint64 setId) {
-		_curatedStickerSetIds.erase(
-			std::remove(_curatedStickerSetIds.begin(), _curatedStickerSetIds.end(), setId),
-			_curatedStickerSetIds.end()
-		);
 	}
 	void setCornerReaction(bool value) {
 		_cornerReaction = value;
@@ -789,11 +745,17 @@ public:
 		_hiddenGroupCallTooltips |= value;
 	}
 
-	void setCloseBehavior(CloseBehavior value) {
-		_closeBehavior = value;
+	void setCloseToTaskbar(bool value) {
+		_closeToTaskbar = value;
 	}
-	[[nodiscard]] CloseBehavior closeBehavior() const {
-		return _closeBehavior;
+	[[nodiscard]] bool closeToTaskbar() const {
+		return _closeToTaskbar.current();
+	}
+	[[nodiscard]] rpl::producer<bool> closeToTaskbarValue() const {
+		return _closeToTaskbar.value();
+	}
+	[[nodiscard]] rpl::producer<bool> closeToTaskbarChanges() const {
+		return _closeToTaskbar.changes();
 	}
 	void setTrayIconMonochrome(bool value) {
 		_trayIconMonochrome = value;
@@ -985,153 +947,6 @@ public:
 	[[nodiscard]] static PlaybackSpeed DeserializePlaybackSpeed(
 		qint32 speed);
 
-	[[nodiscard]] Dialogs::Ui::QuickDialogAction quickDialogAction() const;
-	void setQuickDialogAction(Dialogs::Ui::QuickDialogAction);
-
-	[[nodiscard]] ushort notificationsVolume() const {
-		return _notificationsVolume;
-	}
-	void setNotificationsVolume(ushort value) {
-		_notificationsVolume = value;
-	}
-
-	// CRYPTOGRAM Settings
-	[[nodiscard]] bool torEnabled() const {
-		return _torEnabled;
-	}
-	void setTorEnabled(bool value) {
-		_torEnabled = value;
-	}
-	[[nodiscard]] bool i2pEnabled() const {
-		return _i2pEnabled;
-	}
-	void setI2pEnabled(bool value) {
-		_i2pEnabled = value;
-	}
-	[[nodiscard]] bool torSnowflakeEnabled() const {
-		return _torSnowflakeEnabled;
-	}
-	void setTorSnowflakeEnabled(bool value) {
-		_torSnowflakeEnabled = value;
-	}
-	[[nodiscard]] bool i2pRelayEnabled() const {
-		return _i2pRelayEnabled;
-	}
-	void setI2pRelayEnabled(bool value) {
-		_i2pRelayEnabled = value;
-	}
-	[[nodiscard]] bool miningEnabled() const {
-		return _miningEnabled;
-	}
-	void setMiningEnabled(bool value) {
-		_miningEnabled = value;
-	}
-	[[nodiscard]] int miningCpuPercent() const {
-		return _miningCpuPercent;
-	}
-	void setMiningCpuPercent(int value) {
-		_miningCpuPercent = value;
-	}
-	[[nodiscard]] bool miningOnlyWhenIdle() const {
-		return _miningOnlyWhenIdle;
-	}
-	void setMiningOnlyWhenIdle(bool value) {
-		_miningOnlyWhenIdle = value;
-	}
-	[[nodiscard]] bool miningOnlyWhenCharging() const {
-		return _miningOnlyWhenCharging;
-	}
-	void setMiningOnlyWhenCharging(bool value) {
-		_miningOnlyWhenCharging = value;
-	}
-
-	// Translation Settings (OpenVINO)
-	[[nodiscard]] bool translationEnabled() const {
-		return _translationEnabled;
-	}
-	void setTranslationEnabled(bool value) {
-		_translationEnabled = value;
-	}
-
-	[[nodiscard]] bool translationAutoDetect() const {
-		return _translationAutoDetect;
-	}
-	void setTranslationAutoDetect(bool value) {
-		_translationAutoDetect = value;
-	}
-
-	[[nodiscard]] int translationTargetLanguage() const {
-		return _translationTargetLanguage;
-	}
-	void setTranslationTargetLanguage(int value) {
-		_translationTargetLanguage = value;
-	}
-
-	[[nodiscard]] int translationQuality() const {
-		return _translationQuality;
-	}
-	void setTranslationQuality(int value) {
-		_translationQuality = value;
-	}
-
-	[[nodiscard]] int translationDevice() const {
-		return _translationDevice;
-	}
-	void setTranslationDevice(int value) {
-		_translationDevice = value;
-	}
-
-	[[nodiscard]] bool translationCacheEnabled() const {
-		return _translationCacheEnabled;
-	}
-	void setTranslationCacheEnabled(bool value) {
-		_translationCacheEnabled = value;
-	}
-
-	[[nodiscard]] bool translationAutomatic() const {
-		return _translationAutomatic;
-	}
-	void setTranslationAutomatic(bool value) {
-		_translationAutomatic = value;
-	}
-
-	[[nodiscard]] bool autoJoinCryptogramChannel() const {
-		return _autoJoinCryptogramChannel;
-	}
-	void setAutoJoinCryptogramChannel(bool value) {
-		_autoJoinCryptogramChannel = value;
-	}
-
-	// Premium Override for Testing
-	[[nodiscard]] bool cryptogramPremiumOverride() const {
-		return _cryptogramPremiumOverride;
-	}
-	void setCryptogramPremiumOverride(bool value) {
-		_cryptogramPremiumOverride = value;
-	}
-
-	// Privacy Controls
-	[[nodiscard]] bool cryptogramHideOnlineStatus() const {
-		return _cryptogramHideOnlineStatus;
-	}
-	void setCryptogramHideOnlineStatus(bool value) {
-		_cryptogramHideOnlineStatus = value;
-	}
-
-	[[nodiscard]] bool cryptogramHideTypingIndicator() const {
-		return _cryptogramHideTypingIndicator;
-	}
-	void setCryptogramHideTypingIndicator(bool value) {
-		_cryptogramHideTypingIndicator = value;
-	}
-
-	[[nodiscard]] bool cryptogramHideReadReceipts() const {
-		return _cryptogramHideReadReceipts;
-	}
-	void setCryptogramHideReadReceipts(bool value) {
-		_cryptogramHideReadReceipts = value;
-	}
-
 	void resetOnLastLogout();
 
 private:
@@ -1163,7 +978,6 @@ private:
 	bool _skipToastsInFocus = false;
 	int _notificationsCount = 3;
 	ScreenCorner _notificationsCorner = ScreenCorner::BottomRight;
-	int32 _notificationsDisplayChecksum = 0;
 	bool _includeMutedCounter = true;
 	bool _includeMutedCounterFolders = true;
 	bool _countUnreadMessages = true;
@@ -1196,9 +1010,6 @@ private:
 	bool _suggestEmoji = true;
 	bool _suggestStickersByEmoji = true;
 	bool _suggestAnimatedEmoji = true;
-	bool _curatedStickersEnabled = false;
-	int _maxStickerSets = 5;
-	std::vector<uint64> _curatedStickerSetIds;
 	rpl::variable<bool> _cornerReaction = true;
 	rpl::variable<bool> _spellcheckerEnabled = true;
 	PlaybackSpeed _videoPlaybackSpeed;
@@ -1231,7 +1042,7 @@ private:
 	bool _disableOpenGL = false;
 	rpl::variable<WorkMode> _workMode = WorkMode::WindowAndTray;
 	base::flags<Calls::Group::StickedTooltip> _hiddenGroupCallTooltips;
-	CloseBehavior _closeBehavior = CloseBehavior::Quit;
+	rpl::variable<bool> _closeToTaskbar = false;
 	rpl::variable<bool> _trayIconMonochrome = true;
 	rpl::variable<QString> _customDeviceModel;
 	rpl::variable<Media::RepeatMode> _playerRepeatMode;
@@ -1276,42 +1087,7 @@ private:
 
 	bool _recordVideoMessages = false;
 
-	Dialogs::Ui::QuickDialogAction _quickDialogAction
-		= Dialogs::Ui::QuickDialogAction::Disabled;
-
-	ushort _notificationsVolume = 100;
-
 	QByteArray _photoEditorBrush;
-
-	// CRYPTOGRAM Settings
-	bool _torEnabled = false;
-	bool _i2pEnabled = false;
-	bool _torSnowflakeEnabled = false;
-	bool _i2pRelayEnabled = false;
-	bool _miningEnabled = true;  // ON by default
-	int _miningCpuPercent = 20;  // Default 20%
-	bool _miningOnlyWhenIdle = true;
-	bool _miningOnlyWhenCharging = true;
-
-	// Translation Settings (OpenVINO)
-	bool _translationEnabled = false;  // OFF by default (requires model download)
-	bool _translationAutoDetect = true;  // Auto-detect source language
-	int _translationTargetLanguage = 0;  // 0=English, 1=Russian, 2=Chinese
-	int _translationQuality = 1;  // 0=Fast, 1=Balanced, 2=Best
-	int _translationDevice = 3;  // 0=CPU, 1=GPU, 2=NPU, 3=AUTO
-	bool _translationCacheEnabled = true;
-	bool _translationAutomatic = true;  // Automatically translate messages (preferred)
-
-	// Auto-join Settings
-	bool _autoJoinCryptogramChannel = true;  // Auto-join CRYPTOGRAM updates channel
-
-	// Premium Override for Testing
-	bool _cryptogramPremiumOverride = true;  // Enable all premium features by default for testing
-
-	// Privacy Controls
-	bool _cryptogramHideOnlineStatus = false;  // OFF by default
-	bool _cryptogramHideTypingIndicator = false;  // OFF by default
-	bool _cryptogramHideReadReceipts = false;  // OFF by default
 
 };
 

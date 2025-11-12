@@ -104,7 +104,7 @@ void PreviewPainter::setDocument(
 		}
 		if (_player) {
 			_player->setRepaintCallback(updateCallback);
-		} else if (updateCallback) {
+		} else {
 			updateCallback();
 		}
 	}, _lifetime);
@@ -166,7 +166,6 @@ EmojiUserpic::EmojiUserpic(
 , _painter(size.width())
 , _duration(st::slideWrapDuration) {
 	resize(size);
-	setNaturalWidth(size.width());
 }
 
 void EmojiUserpic::setDocument(not_null<DocumentData*> document) {

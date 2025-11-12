@@ -17,7 +17,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/application.h"
 #include "core/click_handler_types.h"
 #include "core/core_settings.h"
-#include "core/local_url_handlers.h"
 #include "core/update_checker.h"
 #include "data/data_changes.h"
 #include "data/data_document.h"
@@ -41,8 +40,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "media/stories/media_stories_stealth.h"
 #include "media/stories/media_stories_view.h"
 #include "media/audio/media_audio.h"
-#include "info/stories/info_stories_common.h"
-#include "settings/settings_credits_graphics.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/boxes/report_box_graphics.h"
 #include "ui/text/text_utilities.h"
@@ -704,25 +701,44 @@ void Controller::rebuildFromContext(
 	}, [&](StoriesContextPeer) {
 		source = stories.source(peerId);
 		hideSiblings();
-	}, [&](StoriesContextAlbum album) {
-		const auto known = stories.albumIdsCountKnown(peerId, album.id);
-		if (known) {
-			const auto &ids = stories.albumIds(peerId, album.id);
-			auto sorted = RespectingPinned(ids);
+	}, [&](StoriesContextSaved) {
+		if (stories.savedCountKnown(peerId)) {
+			const auto &saved = stories.saved(peerId);
+			auto sorted = RespectingPinned(saved);
 			const auto i = ranges::find(sorted, id);
 			const auto tillEnd = int(end(sorted) - i);
 			if (tillEnd > 0) {
 				_index = int(i - begin(sorted));
-				const auto total = stories.albumIdsCount(peerId, album.id);
 				list = StoriesList{
 					.peer = peer,
-					.ids = ids,
+					.ids = saved,
 					.sorted = std::move(sorted),
-					.total = total,
+					.total = stories.savedCount(peerId),
 				};
-				if (ids.list.size() < list->total
+				if (saved.list.size() < list->total
 					&& tillEnd < kPreloadStoriesCount) {
-					stories.albumIdsLoadMore(peerId, album.id);
+					stories.savedLoadMore(peerId);
+				}
+			}
+		}
+		hideSiblings();
+	}, [&](StoriesContextArchive) {
+		if (stories.archiveCountKnown(peerId)) {
+			const auto &archive = stories.archive(peerId);
+			auto sorted = RespectingPinned(archive);
+			const auto i = ranges::find(sorted, id);
+			const auto tillEnd = int(end(sorted) - i);
+			if (tillEnd > 0) {
+				_index = int(i - begin(sorted));
+				list = StoriesList{
+					.peer = peer,
+					.ids = archive,
+					.sorted = std::move(sorted),
+					.total = stories.archiveCount(peerId),
+				};
+				if (archive.list.size() < list->total
+					&& tillEnd < kPreloadStoriesCount) {
+					stories.archiveLoadMore(peerId);
 				}
 			}
 		}
@@ -842,10 +858,15 @@ void Controller::show(
 	v::match(_context.data, [&](Data::StoriesContextSingle) {
 	}, [&](Data::StoriesContextPeer) {
 		subscribeToSource();
-	}, [&](Data::StoriesContextAlbum album) {
-		const auto key = Data::StoryAlbumIdsKey{ storyId.peer, album.id };
-		stories.albumIdsChanged() | rpl::filter(
-			rpl::mappers::_1 == key
+	}, [&](Data::StoriesContextSaved) {
+		stories.savedChanged() | rpl::filter(
+			rpl::mappers::_1 == storyId.peer
+		) | rpl::start_with_next([=] {
+			rebuildFromContext(peer, storyId);
+			checkMoveByDelta();
+		}, _contextLifetime);
+	}, [&](Data::StoriesContextArchive) {
+		stories.archiveChanged(
 		) | rpl::start_with_next([=] {
 			rebuildFromContext(peer, storyId);
 			checkMoveByDelta();
@@ -1253,12 +1274,11 @@ ClickHandlerPtr Controller::lookupAreaHandler(QPoint point) const {
 				});
 			}
 		}
-		const auto weak = base::make_weak(this);
 		for (const auto &url : _urlAreas) {
 			_areas.push_back({
 				.original = url.area.geometry,
 				.rotation = url.area.rotation,
-				.handler = MakeUrlAreaHandler(weak, url.url),
+				.handler = std::make_shared<HiddenUrlClickHandler>(url.url),
 			});
 		}
 		for (const auto &weather : _weatherAreas) {
@@ -1578,8 +1598,10 @@ void Controller::loadMoreToList() {
 	const auto peer = shownPeer();
 	const auto peerId = _shown.peer;
 	auto &stories = peer->owner().stories();
-	v::match(_context.data, [&](StoriesContextAlbum album) {
-		stories.albumIdsLoadMore(peerId, album.id);
+	v::match(_context.data, [&](StoriesContextSaved) {
+		stories.savedLoadMore(peerId);
+	}, [&](StoriesContextArchive) {
+		stories.archiveLoadMore(peerId);
 	}, [](const auto &) {
 	});
 }
@@ -1738,10 +1760,7 @@ void Controller::toggleInProfileRequested(bool inProfile) {
 	if (!story || !story->peer()->isSelf()) {
 		return;
 	}
-	if (!inProfile
-		&& v::is<Data::StoriesContextAlbum>(_context.data)
-		&& (v::get<Data::StoriesContextAlbum>(_context.data).id
-			!= Data::kStoriesAlbumIdArchive)) {
+	if (!inProfile && v::is<Data::StoriesContextSaved>(_context.data)) {
 		moveFromShown();
 	}
 	story->owner().stories().toggleInProfileList(
@@ -1919,39 +1938,6 @@ ClickHandlerPtr MakeChannelPostHandler(
 				item.msg);
 		}
 	}));
-}
-
-ClickHandlerPtr MakeUrlAreaHandler(
-		base::weak_ptr<Controller> weak,
-		const QString &url) {
-	class Handler final : public HiddenUrlClickHandler {
-	public:
-		Handler(const QString &url, base::weak_ptr<Controller> weak)
-		: HiddenUrlClickHandler(url), _weak(weak) {
-		}
-
-		void onClick(ClickContext context) const override {
-			const auto raw = url();
-			const auto strong = _weak.get();
-			const auto prefix = u"tg://nft?slug="_q;
-			if (raw.startsWith(prefix) && strong) {
-				const auto slug = raw.mid(
-					prefix.size()
-				).split('&').front().split('#').front();
-				Core::ResolveAndShowUniqueGift(
-					strong->uiShow(),
-					slug,
-					::Settings::DarkCreditsEntryBoxStyle());
-			} else {
-				HiddenUrlClickHandler::onClick(context);
-			}
-		}
-
-	private:
-		base::weak_ptr<Controller> _weak;
-
-	};
-	return std::make_shared<Handler>(url, weak);
 }
 
 } // namespace Media::Stories

@@ -327,8 +327,8 @@ struct Feature {
 		box->setWidth(st::boxWideWidth);
 		box->setStyle(st::storiesStealthBox);
 		box->addRow(MakeLogo(box));
-		box->addRow(MakeTitle(box), style::al_top);
-		box->addRow(MakeAbout(box, data->state.value()), style::al_top);
+		box->addRow(MakeTitle(box));
+		box->addRow(MakeAbout(box, data->state.value()));
 		box->addRow(MakeFeature(box, FeaturePast()));
 		box->addRow(
 			MakeFeature(box, FeatureNext()),
@@ -350,7 +350,8 @@ struct Feature {
 				box->closeBox();
 			} else if (!now.premium) {
 				data->requested = false;
-				if (const auto window = show->resolveWindow()) {
+				const auto usage = ChatHelpers::WindowUsage::PremiumPromo;
+				if (const auto window = show->resolveWindow(usage)) {
 					ShowPremiumPreviewBox(window, PremiumFeature::Stories);
 					window->window().activate();
 				}

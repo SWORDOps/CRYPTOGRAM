@@ -520,7 +520,7 @@ void ConfirmContactBox::prepare() {
 	_contact->initDimensions();
 
 	_submit = [=, original = std::move(_submit)](Qt::KeyboardModifiers m) {
-		const auto weak = base::make_weak(this);
+		const auto weak = Ui::MakeWeak(this);
 		original(m);
 		if (weak) {
 			closeBox();

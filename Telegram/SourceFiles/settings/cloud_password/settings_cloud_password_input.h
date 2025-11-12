@@ -12,7 +12,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Settings {
 
 Type CloudPasswordInputId();
-Type CloudPasswordSuggestionInputId();
 
 } // namespace Settings
 

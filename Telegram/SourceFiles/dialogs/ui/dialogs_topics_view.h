@@ -16,8 +16,6 @@ struct DialogRow;
 namespace Data {
 class Forum;
 class ForumTopic;
-class SavedMessages;
-class SavedSublist;
 } // namespace Data
 
 namespace Ui {
@@ -61,19 +59,15 @@ void FillJumpToLastPrepared(QPainter &p, JumpToLastPrepared context);
 
 class TopicsView final {
 public:
-	TopicsView(Data::Forum *forum, Data::SavedMessages *monoforum);
+	explicit TopicsView(not_null<Data::Forum*> forum);
 	~TopicsView();
 
-	[[nodiscard]] Data::Forum *forum() const {
+	[[nodiscard]] not_null<Data::Forum*> forum() const {
 		return _forum;
-	}
-	[[nodiscard]] Data::SavedMessages *monoforum() const {
-		return _monoforum;
 	}
 
 	[[nodiscard]] bool prepared() const;
 	void prepare(MsgId frontRootId, Fn<void()> customEmojiRepaint);
-	void prepare(PeerId frontPeerId, Fn<void()> customEmojiRepaint);
 
 	[[nodiscard]] int jumpToTopicWidth() const;
 
@@ -105,7 +99,7 @@ public:
 private:
 	struct Title {
 		Text::String title;
-		uint64 key = 0;
+		MsgId topicRootId = 0;
 		int version = -1;
 		bool unread = false;
 	};
@@ -113,15 +107,13 @@ private:
 	[[nodiscard]] QImage topicJumpRippleMask(
 		not_null<TopicJumpCache*> topicJumpCache) const;
 
-	Data::Forum * const _forum = nullptr;
-	Data::SavedMessages * const _monoforum = nullptr;
+	const not_null<Data::Forum*> _forum;
 
 	mutable std::vector<Title> _titles;
 	mutable std::unique_ptr<RippleAnimation> _ripple;
 	JumpToLastGeometry _lastTopicJumpGeometry;
 	int _version = -1;
 	bool _jumpToTopic = false;
-	bool _allLoaded = false;
 
 	rpl::lifetime _lifetime;
 

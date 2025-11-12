@@ -360,41 +360,28 @@ void Contact::draw(Painter &p, const PaintContext &context) const {
 		? _contact->colorIndex()
 		: Data::DecideColorIndex(
 			Data::FakePeerIdForJustName(_nameLine.toString()));
-	const auto &colorCollectible = _contact
-		? _contact->colorCollectible()
-		: nullptr;
-	const auto colorPattern = colorCollectible
-		? st->collectiblePatternIndex(colorCollectible)
-		: st->colorPatternIndex(colorIndex);
-	const auto useColorCollectible = colorCollectible && !context.outbg;
-	const auto useColorIndex = !context.outbg;
-	const auto cache = useColorCollectible
-		? st->collectibleReplyCache(selected, colorCollectible).get()
-		: useColorIndex
-		? st->coloredReplyCache(selected, colorIndex).get()
-		: stm->replyCache[colorPattern].get();
+	const auto cache = context.outbg
+		? stm->replyCache[st->colorPatternIndex(colorIndex)].get()
+		: st->coloredReplyCache(selected, colorIndex).get();
 	const auto backgroundEmojiId = _contact
 		? _contact->backgroundEmojiId()
 		: DocumentId();
-	const auto backgroundEmojiData = backgroundEmojiId
-		? st->backgroundEmojiData(backgroundEmojiId, colorCollectible).get()
+	const auto backgroundEmoji = backgroundEmojiId
+		? st->backgroundEmojiData(backgroundEmojiId).get()
 		: nullptr;
-	const auto backgroundEmojiCache = !backgroundEmojiData
-		? nullptr
-		: useColorCollectible
-		? &backgroundEmojiData->collectibleCaches[colorCollectible]
-		: &backgroundEmojiData->caches[Ui::BackgroundEmojiData::CacheIndex(
+	const auto backgroundEmojiCache = backgroundEmoji
+		? &backgroundEmoji->caches[Ui::BackgroundEmojiData::CacheIndex(
 			selected,
 			context.outbg,
 			true,
-			useColorIndex ? (colorIndex + 1) : 0)];
+			colorIndex + 1)]
+		: nullptr;
 	Ui::Text::ValidateQuotePaintCache(*cache, _st);
 	Ui::Text::FillQuotePaint(p, outer, *cache, _st);
-	if (backgroundEmojiData) {
+	if (backgroundEmoji) {
 		ValidateBackgroundEmoji(
 			backgroundEmojiId,
-			colorCollectible,
-			backgroundEmojiData,
+			backgroundEmoji,
 			backgroundEmojiCache,
 			cache,
 			view);
@@ -402,12 +389,7 @@ void Contact::draw(Painter &p, const PaintContext &context) const {
 			const auto end = rect::bottom(inner) + _st.padding.bottom();
 			const auto r = outer
 				- QMargins(0, 0, 0, rect::bottom(outer) - end);
-			FillBackgroundEmoji(
-				p,
-				r,
-				false,
-				*backgroundEmojiCache,
-				backgroundEmojiData->firstGiftFrame);
+			FillBackgroundEmoji(p, r, false, *backgroundEmojiCache);
 		}
 	}
 
@@ -453,11 +435,9 @@ void Contact::draw(Painter &p, const PaintContext &context) const {
 
 	{
 		p.setPen(cache->icon);
-		p.setTextPalette(useColorCollectible
-			? st->collectibleTextPalette(selected, colorCollectible)
-			: useColorIndex
-			? st->coloredTextPalette(selected, colorIndex)
-			: stm->semiboldPalette);
+		p.setTextPalette(context.outbg
+			? stm->semiboldPalette
+			: st->coloredTextPalette(selected, colorIndex));
 
 		const auto endskip = _nameLine.hasSkipBlock()
 			? _parent->skipBlockWidth()

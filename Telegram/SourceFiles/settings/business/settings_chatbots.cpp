@@ -8,7 +8,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "settings/business/settings_chatbots.h"
 
 #include "apiwrap.h"
-#include "boxes/peers/edit_peer_permissions_box.h"
 #include "boxes/peers/prepare_short_info_box.h"
 #include "boxes/peer_list_box.h"
 #include "core/application.h"
@@ -18,7 +17,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "settings/business/settings_recipients_helper.h"
-#include "ui/boxes/confirm_box.h"
 #include "ui/effects/ripple_animation.h"
 #include "ui/text/text_utilities.h"
 #include "ui/widgets/fields/input_field.h"
@@ -49,10 +47,6 @@ struct BotState {
 	LookupState state = LookupState::Empty;
 };
 
-[[nodiscard]] constexpr Data::ChatbotsPermissions Defaults() {
-	return Data::ChatbotsPermission::ViewMessages;
-}
-
 class Chatbots final : public BusinessSection<Chatbots> {
 public:
 	Chatbots(
@@ -64,23 +58,19 @@ public:
 	[[nodiscard]] rpl::producer<QString> title() override;
 
 	const Ui::RoundRect *bottomSkipRounding() const override {
-		return _detailsWrap->count() ? nullptr : &_bottomSkipRounding;
+		return &_bottomSkipRounding;
 	}
 
 private:
-	void setupContent();
-	void refreshDetails();
+	void setupContent(not_null<Window::SessionController*> controller);
 	void save();
 
 	Ui::RoundRect _bottomSkipRounding;
 
-	Ui::VerticalLayout *_detailsWrap = nullptr;
-
 	rpl::variable<Data::BusinessRecipients> _recipients;
 	rpl::variable<QString> _usernameValue;
 	rpl::variable<BotState> _botValue;
-	rpl::variable<Data::ChatbotsPermissions> _permissions = Defaults();
-	Fn<Data::ChatbotsPermissions()> _resolvePermissions;
+	rpl::variable<bool> _repliesAllowed = true;
 
 };
 
@@ -395,7 +385,7 @@ Chatbots::Chatbots(
 	not_null<Window::SessionController*> controller)
 : BusinessSection(parent, controller)
 , _bottomSkipRounding(st::boxRadius, st::boxDividerBg) {
-	setupContent();
+	setupContent(controller);
 }
 
 Chatbots::~Chatbots() {
@@ -412,14 +402,15 @@ rpl::producer<QString> Chatbots::title() {
 	return tr::lng_chatbots_title();
 }
 
-void Chatbots::setupContent() {
+void Chatbots::setupContent(
+		not_null<Window::SessionController*> controller) {
 	using namespace rpl::mappers;
 
 	const auto content = Ui::CreateChild<Ui::VerticalLayout>(this);
-	const auto current = controller()->session().data().chatbots().current();
+	const auto current = controller->session().data().chatbots().current();
 
 	_recipients = Data::BusinessRecipients::MakeValid(current.recipients);
-	_permissions = current.permissions;
+	_repliesAllowed = current.repliesAllowed;
 
 	AddDividerTextWithLottie(content, {
 		.lottie = u"robot"_q,
@@ -450,15 +441,12 @@ void Chatbots::setupContent() {
 		current.bot,
 		current.bot ? LookupState::Ready : LookupState::Empty
 	}) | rpl::then(
-		LookupBot(&controller()->session(), _usernameValue.changes())
+		LookupBot(&controller->session(), _usernameValue.changes())
 	);
 
 	const auto resetBot = [=] {
 		username->setText(QString());
 		username->setFocus();
-
-		_permissions = Defaults();
-		refreshDetails();
 	};
 	content->add(object_ptr<Ui::SlideWrap<Ui::RpWidget>>(
 		content,
@@ -467,36 +455,10 @@ void Chatbots::setupContent() {
 	Ui::AddDividerText(
 		content,
 		tr::lng_chatbots_add_about(),
-		st::peerAppearanceDividerTextMargin,
-		RectPart::Top);
+		st::peerAppearanceDividerTextMargin);
 
-	_detailsWrap = content->add(object_ptr<Ui::VerticalLayout>(content));
-
-	refreshDetails();
-	_botValue.changes() | rpl::start_with_next([=](const BotState &value) {
-		_permissions = Defaults();
-		refreshDetails();
-	}, lifetime());
-
-	Ui::ResizeFitChild(this, content);
-}
-
-void Chatbots::refreshDetails() {
-	_resolvePermissions = [=] {
-		return Data::ChatbotsPermissions();
-	};
-	while (_detailsWrap->count()) {
-		delete _detailsWrap->widgetAt(0);
-	}
-
-	const auto bot = _botValue.current().bot;
-	if (!bot) {
-		return;
-	}
-
-	const auto content = _detailsWrap;
 	AddBusinessRecipientsSelector(content, {
-		.controller = controller(),
+		.controller = controller,
 		.title = tr::lng_chatbots_access_title(),
 		.data = &_recipients,
 		.type = Data::BusinessRecipientsType::Bots,
@@ -510,45 +472,23 @@ void Chatbots::refreshDetails() {
 
 	Ui::AddSkip(content);
 	Ui::AddSubsectionTitle(content, tr::lng_chatbots_permissions_title());
-
-	auto permissions = CreateEditChatbotPermissions(
+	content->add(object_ptr<Ui::SettingsButton>(
 		content,
-		_permissions.current());
-	content->add(std::move(permissions.widget));
-	_resolvePermissions = permissions.value;
-
-
-	std::move(
-		permissions.changes
-	) | rpl::start_with_next([=](Data::ChatbotsPermissions now) {
-		const auto warn = [&](tr::phrase<lngtag_bot> text) {
-			controller()->show(Ui::MakeInformBox({
-				.text = text(tr::now, lt_bot, Ui::Text::Bold(bot->name()), Ui::Text::RichLangValue),
-				.title = tr::lng_chatbots_warning_title(),
-			}));
-		};
-
-		const auto was = _permissions.current();
-		const auto diff = now ^ was;
-		const auto enabled = diff & now;
-		using Flag = Data::ChatbotsPermission;
-		if (enabled & (Flag::TransferGifts | Flag::SellGifts)) {
-			if (enabled & Flag::TransferStars) {
-				warn(tr::lng_chatbots_warning_both_text);
-			} else {
-				warn(tr::lng_chatbots_warning_gifts_text);
-			}
-		} else if (enabled & Flag::TransferStars) {
-			warn(tr::lng_chatbots_warning_stars_text);
-		} else if (enabled & Flag::EditUsername) {
-			warn(tr::lng_chatbots_warning_username_text);
-		}
-		_permissions = now;
-	}, lifetime());
-
+		tr::lng_chatbots_reply(),
+		st::settingsButtonNoIcon
+	))->toggleOn(_repliesAllowed.value())->toggledChanges(
+	) | rpl::start_with_next([=](bool value) {
+		_repliesAllowed = value;
+	}, content->lifetime());
 	Ui::AddSkip(content);
 
-	_detailsWrap->resizeToWidth(width());
+	Ui::AddDividerText(
+		content,
+		tr::lng_chatbots_reply_about(),
+		st::settingsChatbotsBottomTextMargin,
+		RectPart::Top);
+
+	Ui::ResizeFitChild(this, content);
 }
 
 void Chatbots::save() {
@@ -563,7 +503,7 @@ void Chatbots::save() {
 	controller()->session().data().chatbots().save({
 		.bot = _botValue.current().bot,
 		.recipients = _recipients.current(),
-		.permissions = _resolvePermissions(),
+		.repliesAllowed = _repliesAllowed.current(),
 	}, [=] {
 	}, fail);
 }

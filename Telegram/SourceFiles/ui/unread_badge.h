@@ -58,7 +58,6 @@ public:
 		const style::icon *verified = nullptr;
 		const style::icon *premium = nullptr;
 		const style::color *scam = nullptr;
-		const style::color *direct = nullptr;
 		const style::color *premiumFg = nullptr;
 		Fn<void()> customEmojiRepaint;
 		crl::time now = 0;
@@ -85,7 +84,7 @@ private:
 	struct EmojiStatus;
 	struct BotVerifiedData;
 
-	int drawTextBadge(Painter &p, const Descriptor &descriptor);
+	int drawScamOrFake(Painter &p, const Descriptor &descriptor);
 	int drawVerifyCheck(Painter &p, const Descriptor &descriptor);
 	int drawPremiumEmojiStatus(Painter &p, const Descriptor &descriptor);
 	int drawPremiumStar(Painter &p, const Descriptor &descriptor);
@@ -95,15 +94,9 @@ private:
 
 };
 
-enum class TextBadgeType : uchar {
-	Scam,
-	Fake,
-	Direct,
-};
-
-QSize TextBadgeSize(TextBadgeType type);
-void DrawTextBadge(
-	TextBadgeType,
+QSize ScamBadgeSize(bool fake);
+void DrawScamBadge(
+	bool fake,
 	Painter &p,
 	QRect rect,
 	int outerWidth,

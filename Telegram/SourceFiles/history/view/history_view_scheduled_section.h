@@ -274,10 +274,10 @@ private:
 		not_null<PhotoData*> photo,
 		Api::SendOptions options);
 	void sendInlineResult(
-		std::shared_ptr<InlineBots::Result> result,
+		not_null<InlineBots::Result*> result,
 		not_null<UserData*> bot);
 	void sendInlineResult(
-		std::shared_ptr<InlineBots::Result> result,
+		not_null<InlineBots::Result*> result,
 		not_null<UserData*> bot,
 		Api::SendOptions options);
 

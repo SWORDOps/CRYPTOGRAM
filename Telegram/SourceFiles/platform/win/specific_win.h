@@ -11,6 +11,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include <windows.h>
 
+namespace Data {
+class LocationPoint;
+} // namespace Data
+
 namespace Platform {
 
 inline void IgnoreApplicationActivationRightNow() {
@@ -22,6 +26,10 @@ inline bool TrayIconSupported() {
 
 inline bool SkipTaskbarSupported() {
 	return true;
+}
+
+inline bool RunInBackground() {
+	return false;
 }
 
 inline bool PreventsQuit(Core::QuitReason reason) {
@@ -38,10 +46,6 @@ void SetWindowPriority(not_null<QWidget*> window, uint32 priority);
 
 // Activate window with windowId (if found) or the largest priority.
 void ActivateOtherProcess(uint64 processId, uint64 windowId);
-
-inline QString ApplicationIconName() {
-	return {};
-}
 
 inline QString ExecutablePathForShortcuts() {
 	return cExeDir() + cExeName();
@@ -69,3 +73,5 @@ inline QByteArray psDownloadPathBookmark(const QString &path) {
 }
 inline void psDownloadPathEnableAccess() {
 }
+
+bool psLaunchMaps(const Data::LocationPoint &point);

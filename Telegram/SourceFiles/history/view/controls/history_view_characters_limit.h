@@ -16,15 +16,9 @@ public:
 	CharactersLimitLabel(
 		not_null<Ui::RpWidget*> parent,
 		not_null<Ui::RpWidget*> widgetToAlign,
-		style::align align,
-		QMargins margins = {});
+		style::align align);
 
 	void setLeft(int value);
-
-private:
-	int _lastValue = 0;
-	not_null<Ui::RpWidget*> _widgetToAlign;
-	Fn<void(int, const QRect &)> _position;
 
 };
 

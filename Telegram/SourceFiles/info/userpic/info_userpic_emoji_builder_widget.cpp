@@ -178,7 +178,7 @@ void ShowGradientEditor(
 				},
 			});
 		box->setWidth(content->width());
-		box->addRow(std::move(content), style::margins());
+		box->addRow(std::move(content), {});
 	}));
 }
 
@@ -243,7 +243,7 @@ EmojiSelector::Selector EmojiSelector::createEmojiList(
 		.show = _controller->uiShow(),
 		.mode = ChatHelpers::EmojiListMode::UserpicBuilder,
 		.paused = [=] { return true; },
-		.customRecentList = ChatHelpers::DocumentListToRecent(_lastRecent),
+		.customRecentList = _lastRecent,
 		.customRecentFactory = [=](DocumentId id, Fn<void()> repaint) {
 			return manager->create(id, std::move(repaint), tag);
 		},
@@ -408,12 +408,13 @@ not_null<Ui::VerticalLayout*> CreateUserpicBuilder(
 	const auto state = container->lifetime().make_state<State>();
 
 	const auto preview = container->add(
-		object_ptr<EmojiUserpic>(
+		object_ptr<Ui::CenterWrap<EmojiUserpic>>(
 			container,
-			Size(st::settingsInfoPhotoSize),
-			data.isForum),
-		st::userpicBuilderEmojiPreviewPadding,
-		style::al_top);
+			object_ptr<EmojiUserpic>(
+				container,
+				Size(st::settingsInfoPhotoSize),
+				data.isForum)),
+		st::userpicBuilderEmojiPreviewPadding)->entity();
 	if (const auto id = data.documentId) {
 		const auto document = controller->session().data().document(id);
 		if (document && document->sticker()) {
@@ -422,12 +423,13 @@ not_null<Ui::VerticalLayout*> CreateUserpicBuilder(
 	}
 
 	container->add(
-		object_ptr<Ui::FlatLabel>(
+		object_ptr<Ui::CenterWrap<Ui::FlatLabel>>(
 			container,
-			tr::lng_userpic_builder_color_subtitle(),
-			st::userpicBuilderEmojiSubtitle),
-		st::userpicBuilderEmojiSubtitlePadding,
-		style::al_top);
+			object_ptr<Ui::FlatLabel>(
+				container,
+				tr::lng_userpic_builder_color_subtitle(),
+				st::userpicBuilderEmojiSubtitle)),
+		st::userpicBuilderEmojiSubtitlePadding);
 
 	const auto paletteBg = Ui::AddBubbleWrap(
 		container,
@@ -513,12 +515,13 @@ not_null<Ui::VerticalLayout*> CreateUserpicBuilder(
 	}, palette->lifetime());
 
 	container->add(
-		object_ptr<Ui::FlatLabel>(
+		object_ptr<Ui::CenterWrap<Ui::FlatLabel>>(
 			container,
-			tr::lng_userpic_builder_emoji_subtitle(),
-			st::userpicBuilderEmojiSubtitle),
-		st::userpicBuilderEmojiSubtitlePadding,
-		style::al_top);
+			object_ptr<Ui::FlatLabel>(
+				container,
+				tr::lng_userpic_builder_emoji_subtitle(),
+				st::userpicBuilderEmojiSubtitle)),
+		st::userpicBuilderEmojiSubtitlePadding);
 
 	const auto selectorBg = Ui::AddBubbleWrap(
 		container,

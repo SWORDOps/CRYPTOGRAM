@@ -66,6 +66,7 @@ void CheckoutProcess::Start(
 		Mode mode,
 		Fn<void(CheckoutResult)> reactivate,
 		Fn<void(NonPanelPaymentForm)> nonPanelPaymentFormProcess) {
+	const auto hasNonPanelPaymentFormProcess = !!nonPanelPaymentFormProcess;
 	auto &processes = LookupSessionProcesses(&item->history()->session());
 	const auto media = item->media();
 	const auto invoice = media ? media->invoice() : nullptr;
@@ -86,7 +87,9 @@ void CheckoutProcess::Start(
 		i->second->setReactivateCallback(std::move(reactivate));
 		i->second->setNonPanelPaymentFormProcess(
 			std::move(nonPanelPaymentFormProcess));
-		i->second->requestActivate();
+		if (!hasNonPanelPaymentFormProcess) {
+			i->second->requestActivate();
+		}
 		return;
 	}
 	const auto j = processes.byItem.emplace(
@@ -97,7 +100,9 @@ void CheckoutProcess::Start(
 			std::move(reactivate),
 			std::move(nonPanelPaymentFormProcess),
 			PrivateTag{})).first;
-	j->second->requestActivate();
+	if (!hasNonPanelPaymentFormProcess) {
+		j->second->requestActivate();
+	}
 }
 
 void CheckoutProcess::Start(
@@ -105,13 +110,16 @@ void CheckoutProcess::Start(
 		const QString &slug,
 		Fn<void(CheckoutResult)> reactivate,
 		Fn<void(NonPanelPaymentForm)> nonPanelPaymentFormProcess) {
+	const auto hasNonPanelPaymentFormProcess = !!nonPanelPaymentFormProcess;
 	auto &processes = LookupSessionProcesses(session);
 	const auto i = processes.bySlug.find(slug);
 	if (i != end(processes.bySlug)) {
 		i->second->setReactivateCallback(std::move(reactivate));
 		i->second->setNonPanelPaymentFormProcess(
 			std::move(nonPanelPaymentFormProcess));
-		i->second->requestActivate();
+		if (!hasNonPanelPaymentFormProcess) {
+			i->second->requestActivate();
+		}
 		return;
 	}
 	const auto j = processes.bySlug.emplace(
@@ -122,21 +130,20 @@ void CheckoutProcess::Start(
 			std::move(reactivate),
 			std::move(nonPanelPaymentFormProcess),
 			PrivateTag{})).first;
-	j->second->requestActivate();
+	if (!hasNonPanelPaymentFormProcess) {
+		j->second->requestActivate();
+	}
 }
 
 void CheckoutProcess::Start(
 		InvoicePremiumGiftCode giftCodeInvoice,
-		Fn<void(CheckoutResult)> reactivate,
-		Fn<void(NonPanelPaymentForm)> nonPanelPaymentFormProcess) {
+		Fn<void(CheckoutResult)> reactivate) {
 	const auto randomId = giftCodeInvoice.randomId;
 	auto id = InvoiceId{ std::move(giftCodeInvoice) };
 	auto &processes = LookupSessionProcesses(SessionFromId(id));
 	const auto i = processes.byRandomId.find(randomId);
 	if (i != end(processes.byRandomId)) {
 		i->second->setReactivateCallback(std::move(reactivate));
-		i->second->setNonPanelPaymentFormProcess(
-			std::move(nonPanelPaymentFormProcess));
 		i->second->requestActivate();
 		return;
 	}
@@ -146,7 +153,7 @@ void CheckoutProcess::Start(
 			std::move(id),
 			Mode::Payment,
 			std::move(reactivate),
-			std::move(nonPanelPaymentFormProcess),
+			nullptr,
 			PrivateTag{})).first;
 	j->second->requestActivate();
 }
@@ -365,9 +372,7 @@ void CheckoutProcess::setNonPanelPaymentFormProcess(
 }
 
 void CheckoutProcess::requestActivate() {
-	if (!_nonPanelPaymentFormProcess) {
-		_panel->requestActivate();
-	}
+	_panel->requestActivate();
 }
 
 not_null<Ui::PanelDelegate*> CheckoutProcess::panelDelegate() {
@@ -410,7 +415,7 @@ void CheckoutProcess::handleFormUpdate(const FormUpdate &update) {
 		UnregisterPaymentStart(this);
 		_submitState = SubmitState::Validated;
 		_panel->showWarning(data.bot->name(), data.provider->name());
-		if (const auto box = _enterPasswordBox.get()) {
+		if (const auto box = _enterPasswordBox.data()) {
 			box->closeBox();
 		}
 	}, [&](const VerificationNeeded &data) {
@@ -534,7 +539,7 @@ void CheckoutProcess::handleError(const Error &error) {
 		showToast({ "SmartGlocal Error: " + id });
 	} break;
 	case Error::Type::TmpPassword:
-		if (const auto box = _enterPasswordBox.get()) {
+		if (const auto box = _enterPasswordBox.data()) {
 			if (!box->handleCustomCheckError(id)) {
 				showToast({ "Error: Could not generate tmp password." });
 			}
@@ -542,7 +547,7 @@ void CheckoutProcess::handleError(const Error &error) {
 		break;
 	case Error::Type::Send:
 		_sendFormFailed = true;
-		if (const auto box = _enterPasswordBox.get()) {
+		if (const auto box = _enterPasswordBox.data()) {
 			box->closeBox();
 		}
 		if (_submitState == SubmitState::Finishing) {
@@ -857,7 +862,7 @@ void CheckoutProcess::requestPassword() {
 		fields.customSubmitButton = tr::lng_payments_password_submit();
 		fields.customCheckCallback = [=](
 				const Core::CloudPasswordResult &result,
-				base::weak_qptr<PasscodeBox> box) {
+				QPointer<PasscodeBox> box) {
 			_enterPasswordBox = box;
 			_form->submit(result);
 		};

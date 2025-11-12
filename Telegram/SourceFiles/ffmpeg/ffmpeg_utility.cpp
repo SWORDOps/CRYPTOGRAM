@@ -10,10 +10,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/algorithm.h"
 #include "logs.h"
 
-#if !defined Q_OS_WIN && !defined Q_OS_MAC
+#if !defined TDESKTOP_USE_PACKAGED && !defined Q_OS_WIN && !defined Q_OS_MAC
 #include "base/platform/linux/base_linux_library.h"
 #include <deque>
-#endif // !Q_OS_WIN && !Q_OS_MAC
+#endif // !TDESKTOP_USE_PACKAGED && !Q_OS_WIN && !Q_OS_MAC
 
 #include <QImage>
 
@@ -25,16 +25,6 @@ extern "C" {
 #include <libavutil/opt.h>
 #include <libavutil/display.h>
 } // extern "C"
-
-#if !defined Q_OS_WIN && !defined Q_OS_MAC
-extern "C" {
-void _libvdpau_so_tramp_resolve_all(void) __attribute__((weak));
-void _libva_drm_so_tramp_resolve_all(void) __attribute__((weak));
-void _libva_x11_so_tramp_resolve_all(void) __attribute__((weak));
-void _libva_so_tramp_resolve_all(void) __attribute__((weak));
-void _libdrm_so_tramp_resolve_all(void) __attribute__((weak));
-} // extern "C"
-#endif // !Q_OS_WIN && !Q_OS_MAC
 
 namespace FFmpeg {
 namespace {
@@ -101,24 +91,23 @@ void PremultiplyLine(uchar *dst, const uchar *src, int intsCount) {
 #endif // LIB_FFMPEG_USE_QT_PRIVATE_API
 }
 
-#if !defined Q_OS_WIN && !defined Q_OS_MAC
+#if !defined TDESKTOP_USE_PACKAGED && !defined Q_OS_WIN && !defined Q_OS_MAC
 [[nodiscard]] auto CheckHwLibs() {
 	auto list = std::deque{
 		AV_PIX_FMT_CUDA,
 	};
-	if (!_libvdpau_so_tramp_resolve_all
-			|| base::Platform::LoadLibrary("libvdpau.so.1")) {
+	if (base::Platform::LoadLibrary("libvdpau.so.1")) {
 		list.push_front(AV_PIX_FMT_VDPAU);
 	}
 	if ([&] {
 		const auto list = std::array{
-			std::make_pair(_libva_drm_so_tramp_resolve_all, "libva-drm.so.2"),
-			std::make_pair(_libva_x11_so_tramp_resolve_all, "libva-x11.so.2"),
-			std::make_pair(_libva_so_tramp_resolve_all, "libva.so.2"),
-			std::make_pair(_libdrm_so_tramp_resolve_all, "libdrm.so.2"),
+			"libva-drm.so.2",
+			"libva-x11.so.2",
+			"libva.so.2",
+			"libdrm.so.2",
 		};
-		for (const auto &lib : list) {
-			if (lib.first && !base::Platform::LoadLibrary(lib.second)) {
+		for (const auto lib : list) {
+			if (!base::Platform::LoadLibrary(lib)) {
 				return false;
 			}
 		}
@@ -128,7 +117,7 @@ void PremultiplyLine(uchar *dst, const uchar *src, int intsCount) {
 	}
 	return list;
 }
-#endif // !Q_OS_WIN && !Q_OS_MAC
+#endif // !TDESKTOP_USE_PACKAGED && !Q_OS_WIN && !Q_OS_MAC
 
 [[nodiscard]] bool InitHw(AVCodecContext *context, AVHWDeviceType type) {
 	AVCodecContext *parent = static_cast<AVCodecContext*>(context->opaque);
@@ -171,7 +160,9 @@ void PremultiplyLine(uchar *dst, const uchar *src, int intsCount) {
 		}
 		return false;
 	};
-#if defined Q_OS_WIN || defined Q_OS_MAC
+#if !defined TDESKTOP_USE_PACKAGED && !defined Q_OS_WIN && !defined Q_OS_MAC
+	static const auto list = CheckHwLibs();
+#else // !TDESKTOP_USE_PACKAGED && !Q_OS_WIN && !Q_OS_MAC
 	const auto list = std::array{
 #ifdef Q_OS_WIN
 		AV_PIX_FMT_D3D11,
@@ -179,11 +170,13 @@ void PremultiplyLine(uchar *dst, const uchar *src, int intsCount) {
 		AV_PIX_FMT_CUDA,
 #elif defined Q_OS_MAC // Q_OS_WIN
 		AV_PIX_FMT_VIDEOTOOLBOX,
+#else // Q_OS_WIN || Q_OS_MAC
+		AV_PIX_FMT_VAAPI,
+		AV_PIX_FMT_VDPAU,
+		AV_PIX_FMT_CUDA,
 #endif // Q_OS_WIN || Q_OS_MAC
 	};
-#else // Q_OS_WIN || Q_OS_MAC
-	static const auto list = CheckHwLibs();
-#endif // !Q_OS_WIN && !Q_OS_MAC
+#endif // TDESKTOP_USE_PACKAGED || Q_OS_WIN || Q_OS_MAC
 	for (const auto format : list) {
 		if (!has(format)) {
 			continue;
@@ -512,10 +505,18 @@ void SwresampleDeleter::operator()(SwrContext *value) {
 }
 
 SwresamplePointer MakeSwresamplePointer(
+#if DA_FFMPEG_NEW_CHANNEL_LAYOUT
 		AVChannelLayout *srcLayout,
+#else // DA_FFMPEG_NEW_CHANNEL_LAYOUT
+		uint64_t srcLayout,
+#endif // DA_FFMPEG_NEW_CHANNEL_LAYOUT
 		AVSampleFormat srcFormat,
 		int srcRate,
+#if DA_FFMPEG_NEW_CHANNEL_LAYOUT
 		AVChannelLayout *dstLayout,
+#else // DA_FFMPEG_NEW_CHANNEL_LAYOUT
+		uint64_t dstLayout,
+#endif // DA_FFMPEG_NEW_CHANNEL_LAYOUT
 		AVSampleFormat dstFormat,
 		int dstRate,
 		SwresamplePointer *existing) {
@@ -526,8 +527,16 @@ SwresamplePointer MakeSwresamplePointer(
 	// to the resulting context, so the caching doesn't work.
 	if (existing && (*existing) != nullptr) {
 		const auto &deleter = existing->get_deleter();
-		if (srcLayout->nb_channels == deleter.srcChannels
+		if (true
+#if DA_FFMPEG_NEW_CHANNEL_LAYOUT
+			&& srcLayout->nb_channels == deleter.srcChannels
 			&& dstLayout->nb_channels == deleter.dstChannels
+#else // DA_FFMPEG_NEW_CHANNEL_LAYOUT
+			&& (av_get_channel_layout_nb_channels(srcLayout)
+				== deleter.srcChannels)
+			&& (av_get_channel_layout_nb_channels(dstLayout)
+				== deleter.dstChannels)
+#endif // DA_FFMPEG_NEW_CHANNEL_LAYOUT
 			&& srcFormat == deleter.srcFormat
 			&& dstFormat == deleter.dstFormat
 			&& srcRate == deleter.srcRate
@@ -537,6 +546,7 @@ SwresamplePointer MakeSwresamplePointer(
 	}
 
 	// Initialize audio resampler
+#if DA_FFMPEG_NEW_CHANNEL_LAYOUT
 	auto result = (SwrContext*)nullptr;
 	auto error = AvErrorWrap(swr_alloc_set_opts2(
 		&result,
@@ -552,6 +562,21 @@ SwresamplePointer MakeSwresamplePointer(
 		LogError(u"swr_alloc_set_opts2"_q, error);
 		return SwresamplePointer();
 	}
+#else // DA_FFMPEG_NEW_CHANNEL_LAYOUT
+	auto result = swr_alloc_set_opts(
+		existing ? existing.get() : nullptr,
+		dstLayout,
+		dstFormat,
+		dstRate,
+		srcLayout,
+		srcFormat,
+		srcRate,
+		0,
+		nullptr);
+	if (!result) {
+		LogError(u"swr_alloc_set_opts"_q);
+	}
+#endif // DA_FFMPEG_NEW_CHANNEL_LAYOUT
 
 	error = AvErrorWrap(swr_init(result));
 	if (error) {
@@ -565,10 +590,18 @@ SwresamplePointer MakeSwresamplePointer(
 		{
 			srcFormat,
 			srcRate,
+#if DA_FFMPEG_NEW_CHANNEL_LAYOUT
 			srcLayout->nb_channels,
+#else // DA_FFMPEG_NEW_CHANNEL_LAYOUT
+			av_get_channel_layout_nb_channels(srcLayout),
+#endif // DA_FFMPEG_NEW_CHANNEL_LAYOUT
 			dstFormat,
 			dstRate,
+#if DA_FFMPEG_NEW_CHANNEL_LAYOUT
 			dstLayout->nb_channels,
+#else // DA_FFMPEG_NEW_CHANNEL_LAYOUT
+			av_get_channel_layout_nb_channels(dstLayout),
+#endif // DA_FFMPEG_NEW_CHANNEL_LAYOUT
 		});
 }
 
@@ -642,10 +675,10 @@ int DurationByPacket(const Packet &packet, AVRational timeBase) {
 }
 
 int ReadRotationFromMetadata(not_null<AVStream*> stream) {
-	const auto displaymatrix = av_packet_side_data_get(
-		stream->codecpar->coded_side_data,
-		stream->codecpar->nb_coded_side_data,
-		AV_PKT_DATA_DISPLAYMATRIX);
+	const auto displaymatrix = av_stream_get_side_data(
+		stream,
+		AV_PKT_DATA_DISPLAYMATRIX,
+		nullptr);
 	auto theta = 0;
 	if (displaymatrix) {
 		theta = -round(av_display_rotation_get((int32_t*)displaymatrix));

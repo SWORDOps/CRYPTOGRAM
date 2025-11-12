@@ -9,6 +9,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "platform/platform_specific.h"
 
+namespace Data {
+class LocationPoint;
+} // namespace Data
+
 namespace Platform {
 
 inline void IgnoreApplicationActivationRightNow() {
@@ -56,3 +60,5 @@ inline void psDownloadPathEnableAccess() {
 }
 
 bool linuxMoveFile(const char *from, const char *to);
+
+bool psLaunchMaps(const Data::LocationPoint &point);

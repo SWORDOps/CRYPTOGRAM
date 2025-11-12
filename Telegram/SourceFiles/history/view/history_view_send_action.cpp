@@ -131,7 +131,6 @@ bool SendActionPainter::updateNeedsAnimating(
 		Unexpected("EmojiInteraction here.");
 	}, [&](const MTPDsendMessageEmojiInteractionSeen &) {
 		// #TODO interaction
-	}, [&](const MTPDsendMessageTextDraftAction &) {
 	}, [&](const MTPDsendMessageCancelAction &) {
 		Unexpected("CancelAction here.");
 	});
@@ -387,17 +386,14 @@ bool SendActionPainter::updateNeedsAnimating(crl::time now, bool force) {
 	if (force
 		|| sendActionChanged
 		|| (sendActionResult && !anim::Disabled())) {
-		const auto left = 0;
-		const auto top = Ui::Emoji::GetCustomSkipNormal();
-		const auto width = _sendActionAnimation.width() + _animationLeft;
-		const auto height = std::max({
-			st::normalFont->height - top,
-			st::dialogsMiniPreviewTop + st::dialogsMiniPreview - top,
-			Ui::Emoji::GetCustomSizeNormal(),
-		});
+		const auto height = std::max(
+			st::normalFont->height,
+			st::dialogsMiniPreviewTop + st::dialogsMiniPreview);
 		_history->peer->owner().sendActionManager().updateAnimation({
 			_topic ? ((Data::Thread*)_topic) : _history,
-			{ left, top, width, height },
+			0,
+			_sendActionAnimation.width() + _animationLeft,
+			height,
 			(force || sendActionChanged)
 		});
 	}

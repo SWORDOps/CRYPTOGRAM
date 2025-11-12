@@ -70,7 +70,7 @@ public:
 		std::shared_ptr<ChatHelpers::Show> show,
 		not_null<Data::StickersSet*> set);
 
-	static base::weak_qptr<Ui::BoxContent> Show(
+	static QPointer<Ui::BoxContent> Show(
 		std::shared_ptr<ChatHelpers::Show> show,
 		not_null<DocumentData*> document);
 

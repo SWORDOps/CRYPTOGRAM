@@ -228,7 +228,6 @@ public:
 	}
 
 	Data::ForumTopic *topicForRemoveRequests() const override;
-	Data::SavedSublist *sublistForRemoveRequests() const override;
 
 private:
 	const not_null<Data::Thread*> _thread;

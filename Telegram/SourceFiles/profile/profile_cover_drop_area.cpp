@@ -12,11 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Profile {
 
-CoverDropArea::CoverDropArea(
-	QWidget *parent,
-	const QString &title,
-	const QString &subtitle)
-: RpWidget(parent)
+CoverDropArea::CoverDropArea(QWidget *parent, const QString &title, const QString &subtitle) : TWidget(parent)
 , _title(title)
 , _subtitle(subtitle)
 , _titleWidth(st::profileDropAreaTitleFont->width(_title))

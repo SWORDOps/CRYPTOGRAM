@@ -22,7 +22,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/stickers/data_custom_emoji.h"
 #include "history/view/history_view_schedule_box.h"
 #include "lang/lang_keys.h"
-#include "main/main_app_config.h"
 #include "main/main_session.h"
 #include "menu/menu_send.h"
 #include "ui/controls/emoji_button.h"
@@ -114,7 +113,7 @@ private:
 		void setPlaceholder() const;
 		void removePlaceholder() const;
 
-		[[nodiscard]] not_null<Ui::InputField*> field() const;
+		not_null<Ui::InputField*> field() const;
 
 		[[nodiscard]] PollAnswer toPollAnswer(int index) const;
 
@@ -511,8 +510,7 @@ Options::Options(
 }
 
 bool Options::full() const {
-	const auto limit = _controller->session().appConfig().pollOptionsLimit();
-	return (_list.size() >= limit);
+	return (_list.size() == kMaxOptionsCount);
 }
 
 bool Options::hasOptions() const {
@@ -819,15 +817,13 @@ CreatePollBox::CreatePollBox(
 	not_null<Window::SessionController*> controller,
 	PollData::Flags chosen,
 	PollData::Flags disabled,
-	rpl::producer<int> starsRequired,
 	Api::SendType sendType,
 	SendMenu::Details sendMenuDetails)
 : _controller(controller)
 , _chosen(chosen)
 , _disabled(disabled)
 , _sendType(sendType)
-, _sendMenuDetails([result = sendMenuDetails] { return result; })
-, _starsRequired(std::move(starsRequired)) {
+, _sendMenuDetails([result = sendMenuDetails] { return result; }) {
 }
 
 rpl::producer<CreatePollBox::Result> CreatePollBox::submitRequests() const {
@@ -1030,10 +1026,8 @@ object_ptr<Ui::RpWidget> CreatePollBox::setupContent() {
 		setCloseByEscape(!count);
 		setCloseByOutsideClick(!count);
 	}) | rpl::map([=](int count) {
-		const auto appConfig = &_controller->session().appConfig();
-		const auto max = appConfig->pollOptionsLimit();
-		return (count < max)
-			? tr::lng_polls_create_limit(tr::now, lt_count, max - count)
+		return (count < kMaxOptionsCount)
+			? tr::lng_polls_create_limit(tr::now, lt_count, kMaxOptionsCount - count)
 			: tr::lng_polls_create_maximum(tr::now);
 	}) | rpl::after_next([=] {
 		container->resizeToWidth(container->widthNoMargins());
@@ -1232,11 +1226,10 @@ object_ptr<Ui::RpWidget> CreatePollBox::setupContent() {
 			_sendMenuDetails());
 	};
 	const auto submit = addButton(
-		tr::lng_polls_create_button(),
+		(isNormal
+			? tr::lng_polls_create_button()
+			: tr::lng_schedule_button()),
 		[=] { isNormal ? send({}) : schedule(); });
-	submit->setText(PaidSendButtonText(_starsRequired.value(), isNormal
-		? tr::lng_polls_create_button()
-		: tr::lng_schedule_button()));
 	const auto sendMenuDetails = [=] {
 		collectError();
 		return (*error) ? SendMenu::Details() : _sendMenuDetails();

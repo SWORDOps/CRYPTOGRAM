@@ -65,7 +65,6 @@ private:
 	struct Highlight {
 		FullMsgId itemId;
 		TextSelection part;
-		int todoListId = 0;
 
 		explicit operator bool() const {
 			return itemId.operator bool();

@@ -67,8 +67,6 @@ public:
 		return const_cast<Thread*>(this)->owningHistory();
 	}
 	[[nodiscard]] MsgId topicRootId() const;
-	[[nodiscard]] PeerId monoforumPeerId() const;
-	[[nodiscard]] PeerData *maybeSublistPeer() const;
 	[[nodiscard]] not_null<PeerData*> peer() const;
 	[[nodiscard]] PeerNotifySettings &notify();
 	[[nodiscard]] const PeerNotifySettings &notify() const;
@@ -80,7 +78,6 @@ public:
 	[[nodiscard]] HistoryUnreadThings::ConstProxy unreadReactions() const;
 	virtual void hasUnreadMentionChanged(bool has) = 0;
 	virtual void hasUnreadReactionChanged(bool has) = 0;
-	bool canToggleUnread(bool nowUnread) const;
 
 	void removeNotification(not_null<HistoryItem*> item);
 	void clearNotifications();
@@ -115,12 +112,10 @@ public:
 	}
 
 	[[nodiscard]] virtual auto sendActionPainter()
-		-> HistoryView::SendActionPainter* = 0;
+		-> not_null<HistoryView::SendActionPainter*> = 0;
 
 	[[nodiscard]] bool hasPinnedMessages() const;
 	void setHasPinnedMessages(bool has);
-
-	void saveMeAsActiveSubsectionThread();
 
 protected:
 	void setUnreadMarkFlag(bool unread);

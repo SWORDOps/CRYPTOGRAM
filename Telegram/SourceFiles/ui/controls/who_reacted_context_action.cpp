@@ -359,7 +359,7 @@ void Action::paint(Painter &p) {
 	if (!_custom && !_content.singleCustomEntityData.isEmpty()) {
 		_custom = _customEmojiFactory(
 			_content.singleCustomEntityData,
-			{ .repaint = [=] { update(); } });
+			[=] { update(); });
 	}
 	if (_custom) {
 		const auto ratio = style::DevicePixelRatio();
@@ -772,9 +772,7 @@ void WhoReactedEntryAction::setData(Data &&data) {
 	}
 	_type = data.type;
 	_custom = _customEmojiFactory
-		? _customEmojiFactory(
-			data.customEntityData,
-			{ .repaint = [=] { update(); } })
+		? _customEmojiFactory(data.customEntityData, [=] { update(); })
 		: nullptr;
 	const auto ratio = style::DevicePixelRatio();
 	const auto size = Emoji::GetSizeNormal() / ratio;

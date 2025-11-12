@@ -19,9 +19,6 @@ rpl::producer<TextWithEntities> ForwardedMessagePhrase(
 		Assert(args.to1);
 
 		if (args.to1->isSelf()) {
-			if (args.toSelfWithPremiumIsEmpty && args.to1->isPremium()) {
-				return {};
-			}
 			return (args.singleMessage
 				? tr::lng_share_message_to_saved_messages
 				: tr::lng_share_messages_to_saved_messages)(

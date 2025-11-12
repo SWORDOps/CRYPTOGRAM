@@ -14,7 +14,7 @@ namespace Editor {
 class ItemImage : public ItemBase {
 public:
 	ItemImage(
-		QPixmap &&pixmap,
+		const QPixmap &&pixmap,
 		ItemBase::Data data);
 	void paint(
 		QPainter *p,

@@ -13,7 +13,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/platform/ui_platform_window.h"
 #include "platform/platform_window_title.h"
 #include "history/history.h"
-#include "info/media/info_media_widget.h" // SharedMediaTitle.
 #include "window/window_separate_id.h"
 #include "window/window_session_controller.h"
 #include "window/window_lock_widgets.h"
@@ -88,29 +87,7 @@ base::options::toggle OptionDisableTouchbar({
 	.restartRequired = true,
 });
 
-[[nodiscard]] QString TitleFromSeparateSharedMedia(
-		const Core::WindowTitleContent &settings,
-		const SeparateId &id) {
-	if (id.type != SeparateType::SharedMedia) {
-		return QString();
-	}
-	const auto type = id.sharedMediaType;
-	const auto result = Info::Media::SharedMediaTitle(type)(tr::now);
-	if (settings.hideChatName) {
-		return result;
-	}
-	const auto thread = id.thread;
-	const auto topic = thread->asTopic();
-	const auto name = topic
-		? topic->title()
-		: thread->peer()->isSelf()
-		? tr::lng_saved_messages(tr::now)
-		: thread->peer()->name();
-	const auto wrapped = st::wrap_rtl(name);
-	return name + u" @ "_q + result;
-}
-
-} // namespace
+} // namespace.
 
 const char kOptionNewWindowsSizeAsFirst[] = "new-windows-size-as-first";
 const char kOptionDisableTouchbar[] = "touchbar-disabled";
@@ -202,7 +179,7 @@ QIcon CreateIcon(Main::Session *session, bool returnNullIfDefault) {
 	}
 
 	const auto iconFromTheme = QIcon::fromTheme(
-		Platform::ApplicationIconName(),
+		base::IconName(),
 		result);
 
 	result = QIcon();
@@ -243,6 +220,8 @@ QIcon CreateIcon(Main::Session *session, bool returnNullIfDefault) {
 }
 
 QImage GenerateCounterLayer(CounterLayerArgs &&args) {
+	// platform/linux/main_window_linux depends on count used the same
+	// way for all the same (count % 1000) values.
 	const auto count = args.count.value();
 	const auto text = (count < 1000)
 		? QString::number(count)
@@ -319,8 +298,6 @@ QImage GenerateCounterLayer(CounterLayerArgs &&args) {
 }
 
 QImage WithSmallCounter(QImage image, CounterLayerArgs &&args) {
-	// platform/linux/tray_linux depends on count used the same
-	// way for all the same (count % 100) values.
 	const auto count = args.count.value();
 	const auto text = (count < 100)
 		? QString::number(count)
@@ -443,8 +420,8 @@ bool MainWindow::hideNoQuit() {
 		return false;
 	}
 	const auto workMode = Core::App().settings().workMode();
-	using Mode = Core::Settings::WorkMode;
-	if (workMode == Mode::TrayOnly || workMode == Mode::WindowAndTray) {
+	if (workMode == Core::Settings::WorkMode::TrayOnly
+		|| workMode == Core::Settings::WorkMode::WindowAndTray) {
 		if (minimizeToTray()) {
 			if (const auto controller = sessionController()) {
 				controller->clearSectionStack();
@@ -452,23 +429,20 @@ bool MainWindow::hideNoQuit() {
 			return true;
 		}
 	}
-	using Behavior = Core::Settings::CloseBehavior;
-	const auto behavior = Platform::IsMac()
-		? Behavior::RunInBackground
-		: Core::App().settings().closeBehavior();
-	if (behavior == Behavior::RunInBackground) {
-		closeWithoutDestroy();
-	} else if (behavior == Behavior::CloseToTaskbar) {
-		setWindowState(window()->windowState() | Qt::WindowMinimized);
-	} else {
-		return false;
+	if (Platform::RunInBackground() || Core::App().settings().closeToTaskbar()) {
+		if (Platform::RunInBackground()) {
+			closeWithoutDestroy();
+		} else {
+			setWindowState(window()->windowState() | Qt::WindowMinimized);
+		}
+		controller().updateIsActiveBlur();
+		updateGlobalMenu();
+		if (const auto controller = sessionController()) {
+			controller->clearSectionStack();
+		}
+		return true;
 	}
-	controller().updateIsActiveBlur();
-	updateGlobalMenu();
-	if (const auto controller = sessionController()) {
-		controller->clearSectionStack();
-	}
-	return true;
+	return false;
 }
 
 void MainWindow::clearWidgets() {
@@ -885,13 +859,6 @@ void MainWindow::updateTitle() {
 		&& Core::App().domain().accountsAuthedCount() > 1)
 		? st::wrap_rtl(session->authedName())
 		: QString();
-	const auto separateSharedMediaTitle = session
-		? TitleFromSeparateSharedMedia(settings, session->windowId())
-		: QString();
-	if (!separateSharedMediaTitle.isEmpty()) {
-		setTitle(separateSharedMediaTitle);
-		return;
-	}
 	const auto key = (session && !settings.hideChatName)
 		? session->activeChatCurrent()
 		: Dialogs::Key();
@@ -995,7 +962,7 @@ bool MainWindow::minimizeToTray() {
 	return true;
 }
 
-void MainWindow::showRightColumn(object_ptr<Ui::RpWidget> widget) {
+void MainWindow::showRightColumn(object_ptr<TWidget> widget) {
 	const auto wasWidth = width();
 	const auto wasRightWidth = _rightColumn ? _rightColumn->width() : 0;
 	_rightColumn = std::move(widget);

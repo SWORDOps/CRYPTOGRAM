@@ -27,7 +27,6 @@ class Forum;
 class Folder;
 class ForumTopic;
 class SavedSublist;
-class SavedMessages;
 class Thread;
 } // namespace Data
 
@@ -169,10 +168,9 @@ private:
 	enum class Flag : uchar {
 		IsThread = (1 << 0),
 		IsHistory = (1 << 1),
-		IsForumTopic = (1 << 2),
-		IsSavedSublist = (1 << 3),
-		UpdatePostponed = (1 << 4),
-		InUnreadChangeBlock = (1 << 5),
+		IsSavedSublist = (1 << 2),
+		UpdatePostponed = (1 << 3),
+		InUnreadChangeBlock = (1 << 4),
 	};
 	friend inline constexpr bool is_flag_type(Flag) { return true; }
 	using Flags = base::flags<Flag>;

@@ -26,26 +26,22 @@ void OpenWithPreparedFile(
 		std::shared_ptr<ChatHelpers::Show> show,
 		not_null<Ui::PreparedFile*> file,
 		int previewWidth,
-		Fn<void(bool ok)> &&doneCallback,
-		QSize exactSize) {
+		Fn<void()> &&doneCallback) {
 	using ImageInfo = Ui::PreparedFileInformation::Image;
 	const auto image = std::get_if<ImageInfo>(&file->information->media);
 	if (!image) {
-		doneCallback(false);
 		return;
 	}
 	const auto photoType = (file->type == Ui::PreparedFile::Type::Photo);
 	const auto modifiedFileType = (file->type == Ui::PreparedFile::Type::File)
 		&& !image->modifications.empty();
 	if (!photoType && !modifiedFileType) {
-		doneCallback(false);
 		return;
 	}
 
 	const auto sideLimit = PhotoSideLimit();
-	const auto accepted = std::make_shared<bool>();
-	auto callback = [=](const PhotoModifications &mods) {
-		*accepted = true;
+	auto callback = [=, done = std::move(doneCallback)](
+			const PhotoModifications &mods) {
 		image->modifications = mods;
 		Storage::UpdateImageDetails(*file, previewWidth, sideLimit);
 		{
@@ -55,26 +51,19 @@ void OpenWithPreparedFile(
 				? PreparedFile::Type::Photo
 				: PreparedFile::Type::File;
 		}
-		doneCallback(true);
+		done();
 	};
 	auto copy = image->data;
 	const auto fileImage = std::make_shared<Image>(std::move(copy));
-	const auto keepRatio = !exactSize.isEmpty();
 	auto editor = base::make_unique_q<PhotoEditor>(
 		parent,
 		show,
 		show,
 		fileImage,
-		image->modifications,
-		EditorData{ .exactSize = exactSize, .keepAspectRatio = keepRatio });
+		image->modifications);
 	const auto raw = editor.get();
 	auto layer = std::make_unique<LayerWidget>(parent, std::move(editor));
 	InitEditorLayer(layer.get(), raw, std::move(callback));
-	QObject::connect(layer.get(), &QObject::destroyed, [=] {
-		if (!*accepted) {
-			doneCallback(false);
-		}
-	});
 	show->showLayer(std::move(layer), Ui::LayerOption::KeepOther);
 }
 

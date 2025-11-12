@@ -85,29 +85,19 @@ rpl::producer<Ui::GroupCallBarContent> GroupCallBarContentByCall(
 		return (~uint64(0)) - result; // sorting with less(), so invert.
 	};
 
-	static const auto RtmpCallTopBarParticipants = [](
-			not_null<Data::GroupCall*> call) {
-		using Participant = Data::GroupCallParticipant;
-		return std::vector<Participant>{ Participant{
-			.peer = call->peer(),
-		} };
-	};
-
 	constexpr auto kLimit = 3;
 	static const auto FillMissingUserpics = [](
 			not_null<State*> state,
 			not_null<Data::GroupCall*> call) {
 		const auto already = int(state->userpics.size());
-		const auto &participants = call->rtmp()
-			? RtmpCallTopBarParticipants(call)
-			: call->participants();
+		const auto &participants = call->participants();
 		if (already >= kLimit || participants.size() <= already) {
 			return false;
 		}
 		std::array<const Data::GroupCallParticipant*, kLimit> adding{
 			{ nullptr }
 		};
-		for (const auto &participant : participants) {
+		for (const auto &participant : call->participants()) {
 			const auto alreadyInList = ranges::contains(
 				state->userpics,
 				participant.peer,
@@ -196,9 +186,6 @@ rpl::producer<Ui::GroupCallBarContent> GroupCallBarContentByCall(
 			int userpicSize) {
 		Expects(state->userpics.size() <= kLimit);
 
-		if (call->rtmp()) {
-			return false;
-		}
 		const auto &participants = call->participants();
 		auto i = begin(state->userpics);
 

@@ -53,7 +53,7 @@ public:
 		// Check cloud password for some action.
 		using CustomCheck = Fn<void(
 			const Core::CloudPasswordResult &,
-			base::weak_qptr<PasscodeBox>)>;
+			QPointer<PasscodeBox>)>;
 		CustomCheck customCheckCallback;
 		rpl::producer<QString> customTitle;
 		std::optional<QString> customDescription;
@@ -158,7 +158,7 @@ private:
 
 	QString _pattern;
 
-	base::weak_qptr<Ui::BoxContent> _replacedBy;
+	QPointer<Ui::BoxContent> _replacedBy;
 	bool _turningOff = false;
 	bool _cloudPwd = false;
 	CloudFields _cloudFields;

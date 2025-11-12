@@ -23,9 +23,9 @@ QString LocationClickHandler::copyToClipboardContextItemText() const {
 }
 
 void LocationClickHandler::onClick(ClickContext context) const {
-	Platform::LaunchMaps(_point, [text = _text] {
-		File::OpenUrl(text);
-	});
+	if (!psLaunchMaps(_point)) {
+		File::OpenUrl(_text);
+	}
 }
 
 void LocationClickHandler::setup() {

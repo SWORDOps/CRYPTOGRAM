@@ -154,7 +154,7 @@ Row::Row(
 : PeerListRow(peer, id)
 , _custom(reactionEntityData.isEmpty()
 	? nullptr
-	: factory(reactionEntityData, { .repaint = [=] { repaint(this); } }))
+	: factory(reactionEntityData, [=] { repaint(this); }))
 , _paused(std::move(paused)) {
 }
 

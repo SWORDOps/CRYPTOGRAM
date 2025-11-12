@@ -26,10 +26,6 @@ namespace Data {
 class DocumentMedia;
 } // namespace Data
 
-namespace style {
-struct Shadow;
-} // namespace style
-
 namespace Ui {
 class IconButton;
 template <typename Widget>
@@ -56,7 +52,6 @@ class PlaybackProgress;
 [[nodiscard]] bool UsePainterRotation(int rotation);
 [[nodiscard]] QSize FlipSizeByRotation(QSize size, int rotation);
 [[nodiscard]] QImage RotateFrameImage(QImage image, int rotation);
-[[nodiscard]] const style::Shadow &PipShadow();
 
 class PipPanel final {
 public:

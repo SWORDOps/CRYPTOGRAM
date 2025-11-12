@@ -100,7 +100,6 @@ public:
 
 	[[nodiscard]] auto nonPremiumDelayedRequests() const
 	-> rpl::producer<mtpRequestId>;
-	[[nodiscard]] rpl::producer<> frozenErrorReceived() const;
 
 	void restart();
 	void restart(ShiftedDcId shiftedDcId);
@@ -287,7 +286,6 @@ private:
 	Fn<void(ShiftedDcId shiftedDcId)> _sessionResetHandler;
 
 	rpl::event_stream<mtpRequestId> _nonPremiumDelayedRequests;
-	rpl::event_stream<> _frozenErrorReceived;
 
 	base::Timer _checkDelayedTimer;
 
@@ -562,10 +560,6 @@ rpl::producer<ShiftedDcId> Instance::Private::restartsByTimeout() const {
 auto Instance::Private::nonPremiumDelayedRequests() const
 -> rpl::producer<mtpRequestId> {
 	return _nonPremiumDelayedRequests.events();
-}
-
-rpl::producer<> Instance::Private::frozenErrorReceived() const {
-	return _frozenErrorReceived.events();
 }
 
 void Instance::Private::requestConfigIfOld() {
@@ -1599,8 +1593,6 @@ bool Instance::Private::onErrorDefault(
 		return true;
 	} else if (type == u"CONNECTION_LANG_CODE_INVALID"_q) {
 		Lang::CurrentCloudManager().resetToDefault();
-	} else if (type == u"FROZEN_METHOD_INVALID"_q) {
-		_frozenErrorReceived.fire({});
 	}
 	if (badGuestDc) _badGuestDcRequests.erase(requestId);
 	return false;
@@ -1926,10 +1918,6 @@ rpl::producer<ShiftedDcId> Instance::restartsByTimeout() const {
 
 rpl::producer<mtpRequestId> Instance::nonPremiumDelayedRequests() const {
 	return _private->nonPremiumDelayedRequests();
-}
-
-rpl::producer<> Instance::frozenErrorReceived() const {
-	return _private->frozenErrorReceived();
 }
 
 void Instance::requestConfigIfOld() {

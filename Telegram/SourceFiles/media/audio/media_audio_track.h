@@ -30,11 +30,11 @@ public:
 	void fillFromFile(const Core::FileLocation &location);
 	void fillFromFile(const QString &filePath);
 
-	void playOnce(float64 volumeOverride = -1) {
-		playWithLooping(false, volumeOverride);
+	void playOnce() {
+		playWithLooping(false);
 	}
-	void playInLoop(float64 volumeOverride = -1) {
-		playWithLooping(true, volumeOverride);
+	void playInLoop() {
+		playWithLooping(true);
 	}
 
 	bool isLooping() const {
@@ -61,7 +61,7 @@ public:
 private:
 	void finish();
 	void ensureSourceCreated();
-	void playWithLooping(bool looping, float64 volumeOverride);
+	void playWithLooping(bool looping);
 
 	not_null<Instance*> _instance;
 

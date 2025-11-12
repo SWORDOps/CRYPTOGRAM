@@ -84,7 +84,7 @@ void Groups::refreshMessage(
 		_data->requestItemViewRefresh(item);
 		return;
 	}
-	if (!item->isRegular() && !item->isScheduled() && !item->isUploading()) {
+	if (!item->isRegular() && !item->isScheduled()) {
 		return;
 	}
 	const auto groupId = item->groupId();

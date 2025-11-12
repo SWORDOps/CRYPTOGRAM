@@ -29,7 +29,7 @@ public:
 
 	int top() override;
 	QSize size() override;
-	TextWithEntities title() override;
+	QString title() override;
 	TextWithEntities subtitle() override;
 	rpl::producer<QString> button() override;
 	void draw(

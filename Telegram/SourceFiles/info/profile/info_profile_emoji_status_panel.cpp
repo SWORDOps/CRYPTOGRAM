@@ -70,7 +70,7 @@ EmojiStatusPanel::~EmojiStatusPanel() {
 	}
 }
 
-void EmojiStatusPanel::setChooseFilter(Fn<bool(EmojiStatusId)> filter) {
+void EmojiStatusPanel::setChooseFilter(Fn<bool(DocumentId)> filter) {
 	_chooseFilter = std::move(filter);
 }
 
@@ -83,7 +83,6 @@ void EmojiStatusPanel::show(
 		.button = button,
 		.animationSizeTag = animationSizeTag,
 		.ensureAddedEmojiId = controller->session().user()->emojiStatusId(),
-		.withCollectibles = true,
 	});
 }
 
@@ -112,8 +111,8 @@ void EmojiStatusPanel::show(Descriptor &&descriptor) {
 	_panelButton = button;
 	_animationSizeTag = descriptor.animationSizeTag;
 	const auto feed = [=, now = descriptor.ensureAddedEmojiId](
-			std::vector<EmojiStatusId> list) {
-		list.insert(begin(list), EmojiStatusId());
+			std::vector<DocumentId> list) {
+		list.insert(begin(list), 0);
 		if (now && !ranges::contains(list, now)) {
 			list.push_back(now);
 		}
@@ -123,11 +122,7 @@ void EmojiStatusPanel::show(Descriptor &&descriptor) {
 		controller->session().api().peerPhoto().emojiListValue(
 			Api::PeerPhoto::EmojiListType::Background
 		) | rpl::start_with_next([=](std::vector<DocumentId> &&list) {
-			auto tmp = std::vector<EmojiStatusId>();
-			for (const auto &id : list) {
-				tmp.push_back(EmojiStatusId{ .documentId = id });
-			}
-			feed(std::move(tmp));
+			feed(std::move(list));
 		}, _panel->lifetime());
 	} else if (descriptor.channelStatusMode) {
 		const auto &statuses = controller->session().data().emojiStatuses();
@@ -198,8 +193,6 @@ void EmojiStatusPanel::create(const Descriptor &descriptor) {
 	using Mode = ChatHelpers::TabbedSelector::Mode;
 	const auto controller = descriptor.controller;
 	const auto body = controller->window().widget()->bodyWidget();
-	auto features = ChatHelpers::ComposeFeatures();
-	features.collectibleStatus = descriptor.withCollectibles;
 	_panel = base::make_unique_q<ChatHelpers::TabbedPanel>(
 		body,
 		controller,
@@ -218,7 +211,6 @@ void EmojiStatusPanel::create(const Descriptor &descriptor) {
 					? Mode::ChannelStatus
 					: Mode::EmojiStatus),
 				.customTextColor = descriptor.customTextColor,
-				.features = features,
 			}));
 	_customTextColor = descriptor.customTextColor;
 	_backgroundEmojiMode = descriptor.backgroundEmojiMode;
@@ -231,7 +223,7 @@ void EmojiStatusPanel::create(const Descriptor &descriptor) {
 	_panel->hide();
 
 	struct Chosen {
-		EmojiStatusId id;
+		DocumentId id = 0;
 		TimeId until = 0;
 		Ui::MessageSendingAnimationFrom animation;
 	};
@@ -244,10 +236,7 @@ void EmojiStatusPanel::create(const Descriptor &descriptor) {
 	auto statusChosen = _panel->selector()->customEmojiChosen(
 	) | rpl::map([=](ChatHelpers::FileChosen data) {
 		return Chosen{
-			.id = {
-				data.collectible ? DocumentId() : data.document->id,
-				data.collectible,
-			},
+			.id = data.document->id,
 			.until = data.options.scheduled,
 			.animation = data.messageSendingFrom,
 		};
@@ -269,7 +258,7 @@ void EmojiStatusPanel::create(const Descriptor &descriptor) {
 			_panel->hideAnimated();
 		}, _panel->lifetime());
 	} else {
-		const auto weak = base::make_weak(_panel.get());
+		const auto weak = Ui::MakeWeak(_panel.get());
 		const auto accept = [=](Chosen chosen) {
 			Expects(chosen.until != Selector::kPickCustomTimeId);
 
@@ -302,7 +291,7 @@ void EmojiStatusPanel::create(const Descriptor &descriptor) {
 
 bool EmojiStatusPanel::filter(
 		not_null<Window::SessionController*> controller,
-		EmojiStatusId chosenId) const {
+		DocumentId chosenId) const {
 	if (_chooseFilter) {
 		return _chooseFilter(chosenId);
 	} else if (chosenId && !controller->session().premium()) {
@@ -315,16 +304,13 @@ bool EmojiStatusPanel::filter(
 void EmojiStatusPanel::startAnimation(
 		not_null<Data::Session*> owner,
 		not_null<Ui::RpWidget*> body,
-		EmojiStatusId statusId,
+		DocumentId statusId,
 		Ui::MessageSendingAnimationFrom from) {
 	if (!_panelButton || !statusId) {
 		return;
 	}
-	const auto documentId = statusId.collectible
-		? statusId.collectible->documentId
-		: statusId.documentId;
 	auto args = Ui::ReactionFlyAnimationArgs{
-		.id = { { documentId } },
+		.id = { { statusId } },
 		.flyIcon = from.frame,
 		.flyFrom = body->mapFromGlobal(from.globalStartGeometry),
 		.forceFirstFrame = _backgroundEmojiMode,

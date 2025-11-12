@@ -220,8 +220,8 @@ void EditShortcutNameBox(
 		if (!ValidShortcutName(name)) {
 			field->showError();
 		} else {
-			submit(name, [weak = base::make_weak(box)] {
-				if (const auto strong = weak.get()) {
+			submit(name, [weak = Ui::MakeWeak(box)] {
+				if (const auto strong = weak.data()) {
 					strong->closeBox();
 				}
 			});

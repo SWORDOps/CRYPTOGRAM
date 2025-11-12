@@ -232,14 +232,12 @@ EditCaptionBox::EditCaptionBox(
 	not_null<Window::SessionController*> controller,
 	not_null<HistoryItem*> item,
 	TextWithTags &&text,
-	SuggestPostOptions suggest,
 	bool spoilered,
 	bool invertCaption,
 	Ui::PreparedList &&list,
 	Fn<void()> saved)
 : _controller(controller)
 , _historyItem(item)
-, _suggest(suggest)
 , _isAllowedEditMedia(item->allowsEditMedia())
 , _albumType(ComputeAlbumType(item))
 , _controls(base::make_unique_q<Ui::VerticalLayout>(this))
@@ -273,7 +271,6 @@ void EditCaptionBox::StartMediaReplace(
 		not_null<Window::SessionController*> controller,
 		FullMsgId itemId,
 		TextWithTags text,
-		SuggestPostOptions suggest,
 		bool spoilered,
 		bool invertCaption,
 		Fn<void()> saved) {
@@ -287,7 +284,6 @@ void EditCaptionBox::StartMediaReplace(
 			controller,
 			item,
 			std::move(text),
-			suggest,
 			spoilered,
 			invertCaption,
 			std::move(list),
@@ -304,7 +300,6 @@ void EditCaptionBox::StartMediaReplace(
 		FullMsgId itemId,
 		Ui::PreparedList &&list,
 		TextWithTags text,
-		SuggestPostOptions suggest,
 		bool spoilered,
 		bool invertCaption,
 		Fn<void()> saved) {
@@ -340,7 +335,6 @@ void EditCaptionBox::StartMediaReplace(
 			controller,
 			item,
 			std::move(text),
-			suggest,
 			spoilered,
 			invertCaption,
 			std::move(list),
@@ -353,7 +347,6 @@ void EditCaptionBox::StartPhotoEdit(
 		std::shared_ptr<Data::PhotoMedia> media,
 		FullMsgId itemId,
 		TextWithTags text,
-		SuggestPostOptions suggest,
 		bool spoilered,
 		bool invertCaption,
 		Fn<void()> saved) {
@@ -372,7 +365,6 @@ void EditCaptionBox::StartPhotoEdit(
 			controller,
 			item,
 			std::move(text),
-			suggest,
 			spoilered,
 			invertCaption,
 			std::move(list),
@@ -475,16 +467,13 @@ void EditCaptionBox::rebuildPreview() {
 		}
 	} else {
 		const auto &file = _preparedList.files.front();
-		const auto isVideoFile = file.isVideoFile();
+
 		const auto media = Ui::SingleMediaPreview::Create(
 			this,
 			st::defaultComposeControls,
 			gifPaused,
 			file,
-			[=](Ui::AttachActionType type) {
-				return (type != Ui::AttachActionType::EditCover)
-					|| isVideoFile;
-			},
+			[] { return true; },
 			Ui::AttachControls::Type::EditOnly);
 		_isPhoto = (media && media->isPhoto());
 		const auto withCheckbox = _isPhoto && CanBeCompressed(_albumType);
@@ -524,14 +513,6 @@ void EditCaptionBox::rebuildPreview() {
 
 	_content->modifyRequests(
 	) | rpl::start_to_stream(_photoEditorOpens, _content->lifetime());
-
-	_content->editCoverRequests() | rpl::start_with_next([=] {
-		setupEditCoverHandler();
-	}, _content->lifetime());
-
-	_content->clearCoverRequests() | rpl::start_with_next([=] {
-		setupClearCoverHandler();
-	}, _content->lifetime());
 
 	_content->heightValue(
 	) | rpl::start_to_stream(_contentHeight, _content->lifetime());
@@ -738,7 +719,7 @@ void EditCaptionBox::setupPhotoEditorEventHandler() {
 				controller->uiShow(),
 				&_preparedList.files.front(),
 				st::sendMediaPreviewSize,
-				[=](bool ok) { if (ok) rebuildPreview(); });
+				[=] { rebuildPreview(); });
 		} else {
 			EditPhotoImage(_controller, _photoMedia, hasSpoiler(), [=](
 					Ui::PreparedList &&list) {
@@ -746,89 +727,6 @@ void EditCaptionBox::setupPhotoEditorEventHandler() {
 			});
 		}
 	}, lifetime());
-}
-
-void EditCaptionBox::setupEditCoverHandler() {
-	if (_preparedList.files.empty()) {
-		return;
-	}
-	const auto &file = _preparedList.files.front();
-	if (!file.isVideoFile()) {
-		return;
-	}
-	const auto show = _controller->uiShow();
-	const auto replace = [=](Ui::PreparedList list) {
-		if (list.files.empty()) {
-			return;
-		}
-		auto &entry = _preparedList.files.front();
-		const auto video = entry.information
-			? std::get_if<Ui::PreparedFileInformation::Video>(
-				&entry.information->media)
-			: nullptr;
-		if (!video) {
-			return;
-		}
-		auto old = std::shared_ptr<Ui::PreparedFile>(
-			std::move(entry.videoCover));
-		entry.videoCover = std::make_unique<Ui::PreparedFile>(
-			std::move(list.files.front()));
-		Editor::OpenWithPreparedFile(
-			this,
-			show,
-			entry.videoCover.get(),
-			st::sendMediaPreviewSize,
-			crl::guard(this, [=](bool ok) {
-				if (!ok) {
-					_preparedList.files.front().videoCover = old
-						? std::make_unique<Ui::PreparedFile>(
-							std::move(*old))
-						: nullptr;
-				}
-				rebuildPreview();
-			}),
-			video->thumbnail.size());
-	};
-	const auto checkResult = [=](const Ui::PreparedList &list) {
-		if (list.files.empty()) {
-			return true;
-		}
-		if (list.files.front().type != Ui::PreparedFile::Type::Photo) {
-			show->showToast(tr::lng_choose_cover_bad(tr::now));
-			return false;
-		}
-		return true;
-	};
-	const auto callback = [=](FileDialog::OpenResult &&result) {
-		const auto premium = show->session().premium();
-		const auto showError = [=](tr::phrase<> t) {
-			show->showToast(t(tr::now));
-		};
-		auto list = Storage::PreparedFileFromFilesDialog(
-			std::move(result),
-			checkResult,
-			showError,
-			st::sendMediaPreviewSize,
-			premium);
-		if (list) {
-			replace(std::move(*list));
-		}
-	};
-
-	FileDialog::GetOpenPath(
-		this,
-		tr::lng_choose_cover(tr::now),
-		FileDialog::ImagesFilter(),
-		crl::guard(this, callback));
-}
-
-void EditCaptionBox::setupClearCoverHandler() {
-	if (_preparedList.files.empty()) {
-		return;
-	}
-	auto &entry = _preparedList.files.front();
-	entry.videoCover = nullptr;
-	rebuildPreview();
 }
 
 void EditCaptionBox::setupDragArea() {
@@ -1100,7 +998,6 @@ void EditCaptionBox::save() {
 	};
 
 	auto options = Api::SendOptions();
-	options.suggest = _suggest;
 	options.scheduled = item->isScheduled() ? item->date() : 0;
 	options.shortcutId = item->shortcutId();
 	options.invertCaption = _mediaEditManager.invertCaption();
@@ -1166,7 +1063,7 @@ void EditCaptionBox::save() {
 }
 
 void EditCaptionBox::closeAfterSave() {
-	const auto weak = base::make_weak(this);
+	const auto weak = MakeWeak(this);
 	if (_saved) {
 		_saved();
 	}

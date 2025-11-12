@@ -97,9 +97,6 @@ rpl::producer<TextWithEntities> StringValue(QString text) {
 }
 
 rpl::producer<QString> NameValue(not_null<PeerData*> peer) {
-	if (const auto broadcast = peer->monoforumBroadcast()) {
-		return NameValue(broadcast);
-	}
 	return peer->session().changes().peerFlagsValue(
 		peer,
 		UpdateFlag::Name
@@ -285,10 +282,10 @@ rpl::producer<bool> NotificationsEnabledValue(
 			Data::TopicUpdate::Flag::Notifications
 		) | rpl::to_empty,
 		topic->session().changes().peerUpdates(
-			topic->peer(),
+			topic->channel(),
 			UpdateFlag::Notifications
 		) | rpl::to_empty,
-		topic->owner().notifySettings().defaultUpdates(topic->peer())
+		topic->owner().notifySettings().defaultUpdates(topic->channel())
 	) | rpl::map([=] {
 		return !topic->owner().notifySettings().isMuted(topic);
 	}) | rpl::distinct_until_changed();
@@ -547,7 +544,6 @@ rpl::producer<int> KickedCountValue(not_null<ChannelData*> channel) {
 rpl::producer<int> SharedMediaCountValue(
 		not_null<PeerData*> peer,
 		MsgId topicRootId,
-		PeerId monoforumPeerId,
 		PeerData *migrated,
 		Storage::SharedMediaType type) {
 	auto aroundId = 0;
@@ -558,7 +554,6 @@ rpl::producer<int> SharedMediaCountValue(
 			SparseIdsMergedSlice::Key(
 				peer->id,
 				topicRootId,
-				monoforumPeerId,
 				migrated ? migrated->id : 0,
 				aroundId),
 			type),
@@ -579,16 +574,16 @@ rpl::producer<int> CommonGroupsCountValue(not_null<UserData*> user) {
 	});
 }
 
-rpl::producer<int> SimilarPeersCountValue(
-		not_null<PeerData*> peer) {
-	const auto participants = &peer->session().api().chatParticipants();
-	participants->loadSimilarPeers(peer);
-	return rpl::single(peer) | rpl::then(
+rpl::producer<int> SimilarChannelsCountValue(
+		not_null<ChannelData*> channel) {
+	const auto participants = &channel->session().api().chatParticipants();
+	participants->loadSimilarChannels(channel);
+	return rpl::single(channel) | rpl::then(
 		participants->similarLoaded()
 	) | rpl::filter(
-		rpl::mappers::_1 == peer
+		rpl::mappers::_1 == channel
 	) | rpl::map([=] {
-		const auto &similar = participants->similar(peer);
+		const auto &similar = participants->similar(channel);
 		return int(similar.list.size()) + similar.more;
 	});
 }
@@ -597,19 +592,19 @@ rpl::producer<int> SavedSublistCountValue(
 		not_null<PeerData*> peer) {
 	const auto saved = &peer->owner().savedMessages();
 	const auto sublist = saved->sublist(peer);
-	if (!sublist->fullCount().has_value()) {
-		sublist->loadFullCount();
+	if (!sublist->fullCount()) {
+		saved->loadMore(sublist);
 		return rpl::single(0) | rpl::then(sublist->fullCountValue());
 	}
 	return sublist->fullCountValue();
 }
 
-rpl::producer<int> PeerGiftsCountValue(not_null<PeerData*> peer) {
-	return peer->session().changes().peerFlagsValue(
-		peer,
+rpl::producer<int> PeerGiftsCountValue(not_null<UserData*> user) {
+	return user->session().changes().peerFlagsValue(
+		user,
 		UpdateFlag::PeerGifts
 	) | rpl::map([=] {
-		return peer->peerGiftsCount();
+		return user->peerGiftsCount();
 	});
 }
 
@@ -668,8 +663,6 @@ rpl::producer<BadgeType> BadgeValueFromFlags(Peer peer) {
 			? BadgeType::Scam
 			: (value & Flag::Fake)
 			? BadgeType::Fake
-			: peer->isMonoforum()
-			? BadgeType::Direct
 			: (value & Flag::Verified)
 			? BadgeType::Verified
 			: premium
@@ -687,9 +680,9 @@ rpl::producer<BadgeType> BadgeValue(not_null<PeerData*> peer) {
 	return rpl::single(BadgeType::None);
 }
 
-rpl::producer<EmojiStatusId> EmojiStatusIdValue(not_null<PeerData*> peer) {
+rpl::producer<DocumentId> EmojiStatusIdValue(not_null<PeerData*> peer) {
 	if (peer->isChat()) {
-		return rpl::single(EmojiStatusId());
+		return rpl::single(DocumentId(0));
 	}
 	return peer->session().changes().peerFlagsValue(
 		peer,

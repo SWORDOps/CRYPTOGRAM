@@ -22,7 +22,7 @@ void RestrictSponsored(
 	Fn<void(QString)> failed);
 
 struct RewardReceiver final {
-	PeerData *currencyReceiver = nullptr;
+	ChannelData *currencyReceiver = nullptr;
 	PeerData *creditsReceiver = nullptr;
 	Fn<uint64()> creditsAmount;
 };

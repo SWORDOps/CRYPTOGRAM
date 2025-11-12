@@ -271,6 +271,13 @@ base::unique_qptr<Ui::SideBarButton> FiltersMenu::prepareButton(
 		Ui::FilterIcon icon,
 		bool toBeginning) {
 	const auto isStatic = title.isStatic;
+	const auto makeContext = [=](Fn<void()> update) {
+		return Core::MarkedTextContext{
+			.session = &_session->session(),
+			.customEmojiRepaint = std::move(update),
+			.customEmojiLoopLimit = isStatic ? -1 : 0,
+		};
+	};
 	const auto paused = [=] {
 		return On(PowerSaving::kEmojiChat)
 			|| _session->isGifPausedAtLeastFor(Window::GifPauseReason::Any);
@@ -279,10 +286,7 @@ base::unique_qptr<Ui::SideBarButton> FiltersMenu::prepareButton(
 		container,
 		id ? title.text : TextWithEntities{ tr::lng_filters_all(tr::now) },
 		st::windowFiltersButton,
-		Core::TextContext({
-			.session = &_session->session(),
-			.customEmojiLoopLimit = isStatic ? -1 : 0,
-		}),
+		makeContext,
 		paused);
 	auto added = toBeginning
 		? container->insert(0, std::move(prepared))
@@ -300,8 +304,14 @@ base::unique_qptr<Ui::SideBarButton> FiltersMenu::prepareButton(
 		) | rpl::start_with_next([=](
 				const Dialogs::UnreadState &state,
 				bool includeMuted) {
-			const auto chats = state.chats;
-			const auto chatsMuted = state.chatsMuted;
+			const auto chats = state.chatsTopic
+				? (state.chats - state.chatsTopic + state.forums)
+				: state.chats;
+			const auto chatsMuted = state.chatsTopicMuted
+				? (state.chatsMuted
+					- state.chatsTopicMuted
+					+ state.forumsMuted)
+				: state.chatsMuted;
 			const auto muted = (chatsMuted + state.marksMuted);
 			const auto count = (chats + state.marks)
 				- (includeMuted ? 0 : muted);
@@ -488,7 +498,7 @@ void FiltersMenu::showMenu(QPoint position, FilterId id) {
 		addAction({
 			.text = tr::lng_filters_context_remove(tr::now),
 			.handler = crl::guard(&_outer, [=, this] {
-				_removeApi.request(base::make_weak(&_outer), _session, id);
+				_removeApi.request(Ui::MakeWeak(&_outer), _session, id);
 			}),
 			.icon = &st::menuIconDeleteAttention,
 			.isAttention = true,

@@ -9,7 +9,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "apiwrap.h"
 #include "base/event_filter.h"
-#include "chat_helpers/emoji_list_widget.h"
 #include "chat_helpers/tabbed_panel.h"
 #include "chat_helpers/tabbed_selector.h"
 #include "core/ui_integration.h"
@@ -363,17 +362,12 @@ object_ptr<Ui::RpWidget> AddReactionsSelector(
 	const auto customEmojiPaused = [controller = args.controller] {
 		return controller->isGifPausedAtLeastFor(PauseReason::Layer);
 	};
-	auto simpleContext = Core::TextContext({
-		.session = session,
-		.repaint = [=] { raw->update(); },
-	});
-	auto context = simpleContext;
-	context.customEmojiFactory = [=](
-		QStringView data,
-		const Ui::Text::MarkedContext &context
-	) -> std::unique_ptr<Ui::Text::CustomEmoji> {
+	auto factory = [=](QStringView data, Fn<void()> update)
+		-> std::unique_ptr<Ui::Text::CustomEmoji> {
 		const auto id = Data::ParseCustomEmojiData(data);
-		auto result = Ui::Text::MakeCustomEmoji(data, simpleContext);
+		auto result = owner->customEmojiManager().create(
+			data,
+			std::move(update));
 		if (state->unifiedFactoryOwner->lookupReactionId(id).custom()) {
 			return std::make_unique<MaybeDisabledEmoji>(
 				std::move(result),
@@ -382,10 +376,12 @@ object_ptr<Ui::RpWidget> AddReactionsSelector(
 		using namespace Ui::Text;
 		return std::make_unique<FirstFrameEmoji>(std::move(result));
 	};
-	raw->setCustomTextContext(
-		std::move(context),
-		customEmojiPaused,
-		customEmojiPaused);
+	raw->setCustomTextContext([=](Fn<void()> repaint) {
+		return std::any(Core::MarkedTextContext{
+			.session = session,
+			.customEmojiRepaint = std::move(repaint),
+		});
+	}, customEmojiPaused, customEmojiPaused, std::move(factory));
 
 	const auto callback = args.callback;
 	const auto isCustom = [=](DocumentId id) {
@@ -495,8 +491,7 @@ object_ptr<Ui::RpWidget> AddReactionsSelector(
 	panelList.erase(
 		ranges::remove(panelList, paid->selectAnimation->id),
 		end(panelList));
-	panel->selector()->provideRecentEmoji(
-		ChatHelpers::DocumentListToRecent(panelList));
+	panel->selector()->provideRecentEmoji(panelList);
 	panel->setDesiredHeightValues(
 		1.,
 		st::emojiPanMinHeight / 2,

@@ -26,7 +26,7 @@ struct FilterLinkHeaderDescriptor {
 	base::required<FilterLinkHeaderType> type;
 	base::required<QString> title;
 	base::required<TextWithEntities> about;
-	Text::MarkedContext aboutContext;
+	Fn<std::any(Fn<void()>)> makeAboutContext;
 	base::required<TextWithEntities> folderTitle;
 	not_null<const style::icon*> folderIcon;
 	rpl::producer<int> badge;
@@ -47,7 +47,7 @@ struct FilterLinkHeader {
 	not_null<QWidget*> parent,
 	FilterLinkHeaderType type,
 	TextWithEntities title,
-	Text::MarkedContext context,
+	Fn<std::any(Fn<void()>)> makeContext,
 	rpl::producer<int> badge);
 
 } // namespace Ui

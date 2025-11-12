@@ -19,9 +19,13 @@ class Pip::RendererGL final : public Pip::Renderer {
 public:
 	explicit RendererGL(not_null<Pip*> owner);
 
-	void init(QOpenGLFunctions &f) override;
+	void init(
+		not_null<QOpenGLWidget*> widget,
+		QOpenGLFunctions &f) override;
 
-	void deinit(QOpenGLFunctions *f) override;
+	void deinit(
+		not_null<QOpenGLWidget*> widget,
+		QOpenGLFunctions *f) override;
 
 	void paint(
 		not_null<QOpenGLWidget*> widget,

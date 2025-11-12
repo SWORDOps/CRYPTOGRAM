@@ -18,8 +18,7 @@ namespace Ui {
 
 ChooseTimeResult ChooseTimeWidget(
 		not_null<RpWidget*> parent,
-		TimeId startSeconds,
-		bool hiddenDaysInput) {
+		TimeId startSeconds) {
 	using TimeField = Ui::TimePartWithPlaceholder;
 	const auto putNext = [](not_null<TimeField*> field, QChar ch) {
 		field->setCursorPosition(0);
@@ -76,50 +75,43 @@ ChooseTimeResult ChooseTimeWidget(
 			QString::number(startMinutes)),
 	});
 
-	const auto day = base::make_weak(state->day);
-	const auto hour = base::make_weak(state->hour);
-	const auto minute = base::make_weak(state->minute);
-
-	if (hiddenDaysInput) {
-		day->setVisible(false);
-	}
+	const auto day = Ui::MakeWeak(state->day);
+	const auto hour = Ui::MakeWeak(state->hour);
+	const auto minute = Ui::MakeWeak(state->minute);
 
 	day->setPhrase(tr::lng_days);
 	day->setMaxValue(31);
 	day->setWheelStep(1);
 	day->putNext() | rpl::start_with_next([=](QChar ch) {
-		putNext(hour.get(), ch);
+		putNext(hour, ch);
 	}, content->lifetime());
 
 	hour->setPhrase(tr::lng_hours);
 	hour->setMaxValue(23);
 	hour->setWheelStep(1);
 	hour->putNext() | rpl::start_with_next([=](QChar ch) {
-		putNext(minute.get(), ch);
+		putNext(minute, ch);
 	}, content->lifetime());
 	hour->erasePrevious() | rpl::start_with_next([=] {
-		erasePrevious(day.get());
+		erasePrevious(day);
 	}, content->lifetime());
 
 	minute->setPhrase(tr::lng_minutes);
 	minute->setMaxValue(59);
 	minute->setWheelStep(10);
 	minute->erasePrevious() | rpl::start_with_next([=] {
-		erasePrevious(hour.get());
+		erasePrevious(hour);
 	}, content->lifetime());
 
 	content->sizeValue(
 	) | rpl::start_with_next([=](const QSize &s) {
-		const auto inputWidth = s.width() / (hiddenDaysInput ? 2 : 3);
+		const auto inputWidth = s.width() / 3;
 		auto rect = QRect(
 			0,
 			(s.height() - day->height()) / 2,
 			inputWidth,
 			day->height());
 		for (const auto &input : { day, hour, minute }) {
-			if (input->isHidden()) {
-				continue;
-			}
 			input->setGeometry(rect - st::muteBoxTimeFieldPadding);
 			rect.translate(inputWidth, 0);
 		}
@@ -127,9 +119,9 @@ ChooseTimeResult ChooseTimeWidget(
 
 	rpl::merge(
 		rpl::single(rpl::empty),
-		base::qt_signal_producer(day.get(), &MaskedInputField::changed),
-		base::qt_signal_producer(hour.get(), &MaskedInputField::changed),
-		base::qt_signal_producer(minute.get(), &MaskedInputField::changed)
+		base::qt_signal_producer(day.data(), &MaskedInputField::changed),
+		base::qt_signal_producer(hour.data(), &MaskedInputField::changed),
+		base::qt_signal_producer(minute.data(), &MaskedInputField::changed)
 	) | rpl::start_with_next([=] {
 		state->valueInSeconds = 0
 			+ day->getLastText().toUInt() * 3600 * 24

@@ -61,8 +61,6 @@ struct PossibleItemReactions {
 [[nodiscard]] PossibleItemReactionsRef LookupPossibleReactions(
 	not_null<HistoryItem*> item,
 	bool paidInFront = false);
-[[nodiscard]] PossibleItemReactionsRef LookupPossibleReactions(
-	not_null<Main::Session*> session);
 
 struct MyTagInfo {
 	ReactionId id;
@@ -73,7 +71,7 @@ struct MyTagInfo {
 struct PaidReactionSend {
 	int count = 0;
 	bool valid = false;
-	std::optional<PeerId> shownPeer = PeerId();
+	std::optional<bool> anonymous = false;
 };
 
 class Reactions final : private CustomEmojiManager::Listener {
@@ -411,7 +409,7 @@ public:
 	[[nodiscard]] bool hasUnread() const;
 	void markRead();
 
-	void scheduleSendPaid(int count, std::optional<PeerId> shownPeer);
+	void scheduleSendPaid(int count, std::optional<bool> anonymous);
 	[[nodiscard]] int scheduledPaid() const;
 	void cancelScheduledPaid();
 
@@ -420,19 +418,19 @@ public:
 
 	[[nodiscard]] bool localPaidData() const;
 	[[nodiscard]] int localPaidCount() const;
-	[[nodiscard]] PeerId localPaidShownPeer() const;
+	[[nodiscard]] bool localPaidAnonymous() const;
 	bool clearCloudData();
 
 private:
 	struct Paid {
 		std::vector<TopPaid> top;
-		PeerId scheduledShownPeer = 0;
-		PeerId sendingShownPeer = 0;
-		uint32 scheduled: 30 = 0;
+		uint32 scheduled: 29 = 0;
 		uint32 scheduledFlag : 1 = 0;
+		uint32 scheduledAnonymous : 1 = 0;
 		uint32 scheduledPrivacySet : 1 = 0;
-		uint32 sending : 30 = 0;
+		uint32 sending : 29 = 0;
 		uint32 sendingFlag : 1 = 0;
+		uint32 sendingAnonymous : 1 = 0;
 		uint32 sendingPrivacySet : 1 = 0;
 	};
 	const not_null<HistoryItem*> _item;

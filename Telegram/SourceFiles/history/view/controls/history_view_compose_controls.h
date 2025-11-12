@@ -183,7 +183,6 @@ public:
 	-> rpl::producer<ReplyNextRequest>;
 	[[nodiscard]] rpl::producer<> focusRequests() const;
 	[[nodiscard]] rpl::producer<> showScheduledRequests() const;
-	[[nodiscard]] rpl::producer<> scrollToMaxRequests() const;
 
 	using MimeDataHook = Fn<bool(
 		not_null<const QMimeData*> data,
@@ -332,7 +331,6 @@ private:
 	[[nodiscard]] Data::DraftKey draftKeyCurrent() const;
 	void saveDraft(bool delayed = false);
 	void saveDraftDelayed();
-	void saveDraftWithTextNow();
 	void saveCloudDraft();
 
 	void writeDrafts();
@@ -367,7 +365,6 @@ private:
 
 	History *_history = nullptr;
 	MsgId _topicRootId = 0;
-	PeerId _monoforumPeerId = 0;
 	BusinessShortcutId _shortcutId = 0;
 	Fn<bool()> _showSlowmodeError;
 	Fn<Api::SendAction()> _sendActionFactory;

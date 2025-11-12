@@ -11,7 +11,7 @@ template <typename Object>
 class object_ptr;
 
 namespace style {
-struct TextStyle;
+struct FlatLabel;
 struct PeerListItem;
 struct DialogRow;
 } // namespace style
@@ -22,15 +22,14 @@ class RpWidget;
 
 object_ptr<Ui::RpWidget> CreateLoadingTextWidget(
 	not_null<Ui::RpWidget*> parent,
-	const style::TextStyle &st,
+	const style::FlatLabel &st,
 	int lines,
 	rpl::producer<bool> rtl);
 
 object_ptr<Ui::RpWidget> CreateLoadingPeerListItemWidget(
 	not_null<Ui::RpWidget*> parent,
 	const style::PeerListItem &st,
-	int lines,
-	std::optional<QColor> bgOverride);
+	int lines);
 
 object_ptr<Ui::RpWidget> CreateLoadingDialogRowWidget(
 	not_null<Ui::RpWidget*> parent,

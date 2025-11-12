@@ -240,13 +240,13 @@ struct State {
 [[nodiscard]] rpl::producer<Peers> WhoReadIds(
 		not_null<HistoryItem*> item,
 		not_null<QWidget*> context) {
-	auto weak = base::make_weak(context);
+	auto weak = QPointer<QWidget>(context.get());
 	const auto session = &item->history()->session();
 	return [=](auto consumer) {
 		if (!weak) {
 			return rpl::lifetime();
 		}
-		const auto context = PreparedContextAt(weak.get(), session);
+		const auto context = PreparedContextAt(weak.data(), session);
 		auto &entry = context->cacheRead(item);
 		if (entry.requestId) {
 		} else if (const auto user = item->history()->peer->asUser()) {
@@ -325,13 +325,13 @@ struct State {
 		not_null<HistoryItem*> item,
 		const ReactionId &reaction,
 		not_null<QWidget*> context) {
-	auto weak = base::make_weak(context);
+	auto weak = QPointer<QWidget>(context.get());
 	const auto session = &item->history()->session();
 	return [=](auto consumer) {
 		if (!weak) {
 			return rpl::lifetime();
 		}
-		const auto context = PreparedContextAt(weak.get(), session);
+		const auto context = PreparedContextAt(weak.data(), session);
 		auto &entry = context->cacheReacted(item, reaction);
 		if (!entry.requestId) {
 			using Flag = MTPmessages_GetMessageReactionsList::Flag;
@@ -712,8 +712,7 @@ bool WhoReadExists(not_null<HistoryItem*> item) {
 	const auto megagroup = peer->asMegagroup();
 	if ((!chat && !megagroup)
 		|| (megagroup
-			&& (megagroup->flags() & ChannelDataFlag::ParticipantsHidden))
-		|| (megagroup && megagroup->isMonoforum())) {
+			&& (megagroup->flags() & ChannelDataFlag::ParticipantsHidden))) {
 		return false;
 	}
 	const auto &appConfig = peer->session().appConfig();

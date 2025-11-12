@@ -76,8 +76,6 @@ PRIVATE
     v2/InstanceV2Impl.h
     v2/NativeNetworkingImpl.cpp
     v2/NativeNetworkingImpl.h
-    v2/RawTcpSocket.cpp
-    v2/RawTcpSocket.h
     v2/ReflectorPort.cpp
     v2/ReflectorPort.h
     v2/ReflectorRelayPortFactory.cpp
@@ -88,12 +86,8 @@ PRIVATE
     v2/SignalingConnection.h
     v2/SignalingEncryption.cpp
     v2/SignalingEncryption.h
-    v2/SignalingKcpConnection.cpp
-    v2/SignalingKcpConnection.h
     v2/SignalingSctpConnection.cpp
     v2/SignalingSctpConnection.h
-    v2/ikcp.cpp
-    v2/ikcp.h
 
     # Desktop capturer
     desktop_capturer/DesktopCaptureSource.h
@@ -150,6 +144,10 @@ PRIVATE
     platform/darwin/DesktopSharingCapturer.mm
     platform/darwin/ExtractCVPixelBuffer.h
     platform/darwin/ExtractCVPixelBuffer.mm
+    platform/darwin/GLVideoView.h
+    platform/darwin/GLVideoView.mm
+    platform/darwin/GLVideoViewMac.h
+    platform/darwin/GLVideoViewMac.mm
     platform/darwin/h265_nalu_rewriter.cc
     platform/darwin/h265_nalu_rewriter.h
     platform/darwin/objc_video_encoder_factory.h
@@ -227,12 +225,17 @@ PRIVATE
     RTC_ENABLE_VP9
 )
 
-if (APPLE)
+if (WIN32)
+elseif (APPLE)
     target_compile_options(lib_tgcalls
     PRIVATE
         -fobjc-arc
     )
     remove_target_sources(lib_tgcalls ${tgcalls_loc}
+        platform/darwin/GLVideoView.h
+        platform/darwin/GLVideoView.mm
+        platform/darwin/GLVideoViewMac.h
+        platform/darwin/GLVideoViewMac.mm
         platform/darwin/VideoCameraCapturer.h
         platform/darwin/VideoCameraCapturer.mm
         platform/darwin/VideoMetalView.h
@@ -250,16 +253,14 @@ if (APPLE)
     )
 endif()
 
-if (NOT MSVC)
-    target_compile_options_if_exists(lib_tgcalls
-    PRIVATE
-        -Wno-deprecated-volatile
-        -Wno-ambiguous-reversed-operator
-        -Wno-deprecated-declarations
-        -Wno-unqualified-std-cast-call
-        -Wno-unused-function
-    )
-endif()
+target_compile_options_if_exists(lib_tgcalls
+PRIVATE
+    -Wno-deprecated-volatile
+    -Wno-ambiguous-reversed-operator
+    -Wno-deprecated-declarations
+    -Wno-unqualified-std-cast-call
+    -Wno-unused-function
+)
 
 remove_target_sources(lib_tgcalls ${tgcalls_loc}
     platform/android/AndroidContext.cpp
@@ -279,4 +280,27 @@ PUBLIC
     ${tgcalls_dir}
 PRIVATE
     ${tgcalls_loc}
+)
+
+add_library(lib_tgcalls_legacy STATIC)
+init_target(lib_tgcalls_legacy)
+
+add_library(tdesktop::lib_tgcalls_legacy ALIAS lib_tgcalls_legacy)
+
+nice_target_sources(lib_tgcalls_legacy ${tgcalls_loc}
+PRIVATE
+    legacy/InstanceImplLegacy.cpp
+    legacy/InstanceImplLegacy.h
+)
+
+target_include_directories(lib_tgcalls_legacy
+PRIVATE
+    ${tgcalls_loc}
+)
+
+target_link_libraries(lib_tgcalls_legacy
+PRIVATE
+    tdesktop::lib_tgcalls
+    tdesktop::lib_tgvoip
+    desktop-app::external_openssl
 )

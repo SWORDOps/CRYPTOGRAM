@@ -123,60 +123,35 @@ not_null<Button*> AddButtonWithIcon(
 		const style::SettingsButton &st,
 		IconDescriptor &&descriptor) {
 	return container->add(
-		CreateButtonWithIcon(
-			container,
-			std::move(text),
-			st,
-			std::move(descriptor)));
+		CreateButtonWithIcon(container, std::move(text), st, std::move(descriptor)));
 }
 
 void CreateRightLabel(
 		not_null<Button*> button,
-		v::text::data &&label,
+		rpl::producer<QString> label,
 		const style::SettingsButton &st,
-		rpl::producer<QString> buttonText,
-		Ui::Text::MarkedContext context) {
+		rpl::producer<QString> buttonText) {
 	const auto name = Ui::CreateChild<Ui::FlatLabel>(
 		button.get(),
 		st.rightLabel);
 	name->show();
-	if (v::text::is_plain(label)) {
-		rpl::combine(
-			button->widthValue(),
-			std::move(buttonText),
-			v::text::take_plain(std::move(label))
-		) | rpl::start_with_next([=, &st](
-				int width,
-				const QString &button,
-				const QString &text) {
-			const auto available = width
-				- st.padding.left()
-				- st.padding.right()
-				- st.style.font->width(button)
-				- st::settingsButtonRightSkip;
-			name->setText(text);
-			name->resizeToNaturalWidth(available);
-			name->moveToRight(st::settingsButtonRightSkip, st.padding.top());
-		}, name->lifetime());
-	} else if (v::text::is_marked(label)) {
-		rpl::combine(
-			button->widthValue(),
-			std::move(buttonText),
-			v::text::take_marked(std::move(label))
-		) | rpl::start_with_next([=, &st](
-				int width,
-				const QString &button,
-				const TextWithEntities &text) {
-			const auto available = width
-				- st.padding.left()
-				- st.padding.right()
-				- st.style.font->width(button)
-				- st::settingsButtonRightSkip;
-			name->setMarkedText(text, context);
-			name->resizeToNaturalWidth(available);
-			name->moveToRight(st::settingsButtonRightSkip, st.padding.top());
-		}, name->lifetime());
-	}
+	rpl::combine(
+		button->widthValue(),
+		std::move(buttonText),
+		std::move(label)
+	) | rpl::start_with_next([=, &st](
+			int width,
+			const QString &button,
+			const QString &text) {
+		const auto available = width
+			- st.padding.left()
+			- st.padding.right()
+			- st.style.font->width(button)
+			- st::settingsButtonRightSkip;
+		name->setText(text);
+		name->resizeToNaturalWidth(available);
+		name->moveToRight(st::settingsButtonRightSkip, st.padding.top());
+	}, name->lifetime());
 	name->setAttribute(Qt::WA_TransparentForMouseEvents);
 }
 
@@ -227,13 +202,14 @@ void AddDividerTextWithLottie(
 
 	if (descriptor.about) {
 		verticalLayout->add(
-			object_ptr<Ui::FlatLabel>(
+			object_ptr<Ui::CenterWrap<>>(
 				verticalLayout,
-				std::move(descriptor.about),
-				st::settingsFilterDividerLabel),
+				object_ptr<Ui::FlatLabel>(
+					verticalLayout,
+					std::move(descriptor.about),
+					st::settingsFilterDividerLabel)),
 			descriptor.aboutMargins.value_or(
-				st::settingsFilterDividerLabelPadding),
-			style::al_top)->setTryMakeSimilarLines(true);
+				st::settingsFilterDividerLabelPadding));
 	}
 
 	verticalLayout->geometryValue(
@@ -245,8 +221,7 @@ void AddDividerTextWithLottie(
 LottieIcon CreateLottieIcon(
 		not_null<QWidget*> parent,
 		Lottie::IconDescriptor &&descriptor,
-		style::margins padding,
-		Fn<QColor()> colorOverride) {
+		style::margins padding) {
 	Expects(!descriptor.frame); // I'm not sure it considers limitFps.
 
 	descriptor.limitFps = true;
@@ -266,9 +241,7 @@ LottieIcon CreateLottieIcon(
 	const auto looped = raw->lifetime().make_state<bool>(true);
 
 	const auto start = [=] {
-		icon->animate([=] {
-			raw->update();
-		}, 0, icon->framesCount() - 1);
+		icon->animate([=] { raw->update(); }, 0, icon->framesCount() - 1);
 	};
 	const auto animate = [=](anim::repeat repeat) {
 		*looped = (repeat == anim::repeat::loop);
@@ -278,9 +251,7 @@ LottieIcon CreateLottieIcon(
 	) | rpl::start_with_next([=] {
 		auto p = QPainter(raw);
 		const auto left = (raw->width() - width) / 2;
-		icon->paint(p, left, padding.top(), colorOverride
-			? colorOverride()
-			: std::optional<QColor>());
+		icon->paint(p, left, padding.top());
 		if (!icon->animating() && icon->frameIndex() > 0 && *looped) {
 			start();
 		}

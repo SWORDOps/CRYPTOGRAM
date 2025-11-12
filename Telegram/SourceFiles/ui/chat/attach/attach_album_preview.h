@@ -29,7 +29,7 @@ public:
 		const style::ComposeControls &st,
 		gsl::span<Ui::PreparedFile> items,
 		SendFilesWay way,
-		Fn<bool(int, AttachActionType)> actionAllowed);
+		Fn<bool()> canToggleSpoiler);
 	~AlbumPreview();
 
 	void setSendWay(SendFilesWay way);
@@ -42,18 +42,15 @@ public:
 	[[nodiscard]] rpl::producer<int> thumbDeleted() const {
 		return _thumbDeleted.events();
 	}
+
 	[[nodiscard]] rpl::producer<int> thumbChanged() const {
 		return _thumbChanged.events();
 	}
+
 	[[nodiscard]] rpl::producer<int> thumbModified() const {
 		return _thumbModified.events();
 	}
-	[[nodiscard]] rpl::producer<int> thumbEditCoverRequested() const {
-		return _thumbEditCoverRequested.events();
-	}
-	[[nodiscard]] rpl::producer<int> thumbClearCoverRequested() const {
-		return _thumbClearCoverRequested.events();
-	}
+
 	[[nodiscard]] rpl::producer<> orderUpdated() const {
 		return _orderUpdated.events();
 	}
@@ -104,7 +101,7 @@ private:
 
 	const style::ComposeControls &_st;
 	SendFilesWay _sendWay;
-	Fn<bool(int, AttachActionType)> _actionAllowed;
+	Fn<bool()> _canToggleSpoiler;
 	style::cursor _cursor = style::cur_default;
 	std::vector<int> _order;
 	std::vector<QSize> _itemsShownDimensions;
@@ -127,8 +124,6 @@ private:
 	rpl::event_stream<int> _thumbDeleted;
 	rpl::event_stream<int> _thumbChanged;
 	rpl::event_stream<int> _thumbModified;
-	rpl::event_stream<int> _thumbEditCoverRequested;
-	rpl::event_stream<int> _thumbClearCoverRequested;
 	rpl::event_stream<> _orderUpdated;
 
 	base::unique_qptr<PopupMenu> _menu;

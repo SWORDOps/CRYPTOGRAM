@@ -27,11 +27,6 @@ enum Flag : uint32;
 using Flags = base::flags<Flag>;
 } // namespace PowerSaving
 
-namespace Data {
-enum class ChatbotsPermission;
-using ChatbotsPermissions = base::flags<ChatbotsPermission>;
-} // namespace Data
-
 template <typename Object>
 class object_ptr;
 
@@ -44,7 +39,6 @@ struct EditPeerPermissionsBoxResult final {
 	ChatRestrictions rights;
 	int slowmodeSeconds = 0;
 	int boostsUnrestrict = 0;
-	int starsPerMessage = 0;
 };
 
 void ShowEditPeerPermissionsBox(
@@ -125,8 +119,3 @@ using AdminRightLabel = EditFlagsLabel<ChatAdminRights>;
 	AdminLog::FilterValue::Flags flags,
 	bool isChannel
 ) -> EditFlagsControl<AdminLog::FilterValue::Flags>;
-
-[[nodiscard]] auto CreateEditChatbotPermissions(
-	QWidget *parent,
-	Data::ChatbotsPermissions flags
-) -> EditFlagsControl<Data::ChatbotsPermissions>;

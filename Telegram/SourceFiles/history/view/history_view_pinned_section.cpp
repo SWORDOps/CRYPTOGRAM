@@ -13,7 +13,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "history/history_item_components.h"
 #include "history/history_item.h"
-#include "history/history_view_swipe_back_session.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/widgets/scroll_area.h"
 #include "ui/widgets/shadow.h"
@@ -88,10 +87,6 @@ object_ptr<Window::SectionWidget> PinnedMemento::createWidget(
 
 Data::ForumTopic *PinnedMemento::topicForRemoveRequests() const {
 	return _thread->asTopic();
-}
-
-Data::SavedSublist *PinnedMemento::sublistForRemoveRequests() const {
-	return _thread->asSublist();
 }
 
 PinnedWidget::PinnedWidget(
@@ -188,14 +183,8 @@ PinnedWidget::PinnedWidget(
 		onScroll();
 	}, lifetime());
 
-	_inner->scrollKeyEvents(
-	) | rpl::start_with_next([=](not_null<QKeyEvent*> e) {
-		_scroll->keyPressEvent(e);
-	}, lifetime());
-
 	setupClearButton();
 	setupTranslateBar();
-	Window::SetupSwipeBackSection(this, _scroll.get(), _inner);
 }
 
 PinnedWidget::~PinnedWidget() = default;
@@ -216,7 +205,6 @@ void PinnedWidget::setupClearButton() {
 				controller(),
 				_history->peer,
 				_thread->topicRootId(),
-				_thread->monoforumPeerId(),
 				crl::guard(this, callback));
 		} else {
 			Window::UnpinAllMessages(controller(), _thread);
@@ -539,7 +527,6 @@ rpl::producer<Data::MessagesSlice> PinnedWidget::listSource(
 			SparseIdsMergedSlice::Key(
 				_history->peer->id,
 				_thread->topicRootId(),
-				_thread->monoforumPeerId(),
 				_migratedPeer ? _migratedPeer->id : 0,
 				messageId),
 			Storage::SharedMediaType::Pinned),

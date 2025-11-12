@@ -151,8 +151,8 @@ void AddExpandablePeerList(
 
 			using namespace Info::Profile;
 			auto name = controller->data.bold
-				? NameValue(peer) | Ui::Text::ToBold()
-				: NameValue(peer) | Ui::Text::ToWithEntities();
+				? NameValue(peer) | rpl::map(Ui::Text::Bold)
+				: NameValue(peer) | rpl::map(Ui::Text::WithEntities);
 			const auto userpic
 				= Ui::CreateChild<Ui::UserpicButton>(line, peer, st);
 			const auto checkbox = Ui::CreateChild<Ui::Checkbox>(

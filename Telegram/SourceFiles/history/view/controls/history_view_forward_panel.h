@@ -76,7 +76,6 @@ private:
 void ClearDraftReplyTo(
 	not_null<History*> history,
 	MsgId topicRootId,
-	PeerId monoforumPeerId,
 	FullMsgId equalTo);
 
 void EditWebPageOptions(
@@ -86,7 +85,5 @@ void EditWebPageOptions(
 	Fn<void(Data::WebPageDraft)> done);
 
 [[nodiscard]] bool HasOnlyForcedForwardedInfo(const HistoryItemsList &list);
-[[nodiscard]] bool HasOnlyDroppedForwardedInfo(const HistoryItemsList &list);
-[[nodiscard]] bool HasDropForwardedInfoSetting(const HistoryItemsList &list);
 
 } // namespace HistoryView::Controls

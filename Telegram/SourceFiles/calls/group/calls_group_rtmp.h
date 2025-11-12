@@ -64,7 +64,7 @@ private:
 		std::shared_ptr<Ui::Show> show;
 		Fn<void(JoinInfo)> done;
 		base::has_weak_ptr guard;
-		base::weak_qptr<Ui::BoxContent> box;
+		QPointer<Ui::BoxContent> box;
 		rpl::lifetime lifetime;
 		mtpRequestId id = 0;
 	};

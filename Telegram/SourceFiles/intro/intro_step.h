@@ -45,16 +45,6 @@ public:
 		bool hasCover = false);
 	~Step();
 
-	QAccessible::Role accessibilityRole() override {
-		return QAccessible::Role::Pane;
-	}
-	QString accessibilityName() override {
-		return _titleText.current();
-	}
-	QString accessibilityDescription() override {
-		return _descriptionText.current().text;
-	}
-
 	[[nodiscard]] Main::Account &account() const {
 		return *_account;
 	}

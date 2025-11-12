@@ -46,9 +46,13 @@ class Panel::Incoming::RendererGL final : public Ui::GL::Renderer {
 public:
 	explicit RendererGL(not_null<Incoming*> owner);
 
-	void init(QOpenGLFunctions &f) override;
+	void init(
+		not_null<QOpenGLWidget*> widget,
+		QOpenGLFunctions &f) override;
 
-	void deinit(QOpenGLFunctions *f) override;
+	void deinit(
+		not_null<QOpenGLWidget*> widget,
+		QOpenGLFunctions *f) override;
 
 	void paint(
 		not_null<QOpenGLWidget*> widget,
@@ -96,7 +100,7 @@ public:
 	explicit RendererSW(not_null<Incoming*> owner);
 
 	void paintFallback(
-		Painter &p,
+		Painter &&p,
 		const QRegion &clip,
 		Ui::GL::Backend backend) override;
 
@@ -119,7 +123,9 @@ Panel::Incoming::RendererGL::RendererGL(not_null<Incoming*> owner)
 	}, _lifetime);
 }
 
-void Panel::Incoming::RendererGL::init(QOpenGLFunctions &f) {
+void Panel::Incoming::RendererGL::init(
+		not_null<QOpenGLWidget*> widget,
+		QOpenGLFunctions &f) {
 	constexpr auto kQuads = 2;
 	constexpr auto kQuadVertices = kQuads * 4;
 	constexpr auto kQuadValues = kQuadVertices * 4;
@@ -162,7 +168,9 @@ void Panel::Incoming::RendererGL::init(QOpenGLFunctions &f) {
 		}));
 }
 
-void Panel::Incoming::RendererGL::deinit(QOpenGLFunctions *f) {
+void Panel::Incoming::RendererGL::deinit(
+		not_null<QOpenGLWidget*> widget,
+		QOpenGLFunctions *f) {
 	_textures.destroy(f);
 	_imageProgram = std::nullopt;
 	_texturedVertexShader = nullptr;
@@ -429,7 +437,7 @@ Panel::Incoming::RendererSW::RendererSW(not_null<Incoming*> owner)
 }
 
 void Panel::Incoming::RendererSW::paintFallback(
-		Painter &p,
+		Painter &&p,
 		const QRegion &clip,
 		Ui::GL::Backend backend) {
 	const auto markGuard = gsl::finally([&] {

@@ -9,21 +9,16 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "info/info_content_widget.h"
 #include "info/media/info_media_widget.h"
-#include "info/stories/info_stories_common.h"
-
-namespace Ui {
-template <typename Widget>
-class SlideWrap;
-} // namespace Ui
 
 namespace Info::Stories {
 
 class InnerWidget;
+enum class Tab;
 
 class Memento final : public ContentMemento {
 public:
 	Memento(not_null<Controller*> controller);
-	Memento(not_null<PeerData*> peer, int albumId, int addingToAlbumId);
+	Memento(not_null<PeerData*> peer, Tab tab);
 	~Memento();
 
 	object_ptr<ContentWidget> createWidget(
@@ -42,7 +37,6 @@ public:
 
 private:
 	Media::Memento _media;
-	int _addingToAlbumId = 0;
 
 };
 
@@ -64,30 +58,18 @@ public:
 
 	rpl::producer<QString> title() override;
 
-	rpl::producer<bool> desiredBottomShadowVisibility() override;
-
-	void showFinished() override;
-
 private:
 	void saveState(not_null<Memento*> memento);
 	void restoreState(not_null<Memento*> memento);
 
-	void setupBottomButton(int wasBottomHeight);
-	void refreshBottom();
-
 	std::shared_ptr<ContentMemento> doCreateMemento() override;
 
-	rpl::variable<int> _albumId;
 	InnerWidget *_inner = nullptr;
-	QPointer<Ui::SlideWrap<Ui::RpWidget>> _pinnedToBottom;
-	rpl::variable<bool> _hasPinnedToBottom;
-	rpl::variable<bool> _emptyAlbumShown;
-	bool _shown = false;
 
 };
 
 [[nodiscard]] std::shared_ptr<Info::Memento> Make(
 	not_null<PeerData*> peer,
-	int albumId = 0);
+	Tab tab = {});
 
 } // namespace Info::Stories

@@ -137,8 +137,7 @@ DocumentData *Document::readFromStreamHelper(
 				|| info->setId == Data::Stickers::CloudRecentSetId
 				|| info->setId == Data::Stickers::CloudRecentAttachedSetId
 				|| info->setId == Data::Stickers::FavedSetId
-				|| info->setId == Data::Stickers::CustomSetId
-				|| info->setId == Data::Stickers::CollectibleSetId) {
+				|| info->setId == Data::Stickers::CustomSetId) {
 				typeOfSet = StickerSetTypeEmpty;
 			}
 

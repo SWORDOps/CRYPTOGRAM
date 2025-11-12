@@ -79,8 +79,6 @@ public:
 	[[nodiscard]] int aboutLengthPremium() const;
 	[[nodiscard]] int aboutLengthCurrent() const;
 
-	[[nodiscard]] int contactNoteLengthCurrent() const;
-
 	[[nodiscard]] int maxBoostLevel() const;
 
 private:
@@ -104,7 +102,6 @@ public:
 	[[nodiscard]] int channelWallpaperLevelMin() const;
 	[[nodiscard]] int channelCustomWallpaperLevelMin() const;
 	[[nodiscard]] int channelRestrictSponsoredLevelMin() const;
-	[[nodiscard]] int channelAutoTranslateLevelMin() const;
 	[[nodiscard]] int groupTranscribeLevelMin() const;
 	[[nodiscard]] int groupEmojiStickersLevelMin() const;
 	[[nodiscard]] int groupProfileBgIconLevelMin() const;

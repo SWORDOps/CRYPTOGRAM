@@ -9,7 +9,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "base/bytes.h"
 #include "base/weak_ptr.h"
-#include "base/weak_qptr.h"
 #include "base/flat_map.h"
 #include "mtproto/core_types.h"
 #include "mtproto/details/mtproto_serialized_request.h"
@@ -84,7 +83,7 @@ class ConcurrentSender : public base::has_weak_ptr {
 
 public:
 	ConcurrentSender(
-		base::weak_qptr<Instance> weak,
+		QPointer<Instance> weak,
 		Fn<void(FnMut<void()>)> runner);
 
 	template <typename Request>
@@ -185,7 +184,7 @@ private:
 	void senderRequestCancelAll();
 	void senderRequestDetach(mtpRequestId requestId);
 
-	const base::weak_qptr<Instance> _weak;
+	const QPointer<Instance> _weak;
 	const Fn<void(FnMut<void()>)> _runner;
 	base::flat_map<mtpRequestId, Handlers> _requests;
 

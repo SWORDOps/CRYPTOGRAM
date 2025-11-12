@@ -9,8 +9,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "base/flat_set.h"
 
-class QDebug;
-
 namespace MTP {
 
 class Error {
@@ -70,7 +68,5 @@ struct ResponseHandler {
 	DoneHandler done;
 	FailHandler fail;
 };
-
-[[nodiscard]] QDebug operator<<(QDebug debug, const Error &error);
 
 } // namespace MTP

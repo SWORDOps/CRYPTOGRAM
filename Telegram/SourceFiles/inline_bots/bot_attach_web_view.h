@@ -53,7 +53,6 @@ namespace InlineBots {
 
 class WebViewInstance;
 class Downloads;
-class Storage;
 
 enum class PeerType : uint8 {
 	SameBot   = 0x01,
@@ -163,16 +162,6 @@ struct WebViewSourceBotProfile {
 		WebViewSourceBotProfile) = default;
 };
 
-struct WebViewSourceAgeVerification {
-	Fn<void(int)> done;
-
-	friend inline bool operator==(
-			WebViewSourceAgeVerification,
-			WebViewSourceAgeVerification) {
-		return true;
-	}
-};
-
 struct WebViewSource : std::variant<
 	WebViewSourceButton,
 	WebViewSourceSwitch,
@@ -183,8 +172,7 @@ struct WebViewSource : std::variant<
 	WebViewSourceAttachMenu,
 	WebViewSourceBotMenu,
 	WebViewSourceGame,
-	WebViewSourceBotProfile,
-	WebViewSourceAgeVerification> {
+	WebViewSourceBotProfile> {
 	using variant::variant;
 };
 
@@ -231,7 +219,6 @@ public:
 
 private:
 	void resolve();
-	void requestFullBot();
 
 	bool openAppFromBotMenuLink();
 
@@ -289,9 +276,6 @@ private:
 		QString query) override;
 	void botCheckWriteAccess(Fn<void(bool allowed)> callback) override;
 	void botAllowWriteAccess(Fn<void(bool allowed)> callback) override;
-	bool botStorageWrite(QString key, std::optional<QString> value) override;
-	std::optional<QString> botStorageRead(QString key) override;
-	void botStorageClear() override;
 	void botRequestEmojiStatusAccess(
 		Fn<void(bool allowed)> callback) override;
 	void botSharePhone(Fn<void(bool shared)> callback) override;
@@ -303,7 +287,6 @@ private:
 		Ui::BotWebView::SetEmojiStatusRequest request) override;
 	void botDownloadFile(
 		Ui::BotWebView::DownloadFileRequest request) override;
-	void botVerifyAge(int age) override;
 	void botOpenPrivacyPolicy() override;
 	void botClose() override;
 
@@ -313,8 +296,6 @@ private:
 	const WebViewContext _context;
 	const WebViewButton _button;
 	const WebViewSource _source;
-
-	std::optional<ShowArgs> _botFullWaitingArgs;
 
 	BotAppData *_app = nullptr;
 	QString _appStartParam;
@@ -340,9 +321,6 @@ public:
 
 	[[nodiscard]] Downloads &downloads() const {
 		return *_downloads;
-	}
-	[[nodiscard]] Storage &storage() const {
-		return *_storage;
 	}
 
 	void open(WebViewDescriptor &&descriptor);
@@ -416,7 +394,6 @@ private:
 
 	const not_null<Main::Session*> _session;
 	const std::unique_ptr<Downloads> _downloads;
-	const std::unique_ptr<Storage> _storage;
 
 	base::Timer _refreshTimer;
 

@@ -34,10 +34,10 @@ AbstractSingleMediaPreview::AbstractSingleMediaPreview(
 	QWidget *parent,
 	const style::ComposeControls &st,
 	AttachControls::Type type,
-	Fn<bool(AttachActionType)> actionAllowed)
+	Fn<bool()> canToggleSpoiler)
 : AbstractSinglePreview(parent)
 , _st(st)
-, _actionAllowed(std::move(actionAllowed))
+, _canToggleSpoiler(std::move(canToggleSpoiler))
 , _minThumbH(st::sendBoxAlbumGroupSize.height()
 	+ st::sendBoxAlbumGroupSkipTop * 2)
 , _controls(base::make_unique_q<AttachControlsWidget>(this, type)) {
@@ -55,14 +55,6 @@ rpl::producer<> AbstractSingleMediaPreview::editRequests() const {
 
 rpl::producer<> AbstractSingleMediaPreview::modifyRequests() const {
 	return _photoEditorRequests.events();
-}
-
-rpl::producer<> AbstractSingleMediaPreview::editCoverRequests() const {
-	return _editCoverRequests.events();
-}
-
-rpl::producer<> AbstractSingleMediaPreview::clearCoverRequests() const {
-	return _clearCoverRequests.events();
 }
 
 void AbstractSingleMediaPreview::setSendWay(SendFilesWay way) {
@@ -120,7 +112,7 @@ void AbstractSingleMediaPreview::preparePreview(QImage preview) {
 		preview = Images::Prepare(
 			std::move(preview),
 			QSize(maxW, maxH) * ratio,
-			{ .outer = { maxW, maxH } });
+			{ .options = Images::Option::Blur, .outer = { maxW, maxH } });
 	}
 	auto originalWidth = preview.width();
 	auto originalHeight = preview.height();
@@ -281,33 +273,24 @@ void AbstractSingleMediaPreview::applyCursor(style::cursor cursor) {
 }
 
 void AbstractSingleMediaPreview::showContextMenu(QPoint position) {
+	if (!_canToggleSpoiler()
+		|| !_sendWay.sendImagesAsPhotos()
+		|| !supportsSpoilers()) {
+		return;
+	}
 	_menu = base::make_unique_q<Ui::PopupMenu>(
 		this,
 		_st.tabbed.menu);
 
 	const auto &icons = _st.tabbed.icons;
-	if (_actionAllowed(AttachActionType::ToggleSpoiler)
-		&& _sendWay.sendImagesAsPhotos()
-		&& supportsSpoilers()) {
-		const auto spoilered = hasSpoiler();
-		_menu->addAction(spoilered
-			? tr::lng_context_disable_spoiler(tr::now)
-			: tr::lng_context_spoiler_effect(tr::now), [=] {
-			setSpoiler(!spoilered);
-			_spoileredChanges.fire_copy(!spoilered);
-		}, spoilered ? &icons.menuSpoilerOff : &icons.menuSpoiler);
-	}
-	if (_actionAllowed(AttachActionType::EditCover)) {
-		_menu->addAction(tr::lng_context_edit_cover(tr::now), [=] {
-			_editCoverRequests.fire({});
-		}, &st::menuIconEdit);
+	const auto spoilered = hasSpoiler();
+	_menu->addAction(spoilered
+		? tr::lng_context_disable_spoiler(tr::now)
+		: tr::lng_context_spoiler_effect(tr::now), [=] {
+		setSpoiler(!spoilered);
+		_spoileredChanges.fire_copy(!spoilered);
+	}, spoilered ? &icons.menuSpoilerOff : &icons.menuSpoiler);
 
-		if (_actionAllowed(AttachActionType::ClearCover)) {
-			_menu->addAction(tr::lng_context_clear_cover(tr::now), [=] {
-				_clearCoverRequests.fire({});
-			}, &st::menuIconCancel);
-		}
-	}
 	if (_menu->empty()) {
 		_menu = nullptr;
 	} else {

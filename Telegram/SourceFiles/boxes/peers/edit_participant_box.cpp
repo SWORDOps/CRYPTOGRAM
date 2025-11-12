@@ -245,8 +245,7 @@ ChatAdminRightsInfo EditAdminBox::defaultRights() const {
 			| Flag::EditStories
 			| Flag::DeleteStories
 			| Flag::InviteByLinkOrAdd
-			| Flag::ManageCall
-			| Flag::ManageDirect) };
+			| Flag::ManageCall) };
 }
 
 void EditAdminBox::prepare() {
@@ -450,9 +449,9 @@ void EditAdminBox::prepare() {
 			if (!_saveCallback) {
 				return;
 			} else if (_addAsAdmin && !_addAsAdmin->checked()) {
-				const auto weak = base::make_weak(this);
+				const auto weak = Ui::MakeWeak(this);
 				AddBotToGroup(show, user(), peer(), _addingBot->token);
-				if (const auto strong = weak.get()) {
+				if (const auto strong = weak.data()) {
 					strong->closeBox();
 				}
 				return;
@@ -661,7 +660,7 @@ void EditAdminBox::requestTransferPassword(not_null<ChannelData*> channel) {
 		fields.customSubmitButton = tr::lng_passcode_submit();
 		fields.customCheckCallback = crl::guard(this, [=](
 				const Core::CloudPasswordResult &result,
-				base::weak_qptr<PasscodeBox> box) {
+				QPointer<PasscodeBox> box) {
 			sendTransferRequestFrom(box, channel, result);
 		});
 		getDelegate()->show(Box<PasscodeBox>(&channel->session(), fields));
@@ -669,13 +668,13 @@ void EditAdminBox::requestTransferPassword(not_null<ChannelData*> channel) {
 }
 
 void EditAdminBox::sendTransferRequestFrom(
-		base::weak_qptr<PasscodeBox> box,
+		QPointer<PasscodeBox> box,
 		not_null<ChannelData*> channel,
 		const Core::CloudPasswordResult &result) {
 	if (_transferRequestId) {
 		return;
 	}
-	const auto weak = base::make_weak(this);
+	const auto weak = Ui::MakeWeak(this);
 	const auto user = this->user();
 	const auto api = &channel->session().api();
 	_transferRequestId = api->request(MTPchannels_EditCreator(
@@ -726,7 +725,7 @@ void EditAdminBox::sendTransferRequestFrom(
 				|| type.startsWith(u"PASSWORD_TOO_FRESH_"_q)
 				|| type.startsWith(u"SESSION_TOO_FRESH_"_q);
 		}();
-		const auto weak = base::make_weak(this);
+		const auto weak = Ui::MakeWeak(this);
 		getDelegate()->show(Ui::MakeInformBox(problem));
 		if (box) {
 			box->closeBox();

@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "statistics/view/chart_rulers_view.h"
 
+#include "data/data_channel_earn.h" // Data::kEarnMultiplier.
 #include "info/channel_statistics/earn/earn_format.h"
 #include "lang/lang_keys.h"
 #include "statistics/chart_lines_filter_controller.h"
@@ -15,19 +16,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_basic.h"
 #include "styles/style_statistics.h"
 
-#include <QtCore/QLocale>
-
 namespace Statistic {
 namespace {
 
 [[nodiscard]] QString FormatF(float64 absoluteValue) {
-	static constexpr auto kTooMuch = int(10'000);
-	static constexpr auto kTooSmall = 1e-9;
-	return (std::abs(absoluteValue) <= kTooSmall)
-		? u"0"_q
-		: (absoluteValue >= kTooMuch)
+	constexpr auto kTooMuch = int(10'000);
+	return (absoluteValue >= kTooMuch)
 		? Lang::FormatCountToShort(absoluteValue).string
-		: QLocale().toString(absoluteValue);
+		: QString::number(absoluteValue);
 }
 
 } // namespace
@@ -43,21 +39,12 @@ void ChartRulersView::setChartData(
 		|| chartData.currencyRate;
 	if (chartData.currencyRate) {
 		_currencyIcon = ChartCurrencyIcon(chartData, {});
-		if (chartData.currency == Data::StatisticalCurrency::Ton) {
-			_leftCustomCaption = [=](float64 value) {
-				return FormatF(value / float64(kOneStarInNano));
-			};
-			_rightCustomCaption = [=, rate = chartData.currencyRate](float64 v) {
-				return Info::ChannelEarn::ToUsd(v / float64(kOneStarInNano), rate, 0);
-			};
-		} else {
-			_leftCustomCaption = [=](float64 value) {
-				return FormatF(value);
-			};
-			_rightCustomCaption = [=, rate = chartData.currencyRate](float64 v) {
-				return Info::ChannelEarn::ToUsd(v, rate, 0);
-			};
-		}
+		_leftCustomCaption = [=](float64 value) {
+			return FormatF(value / float64(Data::kEarnMultiplier));
+		};
+		_rightCustomCaption = [=, rate = chartData.currencyRate](float64 v) {
+			return Info::ChannelEarn::ToUsd(v, rate, 0);
+		};
 		_rightPen = QPen(st::windowSubTextFg);
 	}
 	if (_isDouble && (chartData.lines.size() == 2)) {

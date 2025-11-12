@@ -69,7 +69,7 @@ object_ptr<RpWidget> MakeShowOrLabel(
 
 		const auto full = st::showOrLineWidth;
 		const auto left = (raw->width() - full) / 2;
-		const auto text = raw->naturalWidth() + 2 * st::showOrLabelSkip;
+		const auto text = raw->textMaxWidth() + 2 * st::showOrLabelSkip;
 		const auto fill = (full - text) / 2;
 		const auto stroke = st::lineWidth;
 		const auto top = st::showOrLineTop;
@@ -152,15 +152,13 @@ void ShowOrPremiumBox(
 			box,
 			std::move(skin.showTitle),
 			st::boostCenteredTitle),
-		st::showOrTitlePadding + buttonPadding,
-		style::al_top);
+		st::showOrTitlePadding + buttonPadding);
 	box->addRow(
 		object_ptr<FlatLabel>(
 			box,
 			std::move(skin.showAbout),
 			st::boostText),
-		st::showOrAboutPadding + buttonPadding,
-		style::al_top);
+		st::showOrAboutPadding + buttonPadding);
 	const auto show = box->addRow(
 		object_ptr<RoundButton>(
 			box,
@@ -170,22 +168,19 @@ void ShowOrPremiumBox(
 	show->setTextTransform(RoundButton::TextTransform::NoTransform);
 	box->addRow(
 		MakeShowOrLabel(box, std::move(skin.orPremium)),
-		st::showOrLabelPadding + buttonPadding,
-		style::al_justify);
+		st::showOrLabelPadding + buttonPadding);
 	box->addRow(
 		object_ptr<FlatLabel>(
 			box,
 			std::move(skin.premiumTitle),
 			st::boostCenteredTitle),
-		st::showOrTitlePadding + buttonPadding,
-		style::al_top);
+		st::showOrTitlePadding + buttonPadding);
 	box->addRow(
 		object_ptr<FlatLabel>(
 			box,
 			std::move(skin.premiumAbout),
 			st::boostText),
-		st::showOrPremiumAboutPadding + buttonPadding,
-		style::al_top);
+		st::showOrPremiumAboutPadding + buttonPadding);
 
 	const auto premium = CreateChild<GradientButton>(
 		box.get(),

@@ -65,7 +65,6 @@ Ui::ChatPaintHighlight ElementHighlighter::state(
 	if (item->fullId() == _highlighted.itemId) {
 		auto result = _animation.state();
 		result.range = _highlighted.part;
-		result.todoItemId = _highlighted.todoListId;
 		return result;
 	}
 	return {};
@@ -83,27 +82,19 @@ ElementHighlighter::Highlight ElementHighlighter::computeHighlight(
 		const auto i = ranges::find(group->items, item);
 		if (i != end(group->items)) {
 			const auto index = int(i - begin(group->items));
-			if (quote.highlight.empty()) {
+			if (quote.text.empty()) {
 				return { leaderId, AddGroupItemSelection({}, index) };
 			} else if (const auto leaderView = _viewForItem(leader)) {
-				return {
-					leaderId,
-					leaderView->selectionFromQuote(quote),
-					quote.highlight.todoItemId,
-				};
+				return { leaderId, leaderView->selectionFromQuote(quote) };
 			}
 		}
-		return { leaderId, {}, quote.highlight.todoItemId };
-	} else if (quote.highlight.quote.empty()) {
-		return { item->fullId(), {}, quote.highlight.todoItemId };
+		return { leaderId };
+	} else if (quote.text.empty()) {
+		return { item->fullId() };
 	} else if (const auto view = _viewForItem(item)) {
-		return {
-			item->fullId(),
-			view->selectionFromQuote(quote),
-			quote.highlight.todoItemId,
-		};
+		return { item->fullId(), view->selectionFromQuote(quote) };
 	}
-	return { item->fullId(), {}, quote.highlight.todoItemId };
+	return { item->fullId() };
 }
 
 void ElementHighlighter::highlight(Highlight data) {
@@ -117,7 +108,7 @@ void ElementHighlighter::highlight(Highlight data) {
 				}
 			}
 			_highlighted = data;
-			_animation.start((!data.part.empty() || data.todoListId)
+			_animation.start(!data.part.empty()
 				&& !IsSubGroupSelection(data.part));
 
 			repaintHighlightedItem(view);

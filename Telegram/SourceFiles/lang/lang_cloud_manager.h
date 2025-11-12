@@ -48,11 +48,6 @@ public:
 		return _suggestedLanguage;
 	}
 
-	void getValueForLang(
-		const QString &key,
-		const QString &langId,
-		Fn<void(const QString &)> callback);
-
 private:
 	mtpRequestId &packRequestId(Pack pack);
 	mtpRequestId packRequestId(Pack pack) const;
@@ -74,7 +69,6 @@ private:
 	void changeIdAndReInitConnection(const Language &data);
 
 	void sendSwitchingToLanguageRequest();
-	void resendPendingValueRequests();
 	void resendRequests();
 
 	std::optional<MTP::Sender> _api;
@@ -95,12 +89,6 @@ private:
 	bool _switchingToLanguageWarning = false;
 
 	mtpRequestId _getKeysForSwitchRequestId = 0;
-
-	struct ValueRequest {
-		mtpRequestId requestId = 0;
-		Fn<void(const QString &)> callback;
-	};
-	base::flat_map<QString, ValueRequest> _getValueForLangRequests;
 
 	rpl::event_stream<> _languageListChanged;
 	rpl::event_stream<> _firstLanguageSuggestion;

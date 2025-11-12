@@ -215,7 +215,7 @@ void MainWindow::clearPasscodeLock() {
 		_main->show();
 		updateControlsGeometry();
 		_main->showAnimated(std::move(oldContentCache), true);
-		Core::App().checkStartUrls();
+		Core::App().checkStartUrl();
 	}
 }
 
@@ -259,7 +259,7 @@ void MainWindow::setupMain(
 	const auto animated = _intro
 		|| (_passcodeLock && !Core::App().passcodeLocked());
 	const auto weakAnimatedLayer = (_main && _layer && !_passcodeLock)
-		? base::make_weak(_layer.get())
+		? Ui::MakeWeak(_layer.get())
 		: nullptr;
 	if (weakAnimatedLayer) {
 		Assert(!animated);
@@ -285,10 +285,10 @@ void MainWindow::setupMain(
 		} else {
 			_main->activate();
 		}
-		Core::App().checkStartUrls();
+		Core::App().checkStartUrl();
 	}
 	fixOrder();
-	if (const auto strong = weakAnimatedLayer.get()) {
+	if (const auto strong = weakAnimatedLayer.data()) {
 		strong->hideAllAnimatedRun();
 	}
 }

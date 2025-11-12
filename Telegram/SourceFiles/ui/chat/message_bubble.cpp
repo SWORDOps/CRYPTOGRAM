@@ -156,8 +156,7 @@ void PaintBubbleGeneric(
 }
 
 void PaintPatternBubble(QPainter &p, const SimpleBubble &args) {
-	const auto wasOpacity = p.opacity();
-	const auto opacity = args.st->msgOutBg()->c.alphaF() * wasOpacity;
+	const auto opacity = args.st->msgOutBg()->c.alphaF();
 	const auto shadowOpacity = opacity * args.st->msgOutShadow()->c.alphaF();
 	const auto pattern = args.pattern;
 	const auto &tail = (args.rounding.bottomRight == Corner::Tail)
@@ -215,7 +214,7 @@ void PaintPatternBubble(QPainter &p, const SimpleBubble &args) {
 
 	p.setOpacity(opacity);
 	PaintBubbleGeneric(args, fillBg, fillSh, fillCorner, paintTail);
-	p.setOpacity(wasOpacity);
+	p.setOpacity(1.);
 }
 
 void PaintSolidBubble(QPainter &p, const SimpleBubble &args) {

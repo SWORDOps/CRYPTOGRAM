@@ -9,10 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "data/data_message_reaction_id.h"
 #include "data/data_search_controller.h"
-#include "info/peer_gifts/info_peer_gifts_common.h"
-#include "info/saved/info_saved_music_common.h"
 #include "info/statistics/info_statistics_tag.h"
-#include "info/stories/info_stories_common.h"
 #include "window/window_session_controller.h"
 
 namespace Api {
@@ -21,7 +18,6 @@ struct WhoReadList;
 
 namespace Data {
 class ForumTopic;
-class SavedSublist;
 } // namespace Data
 
 namespace Ui {
@@ -57,6 +53,25 @@ struct Tag {
 
 } // namespace Info::GlobalMedia
 
+namespace Info::Stories {
+
+enum class Tab {
+	Saved,
+	Archive,
+};
+
+struct Tag {
+	explicit Tag(not_null<PeerData*> peer, Tab tab = {})
+	: peer(peer)
+	, tab(tab) {
+	}
+
+	not_null<PeerData*> peer;
+	Tab tab = {};
+};
+
+} // namespace Info::Stories
+
 namespace Info::BotStarRef {
 
 enum class Type : uchar {
@@ -79,13 +94,10 @@ class Key {
 public:
 	explicit Key(not_null<PeerData*> peer);
 	explicit Key(not_null<Data::ForumTopic*> topic);
-	explicit Key(not_null<Data::SavedSublist*> sublist);
 	Key(Settings::Tag settings);
 	Key(Downloads::Tag downloads);
 	Key(Stories::Tag stories);
-	Key(Saved::MusicTag music);
 	Key(Statistics::Tag statistics);
-	Key(PeerGifts::Tag gifts);
 	Key(BotStarRef::Tag starref);
 	Key(GlobalMedia::Tag global);
 	Key(not_null<PollData*> poll, FullMsgId contextId);
@@ -94,27 +106,21 @@ public:
 		Data::ReactionId selected,
 		FullMsgId contextId);
 
-	[[nodiscard]] PeerData *peer() const;
-	[[nodiscard]] Data::ForumTopic *topic() const;
-	[[nodiscard]] Data::SavedSublist *sublist() const;
-	[[nodiscard]] UserData *settingsSelf() const;
-	[[nodiscard]] bool isDownloads() const;
-	[[nodiscard]] bool isGlobalMedia() const;
-	[[nodiscard]] PeerData *storiesPeer() const;
-	[[nodiscard]] int storiesAlbumId() const;
-	[[nodiscard]] int storiesAddToAlbumId() const;
-	[[nodiscard]] PeerData *musicPeer() const;
-	[[nodiscard]] PeerData *giftsPeer() const;
-	[[nodiscard]] int giftsCollectionId() const;
-	[[nodiscard]] Statistics::Tag statisticsTag() const;
-	[[nodiscard]] PeerData *starrefPeer() const;
-	[[nodiscard]] BotStarRef::Type starrefType() const;
-	[[nodiscard]] PollData *poll() const;
-	[[nodiscard]] FullMsgId pollContextId() const;
-	[[nodiscard]] auto reactionsWhoReadIds() const
-		-> std::shared_ptr<Api::WhoReadList>;
-	[[nodiscard]] Data::ReactionId reactionsSelected() const;
-	[[nodiscard]] FullMsgId reactionsContextId() const;
+	PeerData *peer() const;
+	Data::ForumTopic *topic() const;
+	UserData *settingsSelf() const;
+	bool isDownloads() const;
+	bool isGlobalMedia() const;
+	PeerData *storiesPeer() const;
+	Stories::Tab storiesTab() const;
+	Statistics::Tag statisticsTag() const;
+	PeerData *starrefPeer() const;
+	BotStarRef::Type starrefType() const;
+	PollData *poll() const;
+	FullMsgId pollContextId() const;
+	std::shared_ptr<Api::WhoReadList> reactionsWhoReadIds() const;
+	Data::ReactionId reactionsSelected() const;
+	FullMsgId reactionsContextId() const;
 
 private:
 	struct PollKey {
@@ -129,13 +135,10 @@ private:
 	std::variant<
 		not_null<PeerData*>,
 		not_null<Data::ForumTopic*>,
-		not_null<Data::SavedSublist*>,
 		Settings::Tag,
 		Downloads::Tag,
 		Stories::Tag,
-		Saved::MusicTag,
 		Statistics::Tag,
-		PeerGifts::Tag,
 		BotStarRef::Tag,
 		GlobalMedia::Tag,
 		PollKey,
@@ -155,7 +158,7 @@ public:
 		Media,
 		GlobalMedia,
 		CommonGroups,
-		SimilarPeers,
+		SimilarChannels,
 		RequestsList,
 		ReactionsList,
 		SavedSublists,
@@ -164,7 +167,6 @@ public:
 		Settings,
 		Downloads,
 		Stories,
-		SavedMusic,
 		PollResults,
 		Statistics,
 		BotStarRef,
@@ -223,9 +225,6 @@ public:
 	[[nodiscard]] Data::ForumTopic *topic() const {
 		return key().topic();
 	}
-	[[nodiscard]] Data::SavedSublist *sublist() const {
-		return key().sublist();
-	}
 	[[nodiscard]] UserData *settingsSelf() const {
 		return key().settingsSelf();
 	}
@@ -238,20 +237,8 @@ public:
 	[[nodiscard]] PeerData *storiesPeer() const {
 		return key().storiesPeer();
 	}
-	[[nodiscard]] int storiesAlbumId() const {
-		return key().storiesAlbumId();
-	}
-	[[nodiscard]] int storiesAddToAlbumId() const {
-		return key().storiesAddToAlbumId();
-	}
-	[[nodiscard]] PeerData *musicPeer() const {
-		return key().musicPeer();
-	}
-	[[nodiscard]] PeerData *giftsPeer() const {
-		return key().giftsPeer();
-	}
-	[[nodiscard]] int giftsCollectionId() const {
-		return key().giftsCollectionId();
+	[[nodiscard]] Stories::Tab storiesTab() const {
+		return key().storiesTab();
 	}
 	[[nodiscard]] Statistics::Tag statisticsTag() const {
 		return key().statisticsTag();
@@ -317,15 +304,12 @@ public:
 		return _section;
 	}
 
-	void replaceKey(Key key);
-	[[nodiscard]] bool validateMementoPeer(
+	bool validateMementoPeer(
 		not_null<ContentMemento*> memento) const;
 
-	[[nodiscard]] Wrap wrap() const;
-	[[nodiscard]] rpl::producer<Wrap> wrapValue() const;
-	[[nodiscard]] not_null<Ui::RpWidget*> wrapWidget() const;
+	Wrap wrap() const;
+	rpl::producer<Wrap> wrapValue() const;
 	void setSection(not_null<ContentMemento*> memento);
-	[[nodiscard]] bool hasBackButton() const;
 
 	Ui::SearchFieldController *searchFieldController() const {
 		return _searchFieldController.get();

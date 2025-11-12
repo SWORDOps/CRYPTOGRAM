@@ -48,7 +48,6 @@ struct PeerShortInfoFields {
 	TextWithEntities about;
 	QString username;
 	Data::Birthday birthday;
-	TextWithEntities note;
 	bool isBio = false;
 	QString user_id;
 };
@@ -125,7 +124,6 @@ private:
 	object_ptr<Ui::FlatLabel> _additionalStatus = { nullptr };
 
 	std::array<QImage, 4> _roundMask;
-	std::array<QImage, 4> _roundMaskRetina;
 	QImage _userpicImage;
 	QImage _roundedTopImage;
 	QImage _barSmall;
@@ -191,7 +189,6 @@ private:
 	[[nodiscard]] rpl::producer<QString> birthdayValue() const;
 	[[nodiscard]] rpl::producer<TextWithEntities> aboutValue() const;
 	[[nodiscard]] rpl::producer<QString> userIdValue() const;
-	[[nodiscard]] rpl::producer<TextWithEntities> noteValue() const;
 
 	const style::ShortInfoBox &_st;
 	const PeerShortInfoType _type = PeerShortInfoType::User;

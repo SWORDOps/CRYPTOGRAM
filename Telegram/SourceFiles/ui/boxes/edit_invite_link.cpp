@@ -286,7 +286,7 @@ void EditInviteLinkBox(
 		}
 	};
 
-	const auto guard = base::make_weak(box);
+	const auto guard = MakeWeak(box);
 	expireGroup->setChangedCallback([=](int value) {
 		if (value) {
 			state->expireValue = value;

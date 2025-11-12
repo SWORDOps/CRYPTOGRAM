@@ -11,7 +11,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/section_memento.h"
 #include "history/admin_log/history_admin_log_item.h"
 #include "history/admin_log/history_admin_log_filter_value.h"
-#include "ui/controls/swipe_handler_data.h"
 #include "mtproto/sender.h"
 
 namespace Ui {
@@ -75,15 +74,12 @@ private:
 	void saveState(not_null<SectionMemento*> memento);
 	void restoreState(not_null<SectionMemento*> memento);
 	void setupShortcuts();
-	void setupSwipeReply();
 
 	object_ptr<Ui::ScrollArea> _scroll;
 	QPointer<InnerWidget> _inner;
 	object_ptr<FixedBar> _fixedBar;
 	object_ptr<Ui::PlainShadow> _fixedBarShadow;
 	object_ptr<Ui::FlatButton> _whatIsThis;
-
-	Ui::Controls::SwipeBackResult _swipeBackData;
 
 };
 

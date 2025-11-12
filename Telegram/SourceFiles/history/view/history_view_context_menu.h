@@ -60,13 +60,11 @@ base::unique_qptr<Ui::PopupMenu> FillContextMenu(
 void CopyPostLink(
 	not_null<Window::SessionController*> controller,
 	FullMsgId itemId,
-	Context context,
-	std::optional<TimeId> videoTimestamp = {});
+	Context context);
 void CopyPostLink(
 	std::shared_ptr<Main::SessionShow> show,
 	FullMsgId itemId,
-	Context context,
-	std::optional<TimeId> videoTimestamp = {});
+	Context context);
 void ViewAsJSON(
 	not_null<Window::SessionController*> controller,
 	FullMsgId itemId);
@@ -94,8 +92,7 @@ void AddWhoReactedAction(
 	not_null<Window::SessionController*> controller);
 void MaybeAddWhenEditedForwardedAction(
 	not_null<Ui::PopupMenu*> menu,
-	not_null<HistoryItem*> item,
-	not_null<Window::SessionController*> controller);
+	not_null<HistoryItem*> item);
 void ShowWhoReactedMenu(
 	not_null<base::unique_qptr<Ui::PopupMenu>*> menu,
 	QPoint position,
@@ -138,10 +135,6 @@ void AddSelectRestrictionAction(
 	not_null<Ui::PopupMenu*> menu,
 	not_null<HistoryItem*> item,
 	bool addIcon);
-void AddStickerSetOwnerActions(
-	not_null<Ui::PopupMenu*> menu,
-	not_null<DocumentData*> document,
-	HistoryItem* item);
 
 [[nodiscard]] TextWithEntities TransribedText(not_null<HistoryItem*> item);
 

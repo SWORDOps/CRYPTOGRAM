@@ -27,7 +27,7 @@ public:
 
 	void create(
 		const PollData &data,
-		SendAction action,
+		const SendAction &action,
 		Fn<void()> done,
 		Fn<void()> fail);
 	void sendVotes(

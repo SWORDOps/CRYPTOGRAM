@@ -178,11 +178,6 @@ public:
 		QWidget *parent,
 		not_null<Window::Controller*> window);
 
-	QAccessible::Role accessibilityRole() override {
-		return QAccessible::Dialog;
-	}
-	QString accessibilityName() override;
-
 	void forceContentRepaint();
 
 	rpl::producer<int> desiredHeightValue() const override;
@@ -250,10 +245,6 @@ IntroWidget::IntroWidget(
 		}));
 }
 
-QString IntroWidget::accessibilityName() {
-	return tr::lng_menu_settings(tr::now);
-}
-
 void IntroWidget::updateControlsGeometry() {
 	if (!_innerWrap) {
 		return;
@@ -299,7 +290,6 @@ void IntroWidget::createTopBar(not_null<Window::Controller*> window) {
 		base::make_unique_q<Ui::IconButton>(
 			_topBar,
 			st::infoLayerTopBarClose));
-	close->setAccessibleName(tr::lng_close(tr::now));
 	close->addClickHandler([=] {
 		window->hideSettingsAndLayer();
 	});

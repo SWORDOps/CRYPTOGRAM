@@ -34,7 +34,6 @@ public:
 	void setChecked(
 		bool newChecked,
 		anim::type animated = anim::type::normal);
-	void finishAnimating();
 
 	void invalidateCache();
 

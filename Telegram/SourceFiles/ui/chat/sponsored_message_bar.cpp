@@ -9,7 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "core/application.h"
 #include "core/click_handler_types.h"
-#include "core/ui_integration.h" // TextContext
+#include "core/ui_integration.h" // Core::MarkedTextContext.
 #include "data/components/sponsored_messages.h"
 #include "data/data_session.h"
 #include "history/history_item_helpers.h"
@@ -23,7 +23,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/effects/animation_value.h"
 #include "ui/effects/ripple_animation.h"
 #include "ui/image/image_prepare.h"
-#include "ui/power_saving.h"
 #include "ui/rect.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/shadow.h"
@@ -203,10 +202,10 @@ void FillSponsoredMessageBar(
 		contentTextSt,
 		textWithEntities,
 		kMarkupTextOptions,
-		Core::TextContext({
+		Core::MarkedTextContext{
 			.session = session,
-			.repaint = [=] { widget->update(); },
-		}));
+			.customEmojiRepaint = [=] { widget->update(); },
+		});
 	const auto hostedClick = [=](ClickHandlerPtr handler) {
 		return [=] {
 			if (const auto controller = FindSessionController(widget)) {
@@ -219,13 +218,6 @@ void FillSponsoredMessageBar(
 				});
 			}
 		};
-	};
-	const auto paused = [=]() -> Fn<bool()> {
-		if (const auto c = FindSessionController(widget)) {
-			using Gif = Window::GifPauseReason;
-			return [=] { return c->isGifPausedAtLeastFor(Gif::Any); };
-		}
-		return [] { return false; };
 	};
 	const auto kLinesForPhoto = 3;
 	const auto rightPhotoSize = titleSt.font->ascent * kLinesForPhoto;
@@ -365,8 +357,6 @@ void FillSponsoredMessageBar(
 				.geometry = Ui::Text::GeometryDescriptor{
 					.layout = std::move(lineLayout),
 				},
-				.pausedEmoji = On(PowerSaving::kEmojiChat) || paused(),
-				.pausedSpoiler = On(PowerSaving::kChatSpoiler) || paused(),
 			});
 			state->lastPaintedContentTop = top;
 			state->lastPaintedContentLineAmount = lastContentLineAmount;

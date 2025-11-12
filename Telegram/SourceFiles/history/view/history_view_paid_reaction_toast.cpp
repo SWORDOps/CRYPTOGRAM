@@ -163,7 +163,7 @@ PaidReactionToast::~PaidReactionToast() {
 
 bool PaidReactionToast::maybeShowFor(not_null<HistoryItem*> item) {
 	const auto count = item->reactionsPaidScheduled();
-	const auto shownPeer = item->reactionsLocalShownPeer();
+	const auto anonymous = item->reactionsLocalAnonymous();
 	const auto at = _owner->reactions().sendingScheduledPaidAt(item);
 	if (!count || !at) {
 		return false;
@@ -173,14 +173,14 @@ bool PaidReactionToast::maybeShowFor(not_null<HistoryItem*> item) {
 	if (at <= crl::now() + ignore) {
 		return false;
 	}
-	showFor(item->fullId(), count, shownPeer, at - ignore, total);
+	showFor(item->fullId(), count, anonymous, at - ignore, total);
 	return true;
 }
 
 void PaidReactionToast::showFor(
 		FullMsgId itemId,
 		int count,
-		PeerId shownPeer,
+		bool anonymous,
 		crl::time finish,
 		crl::time total) {
 	const auto old = _weak.get();
@@ -188,7 +188,7 @@ void PaidReactionToast::showFor(
 	if (i != end(_stack)) {
 		if (old && i + 1 == end(_stack)) {
 			_count = count;
-			_shownPeer = shownPeer;
+			_anonymous = anonymous;
 			_timeFinish = finish;
 			return;
 		}
@@ -202,14 +202,14 @@ void PaidReactionToast::showFor(
 		_hiding.push_back(base::take(_weak));
 	}
 	_count.reset();
-	_shownPeer.reset();
+	_anonymous.reset();
 	_timeFinish.reset();
 	_count = count;
-	_shownPeer = shownPeer;
+	_anonymous = anonymous;
 	_timeFinish = finish;
 	auto text = rpl::combine(
 		rpl::conditional(
-			_shownPeer.value() | rpl::map(rpl::mappers::_1 == PeerId()),
+			_anonymous.value(),
 			tr::lng_paid_react_toast_anonymous(
 				lt_count,
 				_count.value() | tr::to_count(),

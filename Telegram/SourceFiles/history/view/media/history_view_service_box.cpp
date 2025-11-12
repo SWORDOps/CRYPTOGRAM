@@ -23,7 +23,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/rect.h"
 #include "ui/power_saving.h"
 #include "styles/style_chat.h"
-#include "styles/style_credits.h"
 #include "styles/style_premium.h"
 #include "styles/style_layers.h"
 
@@ -46,16 +45,7 @@ ServiceBox::ServiceBox(
 , _title(
 	st::defaultSubsectionTitle.style,
 	_content->title(),
-	kMarkupTextOptions,
-	_maxWidth,
-	Core::TextContext({
-		.session = &parent->history()->session(),
-		.repaint = [parent] { parent->customEmojiRepaint(); },
-	}))
-, _author(
-	st::uniqueGiftReleasedBy.style,
-	_content->author(),
-	kMarkupTextOptions,
+	kDefaultTextOptions,
 	_maxWidth)
 , _subtitle(
 	st::premiumPreviewAbout.style,
@@ -71,10 +61,10 @@ ServiceBox::ServiceBox(
 		}),
 	kMarkupTextOptions,
 	_maxWidth,
-	Core::TextContext({
+	Core::MarkedTextContext{
 		.session = &parent->history()->session(),
-		.repaint = [parent] { parent->customEmojiRepaint(); },
-	}))
+		.customEmojiRepaint = [parent] { parent->customEmojiRepaint(); },
+	})
 , _size(
 	_content->width(),
 	(st::msgServiceGiftBoxTopSkip
@@ -84,12 +74,6 @@ ServiceBox::ServiceBox(
 		+ (_title.isEmpty()
 			? 0
 			: (_title.countHeight(_maxWidth)
-				+ st::msgServiceGiftBoxTitlePadding.bottom()))
-		+ (_author.isEmpty()
-			? 0
-			: (st::giftBoxReleasedByMargin.top()
-				+ st::uniqueGiftReleasedBy.style.font->height
-				+ st::giftBoxReleasedByMargin.bottom()
 				+ st::msgServiceGiftBoxTitlePadding.bottom()))
 		+ _subtitle.countHeight(_maxWidth)
 		+ (!_content->button()
@@ -116,10 +100,10 @@ ServiceBox::ServiceBox(
 			}
 		}, _lifetime);
 	}
-	if (const auto type = _content->buttonMinistars()) {
+	if (_content->buttonMinistars()) {
 		_button.stars = std::make_unique<Ui::Premium::ColoredMiniStars>(
 			[=](const QRect &) { repaint(); },
-			*type);
+			Ui::Premium::MiniStars::Type::SlowStars);
 		_button.lastFg = std::make_unique<QColor>();
 	}
 }
@@ -164,48 +148,8 @@ void ServiceBox::draw(Painter &p, const PaintContext &context) const {
 		const auto &padding = st::msgServiceGiftBoxTitlePadding;
 		top += padding.top();
 		if (!_title.isEmpty()) {
-			_title.draw(p, {
-				.position = QPoint(st::msgPadding.left(), top),
-				.availableWidth = _maxWidth,
-				.align = style::al_top,
-				.palette = &context.st->serviceTextPalette(),
-				.spoiler = Ui::Text::DefaultSpoilerCache(),
-				.now = context.now,
-				.pausedEmoji = context.paused || On(PowerSaving::kEmojiChat),
-				.pausedSpoiler = context.paused || On(PowerSaving::kChatSpoiler),
-			});
+			_title.draw(p, st::msgPadding.left(), top, _maxWidth, style::al_top);
 			top += _title.countHeight(_maxWidth) + padding.bottom();
-		}
-		if (!_author.isEmpty()) {
-			auto hq = PainterHighQualityEnabler(p);
-			p.setPen(Qt::NoPen);
-			p.setBrush(context.st->msgServiceBg());
-			const auto use = std::min(_maxWidth, _author.maxWidth())
-				+ st::giftBoxReleasedByMargin.left()
-				+ st::giftBoxReleasedByMargin.right();
-			const auto left = st::msgPadding.left() + (_maxWidth - use) / 2;
-			const auto height = st::giftBoxReleasedByMargin.top()
-				+ st::uniqueGiftReleasedBy.style.font->height
-				+ st::giftBoxReleasedByMargin.bottom();
-			const auto radius = height / 2.;
-			p.drawRoundedRect(left, top, use, height, radius, radius);
-
-			auto fg = context.st->msgServiceFg()->c;
-			fg.setAlphaF(0.65 * fg.alphaF());
-			p.setPen(fg);
-			_author.draw(p, {
-				.position = QPoint(
-					left + st::giftBoxReleasedByMargin.left(),
-					top + st::giftBoxReleasedByMargin.top()),
-				.availableWidth = (use
-					- st::giftBoxReleasedByMargin.left()
-					- st::giftBoxReleasedByMargin.right()),
-				.palette = &context.st->serviceTextPalette(),
-				.elisionLines = 1,
-			});
-			p.setPen(context.st->msgServiceFg());
-
-			top += height + st::msgServiceGiftBoxTitlePadding.bottom();
 		}
 		_parent->prepareCustomEmojiPaint(p, context, _subtitle);
 		_subtitle.draw(p, {
@@ -274,23 +218,6 @@ TextState ServiceBox::textState(QPoint point, StateRequest request) const {
 		if (!_title.isEmpty()) {
 			top += _title.countHeight(_maxWidth) + padding.bottom();
 		}
-		if (!_author.isEmpty()) {
-			const auto use = std::min(_maxWidth, _author.maxWidth())
-				+ st::giftBoxReleasedByMargin.left()
-				+ st::giftBoxReleasedByMargin.right();
-			const auto left = st::msgPadding.left() + (_maxWidth - use) / 2;
-			const auto height = st::giftBoxReleasedByMargin.top()
-				+ st::defaultTextStyle.font->height
-				+ st::giftBoxReleasedByMargin.bottom();
-			if (point.x() >= left
-				&& point.y() >= top
-				&& point.x() < left + use
-				&& point.y() < top + height) {
-				result.link = _content->authorLink();
-			}
-			top += height + st::msgServiceGiftBoxTitlePadding.bottom();
-		}
-
 		auto subtitleRequest = request.forText();
 		subtitleRequest.align = style::al_top;
 		const auto state = _subtitle.getState(

@@ -36,14 +36,7 @@ StickerToast::StickerToast(
 	not_null<Window::SessionController*> controller,
 	not_null<QWidget*> parent,
 	Fn<void()> destroy)
-: StickerToast(controller->uiShow(), parent, std::move(destroy)) {
-}
-
-StickerToast::StickerToast(
-	std::shared_ptr<ChatHelpers::Show> show,
-	not_null<QWidget*> parent,
-	Fn<void()> destroy)
-: _show(std::move(show))
+: _controller(controller)
 , _parent(parent)
 , _destroy(std::move(destroy)) {
 }
@@ -111,7 +104,7 @@ void StickerToast::requestSet() {
 	Expects(_for != nullptr);
 
 	if (const auto sticker = _for->sticker()) {
-		const auto api = &_show->session().api();
+		const auto api = &_controller->session().api();
 		_setRequestId = api->request(MTPmessages_GetStickerSet(
 			Data::InputStickerSet(sticker->set),
 			MTP_int(0) // hash
@@ -119,7 +112,7 @@ void StickerToast::requestSet() {
 			_setRequestId = 0;
 			result.match([&](const MTPDmessages_stickerSet &data) {
 				data.vset().match([&](const MTPDstickerSet &data) {
-					const auto owner = &_show->session().data();
+					const auto owner = &_controller->session().data();
 					showWithTitle(owner->stickers().getSetTitle(data));
 				});
 			}, [&](const MTPDmessages_stickerSetNotModified &) {
@@ -132,7 +125,7 @@ void StickerToast::requestSet() {
 }
 
 void StickerToast::cancelRequest() {
-	_show->session().api().request(base::take(_setRequestId)).cancel();
+	_controller->session().api().request(base::take(_setRequestId)).cancel();
 }
 
 void StickerToast::showWithTitle(const QString &title) {
@@ -226,28 +219,29 @@ void StickerToast::showWithTitle(const QString &title) {
 	}
 	button->setClickedCallback([=] {
 		if (toSaved) {
-			if (const auto window = _show->resolveWindow()) {
-				window->showPeerHistory(
-					window->session().userPeerId(),
-					Window::SectionShow::Way::Forward);
-			}
+			_controller->showPeerHistory(
+				_controller->session().userPeerId(),
+				Window::SectionShow::Way::Forward);
 			hideToast();
 			return;
 		} else if (_section == Section::TopicIcon) {
-			if (const auto window = _show->resolveWindow()) {
-				Settings::ShowPremium(window, u"forum_topic_icon"_q);
-			}
+			Settings::ShowPremium(_controller, u"forum_topic_icon"_q);
 			return;
 		}
-		const auto id = _for->sticker()->set;
+		const auto id = _for->sticker()->set.id;
 		const auto &sets = _for->owner().stickers().sets();
-		const auto i = sets.find(id.id);
+		const auto i = sets.find(id);
 		if (isEmoji
 			&& (i != end(sets))
 			&& (i->second->flags & Data::StickersSetFlag::Installed)) {
-			ShowPremiumPreviewBox(_show, PremiumFeature::AnimatedEmoji);
+			ShowPremiumPreviewBox(
+				_controller,
+				PremiumFeature::AnimatedEmoji);
 		} else {
-			_show->show(Box<StickerSetBox>(_show, id, setType));
+			_controller->show(Box<StickerSetBox>(
+				_controller->uiShow(),
+				_for->sticker()->set,
+				setType));
 		}
 		hideToast();
 	});

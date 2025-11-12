@@ -7,11 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/channel_statistics/earn/earn_icons.h"
 
-#include "ui/effects/credits_graphics.h"
 #include "ui/effects/premium_graphics.h"
-#include "ui/text/custom_emoji_instance.h"
 #include "ui/rect.h"
-#include "styles/style_credits.h"
 #include "styles/style_menu_icons.h"
 #include "styles/style_widgets.h"
 #include "styles/style_info.h" // infoIconReport.
@@ -49,8 +46,10 @@ namespace {
 
 } // namespace
 
-QImage IconCurrencyColored(int size, const QColor &c) {
-	const auto s = Size(size);
+QImage IconCurrencyColored(
+		const style::font &font,
+		const QColor &c) {
+	const auto s = Size(font->ascent);
 	auto svg = QSvgRenderer(CurrencySvg(c));
 	auto image = QImage(
 		s * style::DevicePixelRatio(),
@@ -62,12 +61,6 @@ QImage IconCurrencyColored(int size, const QColor &c) {
 		svg.render(&p, Rect(s));
 	}
 	return image;
-}
-
-QImage IconCurrencyColored(
-		const style::font &font,
-		const QColor &c) {
-	return IconCurrencyColored(font->ascent, c);
 }
 
 QByteArray CurrencySvgColored(const QColor &c) {
@@ -141,46 +134,6 @@ QImage MenuIconCredits() {
 		svg.render(&p, Rect(st::menuIconLinks.size()) - Margins(sizeShift));
 	}
 	return image;
-}
-
-std::unique_ptr<Ui::Text::CustomEmoji> MakeCurrencyIconEmoji(
-		const style::font &font,
-		const QColor &c) {
-	return std::make_unique<Ui::CustomEmoji::Internal>(
-		u"currency_icon:%1:%2"_q.arg(font->height).arg(c.name()),
-		IconCurrencyColored(font, c));
-}
-
-Ui::Text::PaletteDependentEmoji IconCreditsEmoji(
-		IconDescriptor descriptor) {
-	return { .factory = [=] {
-		return Ui::GenerateStars(
-			(descriptor.size
-				? descriptor.size
-				: st::defaultTableLabel.style.font->height),
-			1);
-	}, .margin = descriptor.margin.value_or(
-		QMargins{ 0, st::giftBoxByStarsSkip, 0, 0 }) };
-}
-
-Ui::Text::PaletteDependentEmoji IconCurrencyEmoji(
-		IconDescriptor descriptor) {
-	return { .factory = [=] {
-		return IconCurrencyColored(
-			descriptor.size ? descriptor.size : st::earnTonIconSize,
-			st::currencyFg->c);
-	}, .margin = descriptor.margin.value_or(st::earnTonIconMargin) };
-}
-
-Ui::Text::PaletteDependentEmoji IconCreditsEmojiSmall() {
-	return IconCreditsEmoji({
-		.size = st::giftBoxByStarsStyle.font->height,
-		.margin = QMargins{ 0, st::giftBoxByStarsStarTop, 0, 0 },
-	});
-}
-
-Ui::Text::PaletteDependentEmoji IconCurrencyEmojiSmall() {
-	return IconCreditsEmoji({});
 }
 
 } // namespace Ui::Earn

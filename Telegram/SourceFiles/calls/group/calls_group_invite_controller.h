@@ -11,14 +11,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/peers/add_participants_box.h"
 
 namespace Calls {
-class Call;
 class GroupCall;
-struct InviteRequest;
 } // namespace Calls
-
-namespace Data {
-class GroupCall;
-} // namespace Data
 
 namespace Calls::Group {
 
@@ -83,23 +77,6 @@ private:
 
 [[nodiscard]] object_ptr<Ui::BoxContent> PrepareInviteBox(
 	not_null<GroupCall*> call,
-	Fn<void(TextWithEntities&&)> showToast,
-	Fn<void()> shareConferenceLink = nullptr);
-
-[[nodiscard]] object_ptr<Ui::BoxContent> PrepareInviteBox(
-	not_null<Call*> call,
-	Fn<void(std::vector<InviteRequest>)> inviteUsers,
-	Fn<void()> shareLink);
-
-[[nodiscard]] object_ptr<Ui::BoxContent> PrepareInviteToEmptyBox(
-	std::shared_ptr<Data::GroupCall> call,
-	MsgId inviteMsgId,
-	std::vector<not_null<UserData*>> prioritize);
-
-[[nodiscard]] object_ptr<Ui::BoxContent> PrepareCreateCallBox(
-	not_null<::Window::SessionController*> window,
-	Fn<void()> created = nullptr,
-	MsgId discardedInviteMsgId = 0,
-	std::vector<not_null<UserData*>> prioritize = {});
+	Fn<void(TextWithEntities&&)> showToast);
 
 } // namespace Calls::Group

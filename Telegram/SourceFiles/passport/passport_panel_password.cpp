@@ -171,42 +171,46 @@ void PanelNoPassword::setupContent() {
 	}, _inner->lifetime());
 
 	_inner->add(
-		object_ptr<Ui::FlatLabel>(
+		object_ptr<Ui::CenterWrap<Ui::FlatLabel>>(
 			_inner,
-			tr::lng_passport_request1(
-				tr::now,
-				lt_bot,
-				_controller->bot()->name()),
-			st::passportPasswordLabelBold),
-		st::passportPasswordAbout1Padding,
-		style::al_top);
+			object_ptr<Ui::FlatLabel>(
+				_inner,
+				tr::lng_passport_request1(
+					tr::now,
+					lt_bot,
+					_controller->bot()->name()),
+				st::passportPasswordLabelBold)),
+		st::passportPasswordAbout1Padding)->entity();
 
 	_inner->add(
-		object_ptr<Ui::FlatLabel>(
+		object_ptr<Ui::CenterWrap<Ui::FlatLabel>>(
 			_inner,
-			tr::lng_passport_request2(tr::now),
-			st::passportPasswordLabel),
-		st::passportPasswordAbout2Padding,
-		style::al_top);
+			object_ptr<Ui::FlatLabel>(
+				_inner,
+				tr::lng_passport_request2(tr::now),
+				st::passportPasswordLabel)),
+		st::passportPasswordAbout2Padding)->entity();
 
 	const auto iconWrap = _inner->add(
-		object_ptr<Ui::FixedHeightWidget>(
+		object_ptr<Ui::CenterWrap<Ui::FixedHeightWidget>>(
 			_inner,
-			st::passportPasswordIconHeight),
-		style::al_top);
-	iconWrap->setNaturalWidth(st::passportPasswordIcon.width());
+			object_ptr<Ui::FixedHeightWidget>(
+				_inner,
+				st::passportPasswordIconHeight)));
+	iconWrap->entity()->resizeToWidth(st::passportPasswordIcon.width());
 	Ui::CreateChild<Info::Profile::FloatingIcon>(
-		iconWrap,
+		iconWrap->entity(),
 		st::passportPasswordIcon,
 		QPoint(0, 0));
 
 	_inner->add(
-		object_ptr<Ui::FlatLabel>(
+		object_ptr<Ui::CenterWrap<Ui::FlatLabel>>(
 			_inner,
-			tr::lng_passport_create_password(tr::now),
-			st::passportPasswordSetupLabel),
-		st::passportFormAbout2Padding,
-		style::al_top);
+			object_ptr<Ui::FlatLabel>(
+				_inner,
+				tr::lng_passport_create_password(tr::now),
+				st::passportPasswordSetupLabel)),
+		st::passportFormAbout2Padding)->entity();
 
 	refreshBottom();
 }
@@ -214,22 +218,24 @@ void PanelNoPassword::setupContent() {
 void PanelNoPassword::refreshBottom() {
 	const auto pattern = _controller->unconfirmedEmailPattern();
 	_about.reset(_inner->add(
-		object_ptr<Ui::FlatLabel>(
+		object_ptr<Ui::CenterWrap<Ui::FlatLabel>>(
 			_inner,
-			(pattern.isEmpty()
-				? tr::lng_passport_about_password(tr::now)
-				: tr::lng_passport_code_sent(tr::now, lt_email, pattern)),
-			st::passportPasswordSetupLabel),
-		st::passportFormAbout2Padding,
-		style::al_top));
+			object_ptr<Ui::FlatLabel>(
+				_inner,
+				(pattern.isEmpty()
+					? tr::lng_passport_about_password(tr::now)
+					: tr::lng_passport_code_sent(tr::now, lt_email, pattern)),
+				st::passportPasswordSetupLabel)),
+		st::passportFormAbout2Padding)->entity());
 	if (pattern.isEmpty()) {
 		const auto button = _inner->add(
-			object_ptr<Ui::RoundButton>(
+			object_ptr<Ui::CenterWrap<Ui::RoundButton>>(
 				_inner,
-				tr::lng_passport_password_create(),
-				st::defaultBoxButton),
-			style::al_top);
-		button->addClickHandler([=] {
+				object_ptr<Ui::RoundButton>(
+					_inner,
+					tr::lng_passport_password_create(),
+					st::defaultBoxButton)));
+		button->entity()->addClickHandler([=] {
 			_controller->setupPassword();
 		});
 	} else {

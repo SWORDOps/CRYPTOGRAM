@@ -200,10 +200,6 @@ int PremiumLimits::aboutLengthCurrent() const {
 		: aboutLengthDefault();
 }
 
-int PremiumLimits::contactNoteLengthCurrent() const {
-	return appConfigLimit("contact_note_length_limit", 128);
-}
-
 int PremiumLimits::maxBoostLevel() const {
 	return appConfigLimit(
 		u"boosts_channel_level_max"_q,
@@ -264,12 +260,6 @@ int LevelLimits::channelRestrictSponsoredLevelMin() const {
 	return _session->appConfig().get<int>(
 		u"channel_restrict_sponsored_level_min"_q,
 		20);
-}
-
-int LevelLimits::channelAutoTranslateLevelMin() const {
-	return _session->appConfig().get<int>(
-		u"channel_autotranslation_level_min"_q,
-		3);
 }
 
 int LevelLimits::groupTranscribeLevelMin() const {

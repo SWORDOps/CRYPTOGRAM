@@ -76,7 +76,7 @@ auto ConcurrentSender::with_instance(Method &&method)
 		weak = _weak,
 		method = std::forward<Method>(method)
 	]() mutable {
-		if (const auto instance = weak.get()) {
+		if (const auto instance = weak.data()) {
 			std::move(method)(instance);
 		}
 	});
@@ -136,7 +136,7 @@ mtpRequestId ConcurrentSender::RequestBuilder::send() {
 }
 
 ConcurrentSender::ConcurrentSender(
-	base::weak_qptr<Instance> weak,
+	QPointer<Instance> weak,
 	Fn<void(FnMut<void()>)> runner)
 : _weak(weak)
 , _runner(runner) {

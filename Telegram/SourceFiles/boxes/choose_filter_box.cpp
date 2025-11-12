@@ -172,6 +172,13 @@ void ChangeFilterById(
 			const auto account = not_null(&history->session().account());
 			if (const auto controller = Core::App().windowFor(account)) {
 				const auto isStatic = name.isStatic;
+				const auto textContext = [=](not_null<QWidget*> widget) {
+					return Core::MarkedTextContext{
+						.session = &history->session(),
+						.customEmojiRepaint = [=] { widget->update(); },
+						.customEmojiLoopLimit = isStatic ? -1 : 0,
+					};
+				};
 				controller->showToast({
 					.text = (add
 						? tr::lng_filters_toast_add
@@ -182,10 +189,7 @@ void ChangeFilterById(
 							lt_folder,
 							Ui::Text::Wrapped(name.text, EntityType::Bold),
 							Ui::Text::WithEntities),
-					.textContext = Core::TextContext({
-						.session = &history->session(),
-						.customEmojiLoopLimit = isStatic ? -1 : 0,
-					}),
+					.textContext = textContext,
 				});
 			}
 		}).fail([=](const MTP::Error &error) {
@@ -286,18 +290,19 @@ void FillChooseFilterMenu(
 		const auto title = filter.title();
 		auto item = base::make_unique_q<FilterAction>(
 			menu.get(),
-			menu->st().menu,
+			st::foldersMenu,
 			Ui::Menu::CreateAction(
 				menu.get(),
 				Ui::Text::FixAmpersandInAction(title.text.text),
 				std::move(callback)),
 			contains ? &st::mediaPlayerMenuCheck : nullptr,
 			contains ? &st::mediaPlayerMenuCheck : nullptr);
-		item->setMarkedText(title.text, QString(), Core::TextContext({
+		const auto context = Core::MarkedTextContext{
 			.session = &history->session(),
-			.repaint = [raw = item.get()] { raw->update(); },
+			.customEmojiRepaint = [raw = item.get()] { raw->update(); },
 			.customEmojiLoopLimit = title.isStatic ? -1 : 0,
-		}));
+		};
+		item->setMarkedText(title.text, QString(), context);
 
 		item->setIcon(Icon(showColors ? filter : filter.withColorIndex({})));
 		const auto action = menu->addAction(std::move(item));
@@ -316,23 +321,16 @@ void FillChooseFilterMenu(
 				return;
 			}
 			const auto session = &strong->session();
-			const auto &list = session->data().chatsFilters().list();
-			if ((list.size() - 1) >= limit()) {
+			const auto count = session->data().chatsFilters().list().size();
+			if ((count - 1) >= limit()) {
 				return;
 			}
-			const auto chooseNextId = [&] {
-				auto id = 2;
-				while (ranges::contains(list, id, &Data::ChatFilter::id)) {
-					++id;
-				}
-				return id;
-			};
 			auto filter =
 				Data::ChatFilter({}, {}, {}, {}, {}, { history }, {}, {});
 			const auto send = [=](const Data::ChatFilter &filter) {
 				session->api().request(MTPmessages_UpdateDialogFilter(
 					MTP_flags(MTPmessages_UpdateDialogFilter::Flag::f_filter),
-					MTP_int(chooseNextId()),
+					MTP_int(count),
 					filter.tl()
 				)).done([=] {
 					session->data().chatsFilters().reload();

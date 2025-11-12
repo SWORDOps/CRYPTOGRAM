@@ -404,9 +404,7 @@ auto ApiWrap::fileRequest(const Data::FileLocation &location, int64 offset) {
 	}).toDC(MTP::ShiftDcId(location.dcId, MTP::kExportMediaDcShift)));
 }
 
-ApiWrap::ApiWrap(
-	base::weak_qptr<MTP::Instance> weak,
-	Fn<void(FnMut<void()>)> runner)
+ApiWrap::ApiWrap(QPointer<MTP::Instance> weak, Fn<void(FnMut<void()>)> runner)
 : _mtp(weak, std::move(runner))
 , _fileCache(std::make_unique<LoadedFileCache>(kLocationCacheSize)) {
 }
@@ -1372,7 +1370,7 @@ void ApiWrap::appendSinglePeerDialogs(Data::DialogsInfo &&info) {
 		if (isSupergroupType(info.type) && !migratedRequestId) {
 			migratedRequestId = requestSinglePeerMigrated(info);
 			continue;
-		} else if (isChannelType(info.type) || info.isMonoforum) {
+		} else if (isChannelType(info.type)) {
 			continue;
 		}
 		for (auto i = last; i != 0; --i) {
@@ -1644,9 +1642,6 @@ void ApiWrap::requestChatMessages(
 	const auto realPeerInput = (splitIndex >= 0)
 		? _chatProcess->info.input
 		: _chatProcess->info.migratedFromInput;
-	const auto outgoingInput = _chatProcess->info.isMonoforum
-		? _chatProcess->info.monoforumBroadcastInput
-		: MTP_inputPeerSelf();
 	const auto realSplitIndex = (splitIndex >= 0)
 		? splitIndex
 		: (splitsCount + splitIndex);
@@ -1655,7 +1650,7 @@ void ApiWrap::requestChatMessages(
 			MTP_flags(MTPmessages_Search::Flag::f_from_id),
 			realPeerInput,
 			MTP_string(), // query
-			outgoingInput,
+			MTP_inputPeerSelf(),
 			MTPInputPeer(), // saved_peer_id
 			MTPVector<MTPReaction>(), // saved_reaction
 			MTPint(), // top_msg_id
@@ -2068,7 +2063,7 @@ bool ApiWrap::processFileLoad(
 	} else if (!story && (_settings->media.types & type) != type) {
 		file.skipReason = SkipReason::FileType;
 		return true;
-	} else if (!story && fullSize > _settings->media.sizeLimit) {
+	} else if (!story && fullSize >= _settings->media.sizeLimit) {
 		// Don't load thumbs for large files that we skip.
 		file.skipReason = SkipReason::FileSize;
 		return true;

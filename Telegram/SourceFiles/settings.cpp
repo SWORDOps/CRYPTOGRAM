@@ -20,7 +20,8 @@ bool gManyInstance = false;
 QString gKeyFile;
 QString gWorkingDir;
 
-QList<QUrl> gStartUrls;
+QStringList gSendPaths;
+QString gStartUrl;
 
 QString gDialogLastPath, gDialogHelperPath; // optimize QFileDialog
 

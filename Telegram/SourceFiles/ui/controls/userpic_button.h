@@ -62,20 +62,18 @@ public:
 		not_null<::Window::Controller*> window,
 		Role role,
 		const style::UserpicButton &st,
-		PeerUserpicShape shape = PeerUserpicShape::Auto);
+		bool forceForumShape = false);
 	UserpicButton(
 		QWidget *parent,
 		not_null<::Window::SessionController*> controller,
 		not_null<PeerData*> peer,
 		Role role,
 		Source source,
-		const style::UserpicButton &st,
-		PeerUserpicShape shape = PeerUserpicShape::Auto);
+		const style::UserpicButton &st);
 	UserpicButton(
 		QWidget *parent,
 		not_null<PeerData*> peer, // Role::Custom, Source::PeerPhoto
-		const style::UserpicButton &st,
-		PeerUserpicShape shape = PeerUserpicShape::Auto);
+		const style::UserpicButton &st);
 	~UserpicButton();
 
 	enum class ChosenType {
@@ -96,8 +94,7 @@ public:
 		bool enabled,
 		Fn<void(ChosenImage)> chosen);
 	void showSavedMessagesOnSelf(bool enabled);
-	void showMyNotesOnSelf(bool enabled);
-	void overrideShape(PeerUserpicShape shape);
+	void forceForumShape(bool force);
 
 	// Role::ChoosePhoto or Role::ChangePhoto
 	[[nodiscard]] rpl::producer<ChosenImage> chosenImages() const {
@@ -141,8 +138,6 @@ private:
 	void updateVideo();
 	[[nodiscard]] bool showSavedMessages() const;
 	[[nodiscard]] bool showRepliesMessages() const;
-	[[nodiscard]] bool showMyNotes() const;
-	[[nodiscard]] bool showAuthorHidden() const;
 	void checkStreamedIsStarted();
 	bool createStreamingObjects(not_null<PhotoData*> photo);
 	void clearStreaming();
@@ -166,9 +161,8 @@ private:
 	::Window::SessionController *_controller = nullptr;
 	::Window::Controller *_window = nullptr;
 	PeerData *_peer = nullptr;
-	PeerUserpicShape _shape = PeerUserpicShape::Auto;
+	bool _forceForumShape = false;
 	PeerUserpicView _userpicView;
-	QImage _monoforumMask;
 	std::shared_ptr<Data::PhotoMedia> _nonPersonalView;
 	Role _role = Role::ChangePhoto;
 	bool _notShownYet = true;
@@ -187,7 +181,6 @@ private:
 	base::unique_qptr<PopupMenu> _menu;
 
 	bool _showSavedMessagesOnSelf = false;
-	bool _showMyNotesOnSelf = false;
 	bool _canOpenPhoto = false;
 	bool _cursorInChangeOverlay = false;
 	bool _changeOverlayEnabled = false;

@@ -36,7 +36,6 @@ class PopupMenu;
 class ChatStyle;
 class ChatTheme;
 struct PeerUserpicView;
-struct ChatPaintContext;
 } // namespace Ui
 
 namespace Window {
@@ -70,14 +69,12 @@ public:
 		return _channel;
 	}
 
-	Ui::ChatPaintContext preparePaintContext(QRect clip) const;
-
 	// Set the correct scroll position after being resized.
 	void restoreScrollPosition();
 
 	void resizeToWidth(int newWidth, int minHeight) {
 		_minHeight = minHeight;
-		return RpWidget::resizeToWidth(newWidth);
+		return TWidget::resizeToWidth(newWidth);
 	}
 
 	void saveState(not_null<SectionMemento*> memento);
@@ -131,7 +128,7 @@ public:
 		const QString &query,
 		const FullMsgId &context) override;
 	void elementHandleViaClick(not_null<UserData*> bot) override;
-	HistoryView::ElementChatMode elementChatMode() override;
+	bool elementIsChatWide() override;
 	not_null<Ui::PathShiftGradient*> elementPathShiftGradient() override;
 	void elementReplyTo(const FullReplyTo &to) override;
 	void elementStartInteraction(
@@ -251,7 +248,7 @@ private:
 	// for each found message (in given direction) in the passed history with passed top offset.
 	//
 	// Method has "bool (*Method)(not_null<Element*> view, int itemtop, int itembottom)" signature
-	// if it returns false the enumeration stops immediately.
+	// if it returns false the enumeration stops immidiately.
 	template <EnumItemsDirection direction, typename Method>
 	void enumerateItems(Method method);
 

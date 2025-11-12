@@ -9,10 +9,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "styles/style_widgets.h"
 
-namespace ChatHelpers {
-class Show;
-} // namespace ChatHelpers
-
 namespace Ui {
 class Show;
 class RpWidget;
@@ -32,10 +28,6 @@ class StickerToast final {
 public:
 	StickerToast(
 		not_null<Window::SessionController*> controller,
-		not_null<QWidget*> parent,
-		Fn<void()> destroy);
-	StickerToast(
-		std::shared_ptr<ChatHelpers::Show> show,
 		not_null<QWidget*> parent,
 		Fn<void()> destroy);
 	~StickerToast();
@@ -58,7 +50,7 @@ private:
 	void setupLottiePreview(not_null<Ui::RpWidget*> widget, int size);
 	void clearHiddenHiding();
 
-	const std::shared_ptr<ChatHelpers::Show> _show;
+	const not_null<Window::SessionController*> _controller;
 	const not_null<QWidget*> _parent;
 	Section _section = {};
 	style::Toast _st;

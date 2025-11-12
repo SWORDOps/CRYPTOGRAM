@@ -33,9 +33,7 @@ class DynamicImage;
 	const style::icon &icon);
 [[nodiscard]] std::shared_ptr<DynamicImage> MakeEmojiThumbnail(
 	not_null<Data::Session*> owner,
-	const QString &data,
-	Fn<bool()> paused = nullptr,
-	Fn<QColor()> textColor = nullptr);
+	const QString &data);
 [[nodiscard]] std::shared_ptr<DynamicImage> MakePhotoThumbnail(
 	not_null<PhotoData*> photo,
 	FullMsgId fullId);

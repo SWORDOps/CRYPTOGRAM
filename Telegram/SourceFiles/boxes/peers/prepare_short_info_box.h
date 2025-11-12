@@ -16,10 +16,6 @@ struct ShortInfoCover;
 struct ShortInfoBox;
 } // namespace style
 
-namespace ChatHelpers {
-class Show;
-} // namespace ChatHelpers
-
 namespace Ui::Menu {
 struct MenuCallback;
 } // namespace Ui::Menu
@@ -44,11 +40,6 @@ struct PreparedShortInfoUserpic {
 	Fn<void()> open,
 	Fn<bool()> videoPaused,
 	Fn<void(Ui::Menu::MenuCallback)> menuFiller,
-	const style::ShortInfoBox *stOverride = nullptr);
-
-[[nodiscard]] object_ptr<Ui::BoxContent> PrepareShortInfoBox(
-	not_null<PeerData*> peer,
-	std::shared_ptr<ChatHelpers::Show> show,
 	const style::ShortInfoBox *stOverride = nullptr);
 
 [[nodiscard]] object_ptr<Ui::BoxContent> PrepareShortInfoBox(

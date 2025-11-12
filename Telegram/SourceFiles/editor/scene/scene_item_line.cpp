@@ -11,7 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Editor {
 
-ItemLine::ItemLine(QPixmap &&pixmap)
+ItemLine::ItemLine(const QPixmap &&pixmap)
 : _pixmap(std::move(pixmap))
 , _rect(QPointF(), _pixmap.size() / float64(style::DevicePixelRatio())) {
 }

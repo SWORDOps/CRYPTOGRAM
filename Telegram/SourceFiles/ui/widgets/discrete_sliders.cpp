@@ -50,7 +50,6 @@ void DiscreteSlider::setActiveSectionFast(int index) {
 
 void DiscreteSlider::finishAnimating() {
 	_a_left.stop();
-	_a_width.stop();
 	update();
 	_callbackAfterMs = 0;
 	if (_timerId >= 0) {
@@ -65,22 +64,8 @@ void DiscreteSlider::setAdditionalContentWidthToSection(int index, int w) {
 	}
 }
 
-int DiscreteSlider::sectionsCount() const {
-	return int(_sections.size());
-}
-
-int DiscreteSlider::lookupSectionLeft(int index) const {
-	Expects(index >= 0 && index < _sections.size());
-
-	return _sections[index].left;
-}
-
 void DiscreteSlider::setSelectOnPress(bool selectOnPress) {
 	_selectOnPress = selectOnPress;
-}
-
-bool DiscreteSlider::paused() const {
-	return _paused && _paused();
 }
 
 std::vector<DiscreteSlider::Section> &DiscreteSlider::sectionsRef() {
@@ -94,8 +79,7 @@ void DiscreteSlider::addSection(const QString &label) {
 
 void DiscreteSlider::addSection(
 		const TextWithEntities &label,
-		Text::MarkedContext context) {
-	context.repaint = [this] { update(); };
+		const std::any &context) {
 	_sections.push_back(Section(label, getLabelStyle(), context));
 	resizeToWidth(width());
 }
@@ -112,17 +96,13 @@ void DiscreteSlider::setSections(const std::vector<QString> &labels) {
 
 void DiscreteSlider::setSections(
 		const std::vector<TextWithEntities> &labels,
-		Text::MarkedContext context,
-		Fn<bool()> paused) {
+		const std::any &context) {
 	Assert(!labels.empty());
-
-	context.repaint = [this] { update(); };
 
 	_sections.clear();
 	for (const auto &label : labels) {
 		_sections.push_back(Section(label, getLabelStyle(), context));
 	}
-	_paused = std::move(paused);
 	refresh();
 }
 
@@ -135,13 +115,10 @@ void DiscreteSlider::refresh() {
 		_selected = 0;
 	}
 	resizeToWidth(width());
-	update();
 }
 
 DiscreteSlider::Range DiscreteSlider::getFinalActiveRange() const {
-	const auto raw = (_sections.empty() || _selected < 0)
-		? nullptr
-		: &_sections[_selected];
+	const auto raw = _sections.empty() ? nullptr : &_sections[_selected];
 	if (!raw) {
 		return { 0, 0 };
 	}
@@ -212,7 +189,7 @@ void DiscreteSlider::mouseReleaseEvent(QMouseEvent *e) {
 }
 
 void DiscreteSlider::setSelectedSection(int index) {
-	if (index >= int(_sections.size())) {
+	if (index < 0 || index >= _sections.size()) {
 		return;
 	}
 
@@ -248,7 +225,7 @@ DiscreteSlider::Section::Section(
 DiscreteSlider::Section::Section(
 		const TextWithEntities &label,
 		const style::TextStyle &st,
-		const Text::MarkedContext &context) {
+		const std::any &context) {
 	this->label.setMarkedText(st, label, kMarkupTextOptions, context);
 	contentWidth = Section::label.maxWidth();
 }
@@ -433,10 +410,9 @@ void SettingsSlider::paintEvent(QPaintEvent *e) {
 			: section.width;
 		const auto activeLeft = section.left
 			+ (section.width - activeWidth) / 2;
-		const auto divider = std::max(std::min(activeWidth, range.width), 1);
 		const auto active = 1.
 			- std::clamp(
-				std::abs(range.left - activeLeft) / float64(divider),
+				std::abs(range.left - activeLeft) / float64(range.width),
 				0.,
 				1.);
 		if (section.ripple) {
@@ -487,7 +463,6 @@ void SettingsSlider::paintEvent(QPaintEvent *e) {
 				.position = QPoint(labelLeft, _st.labelTop),
 				.outerWidth = width(),
 				.availableWidth = section.label.maxWidth(),
-				.paused = paused(),
 			});
 		}
 		return true;

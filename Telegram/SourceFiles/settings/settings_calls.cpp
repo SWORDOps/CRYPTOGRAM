@@ -405,8 +405,7 @@ void Calls::initCaptureButton(
 }
 
 void Calls::requestPermissionAndStartTestingMicrophone() {
-	using PermissionType = ::Platform::PermissionType;
-	using PermissionStatus = ::Platform::PermissionStatus;
+	using namespace ::Platform;
 	const auto status = GetPermissionStatus(
 		PermissionType::Microphone);
 	if (status == PermissionStatus::Granted) {
@@ -483,7 +482,7 @@ void ChooseMediaDeviceBox(
 	state->currentId = std::move(currentId);
 
 	const auto choose = [=](const QString &id) {
-		const auto weak = base::make_weak(box);
+		const auto weak = Ui::MakeWeak(box);
 		chosen(id);
 		if (weak) {
 			box->closeBox();

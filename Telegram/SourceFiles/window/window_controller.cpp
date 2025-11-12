@@ -276,7 +276,7 @@ void Controller::checkLockByTerms() {
 		showTermsDecline();
 	}, box->lifetime());
 
-	QObject::connect(box.get(), &QObject::destroyed, [=] {
+	QObject::connect(box, &QObject::destroyed, [=] {
 		crl::on_main(widget(), [=] { checkLockByTerms(); });
 	});
 
@@ -431,7 +431,7 @@ void Controller::showBox(
 	_widget.showOrHideBoxOrLayer(std::move(content), options, animated);
 }
 
-void Controller::showRightColumn(object_ptr<Ui::RpWidget> widget) {
+void Controller::showRightColumn(object_ptr<TWidget> widget) {
 	_widget.showRightColumn(std::move(widget));
 }
 

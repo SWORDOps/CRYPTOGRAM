@@ -76,7 +76,9 @@ void NetBoostBox::save() {
 		Core::Restart();
 	};
 
-	getDelegate()->show(
+	const auto box = std::make_shared<QPointer<BoxContent>>();
+
+	*box = getDelegate()->show(
 		Ui::MakeConfirmBox({
 				.text = tr::lng_net_boost_restart_desc(tr::now),
 				.confirmed = changeBoost,

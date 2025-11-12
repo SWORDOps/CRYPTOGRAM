@@ -9,20 +9,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/scroll_area.h"
-#include "ui/widgets/vertical_drum_picker.h"
 #include "ui/effects/ripple_animation.h"
 #include "ui/chat/chat_style.h"
 #include "ui/ui_utility.h"
 #include "ui/painter.h"
 #include "ui/cached_round_corners.h"
-#include "ui/layers/generic_box.h"
 #include "lang/lang_keys.h"
 #include "styles/style_boxes.h"
 #include "styles/style_chat.h"
-#include "styles/style_settings.h"
-#include "styles/style_layers.h"
-
-#include <QtCore/QLocale>
 
 namespace Ui {
 namespace {
@@ -30,158 +24,6 @@ namespace {
 constexpr auto kDaysInWeek = 7;
 constexpr auto kTooltipDelay = crl::time(1000);
 constexpr auto kJumpDelay = 2 * crl::time(1000);
-
-// QDate -> 0..6
-[[nodiscard]] int DayOfWeekIndex(const QDate &date, int firstDayOfWeek) {
-	return (kDaysInWeek + date.dayOfWeek() - firstDayOfWeek) % kDaysInWeek;
-}
-
-void FillMonthYearPicker(
-		not_null<GenericBox*> box,
-		QDate current,
-		QDate minDate,
-		QDate maxDate,
-		const style::CalendarSizes &st,
-		Fn<void(QDate)> done) {
-	box->setWidth(st::boxWideWidth);
-	const auto content = box->addRow(
-		object_ptr<FixedHeightWidget>(box, st::settingsWorkingHoursPicker));
-
-	const auto font = st::boxTextFont;
-	const auto itemHeight = st::settingsWorkingHoursPickerItemHeight;
-	const auto picker = [=](
-			int count,
-			int startIndex,
-			Fn<void(QPainter&, QRectF, int)> paint) {
-		const auto result = CreateChild<VerticalDrumPicker>(
-			content,
-			VerticalDrumPicker::DefaultPaintCallback(
-				font,
-				itemHeight,
-				paint),
-			count,
-			itemHeight,
-			startIndex);
-		result->show();
-		return result;
-	};
-
-	const auto effectiveMaxDate = maxDate.isValid()
-		? maxDate
-		: QDate::currentDate().addDays(365);
-	const auto minYear = minDate.isValid() ? minDate.year() : 2013;
-	const auto maxYear = effectiveMaxDate.year();
-	const auto yearsCount = maxYear - minYear + 1;
-	const auto yearsStartIndex = current.year() - minYear;
-	const auto yearsPaint = [=](QPainter &p, QRectF rect, int index) {
-		p.drawText(rect, QString::number(minYear + index), style::al_center);
-	};
-	const auto years = picker(yearsCount, yearsStartIndex, yearsPaint);
-
-	const auto monthsRange = [=](int year) {
-		auto minMonth = 1;
-		auto maxMonth = 12;
-		if (minDate.isValid() && minDate.year() == year) {
-			minMonth = minDate.month();
-		}
-		if (maxDate.isValid() && maxDate.year() == year) {
-			maxMonth = maxDate.month();
-		}
-		return std::make_pair(minMonth, maxMonth);
-	};
-
-	struct State {
-		base::unique_qptr<VerticalDrumPicker> months;
-		int currentMinMonth = 0;
-		int currentMaxMonth = 0;
-	};
-	const auto state = box->lifetime().make_state<State>();
-
-	const auto [minMonth, maxMonth] = monthsRange(current.year());
-	const auto monthsCount = maxMonth - minMonth + 1;
-	const auto monthsStartIndex = current.month() - minMonth;
-	const auto monthsPaint = [=, minMonth = minMonth](
-			QPainter &p,
-			QRectF rect,
-			int index) {
-		p.drawText(
-			rect,
-			Lang::Month(minMonth + index)(tr::now),
-			style::al_center);
-	};
-	state->months = base::unique_qptr<VerticalDrumPicker>(
-			picker(monthsCount, monthsStartIndex, monthsPaint));
-	state->currentMinMonth = minMonth;
-	state->currentMaxMonth = maxMonth;
-
-	years->value(
-	) | rpl::skip(1) | rpl::start_with_next([=](int yearIndex) {
-		const auto year = minYear + yearIndex;
-		const auto [newMinMonth, newMaxMonth] = monthsRange(year);
-
-		if (newMinMonth != state->currentMinMonth
-			|| newMaxMonth != state->currentMaxMonth) {
-			const auto newMonthsCount = newMaxMonth - newMinMonth + 1;
-			const auto oldMonth = state->currentMinMonth
-				+ state->months->index();
-			const auto clampedMonth = std::clamp(
-				oldMonth - newMinMonth,
-				0,
-				newMonthsCount - 1);
-			const auto newMonthsPaint = [=, minMonth = newMinMonth](
-					QPainter &p,
-					QRectF rect,
-					int index) {
-				p.drawText(
-					rect,
-					Lang::Month(minMonth + index)(tr::now),
-					style::al_center);
-			};
-			state->months = base::unique_qptr<VerticalDrumPicker>(
-					picker(newMonthsCount, clampedMonth, newMonthsPaint));
-			state->currentMinMonth = newMinMonth;
-			state->currentMaxMonth = newMaxMonth;
-			const auto s = content->size();
-			if (s.isValid()) {
-				const auto half = s.width() / 2;
-				state->months->setGeometry(0, 0, half, s.height());
-			}
-		}
-	}, box->lifetime());
-
-	content->sizeValue(
-	) | rpl::start_with_next([=](QSize s) {
-		const auto half = s.width() / 2;
-		state->months->setGeometry(0, 0, half, s.height());
-		years->setGeometry(half, 0, half, s.height());
-	}, content->lifetime());
-
-	content->paintRequest(
-	) | rpl::start_with_next([=](const QRect &r) {
-		auto p = QPainter(content);
-		p.fillRect(r, Qt::transparent);
-		const auto lineRect = QRect(
-			0,
-			content->height() / 2,
-			content->width(),
-			st::defaultInputField.borderActive);
-		p.fillRect(
-			lineRect.translated(0, itemHeight / 2),
-			st::activeLineFg);
-		p.fillRect(
-			lineRect.translated(0, -itemHeight / 2),
-			st::activeLineFg);
-	}, content->lifetime());
-
-	box->addButton(tr::lng_gift_menu_show(), [=] {
-		const auto year = minYear + years->index();
-		const auto [minMonth, maxMonth] = monthsRange(year);
-		const auto month = minMonth + state->months->index();
-		done(QDate(year, month, 1));
-		box->closeBox();
-	});
-	box->addButton(tr::lng_cancel(), [=] { box->closeBox(); });
-}
 
 } // namespace
 
@@ -233,9 +75,6 @@ public:
 	[[nodiscard]] rpl::producer<QDate> monthValue() const {
 		return _month.value();
 	}
-	[[nodiscard]] int firstDayOfWeek() const {
-		return _firstDayOfWeek;
-	}
 
 	[[nodiscard]] QDate dateFromIndex(int index) const;
 	[[nodiscard]] QString labelFromIndex(int index) const;
@@ -258,17 +97,9 @@ private:
 	};
 	void applyMonth(const QDate &month, bool forced = false);
 
-	static int DaysShiftForMonth(
-		const QDate &month,
-		QDate min,
-		int firstDayOfWeek);
-	static int RowsCountForMonth(
-		const QDate &month,
-		QDate min,
-		QDate max,
-		int firstDayOfWeek);
+	static int DaysShiftForMonth(QDate month, QDate min);
+	static int RowsCountForMonth(QDate month, QDate min, QDate max);
 
-	const int _firstDayOfWeek = 0;
 	bool _allowsSelection = false;
 
 	rpl::variable<QDate> _month;
@@ -293,8 +124,7 @@ private:
 };
 
 CalendarBox::Context::Context(QDate month, QDate highlighted)
-: _firstDayOfWeek(static_cast<int>(QLocale().firstDayOfWeek())) // 1..7
-, _highlighted(highlighted) {
+: _highlighted(highlighted) {
 	showMonth(month);
 }
 
@@ -327,8 +157,8 @@ bool CalendarBox::Context::showsMonthOf(QDate date) const {
 void CalendarBox::Context::applyMonth(const QDate &month, bool forced) {
 	const auto was = _month.current();
 	_daysCount = month.daysInMonth();
-	_daysShift = DaysShiftForMonth(month, _min, _firstDayOfWeek);
-	_rowsCount = RowsCountForMonth(month, _min, _max, _firstDayOfWeek);
+	_daysShift = DaysShiftForMonth(month, _min);
+	_rowsCount = RowsCountForMonth(month, _min, _max);
 	_highlightedIndex = month.daysTo(_highlighted);
 	_minDayIndex = _min.isNull() ? INT_MIN : month.daysTo(_min);
 	_maxDayIndex = _max.isNull() ? INT_MAX : month.daysTo(_max);
@@ -367,15 +197,12 @@ void CalendarBox::Context::skipMonth(int skip) {
 	showMonth(QDate(year, month, 1));
 }
 
-int CalendarBox::Context::DaysShiftForMonth(
-		const QDate &month,
-		QDate min,
-		int firstDayOfWeek) {
+int CalendarBox::Context::DaysShiftForMonth(QDate month, QDate min) {
 	Expects(!month.isNull());
 
 	constexpr auto kMaxRows = 6;
 	const auto inMonthIndex = month.day() - 1;
-	const auto inWeekIndex = DayOfWeekIndex(month, firstDayOfWeek);
+	const auto inWeekIndex = month.dayOfWeek() - 1;
 	const auto from = ((kMaxRows * kDaysInWeek) + inWeekIndex - inMonthIndex)
 		% kDaysInWeek;
 	if (min.isNull()) {
@@ -386,20 +213,17 @@ int CalendarBox::Context::DaysShiftForMonth(
 	if (min.day() != 1) {
 		min = QDate(min.year(), min.month(), 1);
 	}
-	const auto add = min.daysTo(month)
-		- inWeekIndex
-		+ DayOfWeekIndex(min, firstDayOfWeek);
+	const auto add = min.daysTo(month) - inWeekIndex + (min.dayOfWeek() - 1);
 	return from + add;
 }
 
 int CalendarBox::Context::RowsCountForMonth(
-		const QDate &month,
+		QDate month,
 		QDate min,
-		QDate max,
-		int firstDayOfWeek) {
+		QDate max) {
 	Expects(!month.isNull());
 
-	const auto daysShift = DaysShiftForMonth(month, min, firstDayOfWeek);
+	const auto daysShift = DaysShiftForMonth(month, min);
 	const auto daysCount = month.daysInMonth();
 	const auto cellsCount = daysShift + daysCount;
 	auto result = (cellsCount / kDaysInWeek);
@@ -416,7 +240,7 @@ int CalendarBox::Context::RowsCountForMonth(
 		max = QDate(max.year(), max.month(), 1);
 	}
 	max = max.addMonths(1);
-	max = max.addDays(-DayOfWeekIndex(max, firstDayOfWeek));
+	max = max.addDays(1 - max.dayOfWeek());
 	const auto cellsFull = daysShift + (month.day() - 1) + month.daysTo(max);
 	return cellsFull / kDaysInWeek;
 }
@@ -906,7 +730,7 @@ void CalendarBox::Inner::setDateChosenCallback(Fn<void(QDate)> callback) {
 
 CalendarBox::Inner::~Inner() = default;
 
-class CalendarBox::Title final : public AbstractButton {
+class CalendarBox::Title final : public RpWidget {
 public:
 	Title(
 		QWidget *parent,
@@ -937,7 +761,7 @@ CalendarBox::Title::Title(
 	not_null<Context*> context,
 	const style::CalendarSizes &st,
 	const style::CalendarColors &styleColors)
-: AbstractButton(parent)
+: RpWidget(parent)
 , _st(st)
 , _styleColors(styleColors)
 , _context(context) {
@@ -955,18 +779,13 @@ CalendarBox::Title::Title(
 	) | rpl::start_with_next([=] {
 		if (!_context->selectionMode()) {
 			setTextFromMonth(_context->month());
-			setAttribute(Qt::WA_TransparentForMouseEvents, false);
+		} else if (!_context->selectedMin()) {
+			setText(tr::lng_calendar_select_days(tr::now));
 		} else {
-			setAttribute(Qt::WA_TransparentForMouseEvents, true);
-			if (!_context->selectedMin()) {
-				setText(tr::lng_calendar_select_days(tr::now));
-			} else {
-				setText(tr::lng_calendar_days(
-					tr::now,
-					lt_count,
-					(1 + *_context->selectedMax()
-						- *_context->selectedMin())));
-			}
+			setText(tr::lng_calendar_days(
+				tr::now,
+				lt_count,
+				(1 + *_context->selectedMax() - *_context->selectedMin())));
 		}
 	}, lifetime());
 }
@@ -1006,14 +825,12 @@ void CalendarBox::Title::paintDayNames(Painter &p, QRect clip) {
 	if (!myrtlrect(x, y, _st.cellSize.width() * kDaysInWeek, _st.daysHeight).intersects(clip)) {
 		return;
 	}
-	const auto from = _context->firstDayOfWeek();
-	const auto to = from + kDaysInWeek;
-	for (auto i = from; i != to; ++i, x += _st.cellSize.width()) {
+	for (auto i = 0; i != kDaysInWeek; ++i, x += _st.cellSize.width()) {
 		auto rect = myrtlrect(x, y, _st.cellSize.width(), _st.daysHeight);
 		if (!rect.intersects(clip)) {
 			continue;
 		}
-		p.drawText(rect, langDayOfWeek(((i - 1) % 7) + 1), style::al_top);
+		p.drawText(rect, langDayOfWeek(i + 1), style::al_top);
 	}
 }
 
@@ -1035,27 +852,10 @@ CalendarBox::CalendarBox(QWidget*, CalendarBoxArgs &&args)
 , _finalize(std::move(args.finalize))
 , _jumpTimer([=] { jump(_jumpButton); })
 , _selectionChanged(std::move(args.selectionChanged)) {
+	_title->setAttribute(Qt::WA_TransparentForMouseEvents);
 	_context->setAllowsSelection(args.allowsSelection);
 	_context->setMinDate(args.minDate);
 	_context->setMaxDate(args.maxDate);
-
-	_title->setClickedCallback([=,
-			minDate = args.minDate,
-			maxDate = args.maxDate] {
-		BoxContent::uiShow()->show(Box([=](not_null<GenericBox*> box) {
-			FillMonthYearPicker(
-				box,
-				_context->month(),
-				minDate,
-				maxDate,
-				_st,
-				[=](QDate date) {
-					_watchScroll = false;
-					_context->showMonth(date);
-					setExactScroll();
-				});
-		}), LayerOption::KeepOther);
-	});
 
 	_scroll->scrolls(
 	) | rpl::filter([=] {

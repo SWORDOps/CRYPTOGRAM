@@ -78,7 +78,6 @@ struct ContentLayout;
 
 namespace Media::View {
 
-class PlaybackSponsored;
 class GroupThumbs;
 class Pip;
 
@@ -108,6 +107,15 @@ public:
 	void activate();
 
 	void show(OpenRequest request);
+
+	//void leaveToChildEvent(QEvent *e, QWidget *child) override {
+	//	// e -- from enterEvent() of child TWidget
+	//	updateOverState(Over::None);
+	//}
+	//void enterFromChildEvent(QEvent *e, QWidget *child) override {
+	//	// e -- from leaveEvent() of child TWidget
+	//	updateOver(mapFromGlobal(QCursor::pos()));
+	//}
 
 	void activateControls();
 	void close();
@@ -162,7 +170,6 @@ private:
 			not_null<DocumentData*>> data;
 		HistoryItem *item = nullptr;
 		MsgId topicRootId = 0;
-		PeerId monoforumPeerId = 0;
 	};
 	enum class SavePhotoVideo {
 		None,
@@ -284,10 +291,6 @@ private:
 	void handleTouchTimer();
 	void handleDocumentClick();
 
-	[[nodiscard]] bool canShareAtTime() const;
-	[[nodiscard]] TimeId shareAtVideoTimestamp() const;
-	void shareAtTime();
-
 	void showSaveMsgToast(const QString &path, auto phrase);
 	void showSaveMsgToastWith(
 		const QString &path,
@@ -404,7 +407,6 @@ private:
 		const StartStreaming &startStreaming = StartStreaming());
 	void startStreamingPlayer(const StartStreaming &startStreaming);
 	void initStreamingThumbnail();
-	void markStreamedReady();
 	void streamingReady(Streaming::Information &&info);
 	[[nodiscard]] bool createStreamingObjects();
 	void handleStreamingUpdate(Streaming::Update &&update);
@@ -555,12 +557,10 @@ private:
 	PhotoData *_photo = nullptr;
 	DocumentData *_document = nullptr;
 	DocumentData *_chosenQuality = nullptr;
-	PhotoData *_videoCover = nullptr;
 	Media::VideoQuality _quality;
 	QString _documentLoadingTo;
 	std::shared_ptr<Data::PhotoMedia> _photoMedia;
 	std::shared_ptr<Data::DocumentMedia> _documentMedia;
-	std::shared_ptr<Data::PhotoMedia> _videoCoverMedia;
 	base::flat_set<std::shared_ptr<Data::PhotoMedia>> _preloadPhotos;
 	base::flat_set<std::shared_ptr<Data::DocumentMedia>> _preloadDocuments;
 	int _rotation = 0;
@@ -668,7 +668,6 @@ private:
 	History *_migrated = nullptr;
 	History *_history = nullptr; // if conversation photos or files overview
 	MsgId _topicRootId = 0;
-	PeerId _monoforumPeerId = 0;
 	PeerData *_peer = nullptr;
 	UserData *_user = nullptr; // if user profile photos overview
 

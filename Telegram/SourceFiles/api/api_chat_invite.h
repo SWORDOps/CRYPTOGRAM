@@ -14,7 +14,7 @@ class ChannelData;
 
 namespace Info::Profile {
 class Badge;
-enum class BadgeType : uchar;
+enum class BadgeType;
 } // namespace Info::Profile
 
 namespace Main {

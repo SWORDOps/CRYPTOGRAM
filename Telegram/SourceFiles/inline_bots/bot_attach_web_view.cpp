@@ -26,7 +26,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/click_handler_types.h"
 #include "core/local_url_handlers.h"
 #include "core/shortcuts.h"
-#include "core/ui_integration.h" // TextContext
 #include "data/components/location_pickers.h"
 #include "data/data_bot_app.h"
 #include "data/data_changes.h"
@@ -42,13 +41,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/stickers/data_stickers.h"
 #include "history/history.h"
 #include "history/history_item.h"
-#include "history/history_item_helpers.h"
 #include "info/bot/starref/info_bot_starref_common.h" // MakePeerBubbleButton
 #include "info/profile/info_profile_values.h"
 #include "inline_bots/inline_bot_result.h"
 #include "inline_bots/inline_bot_confirm_prepared.h"
 #include "inline_bots/inline_bot_downloads.h"
-#include "inline_bots/inline_bot_storage.h"
 #include "iv/iv_instance.h"
 #include "lang/lang_keys.h"
 #include "main/main_app_config.h"
@@ -72,6 +69,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/vertical_list.h"
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/dropdown_menu.h"
+#include "ui/widgets/label_with_custom_emoji.h"
 #include "ui/widgets/menu/menu_item_base.h"
 #include "ui/widgets/popup_menu.h"
 #include "webview/webview_interface.h"
@@ -218,7 +216,7 @@ void ShowChooseBox(
 		PeerTypes types,
 		Fn<void(not_null<Data::Thread*>)> callback,
 		rpl::producer<QString> titleOverride = nullptr) {
-	const auto weak = std::make_shared<base::weak_qptr<Ui::BoxContent>>();
+	const auto weak = std::make_shared<QPointer<Ui::BoxContent>>();
 	auto done = [=](not_null<Data::Thread*> thread) mutable {
 		if (const auto strong = *weak) {
 			strong->closeBox();
@@ -358,7 +356,6 @@ WebViewContext ResolveContext(
 		if (const auto thread = state.key.thread()) {
 			context.action = Api::SendAction(thread);
 			context.action->replyTo = state.currentReplyTo;
-			context.action->options.suggest = state.currentSuggest;
 		} else {
 			context.action = Api::SendAction(bot->owner().history(bot));
 		}
@@ -373,7 +370,6 @@ WebViewContext ResolveContext(
 			.key = (topic ? Key{ topic } : Key{ history }),
 			.section = (topic ? Section::Replies : Section::History),
 			.currentReplyTo = context.action->replyTo,
-			.currentSuggest = context.action->options.suggest,
 		};
 	}
 	return context;
@@ -383,15 +379,21 @@ void FillBotUsepic(
 		not_null<Ui::GenericBox*> box,
 		not_null<PeerData*> bot,
 		base::weak_ptr<Window::SessionController> weak) {
-	auto aboutLabel = object_ptr<Ui::FlatLabel>(
+	auto arrow = Ui::Text::SingleCustomEmoji(
+		bot->owner().customEmojiManager().registerInternalEmoji(
+			st::topicButtonArrow,
+			st::channelEarnLearnArrowMargins,
+			true));
+	auto aboutLabel = Ui::CreateLabelWithCustomEmoji(
 		box->verticalLayout(),
 		tr::lng_allow_bot_webview_details(
 			lt_emoji,
-			rpl::single(Ui::Text::IconEmoji(&st::textMoreIconEmoji)),
+			rpl::single(std::move(arrow)),
 			Ui::Text::RichLangValue
 		) | rpl::map([](TextWithEntities text) {
 			return Ui::Text::Link(std::move(text), u"internal:"_q);
 		}),
+		{ .session = &bot->session() },
 		st::defaultFlatLabel);
 	const auto userpic = Ui::CreateChild<Ui::UserpicButton>(
 		box->verticalLayout(),
@@ -443,6 +445,12 @@ std::unique_ptr<Ui::RpWidget> MakeEmojiSetStatusPreview(
 		not_null<QWidget*> parent,
 		not_null<PeerData*> peer,
 		not_null<DocumentData*> document) {
+	const auto makeContext = [=](Fn<void()> update) {
+		return Core::MarkedTextContext{
+			.session = &peer->session(),
+			.customEmojiRepaint = update,
+		};
+	};
 	const auto emoji = Ui::CreateChild<Ui::PaddingWrap<Ui::FlatLabel>>(
 		parent,
 		object_ptr<Ui::FlatLabel>(
@@ -455,9 +463,8 @@ std::unique_ptr<Ui::RpWidget> MakeEmojiSetStatusPreview(
 						: QString()))),
 			st::botEmojiStatusEmoji,
 			st::defaultPopupMenu,
-			Core::TextContext({ .session = &peer->session() })),
+			makeContext),
 		style::margins(st::normalFont->spacew, 0, 0, 0));
-	emoji->entity()->resizeToWidth(emoji->entity()->textMaxWidth());
 
 	auto result = Info::BotStarRef::MakePeerBubbleButton(
 		parent,
@@ -472,7 +479,8 @@ bool CheckEmojiStatusPremium(not_null<UserData*> bot) {
 		return true;
 	}
 	const auto window = ChatHelpers::ResolveWindowDefault()(
-		&bot->session());
+		&bot->session(),
+		ChatHelpers::WindowUsage::PremiumPromo);
 	if (window) {
 		ShowPremiumPreviewBox(window, PremiumFeature::EmojiStatus);
 		window->window().activate();
@@ -509,17 +517,15 @@ void ConfirmEmojiStatusAccessBox(
 	AddSkip(box->verticalLayout(), 2 * st::defaultVerticalListSkip);
 
 	auto name = Ui::Text::Bold(bot->name());
-	box->addRow(
-		object_ptr<Ui::FlatLabel>(
-			box,
-			tr::lng_bot_emoji_status_access_text(
-				lt_bot,
-				rpl::single(name),
-				lt_name,
-				rpl::single(name),
-				Ui::Text::RichLangValue),
-			st::botEmojiStatusText),
-		style::al_top);
+	box->addRow(object_ptr<Ui::FlatLabel>(
+		box,
+		tr::lng_bot_emoji_status_access_text(
+			lt_bot,
+			rpl::single(name),
+			lt_name,
+			rpl::single(name),
+			Ui::Text::RichLangValue),
+		st::botEmojiStatusText));
 
 	box->addButton(tr::lng_bot_emoji_status_access_allow(), [=] {
 		if (!CheckEmojiStatusPremium(bot)) {
@@ -557,23 +563,19 @@ void ConfirmEmojiStatusBox(
 		box->closeBox();
 	});
 
-	box->addRow(
-		object_ptr<Ui::FlatLabel>(
-			box,
-			tr::lng_bot_emoji_status_title(),
-			st::botEmojiStatusTitle),
-		style::al_top);
+	box->addRow(object_ptr<Ui::FlatLabel>(
+		box,
+		tr::lng_bot_emoji_status_title(),
+		st::botEmojiStatusTitle));
 	AddSkip(box->verticalLayout());
 
-	box->addRow(
-		object_ptr<Ui::FlatLabel>(
-			box,
-			tr::lng_bot_emoji_status_text(
-				lt_bot,
-				rpl::single(Ui::Text::Bold(bot->name())),
-				Ui::Text::RichLangValue),
-			st::botEmojiStatusText),
-		style::al_top);
+	box->addRow(object_ptr<Ui::FlatLabel>(
+		box,
+		tr::lng_bot_emoji_status_text(
+			lt_bot,
+			rpl::single(Ui::Text::Bold(bot->name())),
+			Ui::Text::RichLangValue),
+		st::botEmojiStatusText));
 
 	AddSkip(box->verticalLayout(), 2 * st::defaultVerticalListSkip);
 
@@ -589,7 +591,7 @@ void ConfirmEmojiStatusBox(
 			return;
 		}
 		document->owner().emojiStatuses().set(
-			{ document->id },
+			document->id,
 			duration ? (base::unixtime::now() + duration) : 0);
 		*set = true;
 		box->closeBox();
@@ -889,28 +891,7 @@ void WebViewInstance::activate() {
 	}
 }
 
-void WebViewInstance::requestFullBot() {
-	if (_bot->isFullLoaded()) {
-		return;
-	}
-	_bot->updateFull();
-	_bot->session().changes().peerUpdates(
-		_bot,
-		Data::PeerUpdate::Flag::FullInfo
-	) | rpl::start_with_next([=] {
-		if (_botFullWaitingArgs.has_value()) {
-			auto args = *base::take(_botFullWaitingArgs);
-			if (args.url.isEmpty()) {
-				showGame();
-			} else {
-				show(std::move(args));
-			}
-		}
-	}, _lifetime);
-}
-
 void WebViewInstance::resolve() {
-	requestFullBot();
 	v::match(_source, [&](WebViewSourceButton data) {
 		confirmOpen([=] {
 			if (data.simple) {
@@ -956,8 +937,6 @@ void WebViewInstance::resolve() {
 				requestMain();
 			});
 		}
-	}, [&](WebViewSourceAgeVerification) {
-		requestMain();
 	});
 }
 
@@ -1037,12 +1016,12 @@ void WebViewInstance::resolveApp(
 
 void WebViewInstance::confirmOpen(Fn<void()> done) {
 	if (_bot->isVerified()
-		|| _session->local().isPeerTrustedOpenWebView(_bot->id)) {
+		|| _session->local().isBotTrustedOpenWebView(_bot->id)) {
 		done();
 		return;
 	}
 	const auto callback = [=](Fn<void()> close) {
-		_session->local().markPeerTrustedOpenWebView(_bot->id);
+		_session->local().markBotTrustedOpenWebView(_bot->id);
 		close();
 		done();
 	};
@@ -1074,14 +1053,14 @@ void WebViewInstance::confirmAppOpen(
 		bool forceConfirmation) {
 	if (!forceConfirmation
 		&& (_bot->isVerified()
-			|| _session->local().isPeerTrustedOpenWebView(_bot->id))) {
+			|| _session->local().isBotTrustedOpenWebView(_bot->id))) {
 		done(writeAccess);
 		return;
 	}
 	_parentShow->show(Box([=](not_null<Ui::GenericBox*> box) {
 		const auto allowed = std::make_shared<Ui::Checkbox*>();
 		const auto callback = [=](Fn<void()> close) {
-			_session->local().markPeerTrustedOpenWebView(_bot->id);
+			_session->local().markBotTrustedOpenWebView(_bot->id);
 			done((*allowed) && (*allowed)->checked());
 			close();
 		};
@@ -1332,10 +1311,6 @@ void WebViewInstance::maybeChooseAndRequestButton(PeerTypes supported) {
 }
 
 void WebViewInstance::show(ShowArgs &&args) {
-	if (!_bot->isFullLoaded()) {
-		_botFullWaitingArgs.emplace(std::move(args));
-		return;
-	}
 	auto title = args.title.isEmpty()
 		? Info::Profile::NameValue(_bot)
 		: rpl::single(args.title);
@@ -1402,10 +1377,6 @@ void WebViewInstance::show(ShowArgs &&args) {
 void WebViewInstance::showGame() {
 	Expects(v::is<WebViewSourceGame>(_source));
 
-	if (!_bot->isFullLoaded()) {
-		_botFullWaitingArgs = ShowArgs{};
-		return;
-	}
 	const auto game = v::get<WebViewSourceGame>(_source);
 	_panelUrl = QString::fromUtf8(_button.url);
 	_panel = Ui::BotWebView::Show({
@@ -1496,8 +1467,7 @@ bool WebViewInstance::botHandleLocalUri(QString uri, bool keepOpen) {
 	if (Core::InternalPassportLink(local)) {
 		return true;
 	} else if (!local.startsWith(u"tg://"_q, Qt::CaseInsensitive)
-		&& !local.startsWith(u"tonsite://"_q, Qt::CaseInsensitive)
-		&& !local.startsWith(u"ton://"_q, Qt::CaseInsensitive)) {
+		&& !local.startsWith(u"tonsite://"_q, Qt::CaseInsensitive)) {
 		return false;
 	}
 	const auto bot = _bot;
@@ -1541,7 +1511,7 @@ void WebViewInstance::botHandleInvoice(QString slug) {
 		}
 	};
 	Payments::CheckoutProcess::Start(
-		_session,
+		&_bot->session(),
 		slug,
 		reactivate,
 		nonPanelPaymentFormFactory(reactivate));
@@ -1737,20 +1707,6 @@ void WebViewInstance::botAllowWriteAccess(Fn<void(bool allowed)> callback) {
 	}).send();
 }
 
-bool WebViewInstance::botStorageWrite(
-		QString key,
-		std::optional<QString> value) {
-	return _session->attachWebView().storage().write(_bot->id, key, value);
-}
-
-std::optional<QString> WebViewInstance::botStorageRead(QString key) {
-	return _session->attachWebView().storage().read(_bot->id, key);
-}
-
-void WebViewInstance::botStorageClear() {
-	_session->attachWebView().storage().clear(_bot->id);
-}
-
 void WebViewInstance::botRequestEmojiStatusAccess(
 		Fn<void(bool allowed)> callback) {
 	if (_bot->botInfo->canManageEmojiStatus) {
@@ -1849,18 +1805,14 @@ void WebViewInstance::botSendPreparedMessage(
 			.viaBotId = peerToUser(bot->id),
 		});
 		struct State {
-			base::weak_qptr<Ui::BoxContent> preview;
-			base::weak_qptr<Ui::BoxContent> choose;
+			QPointer<Ui::BoxContent> preview;
+			QPointer<Ui::BoxContent> choose;
 			rpl::event_stream<not_null<Data::Thread*>> recipient;
-			Fn<void(Api::SendOptions)> send;
-			SendPaymentHelper sendPayment;
 			bool sent = false;
 		};
 		const auto state = std::make_shared<State>();
 		auto recipient = state->recipient.events();
-		const auto send = [=](
-				std::vector<not_null<Data::Thread*>> list,
-				Api::SendOptions options) {
+		const auto send = [=](std::vector<not_null<Data::Thread*>> list) {
 			if (state->sent) {
 				return;
 			}
@@ -1870,10 +1822,10 @@ void WebViewInstance::botSendPreparedMessage(
 			const auto weak1 = state->preview;
 			const auto weak2 = state->choose;
 			const auto close = [=] {
-				if (const auto strong = weak1.get()) {
+				if (const auto strong = weak1.data()) {
 					strong->closeBox();
 				}
-				if (const auto strong = weak2.get()) {
+				if (const auto strong = weak2.data()) {
 					strong->closeBox();
 				}
 			};
@@ -1883,9 +1835,9 @@ void WebViewInstance::botSendPreparedMessage(
 				}
 				if (success) {
 					*failed = -1;
-					if (const auto strong2 = weak2.get()) {
+					if (const auto strong2 = weak2.data()) {
 						strong2->showToast({ tr::lng_share_done(tr::now) });
-					} else if (const auto strong1 = weak1.get()) {
+					} else if (const auto strong1 = weak1.data()) {
 						strong1->showToast({ tr::lng_share_done(tr::now) });
 					}
 					base::call_delayed(Ui::Toast::kDefaultDuration, close);
@@ -1899,7 +1851,7 @@ void WebViewInstance::botSendPreparedMessage(
 				bot->session().api().sendInlineResult(
 					bot,
 					parsed.get(),
-					Api::SendAction(thread, options),
+					Api::SendAction(thread),
 					std::nullopt,
 					done);
 			}
@@ -1928,33 +1880,7 @@ void WebViewInstance::botSendPreparedMessage(
 			state->choose = box.data();
 			panel->showBox(std::move(box));
 		}, [=](not_null<Data::Thread*> thread) {
-			const auto weak = base::make_weak(thread);
-			state->send = [=](Api::SendOptions options) {
-				const auto strong = weak.get();
-				if (!strong) {
-					state->send = nullptr;
-					return;
-				}
-				const auto withPaymentApproved = [=](int stars) {
-					if (const auto onstack = state->send) {
-						auto copy = options;
-						copy.starsApproved = stars;
-						onstack(copy);
-					}
-				};
-				const auto checked = state->sendPayment.check(
-					uiShow(),
-					strong->peer(),
-					options,
-					1,
-					withPaymentApproved);
-				if (!checked) {
-					return;
-				}
-				state->send = nullptr;
-				send({ strong }, options);
-			};
-			state->send({});
+			send({ thread });
 		});
 		box->boxClosing() | rpl::start_with_next([=] {
 			if (!state->sent) {
@@ -2008,20 +1934,20 @@ void WebViewInstance::botDownloadFile(
 			callback(false);
 			return;
 		}
-		_session->attachWebView().downloads().start({
+		_bot->session().attachWebView().downloads().start({
 			.bot = _bot,
 			.url = request.url,
 			.path = path,
 		});
 		callback(true);
 	};
-	_session->api().request(MTPbots_CheckDownloadFileParams(
+	_bot->session().api().request(MTPbots_CheckDownloadFileParams(
 		_bot->inputUser,
 		MTP_string(request.name),
 		MTP_string(request.url)
 	)).done([=] {
 		_panel->showBox(Box(DownloadFileBox, DownloadBoxArgs{
-			.session = _session,
+			.session = &_bot->session(),
 			.bot = _bot->name(),
 			.name = base::FileNameFromUserString(request.name),
 			.url = request.url,
@@ -2030,12 +1956,6 @@ void WebViewInstance::botDownloadFile(
 	}).fail([=] {
 		done(QString());
 	}).send();
-}
-
-void WebViewInstance::botVerifyAge(int age) {
-	if (v::is<WebViewSourceAgeVerification>(_source)) {
-		v::get<WebViewSourceAgeVerification>(_source).done(age);
-	}
 }
 
 void WebViewInstance::botOpenPrivacyPolicy() {
@@ -2077,7 +1997,7 @@ void WebViewInstance::botOpenPrivacyPolicy() {
 	};
 	const auto openUrl = [=](const QString &url) {
 		Core::App().iv().openWithIvPreferred(
-			_session,
+			&_bot->session(),
 			url,
 			makeOtherContext(false));
 	};
@@ -2151,7 +2071,6 @@ std::shared_ptr<Main::SessionShow> WebViewInstance::uiShow() {
 AttachWebView::AttachWebView(not_null<Main::Session*> session)
 : _session(session)
 , _downloads(std::make_unique<Downloads>(session))
-, _storage(std::make_unique<Storage>(session))
 , _refreshTimer([=] { requestBots(); }) {
 	_refreshTimer.callEach(kRefreshBotsTimeout);
 }
@@ -2563,45 +2482,17 @@ void ChooseAndSendLocation(
 		not_null<Window::SessionController*> controller,
 		const Ui::LocationPickerConfig &config,
 		Api::SendAction action) {
-	const auto weak = base::make_weak(controller);
 	const auto session = &controller->session();
 	if (const auto picker = session->locationPickers().lookup(action)) {
 		picker->activate();
 		return;
 	}
-	struct State {
-		SendPaymentHelper sendPayment;
-		Fn<void(Data::InputVenue, Api::SendAction)> send;
-	};
-	const auto state = std::make_shared<State>();
-	state->send = [=](Data::InputVenue venue, Api::SendAction action) {
-		if (const auto strong = weak.get()) {
-			const auto withPaymentApproved = [=](int stars) {
-				if (const auto onstack = state->send) {
-					auto copy = action;
-					copy.options.starsApproved = stars;
-					onstack(venue, copy);
-				}
-			};
-			const auto checked = state->sendPayment.check(
-				strong,
-				action.history->peer,
-				action.options,
-				1,
-				withPaymentApproved);
-			if (!checked) {
-				return;
-			}
-		}
-		state->send = nullptr;
+	const auto callback = [=](Data::InputVenue venue) {
 		if (venue.justLocation()) {
 			Api::SendLocation(action, venue.lat, venue.lon);
 		} else {
 			Api::SendVenue(action, venue);
 		}
-	};
-	const auto callback = [=](Data::InputVenue venue) {
-		state->send(venue, action);
 	};
 	const auto picker = Ui::LocationPicker::Show({
 		.parent = controller->widget(),
@@ -2648,46 +2539,25 @@ std::unique_ptr<Ui::DropdownMenu> MakeAttachBotsMenu(
 	}
 	if (peer->canCreatePolls()) {
 		++minimal;
-		raw->addAction(tr::lng_polls_menu_item(tr::now), [=] {
+		raw->addAction(tr::lng_polls_create(tr::now), [=] {
 			const auto action = actionFactory();
 			const auto source = action.options.scheduled
 				? Api::SendType::Scheduled
 				: Api::SendType::Normal;
-			const auto sendMenuType = (action.replyTo.topicRootId
-				|| action.history->peer->starsPerMessageChecked())
+			const auto sendMenuType = action.replyTo.topicRootId
 				? SendMenu::Type::SilentOnly
 				: SendMenu::Type::Scheduled;
 			const auto flag = PollData::Flags();
+			const auto replyTo = action.replyTo;
 			Window::PeerMenuCreatePoll(
 				controller,
 				peer,
-				action.replyTo,
-				action.options.suggest,
+				replyTo,
 				flag,
 				flag,
 				source,
 				{ sendMenuType });
 		}, &st::menuIconCreatePoll);
-	}
-	if (peer->canCreateTodoLists()) {
-		++minimal;
-		raw->addAction(tr::lng_todo_menu_item(tr::now), [=] {
-			const auto action = actionFactory();
-			const auto source = action.options.scheduled
-				? Api::SendType::Scheduled
-				: Api::SendType::Normal;
-			const auto sendMenuType = (action.replyTo.topicRootId
-				|| action.history->peer->starsPerMessageChecked())
-				? SendMenu::Type::SilentOnly
-				: SendMenu::Type::Scheduled;
-			Window::PeerMenuCreateTodoList(
-				controller,
-				peer,
-				action.replyTo,
-				action.options.suggest,
-				source,
-				{ sendMenuType });
-		}, &st::menuIconCreateTodoList);
 	}
 	const auto session = &controller->session();
 	const auto locationType = ChatRestriction::SendOther;
@@ -2698,8 +2568,7 @@ std::unique_ptr<Ui::DropdownMenu> MakeAttachBotsMenu(
 			ChooseAndSendLocation(controller, config, actionFactory());
 		}, &st::menuIconAddress);
 	}
-	const auto addBots = Data::CanSend(peer, ChatRestriction::SendInline)
-		&& !peer->starsPerMessageChecked();
+	const auto addBots = Data::CanSend(peer, ChatRestriction::SendInline);
 	for (const auto &bot : bots->attachBots()) {
 		if (!addBots
 			|| !bot.inAttachMenu

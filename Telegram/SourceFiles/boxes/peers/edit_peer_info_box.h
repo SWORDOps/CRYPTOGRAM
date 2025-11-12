@@ -46,13 +46,6 @@ public:
 		Fn<void()> callback,
 		const style::SettingsCountButton &st,
 		Settings::IconDescriptor &&descriptor);
-	[[nodiscard]] static object_ptr<Ui::SettingsButton> CreateButton(
-		not_null<QWidget*> parent,
-		rpl::producer<QString> &&text,
-		rpl::producer<TextWithEntities> &&labelText,
-		Fn<void()> callback,
-		const style::SettingsCountButton &st,
-		Settings::IconDescriptor &&descriptor);
 
 protected:
 	void prepare() override;
@@ -63,7 +56,3 @@ private:
 	not_null<PeerData*> _peer;
 
 };
-
-void ShowEditChatPermissions(
-	not_null<Window::SessionNavigation*> navigation,
-	not_null<PeerData*> peer);

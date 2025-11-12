@@ -22,7 +22,7 @@ public:
 	RemoveComplexChatFilter();
 
 	void request(
-		base::weak_qptr<Ui::RpWidget> widget,
+		QPointer<Ui::RpWidget> widget,
 		base::weak_ptr<Window::SessionController> weak,
 		FilterId id);
 

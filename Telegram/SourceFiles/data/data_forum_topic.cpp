@@ -26,13 +26,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_item.h"
 #include "history/history_unread_things.h"
 #include "history/view/history_view_item_preview.h"
-#include "history/view/history_view_chat_section.h"
+#include "history/view/history_view_replies_section.h"
 #include "main/main_session.h"
 #include "base/unixtime.h"
 #include "ui/painter.h"
 #include "ui/color_int_conversion.h"
 #include "ui/text/text_custom_emoji.h"
-#include "ui/text/text_utilities.h"
 #include "styles/style_dialogs.h"
 #include "styles/style_chat_helpers.h"
 
@@ -153,10 +152,10 @@ QImage ForumTopicGeneralIconFrame(int size, const QColor &color) {
 	result.setDevicePixelRatio(ratio);
 	result.fill(Qt::transparent);
 
-	const auto use = size * 1.;
-	const auto skip = size * 0.;
+	const auto use = size * 0.8;
+	const auto skip = size * 0.1;
 	auto p = QPainter(&result);
-	svg.render(&p, QRectF(skip, skip, use, use));
+	svg.render(&p, QRectF(skip, 0, use, use));
 	p.end();
 
 	return style::colorizeImage(result, color);
@@ -265,15 +264,7 @@ std::shared_ptr<Data::RepliesList> ForumTopic::replies() const {
 	return _replies;
 }
 
-not_null<PeerData*> ForumTopic::peer() const {
-	return _forum->peer();
-}
-
-UserData *ForumTopic::bot() const {
-	return _forum->bot();
-}
-
-ChannelData *ForumTopic::channel() const {
+not_null<ChannelData*> ForumTopic::channel() const {
 	return _forum->channel();
 }
 
@@ -316,28 +307,24 @@ bool ForumTopic::my() const {
 }
 
 bool ForumTopic::canEdit() const {
-	return my() || peer()->canManageTopics();
+	return my() || channel()->canManageTopics();
 }
 
 bool ForumTopic::canDelete() const {
 	if (creating() || isGeneral()) {
 		return false;
-	} else if (bot()) {
+	} else if (channel()->canDeleteMessages()) {
 		return true;
-	} else if (const auto channel = this->channel()) {
-		if (channel->canDeleteMessages()) {
-			return true;
-		}
 	}
 	return my() && replies()->canDeleteMyTopic();
 }
 
 bool ForumTopic::canToggleClosed() const {
-	return !creating() && canEdit() && !_forum->peer()->isBot();
+	return !creating() && canEdit();
 }
 
 bool ForumTopic::canTogglePinned() const {
-	return !creating() && peer()->canManageTopics();
+	return !creating() && channel()->canManageTopics();
 }
 
 bool ForumTopic::creating() const {
@@ -375,8 +362,8 @@ void ForumTopic::subscribeToUnreadChanges() {
 	) | rpl::filter([=] {
 		return inChatList();
 	}) | rpl::start_with_next([=](
-			std::optional<int> previous,
-			std::optional<int> now) {
+		std::optional<int> previous,
+		std::optional<int> now) {
 		if (previous.value_or(0) != now.value_or(0)) {
 			_forum->recentTopicsInvalidate(this);
 		}
@@ -417,9 +404,8 @@ void ForumTopic::applyTopic(const MTPDforumTopic &data) {
 			draft->match([&](const MTPDdraftMessage &data) {
 				Data::ApplyPeerCloudDraft(
 					&session(),
-					peer()->id,
+					channel()->id,
 					_rootId,
-					PeerId(),
 					data);
 			}, [](const MTPDdraftMessageEmpty&) {});
 		}
@@ -475,14 +461,14 @@ void ForumTopic::setClosedAndSave(bool closed) {
 
 	const auto api = &session().api();
 	const auto weak = base::make_weak(this);
-	api->request(MTPmessages_EditForumTopic(
-		MTP_flags(MTPmessages_EditForumTopic::Flag::f_closed),
-		peer()->input,
+	api->request(MTPchannels_EditForumTopic(
+		MTP_flags(MTPchannels_EditForumTopic::Flag::f_closed),
+		channel()->inputChannel,
 		MTP_int(_rootId),
 		MTPstring(), // title
 		MTPlong(), // icon_emoji_id
 		MTP_bool(closed),
-		MTPBool() // hiddenKO
+		MTPBool() // hidden
 	)).done([=](const MTPUpdates &result) {
 		api->applyUpdates(result);
 	}).fail([=](const MTP::Error &error) {
@@ -539,7 +525,7 @@ int ForumTopic::chatListNameVersion() const {
 void ForumTopic::applyTopicTopMessage(MsgId topMessageId) {
 	if (topMessageId) {
 		growLastKnownServerMessageId(topMessageId);
-		const auto itemId = FullMsgId(peer()->id, topMessageId);
+		const auto itemId = FullMsgId(channel()->id, topMessageId);
 		if (const auto item = owner().message(itemId)) {
 			setLastServerMessage(item);
 			resolveChatListMessageGroup();
@@ -723,7 +709,7 @@ void ForumTopic::requestChatListMessage() {
 
 TimeId ForumTopic::adjustedChatListTimeId() const {
 	const auto result = chatListTimeId();
-	if (const auto draft = history()->cloudDraft(_rootId, PeerId())) {
+	if (const auto draft = history()->cloudDraft(_rootId)) {
 		if (!Data::DraftIsNull(draft) && !session().supportMode()) {
 			return std::max(result, draft->date);
 		}
@@ -767,16 +753,6 @@ QString ForumTopic::title() const {
 
 TextWithEntities ForumTopic::titleWithIcon() const {
 	return ForumTopicIconWithTitle(_rootId, _iconId, _title);
-}
-
-TextWithEntities ForumTopic::titleWithIconOrLogo() const {
-	if (_iconId || isGeneral()) {
-		return titleWithIcon();
-	}
-	return Ui::Text::SingleCustomEmoji(Data::TopicIconEmojiEntity({
-		.title = _title,
-		.colorId = _colorId,
-	})).append(' ').append(_title);
 }
 
 int ForumTopic::titleVersion() const {
@@ -891,7 +867,7 @@ void ForumTopic::setMuted(bool muted) {
 	session().changes().topicUpdated(this, UpdateFlag::Notifications);
 }
 
-HistoryView::SendActionPainter *ForumTopic::sendActionPainter() {
+not_null<HistoryView::SendActionPainter*> ForumTopic::sendActionPainter() {
 	return _sendActionPainter.get();
 }
 
@@ -907,7 +883,7 @@ Dialogs::BadgesState ForumTopic::chatListBadgesState() const {
 		Dialogs::CountInBadge::Messages,
 		Dialogs::IncludeInBadge::All);
 	if (!result.unread && _replies->inboxReadTillId() < 2) {
-		result.unread = (bot() || (channel() && channel()->amIn()))
+		result.unread = channel()->amIn()
 			&& (_lastKnownServerMessageId > history()->inboxReadTillId());
 		result.unreadMuted = muted();
 	}
@@ -921,10 +897,12 @@ Dialogs::UnreadState ForumTopic::unreadStateFor(
 	const auto muted = this->muted();
 	result.messages = count;
 	result.chats = count ? 1 : 0;
+	result.chatsTopic = count ? 1 : 0;
 	result.mentions = unreadMentions().has() ? 1 : 0;
 	result.reactions = unreadReactions().has() ? 1 : 0;
 	result.messagesMuted = muted ? result.messages : 0;
 	result.chatsMuted = muted ? result.chats : 0;
+	result.chatsTopicMuted = muted ? result.chats : 0;
 	result.reactionsMuted = muted ? result.reactions : 0;
 	result.known = known;
 	return result;

@@ -10,7 +10,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_common.h"
 #include "chat_helpers/compose/compose_features.h"
 #include "ui/rp_widget.h"
-#include "ui/controls/swipe_handler_data.h"
 #include "ui/effects/animations.h"
 #include "ui/effects/message_sending_animation_common.h"
 #include "ui/effects/panel_animation.h"
@@ -63,7 +62,6 @@ struct FileChosen {
 	not_null<DocumentData*> document;
 	Api::SendOptions options;
 	Ui::MessageSendingAnimationFrom messageSendingFrom;
-	std::shared_ptr<Data::EmojiStatusCollectible> collectible;
 	TextWithTags caption;
 };
 
@@ -156,7 +154,7 @@ public:
 	void refreshStickers();
 	void setCurrentPeer(PeerData *peer);
 	void provideRecentEmoji(
-		const std::vector<EmojiStatusId> &customRecentList);
+		const std::vector<DocumentId> &customRecentList);
 
 	void hideFinished();
 	void showStarted();
@@ -288,15 +286,11 @@ private:
 	not_null<GifsListWidget*> gifs() const;
 	not_null<StickersListWidget*> masks() const;
 
-	void reinstallSwipe(not_null<Ui::RpWidget*> widget);
-
 	const style::EmojiPan &_st;
 	const ComposeFeatures _features;
 	const std::shared_ptr<Show> _show;
 	const PauseReason _level = {};
 	const Fn<QColor()> _customTextColor;
-
-	Ui::Controls::SwipeBackResult _swipeBackData;
 
 	Mode _mode = Mode::Full;
 	int _roundRadius = 0;
@@ -333,8 +327,6 @@ private:
 
 	rpl::event_stream<> _showRequests;
 	rpl::event_stream<> _slideFinished;
-
-	rpl::lifetime _swipeLifetime;
 
 };
 

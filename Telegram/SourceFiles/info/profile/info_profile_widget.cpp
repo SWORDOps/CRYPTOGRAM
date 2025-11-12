@@ -8,7 +8,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "info/profile/info_profile_widget.h"
 
 #include "dialogs/ui/dialogs_stories_content.h"
-#include "history/history.h"
 #include "info/profile/info_profile_inner_widget.h"
 #include "info/profile/info_profile_members.h"
 #include "ui/widgets/scroll_area.h"
@@ -16,7 +15,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_peer.h"
 #include "data/data_channel.h"
 #include "data/data_forum_topic.h"
-#include "data/data_saved_sublist.h"
 #include "data/data_user.h"
 #include "lang/lang_keys.h"
 #include "info/info_controller.h"
@@ -27,7 +25,6 @@ Memento::Memento(not_null<Controller*> controller)
 : Memento(
 	controller->peer(),
 	controller->topic(),
-	controller->sublist(),
 	controller->migratedPeerId(),
 	{ v::null }) {
 }
@@ -36,25 +33,20 @@ Memento::Memento(
 	not_null<PeerData*> peer,
 	PeerId migratedPeerId,
 	Origin origin)
-: Memento(peer, nullptr, nullptr, migratedPeerId, origin) {
+: Memento(peer, nullptr, migratedPeerId, origin) {
 }
 
 Memento::Memento(
 	not_null<PeerData*> peer,
 	Data::ForumTopic *topic,
-	Data::SavedSublist *sublist,
 	PeerId migratedPeerId,
 	Origin origin)
-: ContentMemento(peer, topic, sublist, migratedPeerId)
+: ContentMemento(peer, topic, migratedPeerId)
 , _origin(origin) {
 }
 
 Memento::Memento(not_null<Data::ForumTopic*> topic)
-: ContentMemento(topic->peer(), topic, nullptr, 0) {
-}
-
-Memento::Memento(not_null<Data::SavedSublist*> sublist)
-: ContentMemento(sublist->owningHistory()->peer, nullptr, sublist, 0) {
+: ContentMemento(topic->channel(), topic, 0) {
 }
 
 Section Memento::section() const {
@@ -109,12 +101,7 @@ void Widget::setInnerFocus() {
 
 rpl::producer<QString> Widget::title() {
 	if (const auto topic = controller()->key().topic()) {
-		return topic->peer()->isBot()
-			? tr::lng_info_thread_title()
-			: tr::lng_info_topic_title();
-	} else if (controller()->key().sublist()
-		&& controller()->key().sublist()->parentChat()) {
-		return tr::lng_profile_direct_messages();
+		return tr::lng_info_topic_title();
 	}
 	const auto peer = controller()->key().peer();
 	if (const auto user = peer->asUser()) {
@@ -122,9 +109,7 @@ rpl::producer<QString> Widget::title() {
 			? tr::lng_info_bot_title()
 			: tr::lng_info_user_title();
 	} else if (const auto channel = peer->asChannel()) {
-		return channel->isMonoforum()
-			? tr::lng_profile_direct_messages()
-			: channel->isMegagroup()
+		return channel->isMegagroup()
 			? tr::lng_info_group_title()
 			: tr::lng_info_channel_title();
 	} else if (peer->isChat()) {

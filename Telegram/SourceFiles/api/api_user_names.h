@@ -23,7 +23,6 @@ class Usernames final {
 public:
 	enum class Error {
 		TooMuch,
-		Flood,
 		Unknown,
 	};
 

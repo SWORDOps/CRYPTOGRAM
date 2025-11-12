@@ -11,9 +11,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 class UserData;
 
-template <typename Flags>
-struct EditFlagsDescriptor;
-
 namespace Data {
 
 class Session;
@@ -21,7 +18,7 @@ class Session;
 struct ChatbotsSettings {
 	UserData *bot = nullptr;
 	BusinessRecipients recipients;
-	ChatbotsPermissions permissions;
+	bool repliesAllowed = false;
 
 	friend inline bool operator==(
 		const ChatbotsSettings &,
@@ -69,8 +66,5 @@ private:
 	base::flat_map<not_null<PeerData*>, SentRequest> _sentRequests;
 
 };
-
-[[nodiscard]] auto ChatbotsPermissionsLabels()
--> EditFlagsDescriptor<ChatbotsPermissions>;
 
 } // namespace Data

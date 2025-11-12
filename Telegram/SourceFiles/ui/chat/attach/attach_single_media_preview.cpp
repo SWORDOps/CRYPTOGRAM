@@ -19,7 +19,7 @@ SingleMediaPreview *SingleMediaPreview::Create(
 		const style::ComposeControls &st,
 		Fn<bool()> gifPaused,
 		const PreparedFile &file,
-		Fn<bool(AttachActionType)> actionAllowed,
+		Fn<bool()> canToggleSpoiler,
 		AttachControls::Type type) {
 	auto preview = QImage();
 	auto animated = false;
@@ -32,9 +32,7 @@ SingleMediaPreview *SingleMediaPreview::Create(
 		hasModifications = !image->modifications.empty();
 	} else if (const auto video = std::get_if<PreparedFileInformation::Video>(
 			&file.information->media)) {
-		preview = file.videoCover
-			? file.videoCover->preview
-			: video->thumbnail;
+		preview = video->thumbnail;
 		animated = true;
 		animationPreview = video->isGifv;
 	}
@@ -55,7 +53,7 @@ SingleMediaPreview *SingleMediaPreview::Create(
 		file.spoiler,
 		animationPreview ? file.path : QString(),
 		type,
-		std::move(actionAllowed));
+		std::move(canToggleSpoiler));
 }
 
 SingleMediaPreview::SingleMediaPreview(
@@ -68,8 +66,8 @@ SingleMediaPreview::SingleMediaPreview(
 	bool spoiler,
 	const QString &animatedPreviewPath,
 	AttachControls::Type type,
-	Fn<bool(AttachActionType)> actionAllowed)
-: AbstractSingleMediaPreview(parent, st, type, std::move(actionAllowed))
+	Fn<bool()> canToggleSpoiler)
+: AbstractSingleMediaPreview(parent, st, type, std::move(canToggleSpoiler))
 , _gifPaused(std::move(gifPaused))
 , _sticker(sticker) {
 	Expects(!preview.isNull());

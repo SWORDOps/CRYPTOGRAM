@@ -91,10 +91,6 @@ public:
 	Row(Key key, int index, int top);
 	~Row();
 
-	[[nodiscard]] static const style::DialogRow &ComputeSt(
-		not_null<const Entry*> entry,
-		FilterId filterId);
-
 	[[nodiscard]] int top() const {
 		return _top;
 	}

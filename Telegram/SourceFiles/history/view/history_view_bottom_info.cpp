@@ -13,12 +13,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/text/text_options.h"
 #include "ui/text/text_utilities.h"
 #include "ui/painter.h"
-#include "core/ui_integration.h"
 #include "lang/lang_keys.h"
 #include "history/history_item_components.h"
 #include "history/history_item.h"
 #include "history/history.h"
-#include "history/view/media/history_view_media.h"
 #include "history/view/history_view_message.h"
 #include "history/view/history_view_cursor_state.h"
 #include "chat_helpers/emoji_interactions.h"
@@ -30,7 +28,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_message_reactions.h"
 #include "window/window_session_controller.h"
 #include "styles/style_chat.h"
-#include "styles/style_credits.h"
 #include "styles/style_dialogs.h"
 
 namespace HistoryView {
@@ -198,7 +195,7 @@ ClickHandlerPtr BottomInfo::replayEffectLink(
 	const auto weak = base::make_weak(view);
 	return std::make_shared<LambdaClickHandler>([=](ClickContext context) {
 		const auto my = context.other.value<ClickHandlerContext>();
-		if ([[maybe_unused]] const auto controller = my.sessionWindow.get()) {
+		if (const auto controller = my.sessionWindow.get()) {
 			if (const auto strong = weak.get()) {
 				strong->delegate()->elementStartEffect(strong, nullptr);
 			}
@@ -434,18 +431,10 @@ void BottomInfo::layoutDateText() {
 		: name.isEmpty()
 		? date
 		: (name + afterAuthor);
-	auto marked = TextWithEntities();
-	if (const auto count = _data.stars) {
-		marked.append(
-			Ui::Text::IconEmoji(&st::starIconEmojiSmall)
-		).append(Lang::FormatCountToShort(count).string).append(u", "_q);
-	}
-	marked.append(full);
-	_authorEditedDate.setMarkedText(
+	_authorEditedDate.setText(
 		st::msgDateTextStyle,
-		marked,
-		Ui::NameTextOptions(),
-		Core::TextContext({ .session = &_reactionsOwner->session() }));
+		full,
+		Ui::NameTextOptions());
 }
 
 void BottomInfo::layoutViewsText() {
@@ -516,6 +505,19 @@ BottomInfo::Effect BottomInfo::prepareEffectWithId(EffectId id) {
 	auto result = Effect{ .id = id };
 	_reactionsOwner->preloadEffectImageFor(id);
 	return result;
+}
+
+void BottomInfo::animateEffect(
+		Ui::ReactionFlyAnimationArgs &&args,
+		Fn<void()> repaint) {
+	if (!_effect || args.id.custom() != _effect->id) {
+		return;
+	}
+	_effect->animation = std::make_unique<Ui::ReactionFlyAnimation>(
+		_reactionsOwner,
+		args.translated(QPoint(width(), height())),
+		std::move(repaint),
+		st::effectInfoImage);
 }
 
 auto BottomInfo::takeEffectAnimation()
@@ -596,17 +598,6 @@ BottomInfo::Data BottomInfoDataFromMessage(not_null<Message*> message) {
 	}
 	if (item->isSending() || item->hasFailed()) {
 		result.flags |= Flag::Sending;
-	}
-	if (!item->history()->peer->isUser()) {
-		const auto media = message->media();
-		const auto mine = PaidInformation{
-			.messages = 1,
-			.stars = item->starsPaid(),
-		};
-		auto info = media ? media->paidInformation().value_or(mine) : mine;
-		if (const auto total = info.stars) {
-			result.stars = total;
-		}
 	}
 	const auto forwarded = item->Get<HistoryMessageForwarded>();
 	if (forwarded && forwarded->imported) {

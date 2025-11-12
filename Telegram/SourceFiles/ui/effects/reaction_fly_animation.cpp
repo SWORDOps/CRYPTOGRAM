@@ -385,10 +385,10 @@ int ReactionFlyAnimation::computeParabolicTop(
 
 void ReactionFlyAnimation::startAnimations() {
 	if (const auto center = _center.get()) {
-		center->animate(callback());
+		_center->animate(callback());
 	}
 	if (const auto effect = _effect.get()) {
-		effect->animate(callback());
+		_effect->animate(callback());
 	} else if (_scaleOutDuration > 0) {
 		_noEffectScaleStarted = true;
 		_noEffectScaleAnimation.start(callback(), 1, 0, _scaleOutDuration);

@@ -177,11 +177,12 @@ void SelectCountriesBox(
 		Ui::AddSkip(container);
 		Ui::AddSkip(container);
 		container->add(
-			object_ptr<Ui::FlatLabel>(
+			object_ptr<Ui::CenterWrap<Ui::FlatLabel>>(
 				container,
-				tr::lng_search_messages_none(),
-				st::membersAbout),
-			style::al_top);
+				object_ptr<Ui::FlatLabel>(
+					container,
+					tr::lng_search_messages_none(),
+					st::membersAbout)));
 		Ui::AddSkip(container);
 		Ui::AddSkip(container);
 	}

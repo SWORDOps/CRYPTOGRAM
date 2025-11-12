@@ -8,7 +8,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "base/weak_ptr.h"
-#include "history/history_item_helpers.h"
 
 class History;
 enum class SendMediaType;
@@ -45,7 +44,6 @@ struct Details;
 
 namespace Ui {
 struct PreparedList;
-struct PreparedBundle;
 class SendFilesWay;
 class RpWidget;
 } // namespace Ui
@@ -92,12 +90,8 @@ private:
 
 	bool send(
 		Api::MessageToSend message,
-		bool skipToast = false);
-
-	[[nodiscard]] bool checkSendPayment(
-		int messagesCount,
 		Api::SendOptions options,
-		Fn<void(int)> withPaymentApproved);
+		bool skipToast = false);
 
 	void uploadFile(const QByteArray &fileContent, SendMediaType type);
 	bool confirmSendingFiles(
@@ -122,9 +116,6 @@ private:
 		TextWithTags &&caption,
 		Api::SendOptions options,
 		bool ctrlShiftEnter);
-	void sendingFilesConfirmed(
-		std::shared_ptr<Ui::PreparedBundle> bundle,
-		Api::SendOptions options);
 	void finishSending(bool skipToast = false);
 
 	bool sendExistingDocument(
@@ -136,10 +127,10 @@ private:
 		not_null<PhotoData*> photo,
 		Api::SendOptions options);
 	void sendInlineResult(
-		std::shared_ptr<InlineBots::Result> result,
+		not_null<InlineBots::Result*> result,
 		not_null<UserData*> bot);
 	void sendInlineResult(
-		std::shared_ptr<InlineBots::Result> result,
+		not_null<InlineBots::Result*> result,
 		not_null<UserData*> bot,
 		Api::SendOptions options,
 		std::optional<MsgId> localMessageId);
@@ -150,7 +141,7 @@ private:
 	[[nodiscard]] Api::SendAction prepareSendAction(
 		Api::SendOptions options) const;
 	void send(Api::SendOptions options);
-	void sendVoice(const VoiceToSend &data);
+	void sendVoice(VoiceToSend &&data);
 	void chooseAttach(std::optional<bool> overrideSendImagesAsPhotos);
 
 	[[nodiscard]] Fn<SendMenu::Details()> sendMenuDetails() const;
@@ -160,7 +151,6 @@ private:
 
 	const not_null<Controller*> _controller;
 	rpl::variable<bool> _isComment;
-	rpl::variable<int> _starsForMessage;
 
 	const std::unique_ptr<HistoryView::ComposeControls> _controls;
 	std::unique_ptr<Cant> _cant;
@@ -169,8 +159,6 @@ private:
 	base::has_weak_ptr _shownPeerGuard;
 	bool _chooseAttachRequest = false;
 	rpl::variable<bool> _choosingAttach;
-
-	SendPaymentHelper _sendPayment;
 
 	rpl::lifetime _lifetime;
 

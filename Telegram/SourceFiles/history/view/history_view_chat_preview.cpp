@@ -16,7 +16,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_peer.h"
 #include "data/data_peer_values.h"
 #include "data/data_replies_list.h"
-#include "data/data_saved_sublist.h"
 #include "data/data_session.h"
 #include "data/data_thread.h"
 #include "history/view/reactions/history_view_reactions_button.h"
@@ -187,7 +186,6 @@ private:
 	const not_null<Main::Session*> _session;
 	const not_null<Data::Thread*> _thread;
 	const std::shared_ptr<Data::RepliesList> _replies;
-	Data::SavedSublist * const _sublist = nullptr;
 	const not_null<History*> _history;
 	const not_null<PeerData*> _peer;
 	const std::shared_ptr<Ui::ChatTheme> _theme;
@@ -253,20 +251,7 @@ struct StatusFields {
 		}
 		Unexpected("Peer type in ChatPreview Item.");
 	});
-}
 
-[[nodiscard]] rpl::producer<Info::Profile::Badge::Content> ContentForPeer(
-		not_null<PeerData*> peer) {
-	using namespace Info::Profile;
-	return rpl::combine(
-		BadgeContentForPeer(peer),
-		VerifiedContentForPeer(peer)
-	) | rpl::map([](Badge::Content &&content, Badge::Content &&verified) {
-		if (verified.badge == BadgeType::Verified) {
-			content.badge = BadgeType::Verified;
-		}
-		return content;
-	});
 }
 
 Item::Item(not_null<Ui::RpWidget*> parent, not_null<Data::Thread*> thread)
@@ -275,7 +260,6 @@ Item::Item(not_null<Ui::RpWidget*> parent, not_null<Data::Thread*> thread)
 , _session(&thread->session())
 , _thread(thread)
 , _replies(thread->asTopic() ? thread->asTopic()->replies() : nullptr)
-, _sublist(thread->asSublist())
 , _history(thread->owningHistory())
 , _peer(thread->peer())
 , _theme(Window::Theme::DefaultChatThemeOn(lifetime()))
@@ -290,8 +274,7 @@ Item::Item(not_null<Ui::RpWidget*> parent, not_null<Data::Thread*> thread)
 , _badge(
 		_top.get(),
 		st::settingsInfoPeerBadge,
-		_session,
-		ContentForPeer(_peer),
+		_peer,
 		nullptr,
 		nullptr,
 		1) {
@@ -352,7 +335,7 @@ void Item::setupTop() {
 		: Ui::CreateChild<Ui::FlatLabel>(
 			_top.get(),
 			(topic
-				? Info::Profile::NameValue(topic->peer())
+				? Info::Profile::NameValue(topic->channel())
 				: std::move(statusText)),
 			st::previewStatus);
 	if (status) {
@@ -369,9 +352,8 @@ void Item::setupTop() {
 		? nullptr
 		: Ui::CreateChild<Ui::UserpicButton>(
 			_top.get(),
-			_thread->peer()->userpicPaintingPeer(),
-			st::previewUserpic,
-			_thread->peer()->userpicShape());
+			_thread->peer(),
+			st::previewUserpic);
 	if (userpic) {
 		userpic->showSavedMessagesOnSelf(true);
 		userpic->setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -445,10 +427,9 @@ void Item::setupMarkRead() {
 	) | rpl::start_with_next([=] {
 		const auto state = _thread->chatListBadgesState();
 		const auto unread = (state.unreadCounter || state.unread);
-		const auto hidden = (_thread->asTopic() || _thread->asSublist())
+		const auto hidden = _thread->asTopic()
 			? (!unread)
-			: (_thread->peer()->isForum()
-				|| _thread->peer()->amMonoforumAdmin());
+			: _thread->peer()->isForum();
 		if (hidden) {
 			_markRead->hide();
 			return;
@@ -595,8 +576,6 @@ rpl::producer<Data::MessagesSlice> Item::listSource(
 		int limitAfter) {
 	return _replies
 		? _replies->source(aroundId, limitBefore, limitAfter)
-		: _sublist
-		? _sublist->source(aroundId, limitBefore, limitAfter)
 		: Data::HistoryMessagesViewer(
 			_thread->asHistory(),
 			aroundId,
@@ -646,44 +625,32 @@ MessagesBarData Item::listMessagesBar(
 		const std::vector<not_null<Element*>> &elements) {
 	if (elements.empty()) {
 		return {};
-	} else if (!_replies && !_sublist && !_history->unreadCount()) {
+	} else if (!_replies && !_history->unreadCount()) {
 		return {};
 	}
 	const auto repliesTill = _replies
 		? _replies->computeInboxReadTillFull()
 		: MsgId();
-	const auto sublistTill = _sublist
-		? _sublist->computeInboxReadTillFull()
-		: MsgId();
-	const auto migrated = (_replies || _sublist)
-		? nullptr
-		: _history->migrateFrom();
+	const auto migrated = _replies ? nullptr : _history->migrateFrom();
 	const auto migratedTill = (migrated && migrated->unreadCount() > 0)
 		? migrated->inboxReadTillId()
 		: 0;
-	const auto historyTill = (_replies
-		|| _sublist
-		|| !_history->unreadCount()
-		|| _history->amMonoforumAdmin())
+	const auto historyTill = (_replies || !_history->unreadCount())
 		? 0
 		: _history->inboxReadTillId();
-	if (!_replies && !_sublist && !migratedTill && !historyTill) {
+	if (!_replies && !migratedTill && !historyTill) {
 		return {};
 	}
 
 	auto skipped = false;
-	const auto hidden = (_replies && (repliesTill < 2))
-		|| (_sublist && (sublistTill < 2));
+	const auto hidden = _replies && (repliesTill < 2);
 	for (auto i = 0, count = int(elements.size()); i != count; ++i) {
 		const auto item = elements[i]->data();
-		if (!item->isRegular()
-			|| (_replies && !item->replyToId())
-			|| (_sublist && !item->sublistPeerId())) {
+		if (!item->isRegular() || (_replies && !item->replyToId())) {
 			continue;
 		}
 		const auto inHistory = (item->history() == _history);
 		const auto unread = (_replies && item->id > repliesTill)
-			|| (_sublist && item->id > sublistTill)
 			|| (migratedTill && (inHistory || item->id > migratedTill))
 			|| (historyTill && inHistory && item->id > historyTill);
 		if (!unread) {
@@ -959,9 +926,9 @@ ChatPreview MakeChatPreview(
 	result.actions = action->actions();
 	menu->addAction(std::move(action));
 	if (const auto topic = thread->asTopic()) {
-		const auto weak = base::make_weak(menu);
+		const auto weak = Ui::MakeWeak(menu);
 		topic->destroyed() | rpl::start_with_next([weak] {
-			if (const auto strong = weak.get()) {
+			if (const auto strong = weak.data()) {
 				LOG(("Preview hidden for a destroyed topic."));
 				strong->hideMenu(true);
 			}

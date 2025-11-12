@@ -32,12 +32,8 @@ constexpr auto kOutlineRatio = 0.85;
 auto GenerateGiveawayStart(
 	not_null<Element*> parent,
 	not_null<Data::GiveawayStart*> data)
--> Fn<void(
-		not_null<MediaGeneric*>,
-		Fn<void(std::unique_ptr<MediaGenericPart>)>)> {
-	return [=](
-			not_null<MediaGeneric*> media,
-			Fn<void(std::unique_ptr<MediaGenericPart>)> push) {
+-> Fn<void(Fn<void(std::unique_ptr<MediaGenericPart>)>)> {
+	return [=](Fn<void(std::unique_ptr<MediaGenericPart>)> push) {
 		const auto months = data->months;
 		const auto quantity = data->quantity;
 
@@ -48,7 +44,7 @@ auto GenerateGiveawayStart(
 			return Data{
 				.sticker = packs.lookup(months),
 				.size = st::msgServiceGiftBoxStickerSize,
-				.stopOnLastFrame = true,
+				.singleTimePlayback = true,
 			};
 		};
 		push(std::make_unique<StickerWithBadgePart>(
@@ -205,12 +201,8 @@ auto GenerateGiveawayStart(
 auto GenerateGiveawayResults(
 	not_null<Element*> parent,
 	not_null<Data::GiveawayResults*> data)
--> Fn<void(
-		not_null<MediaGeneric*>,
-		Fn<void(std::unique_ptr<MediaGenericPart>)>)> {
-	return [=](
-			not_null<MediaGeneric*> media,
-			Fn<void(std::unique_ptr<MediaGenericPart>)> push) {
+-> Fn<void(Fn<void(std::unique_ptr<MediaGenericPart>)>)> {
+	return [=](Fn<void(std::unique_ptr<MediaGenericPart>)> push) {
 		const auto quantity = data->winnersCount;
 
 		using Data = StickerWithBadgePart::Data;
@@ -221,8 +213,7 @@ auto GenerateGiveawayResults(
 			return Data{
 				.sticker = packs.lookup(emoji, 0),
 				.skipTop = st::chatGiveawayWinnersTopSkip,
-				.size = st::maxAnimatedEmojiSize,
-				.stopOnLastFrame = true,
+				.singleTimePlayback = true,
 			};
 		};
 		push(std::make_unique<StickerWithBadgePart>(

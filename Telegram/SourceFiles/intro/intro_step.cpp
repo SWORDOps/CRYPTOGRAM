@@ -94,7 +94,6 @@ Step::Step(
 	_titleText.value(
 	) | rpl::start_with_next([=](const QString &text) {
 		_title->setText(text);
-		accessibilityNameChanged();
 		updateLabelsPosition();
 	}, lifetime());
 
@@ -105,9 +104,14 @@ Step::Step(
 			text.entities,
 			EntityType::Spoiler,
 			&EntityInText::type);
-		label->setMarkedText(text);
+		if (hasSpoiler) {
+			label->setMarkedText(
+				text,
+				CommonTextContext{ [=] { label->update(); } });
+		} else {
+			label->setMarkedText(text);
+		}
 		label->setAttribute(Qt::WA_TransparentForMouseEvents, hasSpoiler);
-		accessibilityDescriptionChanged();
 		updateLabelsPosition();
 	}, lifetime());
 }
@@ -377,7 +381,7 @@ void Step::fillSentCodeData(const MTPDauth_sentCode &data) {
 	}, [&](const MTPDauth_sentCodeTypeSmsPhrase &) {
 		bad("SmsPhrase");
 	}, [&](const MTPDauth_sentCodeTypeSetUpEmailRequired &) {
-		getData()->emailStatus = EmailStatus::SetupRequired;
+		bad("SetUpEmailRequired");
 	});
 }
 

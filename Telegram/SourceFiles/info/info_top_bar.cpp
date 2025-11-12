@@ -15,6 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "storage/storage_shared_media.h"
 #include "boxes/delete_messages_box.h"
 #include "boxes/peer_list_controllers.h"
+#include "mainwidget.h"
 #include "main/main_session.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/labels.h"
@@ -23,6 +24,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/wrap/fade_wrap.h"
 #include "ui/wrap/padding_wrap.h"
 #include "ui/search_field_controller.h"
+#include "window/window_peer_menu.h"
 #include "data/data_session.h"
 #include "data/data_channel.h"
 #include "data/data_user.h"
@@ -53,7 +55,7 @@ void TopBar::registerUpdateControlCallback(
 		QObject *guard,
 		Callback &&callback) {
 	_updateControlCallbacks[guard] =[
-		weak = base::make_weak(guard),
+		weak = Ui::MakeWeak(guard),
 		callback = std::forward<Callback>(callback)
 	](anim::type animated) {
 		if (!weak) {
@@ -582,13 +584,17 @@ void TopBar::setStories(rpl::producer<Dialogs::Stories::Content> content) {
 			}
 		}, _storiesLifetime);
 
-		_storiesLifetime.add([weak = base::make_weak(label)] {
-			delete weak.get();
+		_storiesLifetime.add([weak = QPointer<QWidget>(label)] {
+			delete weak.data();
 		});
 	} else {
 		_storiesCount = 0;
 	}
 	updateControlsVisibility(anim::type::instant);
+}
+
+void TopBar::setStoriesArchive(bool archive) {
+	_storiesArchive = archive;
 }
 
 void TopBar::setSelectedItems(SelectedItems &&items) {
@@ -627,19 +633,10 @@ void TopBar::updateSelectionState() {
 	_canDelete = computeCanDelete();
 	_canForward = computeCanForward();
 	_canUnpinStories = computeCanUnpinStories();
-	_canToggleStoryPin = computeCanToggleStoryPin();
-	_allStoriesInProfile = computeAllStoriesInProfile();
 	_selectionText->entity()->setValue(generateSelectedText());
 	_delete->toggle(_canDelete, anim::type::instant);
 	_forward->toggle(_canForward, anim::type::instant);
 	_toggleStoryInProfile->toggle(_canToggleStoryPin, anim::type::instant);
-	_toggleStoryInProfile->entity()->setIconOverride(
-		(_allStoriesInProfile
-			? &_st.storiesArchive.icon
-			: &_st.storiesSave.icon),
-		(_allStoriesInProfile
-			? &_st.storiesArchive.iconOver
-			: &_st.storiesSave.iconOver));
 	_toggleStoryPin->toggle(_canToggleStoryPin, anim::type::instant);
 	_toggleStoryPin->entity()->setIconOverride(
 		_canUnpinStories ? &_st.storiesUnpin.icon : nullptr,
@@ -660,7 +657,6 @@ void TopBar::createSelectionControls() {
 	_canForward = computeCanForward();
 	_canUnpinStories = computeCanUnpinStories();
 	_canToggleStoryPin = computeCanToggleStoryPin();
-	_allStoriesInProfile = computeAllStoriesInProfile();
 	_cancelSelection = wrap(Ui::CreateChild<Ui::FadeWrap<Ui::IconButton>>(
 		this,
 		object_ptr<Ui::IconButton>(this, _st.mediaCancel),
@@ -672,7 +668,6 @@ void TopBar::createSelectionControls() {
 	) | rpl::start_to_stream(
 		_selectionActionRequests,
 		_cancelSelection->lifetime());
-
 	_selectionText = wrap(Ui::CreateChild<Ui::FadeWrap<Ui::LabelWithNumbers>>(
 		this,
 		object_ptr<Ui::LabelWithNumbers>(
@@ -683,11 +678,6 @@ void TopBar::createSelectionControls() {
 		st::infoTopBarScale));
 	_selectionText->setDuration(st::infoTopBarDuration);
 	_selectionText->entity()->resize(0, _st.height);
-	_selectionText->naturalWidthValue(
-	) | rpl::skip(1) | rpl::start_with_next([=] {
-		updateSelectionControlsGeometry(width());
-	}, _selectionText->lifetime());
-
 	_forward = wrap(Ui::CreateChild<Ui::FadeWrap<Ui::IconButton>>(
 		this,
 		object_ptr<Ui::IconButton>(this, _st.mediaForward),
@@ -725,18 +715,16 @@ void TopBar::createSelectionControls() {
 			this,
 			object_ptr<Ui::IconButton>(
 				this,
-				_allStoriesInProfile ? _st.storiesArchive : _st.storiesSave),
+				_storiesArchive ? _st.storiesSave : _st.storiesArchive),
 			st::infoTopBarScale));
 	registerToggleControlCallback(
 		_toggleStoryInProfile.data(),
 		[this] { return selectionMode() && _canToggleStoryPin; });
 	_toggleStoryInProfile->setDuration(st::infoTopBarDuration);
 	_toggleStoryInProfile->entity()->clicks(
-	) | rpl::map([=] {
-		return _allStoriesInProfile
-			? SelectionAction::ToggleStoryToArchive
-			: SelectionAction::ToggleStoryToProfile;
-	}) | rpl::start_to_stream(
+	) | rpl::map_to(
+		SelectionAction::ToggleStoryInProfile
+	) | rpl::start_to_stream(
 		_selectionActionRequests,
 		_cancelSelection->lifetime());
 	_toggleStoryInProfile->entity()->setVisible(_canToggleStoryPin);
@@ -784,12 +772,6 @@ bool TopBar::computeCanToggleStoryPin() const {
 	return ranges::all_of(
 		_selectedItems.list,
 		&SelectedItem::canToggleStoryPin);
-}
-
-bool TopBar::computeAllStoriesInProfile() const {
-	return ranges::all_of(
-		_selectedItems.list,
-		&SelectedItem::storyInProfile);
 }
 
 Ui::StringWithNumbers TopBar::generateSelectedText() const {

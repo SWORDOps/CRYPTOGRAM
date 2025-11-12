@@ -10,34 +10,43 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <rpl/combine.h>
 #include <rpl/combine_previous.h>
 #include <rpl/flatten_latest.h>
+#include "info/info_memento.h"
 #include "info/info_controller.h"
 #include "info/profile/info_profile_widget.h"
+#include "info/profile/info_profile_text.h"
+#include "info/profile/info_profile_values.h"
 #include "info/profile/info_profile_cover.h"
 #include "info/profile/info_profile_icon.h"
 #include "info/profile/info_profile_members.h"
 #include "info/profile/info_profile_actions.h"
 #include "info/media/info_media_buttons.h"
+#include "boxes/abstract_box.h"
+#include "boxes/add_contact_box.h"
 #include "data/data_changes.h"
-#include "data/data_channel.h"
 #include "data/data_forum_topic.h"
-#include "data/data_peer.h"
 #include "data/data_photo.h"
 #include "data/data_file_origin.h"
-#include "data/data_user.h"
-#include "data/data_saved_music.h"
-#include "data/data_saved_sublist.h"
+#include "ui/boxes/confirm_box.h"
+#include "mainwidget.h"
 #include "main/main_session.h"
 #include "apiwrap.h"
 #include "api/api_peer_photo.h"
+#include "window/main_window.h"
+#include "window/window_session_controller.h"
+#include "storage/storage_shared_media.h"
 #include "lang/lang_keys.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/scroll_area.h"
 #include "ui/widgets/shadow.h"
-#include "ui/wrap/vertical_layout.h"
+#include "ui/widgets/box_content_divider.h"
 #include "ui/wrap/slide_wrap.h"
+#include "ui/wrap/vertical_layout.h"
 #include "ui/ui_utility.h"
+#include "data/data_channel.h"
+#include "data/data_shared_media.h"
 #include "styles/style_info.h"
+#include "styles/style_boxes.h"
 
 namespace Info {
 namespace Profile {
@@ -51,7 +60,6 @@ InnerWidget::InnerWidget(
 , _peer(_controller->key().peer())
 , _migrated(_controller->migrated())
 , _topic(_controller->key().topic())
-, _sublist(_controller->key().sublist())
 , _content(setupContent(this, origin)) {
 	_content->heightValue(
 	) | rpl::start_with_next([this](int height) {
@@ -81,14 +89,14 @@ object_ptr<Ui::RpWidget> InnerWidget::setupContent(
 	}
 
 	auto result = object_ptr<Ui::VerticalLayout>(parent);
-	_cover = AddCover(result, _controller, _peer, _topic, _sublist);
+	_cover = AddCover(result, _controller, _peer, _topic);
 	if (_topic && _topic->creating()) {
 		return result;
 	}
 
-	AddDetails(result, _controller, _peer, _topic, _sublist, origin);
+	AddDetails(result, _controller, _peer, _topic, origin);
 	result->add(setupSharedMedia(result.data()));
-	if (_topic || _sublist) {
+	if (_topic) {
 		return result;
 	}
 	{
@@ -105,9 +113,7 @@ object_ptr<Ui::RpWidget> InnerWidget::setupContent(
 		result->add(std::move(actions));
 	}
 	if (_peer->isChat() || _peer->isMegagroup()) {
-		if (!_peer->isMonoforum()) {
-			setupMembers(result.data());
-		}
+		setupMembers(result.data());
 	}
 	return result;
 }
@@ -165,8 +171,7 @@ object_ptr<Ui::RpWidget> InnerWidget::setupSharedMedia(
 			content,
 			_controller,
 			_peer,
-			_topic ? _topic->rootId() : MsgId(),
-			_sublist ? _sublist->sublistPeer()->id : PeerId(),
+			_topic ? _topic->rootId() : 0,
 			_migrated,
 			type,
 			tracker);
@@ -188,13 +193,13 @@ object_ptr<Ui::RpWidget> InnerWidget::setupSharedMedia(
 			icon,
 			st::infoSharedMediaButtonIconPosition);
 	};
-	const auto addSimilarPeersButton = [&](
-			not_null<PeerData*> peer,
+	const auto addSimilarChannelsButton = [&](
+			not_null<ChannelData*> channel,
 			const style::icon &icon) {
-		auto result = Media::AddSimilarPeersButton(
+		auto result = Media::AddSimilarChannelsButton(
 			content,
 			_controller,
-			peer,
+			channel,
 			tracker);
 		object_ptr<Profile::FloatingIcon>(
 			result,
@@ -231,12 +236,12 @@ object_ptr<Ui::RpWidget> InnerWidget::setupSharedMedia(
 			st::infoSharedMediaButtonIconPosition);
 	};
 	auto addPeerGiftsButton = [&](
-			not_null<PeerData*> peer,
+			not_null<UserData*> user,
 			const style::icon &icon) {
 		auto result = Media::AddPeerGiftsButton(
 			content,
 			_controller,
-			peer,
+			user,
 			tracker);
 		object_ptr<Profile::FloatingIcon>(
 			result,
@@ -249,7 +254,9 @@ object_ptr<Ui::RpWidget> InnerWidget::setupSharedMedia(
 		if (user && !GetEnhancedBool("hide_stories")) {
 			addStoriesButton(_peer, st::infoIconMediaStories);
 		}
-		addPeerGiftsButton(_peer, st::infoIconMediaGifts);
+		if (const auto user = _peer->asUser()) {
+			addPeerGiftsButton(user, st::infoIconMediaGifts);
+		}
 		addSavedSublistButton(_peer, st::infoIconMediaSaved);
 	}
 	addMediaButton(MediaType::Photo, st::infoIconMediaPhoto);
@@ -259,13 +266,10 @@ object_ptr<Ui::RpWidget> InnerWidget::setupSharedMedia(
 	addMediaButton(MediaType::Link, st::infoIconMediaLink);
 	addMediaButton(MediaType::RoundVoiceFile, st::infoIconMediaVoice);
 	addMediaButton(MediaType::GIF, st::infoIconMediaGif);
-	if (const auto bot = _peer->asBot()) {
-		addCommonGroupsButton(bot, st::infoIconMediaGroup);
-		addSimilarPeersButton(bot, st::infoIconMediaBot);
-	} else if (const auto channel = _peer->asBroadcast()) {
-		addSimilarPeersButton(channel, st::infoIconMediaChannel);
-	} else if (const auto user = _peer->asUser()) {
+	if (user) {
 		addCommonGroupsButton(user, st::infoIconMediaGroup);
+	} else if (const auto channel = _peer->asChannel()) {
+		addSimilarChannelsButton(channel, st::infoIconMediaChannel);
 	}
 
 	auto result = object_ptr<Ui::SlideWrap<Ui::VerticalLayout>>(

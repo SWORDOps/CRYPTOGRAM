@@ -30,21 +30,11 @@ public:
 		Cancel,
 		Slowmode,
 	};
-	struct State {
-		Type type = Type::Send;
-		int slowmodeDelay = 0;
-		int starsToSend = 0;
-
-		friend inline constexpr auto operator<=>(State, State) = default;
-		friend inline constexpr bool operator==(State, State) = default;
-	};
 	[[nodiscard]] Type type() const {
-		return _state.type;
+		return _type;
 	}
-	[[nodiscard]] State state() const {
-		return _state;
-	}
-	void setState(State state);
+	void setType(Type state);
+	void setSlowmodeDelay(int seconds);
 	void finishAnimating();
 
 protected:
@@ -54,15 +44,8 @@ protected:
 	QPoint prepareRippleStartPosition() const override;
 
 private:
-	struct StarsGeometry {
-		QRect inner;
-		QRect rounded;
-		QRect outer;
-	};
 	[[nodiscard]] QPixmap grabContent();
-	void updateSize();
-
-	[[nodiscard]] StarsGeometry starsGeometry() const;
+	[[nodiscard]] bool isSlowmode() const;
 
 	void paintRecord(QPainter &p, bool over);
 	void paintRound(QPainter &p, bool over);
@@ -71,18 +54,17 @@ private:
 	void paintSend(QPainter &p, bool over);
 	void paintSchedule(QPainter &p, bool over);
 	void paintSlowmode(QPainter &p);
-	void paintStarsToSend(QPainter &p, bool over);
 
 	const style::SendButton &_st;
 
-	State _state;
+	Type _type = Type::Send;
+	Type _afterSlowmodeType = Type::Send;
 	QPixmap _contentFrom, _contentTo;
 
-	Ui::Animations::Simple _stateChangeAnimation;
-	int _stateChangeFromWidth = 0;
+	Ui::Animations::Simple _a_typeChanged;
 
+	int _slowmodeDelay = 0;
 	QString _slowmodeDelayText;
-	Ui::Text::String _starsToSendText;
 
 };
 

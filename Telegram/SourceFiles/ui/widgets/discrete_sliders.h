@@ -10,7 +10,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/rp_widget.h"
 #include "ui/round_rect.h"
 #include "ui/effects/animations.h"
-#include "ui/text/text.h"
 
 namespace style {
 struct TextStyle;
@@ -33,12 +32,11 @@ public:
 	void addSection(const QString &label);
 	void addSection(
 		const TextWithEntities &label,
-		Text::MarkedContext context = {});
+		const std::any &context = {});
 	void setSections(const std::vector<QString> &labels);
 	void setSections(
 		const std::vector<TextWithEntities> &labels,
-		Text::MarkedContext context = {},
-		Fn<bool()> paused = nullptr);
+		const std::any &context = {});
 	int activeSection() const {
 		return _activeIndex;
 	}
@@ -51,9 +49,6 @@ public:
 	[[nodiscard]] rpl::producer<int> sectionActivated() const {
 		return _sectionActivated.events();
 	}
-
-	[[nodiscard]] int sectionsCount() const;
-	[[nodiscard]] int lookupSectionLeft(int index) const;
 
 protected:
 	void timerEvent(QTimerEvent *e) override;
@@ -68,9 +63,9 @@ protected:
 		Section(
 			const TextWithEntities &label,
 			const style::TextStyle &st,
-			const Text::MarkedContext &context);
+			const std::any &context);
 
-		Text::String label;
+		Ui::Text::String label;
 		std::unique_ptr<RippleAnimation> ripple;
 		int left = 0;
 		int width = 0;
@@ -102,9 +97,7 @@ protected:
 
 	void setSelectOnPress(bool selectOnPress);
 
-	[[nodiscard]] std::vector<Section> &sectionsRef();
-
-	[[nodiscard]] bool paused() const;
+	std::vector<Section> &sectionsRef();
 
 private:
 	void activateCallback();
@@ -115,7 +108,6 @@ private:
 	void setSelectedSection(int index);
 
 	std::vector<Section> _sections;
-	Fn<bool()> _paused;
 	int _activeIndex = 0;
 	bool _selectOnPress = true;
 	bool _snapToLabel = false;

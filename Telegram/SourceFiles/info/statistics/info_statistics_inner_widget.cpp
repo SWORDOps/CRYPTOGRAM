@@ -590,29 +590,30 @@ void FillLoading(
 	content->add(std::move(icon.widget));
 
 	content->add(
-		object_ptr<Ui::FlatLabel>(
+		object_ptr<Ui::CenterWrap<>>(
 			content,
-			(type == LoadingType::Boosts)
-				? tr::lng_stats_boosts_loading()
-				: (type == LoadingType::Earn)
-				? tr::lng_stats_earn_loading()
-				: tr::lng_stats_loading(),
-			st::changePhoneTitle),
-		st::changePhoneTitlePadding + st::boxRowPadding,
-		style::al_top);
+			object_ptr<Ui::FlatLabel>(
+				content,
+				(type == LoadingType::Boosts)
+					? tr::lng_stats_boosts_loading()
+					: (type == LoadingType::Earn)
+					? tr::lng_stats_earn_loading()
+					: tr::lng_stats_loading(),
+				st::changePhoneTitle)),
+		st::changePhoneTitlePadding + st::boxRowPadding);
 
 	content->add(
-		object_ptr<Ui::FlatLabel>(
+		object_ptr<Ui::CenterWrap<>>(
 			content,
-			(type == LoadingType::Boosts)
-				? tr::lng_stats_boosts_loading_subtext()
-				: (type == LoadingType::Earn)
-				? tr::lng_stats_earn_loading_subtext()
-				: tr::lng_stats_loading_subtext(),
-			st::statisticsLoadingSubtext),
-		st::changePhoneDescriptionPadding + st::boxRowPadding,
-		style::al_top
-	)->setTryMakeSimilarLines(true);
+			object_ptr<Ui::FlatLabel>(
+				content,
+				(type == LoadingType::Boosts)
+					? tr::lng_stats_boosts_loading_subtext()
+					: (type == LoadingType::Earn)
+					? tr::lng_stats_earn_loading_subtext()
+					: tr::lng_stats_loading_subtext(),
+				st::statisticsLoadingSubtext)),
+		st::changePhoneDescriptionPadding + st::boxRowPadding);
 
 	Ui::AddSkip(content, st::settingsBlockedListIconPadding.top());
 }
@@ -956,3 +957,4 @@ void InnerWidget::showFinished() {
 }
 
 } // namespace Info::Statistics
+

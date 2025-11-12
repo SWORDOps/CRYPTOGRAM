@@ -49,7 +49,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_chat_filters.h"
 #include "data/data_folder.h"
 #include "data/data_forum.h"
-#include "data/data_saved_messages.h"
 #include "data/data_saved_sublist.h"
 #include "data/data_session.h"
 #include "data/data_stories.h"
@@ -59,7 +58,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_changes.h"
 #include "data/data_forum_topic.h"
 #include "data/data_send_action.h"
-#include "dialogs/dialogs_main_list.h"
 #include "chat_helpers/emoji_interactions.h"
 #include "base/unixtime.h"
 #include "support/support_helper.h"
@@ -84,10 +82,8 @@ constexpr auto kEmojiInteractionSeenDuration = 3 * crl::time(1000);
 
 QString TopBarNameText(
 		not_null<PeerData*> peer,
-		const Dialogs::EntryState &state) {
-	if (state.section == Dialogs::EntryState::Section::SavedSublist
-		&& state.key.sublist()
-		&& state.key.sublist()->owningHistory()->peer->isSelf()) {
+		Dialogs::EntryState::Section section) {
+	if (section == Dialogs::EntryState::Section::SavedSublist) {
 		if (peer->isSelf()) {
 			return tr::lng_my_notes(tr::now);
 		} else if (peer->isSavedHiddenAuthor()) {
@@ -299,9 +295,7 @@ void TopBarWidget::refreshLang() {
 }
 
 void TopBarWidget::call() {
-	if (_controller->showFrozenError()) {
-		return;
-	} else if (const auto peer = _activeChat.key.peer()) {
+	if (const auto peer = _activeChat.key.peer()) {
 		if (const auto user = peer->asUser()) {
 			Core::App().calls().startOutgoingCall(user, false);
 		}
@@ -309,9 +303,7 @@ void TopBarWidget::call() {
 }
 
 void TopBarWidget::groupCall() {
-	if (_controller->showFrozenError()) {
-		return;
-	} else if (const auto peer = _activeChat.key.peer()) {
+	if (const auto peer = _activeChat.key.peer()) {
 		if (HasGroupCallMenu(peer)) {
 			showGroupCallMenu(peer);
 		} else {
@@ -360,8 +352,8 @@ bool TopBarWidget::createMenu(not_null<Ui::IconButton*> button) {
 		this,
 		st::popupMenuExpandedSeparator);
 	_menu->setDestroyedCallback([
-			weak = base::make_weak(this),
-			weakButton = base::make_weak(button),
+			weak = Ui::MakeWeak(this),
+			weakButton = Ui::MakeWeak(button),
 			menu = _menu.get()] {
 		if (weak && weak->_menu == menu) {
 			if (weakButton) {
@@ -418,10 +410,6 @@ void TopBarWidget::toggleInfoSection() {
 					(_activeChat.key.topic()
 						? std::make_shared<Info::Memento>(
 							_activeChat.key.topic())
-						: (_activeChat.key.sublist()
-							&& _activeChat.key.sublist()->parentChat())
-						? std::make_shared<Info::Memento>(
-							_activeChat.key.sublist())
 						: Info::Memento::Default(_activeChat.key.peer())),
 					Window::SectionShow().withThirdColumn());
 			} else {
@@ -518,15 +506,9 @@ void TopBarWidget::paintTopBar(Painter &p) {
 	const auto sublist = _activeChat.key.sublist();
 	const auto topic = _activeChat.key.topic();
 	const auto history = _activeChat.key.history();
-	const auto broadcastForMonoforum = history
-		? history->peer->monoforumBroadcast()
-		: nullptr;
-	const auto namePeer = broadcastForMonoforum
-		? broadcastForMonoforum
-		: history
+	const auto namePeer = history
 		? history->peer.get()
-		: sublist
-		? sublist->sublistPeer().get()
+		: sublist ? sublist->peer().get()
 		: nullptr;
 	if (topic && _activeChat.section == Section::Replies) {
 		p.setPen(st::dialogsNameFg);
@@ -605,7 +587,7 @@ void TopBarWidget::paintTopBar(Painter &p) {
 			_titleNameVersion = namePeer->nameVersion();
 			_title.setText(
 				st::msgNameStyle,
-				TopBarNameText(namePeer, _activeChat),
+				TopBarNameText(namePeer, _activeChat.section),
 				Ui::NameTextOptions());
 		}
 		if (const auto info = namePeer->botVerifyDetails()) {
@@ -632,7 +614,6 @@ void TopBarWidget::paintTopBar(Painter &p) {
 			.verified = &st::dialogsVerifiedIcon,
 			.premium = &st::dialogsPremiumIcon.icon,
 			.scam = &st::attentionButtonFg,
-			.direct = &st::windowSubTextFg,
 			.premiumFg = &st::dialogsVerifiedIconBg,
 			.customEmojiRepaint = [=] { update(); },
 			.now = now,
@@ -778,7 +759,9 @@ void TopBarWidget::infoClicked() {
 	} else if (const auto topic = key.topic()) {
 		_controller->showSection(std::make_shared<Info::Memento>(topic));
 	} else if (const auto sublist = key.sublist()) {
-		_controller->showSection(std::make_shared<Info::Memento>(sublist));
+		_controller->showSection(std::make_shared<Info::Memento>(
+			_controller->session().user(),
+			Info::Section(Storage::SharedMediaType::Photo)));
 	} else if (key.peer()->savedSublistsInfo()) {
 		_controller->showSection(std::make_shared<Info::Memento>(
 			key.peer(),
@@ -854,12 +837,9 @@ void TopBarWidget::setActiveChat(
 
 			if (const auto channel = peer->asChannel()) {
 				if (channel->canEditStories()
-					&& !channel->owner().stories().albumIdsCountKnown(
-						channel->id,
-						Data::kStoriesAlbumIdArchive)) {
-					channel->owner().stories().albumIdsLoadMore(
-						channel->id,
-						Data::kStoriesAlbumIdArchive);
+					&& !channel->owner().stories().archiveCountKnown(
+						channel->id)) {
+					channel->owner().stories().archiveLoadMore(channel->id);
 				}
 			}
 		}
@@ -876,7 +856,7 @@ void TopBarWidget::setActiveChat(
 
 		if (const auto topic = _activeChat.key.topic()) {
 			Info::Profile::NameValue(
-				topic->peer()
+				topic->channel()
 			) | rpl::start_with_next([=](const QString &name) {
 				_titlePeerText.setText(st::dialogsTextStyle, name);
 				_titlePeerTextOnline = false;
@@ -962,16 +942,10 @@ void TopBarWidget::refreshInfoButton() {
 			&& !rootChatsListBar())) {
 		_info.destroy();
 	} else if (const auto peer = _activeChat.key.peer()) {
-		const auto sublist = _activeChat.key.sublist();
-		const auto infoPeer = sublist ? sublist->sublistPeer().get() : peer;
 		auto info = object_ptr<Ui::UserpicButton>(
 			this,
-			_controller,
-			infoPeer->userpicPaintingPeer(),
-			Ui::UserpicButton::Role::Custom,
-			Ui::UserpicButton::Source::PeerPhoto,
-			st::topBarInfoButton,
-			infoPeer->userpicShape());
+			peer,
+			st::topBarInfoButton);
 		info->showSavedMessagesOnSelf(true);
 		_info.destroy();
 		_info = std::move(info);
@@ -992,7 +966,8 @@ int TopBarWidget::countSelectedButtonsTop(float64 selectedShown) {
 
 void TopBarWidget::updateSearchVisibility() {
 	const auto searchAllowedMode = (_activeChat.section == Section::History)
-		|| (_activeChat.section == Section::Replies)
+		|| (_activeChat.section == Section::Replies
+			&& _activeChat.key.topic())
 		|| (_activeChat.section == Section::SavedSublist
 			&& _activeChat.key.sublist());
 	_search->setVisible(searchAllowedMode && !_chooseForReportReason);
@@ -1212,9 +1187,6 @@ void TopBarWidget::updateControlsVisibility() {
 	const auto hasPollsMenu = (_activeChat.key.peer()
 		&& _activeChat.key.peer()->canCreatePolls())
 		|| (topic && Data::CanSend(topic, ChatRestriction::SendPolls));
-	const auto hasTodoListsMenu = (_activeChat.key.peer()
-		&& _activeChat.key.peer()->canCreateTodoLists())
-		|| (topic && Data::CanSend(topic, ChatRestriction::SendPolls));
 	const auto hasTopicMenu = [&] {
 		if (!topic || section != Section::Replies) {
 			return false;
@@ -1234,25 +1206,17 @@ void TopBarWidget::updateControlsVisibility() {
 		&& (section == Section::History
 			? true
 			: (section == Section::Scheduled)
-			? (hasPollsMenu || hasTodoListsMenu)
+			? hasPollsMenu
 			: (section == Section::Replies)
-			? (hasPollsMenu || hasTodoListsMenu || hasTopicMenu)
+			? (hasPollsMenu || hasTopicMenu)
 			: (section == Section::ChatsList)
 			? (_activeChat.key.peer() && _activeChat.key.peer()->isForum())
-			: (section == Section::SavedSublist)
-			? (_activeChat.key.peer()
-				&& _activeChat.key.peer()->isChannel()
-				&& _activeChat.key.peer()->owner().commonStarsPerMessage(
-					_activeChat.key.peer()->asChannel()))
 			: false);
 	const auto hasInfo = !_activeChat.key.folder()
 		&& (section == Section::History
 			? true
 			: (section == Section::Replies)
 			? (_activeChat.key.topic() != nullptr)
-			: (section == Section::SavedSublist)
-			? (_activeChat.key.sublist() != nullptr
-				&& _activeChat.key.sublist()->parentChat())
 			: false);
 	updateSearchVisibility();
 	if (_searchMode) {
@@ -1280,9 +1244,6 @@ void TopBarWidget::updateControlsVisibility() {
 			return false;
 		}
 		if (const auto peer = _activeChat.key.peer()) {
-			if (peer->isMonoforum()) {
-				return false;
-			}
 			if (peer->isMegagroup() || peer->isChannel()) {
 				const auto channel = peer->asChannel();
 				if (channel->hasAdminRights() || channel->amCreator()) {
@@ -1298,13 +1259,9 @@ void TopBarWidget::updateControlsVisibility() {
 			return false;
 		}
 		if (const auto peer = _activeChat.key.peer()) {
-			if (peer->isMonoforum()) {
-				return false;
-			}
 			if (peer->isMegagroup()) {
 				return true;
-			} 
-			if (peer->isChannel()) {
+			} else if (peer->isChannel()) {
 				const auto channel = peer->asChannel();
 				if (channel->hasAdminRights() || channel->amCreator()) {
 					return true;
@@ -1324,7 +1281,6 @@ void TopBarWidget::updateControlsVisibility() {
 			if (const auto user = peer->asUser()) {
 				return !user->isSelf()
 					&& !user->isBot()
-					&& !user->isInaccessible()
 					&& !peer->isServiceUser();
 			}
 		}
@@ -1365,8 +1321,7 @@ void TopBarWidget::updateMembersShowArea() {
 		} else if (const auto chat = peer->asChat()) {
 			return chat->amIn();
 		} else if (const auto megagroup = peer->asMegagroup()) {
-			return !megagroup->isMonoforum()
-				&& megagroup->canViewMembers()
+			return megagroup->canViewMembers()
 				&& (megagroup->membersCount()
 					< megagroup->session().serverConfig().chatSizeMax);
 		}
@@ -1678,7 +1633,7 @@ void TopBarWidget::refreshUnreadBadge() {
 			geometry.y() + st::titleUnreadCounterTop);
 	}, _unreadBadge->lifetime());
 
-	_unreadBadge->setVisible(!rootChatsListBar());
+	_unreadBadge->show();
 	_unreadBadge->setAttribute(Qt::WA_TransparentForMouseEvents);
 	_controller->session().data().unreadBadgeChanges(
 	) | rpl::start_with_next([=] {
@@ -1825,14 +1780,6 @@ void TopBarWidget::updateOnlineDisplay() {
 				text = tr::lng_group_status(tr::now);
 			}
 		}
-	} else if (const auto monoforum = peer->monoforum()) {
-		const auto chats = monoforum->chatsList();
-		const auto count = chats->fullSize().current();
-		text = (count > 0)
-			? tr::lng_filters_chats_count(tr::now, lt_count, count)
-			: tr::lng_filters_no_chats(tr::now);
-	} else if (peer->isMonoforum()) {
-		text = tr::lng_chat_status_direct(tr::now);
 	} else if (const auto channel = peer->asChannel()) {
 		if (channel->isMegagroup()
 			&& channel->membersCount() > 0) {

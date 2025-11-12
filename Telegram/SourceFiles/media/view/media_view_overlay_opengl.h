@@ -21,9 +21,13 @@ class OverlayWidget::RendererGL final
 public:
 	explicit RendererGL(not_null<OverlayWidget*> owner);
 
-	void init(QOpenGLFunctions &f) override;
+	void init(
+		not_null<QOpenGLWidget*> widget,
+		QOpenGLFunctions &f) override;
 
-	void deinit(QOpenGLFunctions *f) override;
+	void deinit(
+		not_null<QOpenGLWidget*> widget,
+		QOpenGLFunctions *f) override;
 
 	void paint(
 		not_null<QOpenGLWidget*> widget,

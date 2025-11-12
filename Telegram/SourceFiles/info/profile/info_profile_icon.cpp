@@ -25,10 +25,14 @@ FloatingIcon::FloatingIcon(
 : RpWidget(parent)
 , _icon(&icon)
 , _point(position) {
-	setGeometry(QRect(
-		QPoint(0, 0),
-		QSize(_point.x() + _icon->width(), _point.y() + _icon->height())));
+	resize(
+		_point.x() + _icon->width(),
+		_point.y() + _icon->height());
 	setAttribute(Qt::WA_TransparentForMouseEvents);
+	parent->widthValue(
+	) | rpl::start_with_next(
+		[this] { moveToLeft(0, 0); },
+		lifetime());
 }
 
 void FloatingIcon::paintEvent(QPaintEvent *e) {

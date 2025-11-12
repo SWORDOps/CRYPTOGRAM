@@ -73,7 +73,7 @@ void ConnectStarRef(
 
 [[nodiscard]] object_ptr<Ui::RpWidget> CreateLinkIcon(
 		not_null<QWidget*> parent,
-		not_null<Main::Session*> session,
+		not_null<UserData*> bot,
 		int users) {
 	auto result = object_ptr<Ui::RpWidget>(parent);
 	const auto raw = result.data();
@@ -92,7 +92,7 @@ void ConnectStarRef(
 	const auto inner = QSize(innerSide, innerSide);
 	const auto state = raw->lifetime().make_state<State>(State{
 		.icon = ChatHelpers::GenerateLocalTgsSticker(
-			session,
+			&bot->session(),
 			u"starref_link"_q),
 	});
 	state->icon->overrideEmojiUsesTextColor(true);
@@ -390,12 +390,14 @@ void AddFullWidthButtonFooter(
 
 object_ptr<Ui::AbstractButton> MakeLinkLabel(
 		not_null<QWidget*> parent,
-		const QString &link,
-		const style::InputField *stOverride) {
-	const auto &st = stOverride ? *stOverride : st::dialogsFilter;
-	const auto text = Ui::Text::StripUrlProtocol(link);
-	const auto margins = st.textMargins;
-	const auto height = st.heightMin;
+		const QString &link) {
+	const auto text = link.startsWith(u"https://"_q)
+		? link.mid(8)
+		: link.startsWith(u"http://"_q)
+		? link.mid(7)
+		: link;
+	const auto margins = st::dialogsFilter.textMargins;
+	const auto height = st::dialogsFilter.heightMin;
 	const auto skip = margins.left();
 
 	auto result = object_ptr<Ui::AbstractButton>(parent);
@@ -406,18 +408,18 @@ object_ptr<Ui::AbstractButton> MakeLinkLabel(
 		auto p = QPainter(raw);
 		auto hq = PainterHighQualityEnabler(p);
 		p.setPen(Qt::NoPen);
-		p.setBrush(st.textBg);
+		p.setBrush(st::dialogsFilter.textBg);
 		const auto radius = st::roundRadiusLarge;
 		p.drawRoundedRect(0, 0, raw->width(), height, radius, radius);
 
-		const auto font = st.style.font;
-		p.setPen(st.textFg);
+		const auto font = st::dialogsFilter.style.font;
+		p.setPen(st::dialogsFilter.textFg);
 		p.setFont(font);
 		const auto available = raw->width() - skip * 2;
 		p.drawText(
 			QRect(skip, margins.top(), available, font->height),
 			style::al_top,
-			font->elided(text, available));
+			font->elided(link, available));
 	}, raw->lifetime());
 
 	return result;
@@ -439,15 +441,16 @@ object_ptr<Ui::BoxContent> StarRefLinkBox(
 		});
 
 		box->addRow(
-			CreateLinkIcon(box, &bot->session(), row.state.users),
+			CreateLinkIcon(box, bot, row.state.users),
 			st::boxRowPadding + st::starrefJoinUserpicsPadding);
 		box->addRow(
-			object_ptr<Ui::FlatLabel>(
+			object_ptr<Ui::CenterWrap<Ui::FlatLabel>>(
 				box,
-				tr::lng_star_ref_link_title(),
-				st::boxTitle),
-			st::boxRowPadding + st::starrefJoinTitlePadding,
-			style::al_top);
+				object_ptr<Ui::FlatLabel>(
+					box,
+					tr::lng_star_ref_link_title(),
+					st::boxTitle)),
+			st::boxRowPadding + st::starrefJoinTitlePadding);
 		box->addRow(
 			object_ptr<Ui::FlatLabel>(
 				box,
@@ -465,7 +468,7 @@ object_ptr<Ui::BoxContent> StarRefLinkBox(
 						FormatForProgramDuration(program.durationMonths),
 						Ui::Text::WithEntities),
 				st::starrefCenteredText),
-			style::al_top);
+			st::boxRowPadding);
 
 		Ui::AddSkip(box->verticalLayout(), st::defaultVerticalListSkip * 3);
 
@@ -473,8 +476,7 @@ object_ptr<Ui::BoxContent> StarRefLinkBox(
 			object_ptr<Ui::FlatLabel>(
 				box,
 				tr::lng_star_ref_link_recipient(),
-				st::starrefCenteredText),
-			style::al_top);
+				st::starrefCenteredText));
 		Ui::AddSkip(box->verticalLayout());
 		box->addRow(object_ptr<Ui::AbstractButton>::fromRaw(
 			MakePeerBubbleButton(box, peer).release()
@@ -545,7 +547,7 @@ object_ptr<Ui::BoxContent> JoinStarRefBox(
 
 		struct State {
 			rpl::variable<not_null<PeerData*>> recipient;
-			base::weak_qptr<Ui::GenericBox> weak;
+			QPointer<Ui::GenericBox> weak;
 			bool sent = false;
 		};
 		const auto state = std::make_shared<State>(State{
@@ -572,12 +574,13 @@ object_ptr<Ui::BoxContent> JoinStarRefBox(
 		}, box->lifetime());
 
 		box->addRow(
-			object_ptr<Ui::FlatLabel>(
+			object_ptr<Ui::CenterWrap<Ui::FlatLabel>>(
 				box,
-				tr::lng_star_ref_title(),
-				st::boxTitle),
-			st::boxRowPadding + st::starrefJoinTitlePadding,
-			style::al_top);
+				object_ptr<Ui::FlatLabel>(
+					box,
+					tr::lng_star_ref_title(),
+					st::boxTitle)),
+			st::boxRowPadding + st::starrefJoinTitlePadding);
 		box->addRow(
 			object_ptr<Ui::FlatLabel>(
 				box,
@@ -591,13 +594,20 @@ object_ptr<Ui::BoxContent> JoinStarRefBox(
 					FormatForProgramDuration(program.durationMonths),
 					Ui::Text::WithEntities),
 				st::starrefCenteredText),
-			style::al_top);
+			st::boxRowPadding);
 
 		Ui::AddSkip(box->verticalLayout(), st::defaultVerticalListSkip * 3);
 		if (const auto average = program.revenuePerUser) {
 			const auto layout = box->verticalLayout();
-			auto text = Ui::Text::Colorized(Ui::CreditsEmoji());
-			text.append(Lang::FormatCreditsAmountRounded(average));
+			const auto session = &initialRecipient->session();
+			const auto makeContext = [session](Fn<void()> update) {
+				return Core::MarkedTextContext{
+					.session = session,
+					.customEmojiRepaint = std::move(update),
+				};
+			};
+			auto text = Ui::Text::Colorized(Ui::CreditsEmoji(session));
+			text.append(Lang::FormatStarsAmountRounded(average));
 			layout->add(
 				object_ptr<Ui::FlatLabel>(
 					box,
@@ -607,9 +617,9 @@ object_ptr<Ui::BoxContent> JoinStarRefBox(
 							Ui::Text::Wrapped(text, EntityType::Bold)),
 						Ui::Text::WithEntities),
 					st::starrefRevenueText,
-					st::defaultPopupMenu),
-				st::boxRowPadding,
-				style::al_top);
+					st::defaultPopupMenu,
+					makeContext),
+				st::boxRowPadding);
 			Ui::AddSkip(layout, st::defaultVerticalListSkip);
 		}
 
@@ -631,8 +641,7 @@ object_ptr<Ui::BoxContent> JoinStarRefBox(
 				object_ptr<Ui::FlatLabel>(
 					box,
 					tr::lng_star_ref_link_recipient(),
-					st::starrefCenteredText),
-				style::al_top);
+					st::starrefCenteredText));
 			Ui::AddSkip(box->verticalLayout());
 			const auto recipientWrap = box->addRow(
 				object_ptr<Ui::VerticalLayout>(box),
@@ -704,7 +713,7 @@ object_ptr<Ui::BoxContent> JoinStarRefBox(
 					}
 				}
 				show->show(StarRefLinkBox(info, recipient));
-				if (const auto strong = state->weak.get()) {
+				if (const auto strong = state->weak.data()) {
 					strong->closeBox();
 				}
 			}, [=](const QString &error) {
@@ -907,7 +916,7 @@ std::unique_ptr<Ui::AbstractButton> MakePeerBubbleButton(
 			userpic->moveToLeft(left, 0, outer.width());
 			if (right) {
 				right->moveToLeft(
-					left + *width - padding.right() - rwidth,
+					left + *width - padding.right() - right->width(),
 					padding.top(),
 					outer.width());
 			}
@@ -974,11 +983,11 @@ void ConfirmUpdate(
 				object_ptr<Ui::FlatLabel>(
 					table,
 					std::move(label),
-					table->st().defaultLabel),
+					st::giveawayGiftCodeLabel),
 				object_ptr<Ui::FlatLabel>(
 					table,
 					value,
-					table->st().defaultValue,
+					st::giveawayGiftCodeValue,
 					st::defaultPopupMenu),
 				st::giveawayGiftCodeLabelMargin,
 				st::giveawayGiftCodeValueMargin);
@@ -1053,13 +1062,6 @@ ConnectedBots Parse(
 		});
 	}
 	return result;
-}
-
-object_ptr<Ui::RpWidget> CreateLinkHeaderIcon(
-		not_null<QWidget*> parent,
-		not_null<Main::Session*> session,
-		int usersCount) {
-	return CreateLinkIcon(parent, session, usersCount);
 }
 
 } // namespace Info::BotStarRef

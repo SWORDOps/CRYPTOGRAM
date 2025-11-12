@@ -40,7 +40,7 @@ public:
 	EmojiStatusPanel();
 	~EmojiStatusPanel();
 
-	void setChooseFilter(Fn<bool(EmojiStatusId)> filter);
+	void setChooseFilter(Fn<bool(DocumentId)> filter);
 
 	void show(
 		not_null<Window::SessionController*> controller,
@@ -52,17 +52,16 @@ public:
 		not_null<Window::SessionController*> controller;
 		not_null<QWidget*> button;
 		Data::CustomEmojiSizeTag animationSizeTag = {};
-		EmojiStatusId ensureAddedEmojiId;
+		DocumentId ensureAddedEmojiId = 0;
 		Fn<QColor()> customTextColor;
 		bool backgroundEmojiMode = false;
 		bool channelStatusMode = false;
-		bool withCollectibles = false;
 	};
 	void show(Descriptor &&descriptor);
 	void repaint();
 
 	struct CustomChosen {
-		EmojiStatusId id;
+		DocumentId id = 0;
 		TimeId until = 0;
 	};
 	[[nodiscard]] rpl::producer<CustomChosen> someCustomChosen() const {
@@ -75,17 +74,17 @@ private:
 	void create(const Descriptor &descriptor);
 	[[nodiscard]] bool filter(
 		not_null<Window::SessionController*> controller,
-		EmojiStatusId chosenId) const;
+		DocumentId chosenId) const;
 
 	void startAnimation(
 		not_null<Data::Session*> owner,
 		not_null<Ui::RpWidget*> body,
-		EmojiStatusId statusId,
+		DocumentId statusId,
 		Ui::MessageSendingAnimationFrom from);
 
 	base::unique_qptr<ChatHelpers::TabbedPanel> _panel;
 	Fn<QColor()> _customTextColor;
-	Fn<bool(EmojiStatusId)> _chooseFilter;
+	Fn<bool(DocumentId)> _chooseFilter;
 	QPointer<QWidget> _panelButton;
 	std::unique_ptr<Ui::EmojiFlyAnimation> _animation;
 	rpl::event_stream<CustomChosen> _someCustomChosen;

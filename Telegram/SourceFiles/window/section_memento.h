@@ -13,7 +13,6 @@ class LayerWidget;
 
 namespace Data {
 class ForumTopic;
-class SavedSublist;
 } // namespace Data
 
 namespace Window {
@@ -40,10 +39,6 @@ public:
 	}
 
 	[[nodiscard]] virtual Data::ForumTopic *topicForRemoveRequests() const {
-		return nullptr;
-	}
-	[[nodiscard]] virtual auto sublistForRemoveRequests() const
-	-> Data::SavedSublist* {
 		return nullptr;
 	}
 	[[nodiscard]] virtual rpl::producer<> removeRequests() const {

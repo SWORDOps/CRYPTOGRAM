@@ -14,7 +14,15 @@ namespace Ui {
 class CustomWidthSlider final : public SettingsSlider {
 public:
 	using Ui::SettingsSlider::SettingsSlider;
-	using SettingsSlider::setNaturalWidth;
+	void setNaturalWidth(int w) {
+		_naturalWidth = w;
+	}
+	int naturalWidth() const override {
+		return _naturalWidth;
+	}
+
+private:
+	int _naturalWidth = 0;
 
 };
 

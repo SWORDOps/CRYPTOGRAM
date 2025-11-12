@@ -79,19 +79,7 @@ namespace {
 	auto palettes = rpl::single(rpl::empty) | rpl::then(
 		style::PaletteChanged()
 	);
-	class QrWidget final : public Ui::RpWidget {
-	public:
-		using RpWidget::RpWidget;
-
-		QAccessible::Role accessibilityRole() override {
-			return QAccessible::Role::Graphic;
-		}
-		QString accessibilityName() override {
-			return tr::lng_intro_qr_title(tr::now);
-		}
-
-	};
-	auto result = Ui::CreateChild<QrWidget>(parent.get());
+	auto result = Ui::CreateChild<Ui::RpWidget>(parent.get());
 	const auto state = result->lifetime().make_state<State>(
 		[=] { result->update(); });
 	state->waiting.start();
@@ -209,24 +197,6 @@ QrWidget::QrWidget(
 	}, lifetime());
 }
 
-QString QrWidget::accessibilityName() {
-	return tr::lng_intro_qr_title(tr::now);
-}
-
-QString QrWidget::accessibilityDescription() {
-	const auto phrases = {
-		tr::lng_intro_qr_step1,
-		tr::lng_intro_qr_step2,
-		tr::lng_intro_qr_step3,
-	};
-	auto result = QString();
-	auto index = 0;
-	for (const auto &phrase : phrases) {
-		result.append(QString::number(++index)).append(". ").append(phrase(tr::now)).append('\n');
-	}
-	return result;
-}
-
 int QrWidget::errorTop() const {
 	return contentTop() + st::introQrErrorTop;
 }
@@ -328,19 +298,19 @@ void QrWidget::setupControls() {
 			contentTop() + st::introQrStepsTop);
 	}, steps->lifetime());
 
-	_skip = Ui::CreateChild<Ui::LinkButton>(
+	const auto skip = Ui::CreateChild<Ui::LinkButton>(
 		this,
 		tr::lng_intro_qr_skip(tr::now));
 	rpl::combine(
 		sizeValue(),
-		_skip->widthValue()
+		skip->widthValue()
 	) | rpl::start_with_next([=](QSize size, int skipWidth) {
-		_skip->moveToLeft(
+		skip->moveToLeft(
 			(size.width() - skipWidth) / 2,
 			contentTop() + st::introQrSkipTop);
-	}, _skip->lifetime());
+	}, skip->lifetime());
 
-	_skip->setClickedCallback([=] { submit(); });
+	skip->setClickedCallback([=] { submit(); });
 }
 
 void QrWidget::refreshCode() {
@@ -440,10 +410,6 @@ void QrWidget::sendCheckPasswordRequest() {
 void QrWidget::activate() {
 	Step::activate();
 	showChildren();
-
-	if (_skip) {
-		_skip->setFocus(Qt::OtherFocusReason);
-	}
 }
 
 void QrWidget::finished() {

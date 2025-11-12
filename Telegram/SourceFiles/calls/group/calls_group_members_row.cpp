@@ -138,52 +138,41 @@ void MembersRow::setSkipLevelUpdate(bool value) {
 	_skipLevelUpdate = value;
 }
 
-void MembersRow::updateStateInvited(bool calling) {
-	setVolume(Group::kDefaultVolume);
-	setState(calling ? State::Calling : State::Invited);
-	setSounding(false);
-	setSpeaking(false);
-	_mutedByMe = false;
-	_raisedHandRating = 0;
-	refreshStatus();
-}
-
-void MembersRow::updateStateWithAccess() {
-	setVolume(Group::kDefaultVolume);
-	setState(State::WithAccess);
-	setSounding(false);
-	setSpeaking(false);
-	_mutedByMe = false;
-	_raisedHandRating = 0;
-	refreshStatus();
-}
-
-void MembersRow::updateState(const Data::GroupCallParticipant &participant) {
-	setVolume(participant.volume);
-	if (!participant.muted
-		|| (participant.sounding && participant.ssrc != 0)
-		|| (participant.additionalSounding
-			&& GetAdditionalAudioSsrc(participant.videoParams) != 0)) {
-		setState(State::Active);
-		setSounding((participant.sounding && participant.ssrc != 0)
-			|| (participant.additionalSounding
-				&& GetAdditionalAudioSsrc(participant.videoParams) != 0));
-		setSpeaking((participant.speaking && participant.ssrc != 0)
-			|| (participant.additionalSpeaking
-				&& GetAdditionalAudioSsrc(participant.videoParams) != 0));
-		_mutedByMe = participant.mutedByMe;
+void MembersRow::updateState(
+		const Data::GroupCallParticipant *participant) {
+	setVolume(participant
+		? participant->volume
+		: Group::kDefaultVolume);
+	if (!participant) {
+		setState(State::Invited);
+		setSounding(false);
+		setSpeaking(false);
+		_mutedByMe = false;
 		_raisedHandRating = 0;
-	} else if (participant.canSelfUnmute) {
+	} else if (!participant->muted
+		|| (participant->sounding && participant->ssrc != 0)
+		|| (participant->additionalSounding
+			&& GetAdditionalAudioSsrc(participant->videoParams) != 0)) {
+		setState(State::Active);
+		setSounding((participant->sounding && participant->ssrc != 0)
+			|| (participant->additionalSounding
+				&& GetAdditionalAudioSsrc(participant->videoParams) != 0));
+		setSpeaking((participant->speaking && participant->ssrc != 0)
+			|| (participant->additionalSpeaking
+				&& GetAdditionalAudioSsrc(participant->videoParams) != 0));
+		_mutedByMe = participant->mutedByMe;
+		_raisedHandRating = 0;
+	} else if (participant->canSelfUnmute) {
 		setState(State::Inactive);
 		setSounding(false);
 		setSpeaking(false);
-		_mutedByMe = participant.mutedByMe;
+		_mutedByMe = participant->mutedByMe;
 		_raisedHandRating = 0;
 	} else {
 		setSounding(false);
 		setSpeaking(false);
-		_mutedByMe = participant.mutedByMe;
-		_raisedHandRating = participant.raisedHandRating;
+		_mutedByMe = participant->mutedByMe;
+		_raisedHandRating = participant->raisedHandRating;
 		setState(_raisedHandRating ? State::RaisedHand : State::Muted);
 	}
 	refreshStatus();
@@ -461,20 +450,6 @@ void MembersRow::paintMuteIcon(
 	_delegate->rowPaintIcon(p, iconRect, computeIconState(style));
 }
 
-QString MembersRow::generateName() {
-	const auto result = peer()->name();
-	return result.isEmpty()
-		? u"User #%1"_q.arg(peerToUser(peer()->id).bare)
-		: result;
-}
-
-QString MembersRow::generateShortName() {
-	const auto result = peer()->shortName();
-	return result.isEmpty()
-		? u"User #%1"_q.arg(peerToUser(peer()->id).bare)
-		: result;
-}
-
 auto MembersRow::generatePaintUserpicCallback(bool forceRound)
 -> PaintRoundImageCallback {
 	return [=](Painter &p, int x, int y, int outerWidth, int size) {
@@ -638,16 +613,11 @@ void MembersRow::paintComplexStatusText(
 	availableWidth -= skip;
 	const auto &font = st::normalFont;
 	const auto useAbout = !_about.isEmpty()
-		&& (_state != State::WithAccess)
-		&& (_state != State::Invited)
-		&& (_state != State::Calling)
 		&& (style != MembersRowStyle::Video)
 		&& ((_state == State::RaisedHand && !_raisedHandStatus)
 			|| (_state != State::RaisedHand && !_speaking));
 	if (!useAbout
 		&& _state != State::Invited
-		&& _state != State::Calling
-		&& _state != State::WithAccess
 		&& !_mutedByMe) {
 		paintStatusIcon(p, x, y, st, font, selected, narrowMode);
 
@@ -693,10 +663,6 @@ void MembersRow::paintComplexStatusText(
 				? tr::lng_group_call_muted_by_me_status(tr::now)
 				: _delegate->rowIsMe(peer())
 				? tr::lng_status_connecting(tr::now)
-				: (_state == State::WithAccess)
-				? tr::lng_group_call_blockchain_only_status(tr::now)
-				: (_state == State::Calling)
-				? tr::lng_group_call_calling_status(tr::now)
 				: tr::lng_group_call_invited_status(tr::now)));
 	}
 }
@@ -710,7 +676,6 @@ QSize MembersRow::rightActionSize() const {
 bool MembersRow::rightActionDisabled() const {
 	return _delegate->rowIsMe(peer())
 		|| (_state == State::Invited)
-		|| (_state == State::Calling)
 		|| !_delegate->rowCanMuteMembers();
 }
 
@@ -736,9 +701,7 @@ void MembersRow::rightActionPaint(
 		size.width(),
 		size.height(),
 		outerWidth);
-	if (_state == State::Invited
-		|| _state == State::Calling
-		|| _state == State::WithAccess) {
+	if (_state == State::Invited) {
 		_actionRipple = nullptr;
 	}
 	if (_actionRipple) {
@@ -768,7 +731,6 @@ MembersRowDelegate::IconState MembersRow::computeIconState(
 		.mutedByMe = _mutedByMe,
 		.raisedHand = (_state == State::RaisedHand),
 		.invited = (_state == State::Invited),
-		.calling = (_state == State::Calling),
 		.style = style,
 	};
 }

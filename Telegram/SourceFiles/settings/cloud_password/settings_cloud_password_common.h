@@ -11,6 +11,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/box_content_divider.h"
 
 namespace Ui {
+template <typename Widget>
+class CenterWrap;
 class FlatLabel;
 class InputField;
 class LinkButton;
@@ -32,7 +34,6 @@ struct StepData {
 	QString email;
 	int unconfirmedEmailLengthCode;
 	bool setOnlyRecoveryEmail = false;
-	bool suggestionValidate = false;
 
 	struct ProcessRecover {
 		bool setNewPassword = false;
@@ -59,7 +60,7 @@ void SetupHeader(
 	rpl::producer<QString> &&placeholder,
 	const QString &text);
 
-[[nodiscard]] not_null<Ui::InputField*> AddWrappedField(
+[[nodiscard]] not_null<Ui::CenterWrap<Ui::InputField>*> AddWrappedField(
 	not_null<Ui::VerticalLayout*> content,
 	rpl::producer<QString> &&placeholder,
 	const QString &text);
@@ -73,14 +74,14 @@ void SetupHeader(
 	rpl::producer<QString> &&text);
 
 [[nodiscard]] not_null<Ui::LinkButton*> AddLinkButton(
-	not_null<Ui::InputField*> input,
+	not_null<Ui::CenterWrap<Ui::InputField>*> wrap,
 	rpl::producer<QString> &&text);
 
 void AddSkipInsteadOfField(not_null<Ui::VerticalLayout*> content);
 void AddSkipInsteadOfError(not_null<Ui::VerticalLayout*> content);
 
 struct BottomButton {
-	base::weak_qptr<Ui::RpWidget> content;
+	QPointer<Ui::RpWidget> content;
 	rpl::producer<bool> isBottomFillerShown;
 };
 

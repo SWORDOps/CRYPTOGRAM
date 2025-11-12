@@ -93,7 +93,6 @@ public:
 	bool allowsFastShare() const override {
 		return true;
 	}
-	std::optional<PaidInformation> paidInformation() const override;
 	bool customHighlight() const override {
 		return true;
 	}

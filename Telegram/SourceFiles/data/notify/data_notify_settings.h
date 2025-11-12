@@ -21,6 +21,11 @@ class Thread;
 class Forum;
 class ForumTopic;
 
+enum class DefaultNotify {
+	User,
+	Group,
+	Broadcast,
+};
 [[nodiscard]] DefaultNotify DefaultNotifyType(
 	not_null<const PeerData*> peer);
 

@@ -75,10 +75,11 @@ void Hint::setupContent() {
 
 	Ui::AddSkip(content, st::settingLocalPasscodeDescriptionBottomSkip);
 
-	const auto newInput = AddWrappedField(
+	const auto wrap = AddWrappedField(
 		content,
 		tr::lng_cloud_password_hint(),
 		currentStepDataHint);
+	const auto newInput = wrap->entity();
 	const auto error = AddError(content, nullptr);
 	newInput->changes(
 	) | rpl::start_with_next([=] {
@@ -121,7 +122,7 @@ void Hint::setupContent() {
 	};
 
 	AddLinkButton(
-		newInput,
+		wrap,
 		tr::lng_settings_cloud_password_skip_hint()
 	)->setClickedCallback([=] {
 		save(QString());

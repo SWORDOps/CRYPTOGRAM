@@ -7,7 +7,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "calls/calls_panel.h"
 
-#include "boxes/peers/replace_boost_box.h" // CreateUserpicsWithMoreBadge
 #include "data/data_photo.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
@@ -16,15 +15,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_cloud_file.h"
 #include "data/data_changes.h"
 #include "calls/group/calls_group_common.h"
-#include "calls/group/calls_group_invite_controller.h"
 #include "calls/ui/calls_device_menu.h"
 #include "calls/calls_emoji_fingerprint.h"
-#include "calls/calls_instance.h"
 #include "calls/calls_signal_bars.h"
 #include "calls/calls_userpic.h"
 #include "calls/calls_video_bubble.h"
 #include "calls/calls_video_incoming.h"
-#include "calls/calls_window.h"
 #include "ui/platform/ui_platform_window_title.h"
 #include "ui/widgets/call_button.h"
 #include "ui/widgets/buttons.h"
@@ -46,10 +42,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/emoji_config.h"
 #include "ui/painter.h"
 #include "ui/rect.h"
-#include "ui/integration.h"
 #include "core/application.h"
 #include "lang/lang_keys.h"
-#include "main/session/session_show.h"
 #include "main/main_session.h"
 #include "apiwrap.h"
 #include "platform/platform_specific.h"
@@ -70,9 +64,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Calls {
 namespace {
-
-constexpr auto kHideControlsTimeout = 5 * crl::time(1000);
-constexpr auto kHideControlsQuickTimeout = 2 * crl::time(1000);
 
 [[nodiscard]] QByteArray BatterySvg(
 		const QSize &s,
@@ -102,56 +93,44 @@ constexpr auto kHideControlsQuickTimeout = 2 * crl::time(1000);
 Panel::Panel(not_null<Call*> call)
 : _call(call)
 , _user(call->user())
-, _window(std::make_shared<Window>())
+, _layerBg(std::make_unique<Ui::LayerManager>(widget()))
+#ifndef Q_OS_MAC
+, _controls(Ui::Platform::SetupSeparateTitleControls(
+	window(),
+	st::callTitle,
+	[=](bool maximized) { toggleFullScreen(maximized); }))
+#endif // !Q_OS_MAC
 , _bodySt(&st::callBodyLayout)
-, _answerHangupRedial(
-	std::in_place,
-	widget(),
-	st::callAnswer,
-	&st::callHangup)
-, _decline(
-	std::in_place,
-	widget(),
-	object_ptr<Ui::CallButton>(widget(), st::callHangup))
-, _cancel(
-	std::in_place,
-	widget(),
-	object_ptr<Ui::CallButton>(widget(), st::callCancel))
+, _answerHangupRedial(widget(), st::callAnswer, &st::callHangup)
+, _decline(widget(), object_ptr<Ui::CallButton>(widget(), st::callHangup))
+, _cancel(widget(), object_ptr<Ui::CallButton>(widget(), st::callCancel))
 , _screencast(
-	std::in_place,
 	widget(),
 	object_ptr<Ui::CallButton>(
 		widget(),
 		st::callScreencastOn,
 		&st::callScreencastOff))
-, _camera(std::in_place, widget(), st::callCameraMute, &st::callCameraUnmute)
+, _camera(widget(), st::callCameraMute, &st::callCameraUnmute)
 , _mute(
-	std::in_place,
 	widget(),
 	object_ptr<Ui::CallButton>(
 		widget(),
 		st::callMicrophoneMute,
 		&st::callMicrophoneUnmute))
-, _addPeople(
-	std::in_place,
-	widget(),
-	object_ptr<Ui::CallButton>(widget(), st::callAddPeople))
-, _name(std::in_place, widget(), st::callName)
-, _status(std::in_place, widget(), st::callStatus)
-, _hideControlsTimer([=] { requestControlsHidden(true); })
-, _controlsShownForceTimer([=] { controlsShownForce(false); }) {
+, _name(widget(), st::callName)
+, _status(widget(), st::callStatus) {
+	_layerBg->setStyleOverrides(&st::groupCallBox, &st::groupCallLayerBox);
+	_layerBg->setHideByBackgroundClick(true);
+
 	_decline->setDuration(st::callPanelDuration);
 	_decline->entity()->setText(tr::lng_call_decline());
 	_cancel->setDuration(st::callPanelDuration);
 	_cancel->entity()->setText(tr::lng_call_cancel());
 	_screencast->setDuration(st::callPanelDuration);
-	_addPeople->setDuration(st::callPanelDuration);
-	_addPeople->entity()->setText(tr::lng_call_add_people());
 
 	initWindow();
 	initWidget();
 	initControls();
-	initConferenceInvite();
 	initLayout();
 	initMediaDeviceToggles();
 	showAndActivate();
@@ -166,18 +145,6 @@ bool Panel::isVisible() const {
 
 bool Panel::isActive() const {
 	return window()->isActiveWindow() && isVisible();
-}
-
-ConferencePanelMigration Panel::migrationInfo() const {
-	return ConferencePanelMigration{ .window = _window };
-}
-
-std::shared_ptr<Main::SessionShow> Panel::sessionShow() {
-	return Main::MakeSessionShow(uiShow(), &_user->session());
-}
-
-std::shared_ptr<Ui::Show> Panel::uiShow() {
-	return _window->uiShow();
 }
 
 void Panel::showAndActivate() {
@@ -231,37 +198,22 @@ void Panel::initWindow() {
 				&& window()->isFullScreen()) {
 				window()->showNormal();
 			}
-		} else if (e->type() == QEvent::WindowStateChange) {
-			const auto state = window()->windowState();
-			_fullScreenOrMaximized = (state & Qt::WindowFullScreen)
-				|| (state & Qt::WindowMaximized);
-		} else if (e->type() == QEvent::Enter) {
-			_mouseInside = true;
-			Ui::Integration::Instance().registerLeaveSubscription(
-				window().get());
-			if (!_fullScreenOrMaximized.current()) {
-				requestControlsHidden(false);
-				_hideControlsTimer.cancel();
-			}
-		} else if (e->type() == QEvent::Leave) {
-			_mouseInside = false;
-			Ui::Integration::Instance().unregisterLeaveSubscription(
-				window().get());
-			if (!_fullScreenOrMaximized.current()) {
-				_hideControlsTimer.callOnce(kHideControlsQuickTimeout);
-			}
 		}
 		return base::EventFilterResult::Continue;
-	}, lifetime());
+	});
 
-	const auto guard = base::make_weak(this);
 	window()->setBodyTitleArea([=](QPoint widgetPoint) {
 		using Flag = Ui::WindowTitleHitTestFlag;
-		if (!guard
-			|| !widget()->rect().contains(widgetPoint)
-			|| _window->controlsHasHitTest(widgetPoint)) {
+		if (!widget()->rect().contains(widgetPoint)) {
 			return Flag::None | Flag(0);
 		}
+#ifndef Q_OS_MAC
+		using Result = Ui::Platform::HitTestResult;
+		const auto windowPoint = widget()->mapTo(window(), widgetPoint);
+		if (_controls->controls.hitTest(windowPoint) != Result::None) {
+			return Flag::None | Flag(0);
+		}
+#endif // !Q_OS_MAC
 		const auto buttonWidth = st::callCancel.button.width;
 		const auto buttonsWidth = buttonWidth * 4;
 		const auto inControls = (_fingerprint
@@ -276,15 +228,12 @@ void Panel::initWindow() {
 		if (inControls) {
 			return Flag::None | Flag(0);
 		}
-		const auto shown = _window->topShownLayer();
+		const auto shown = _layerBg->topShownLayer();
 		return (!shown || !shown->geometry().contains(widgetPoint))
 			? (Flag::Move | Flag::Menu | Flag::FullScreen)
 			: Flag::None;
 	});
 
-	_window->maximizeRequests() | rpl::start_with_next([=](bool maximized) {
-		toggleFullScreen(maximized);
-	}, lifetime());
 	// Don't do that, it looks awful :(
 //#ifdef Q_OS_WIN
 //	// On Windows we replace snap-to-top maximizing with fullscreen.
@@ -318,12 +267,12 @@ void Panel::initWidget() {
 	widget()->paintRequest(
 	) | rpl::start_with_next([=](QRect clip) {
 		paint(clip);
-	}, lifetime());
+	}, widget()->lifetime());
 
 	widget()->sizeValue(
 	) | rpl::skip(1) | rpl::start_with_next([=] {
 		updateControlsGeometry();
-	}, lifetime());
+	}, widget()->lifetime());
 }
 
 void Panel::initControls() {
@@ -339,7 +288,7 @@ void Panel::initControls() {
 			return;
 		} else if (!env->desktopCaptureAllowed()) {
 			if (auto box = Group::ScreenSharingPrivacyRequestBox()) {
-				uiShow()->showBox(std::move(box));
+				_layerBg->showBox(std::move(box));
 			}
 		} else if (const auto source = env->uniqueDesktopCaptureSource()) {
 			if (!chooseSourceActiveDeviceId().isEmpty()) {
@@ -354,42 +303,9 @@ void Panel::initControls() {
 	_camera->setClickedCallback([=] {
 		if (!_call) {
 			return;
+		} else {
+			_call->toggleCameraSharing(!_call->isSharingCamera());
 		}
-		_call->toggleCameraSharing(!_call->isSharingCamera());
-	});
-	_addPeople->entity()->setClickedCallback([=] {
-		if (!_call || _call->state() != Call::State::Established) {
-			uiShow()->showToast(tr::lng_call_error_add_not_started(tr::now));
-			return;
-		}
-		const auto call = _call;
-		const auto creating = std::make_shared<bool>();
-		const auto create = [=](std::vector<InviteRequest> users) {
-			if (*creating) {
-				return;
-			}
-			*creating = true;
-			const auto sharingLink = users.empty();
-			Core::App().calls().startOrJoinConferenceCall({
-				.show = sessionShow(),
-				.invite = std::move(users),
-				.sharingLink = sharingLink,
-				.migrating = true,
-				.muted = call->muted(),
-				.videoCapture = (call->isSharingVideo()
-					? call->peekVideoCapture()
-					: nullptr),
-				.videoCaptureScreenId = call->screenSharingDeviceId(),
-			});
-		};
-		const auto invite = crl::guard(call, [=](
-				std::vector<InviteRequest> users) {
-			create(std::move(users));
-		});
-		const auto share = crl::guard(call, [=] {
-			create({});
-		});
-		uiShow()->showBox(Group::PrepareInviteBox(call, invite, share));
 	});
 
 	_updateDurationTimer.setCallback([this] {
@@ -434,65 +350,6 @@ void Panel::initControls() {
 	_decline->finishAnimating();
 	_cancel->finishAnimating();
 	_screencast->finishAnimating();
-}
-
-void Panel::initConferenceInvite() {
-	const auto &participants = _call->conferenceParticipants();
-	const auto count = int(participants.size());
-	if (count < 2) {
-		return;
-	}
-	_conferenceParticipants = base::make_unique_q<Ui::RpWidget>(widget());
-	_conferenceParticipants->show();
-	const auto raw = _conferenceParticipants.get();
-
-	auto peers = std::vector<not_null<PeerData*>>();
-	for (const auto &peer : participants) {
-		if (peer == _user && count > 3) {
-			continue;
-		}
-		peers.push_back(peer);
-		if (peers.size() == 3) {
-			break;
-		}
-	}
-
-	const auto userpics = CreateUserpicsWithMoreBadge(
-		raw,
-		rpl::single(peers),
-		st::confcallInviteUserpics,
-		peers.size()).release();
-
-	const auto label = Ui::CreateChild<Ui::FlatLabel>(
-		raw,
-		tr::lng_group_call_members(tr::now, lt_count, count),
-		st::confcallInviteParticipants);
-	const auto padding = st::confcallInviteParticipantsPadding;
-	const auto add = padding.bottom();
-	const auto width = add
-		+ userpics->width()
-		+ padding.left()
-		+ label->width()
-		+ padding.right();
-	const auto height = add + userpics->height() + add;
-
-	_status->geometryValue() | rpl::start_with_next([=] {
-		const auto top = _bodyTop + _bodySt->participantsTop;
-		const auto left = (widget()->width() - width) / 2;
-		raw->setGeometry(left, top, width, height);
-		userpics->move(add, add);
-		label->move(add + userpics->width() + padding.left(), padding.top());
-	}, raw->lifetime());
-
-	raw->paintRequest() | rpl::start_with_next([=] {
-		auto p = QPainter(raw);
-		auto hq = PainterHighQualityEnabler(p);
-		const auto radius = raw->height() / 2.;
-
-		p.setPen(Qt::NoPen);
-		p.setBrush(st::confcallInviteUserpicsBg);
-		p.drawRoundedRect(raw->rect(), radius, radius);
-	}, raw->lifetime());
 }
 
 void Panel::setIncomingSize(QSize size) {
@@ -568,27 +425,14 @@ void Panel::refreshIncomingGeometry() {
 void Panel::reinitWithCall(Call *call) {
 	_callLifetime.destroy();
 	_call = call;
-	const auto guard = gsl::finally([&] {
-		updateControlsShown();
-	});
 	if (!_call) {
-		_fingerprint = nullptr;
 		_incoming = nullptr;
 		_outgoingVideoBubble = nullptr;
+		_powerSaveBlocker = nullptr;
 		return;
 	}
 
 	_user = _call->user();
-
-	_call->confereceSupportedValue(
-	) | rpl::start_with_next([=](bool supported) {
-		_conferenceSupported = supported;
-		_addPeople->toggle(_conferenceSupported
-			&& (_call->state() != State::WaitingUserConfirmation),
-			window()->isHidden() ? anim::type::instant : anim::type::normal);
-
-		updateHangupGeometry();
-	}, _callLifetime);
 
 	auto remoteMuted = _call->remoteAudioStateValue(
 	) | rpl::map(rpl::mappers::_1 == Call::RemoteAudioState::Muted);
@@ -598,7 +442,7 @@ void Panel::reinitWithCall(Call *call) {
 		if (muted) {
 			createRemoteAudioMute();
 		} else {
-			_remoteAudioMute = nullptr;
+			_remoteAudioMute.destroy();
 			showRemoteLowBattery();
 		}
 	}, _callLifetime);
@@ -607,7 +451,7 @@ void Panel::reinitWithCall(Call *call) {
 		if (state == Call::RemoteBatteryState::Low) {
 			createRemoteLowBattery();
 		} else {
-			_remoteLowBattery = nullptr;
+			_remoteLowBattery.destroy();
 		}
 	}, _callLifetime);
 	_userpic = std::make_unique<Userpic>(
@@ -620,53 +464,8 @@ void Panel::reinitWithCall(Call *call) {
 	_incoming = std::make_unique<Incoming>(
 		widget(),
 		_call->videoIncoming(),
-		_window->backend());
+		_window.backend());
 	_incoming->widget()->hide();
-
-	_incoming->rp()->shownValue() | rpl::start_with_next([=] {
-		updateControlsShown();
-	}, _incoming->rp()->lifetime());
-
-	_hideControlsFilter = nullptr;
-	_fullScreenOrMaximized.value(
-	) | rpl::start_with_next([=](bool fullScreenOrMaximized) {
-		if (fullScreenOrMaximized) {
-			class Filter final : public QObject {
-			public:
-				explicit Filter(Fn<void(QObject*)> moved) : _moved(moved) {
-					qApp->installEventFilter(this);
-				}
-
-				bool eventFilter(QObject *watched, QEvent *event) {
-					if (event->type() == QEvent::MouseMove) {
-						_moved(watched);
-					}
-					return false;
-				}
-
-			private:
-				Fn<void(QObject*)> _moved;
-
-			};
-			_hideControlsFilter.reset(new Filter([=](QObject *what) {
-				_mouseInside = true;
-				if (what->isWidgetType()
-					&& window()->isAncestorOf(static_cast<QWidget*>(what))) {
-					_hideControlsTimer.callOnce(kHideControlsTimeout);
-					requestControlsHidden(false);
-					updateControlsShown();
-				}
-			}));
-			_hideControlsTimer.callOnce(kHideControlsTimeout);
-		} else {
-			_hideControlsFilter = nullptr;
-			_hideControlsTimer.cancel();
-			if (_mouseInside) {
-				requestControlsHidden(false);
-				updateControlsShown();
-			}
-		}
-	}, _incoming->rp()->lifetime());
 
 	_call->mutedValue(
 	) | rpl::start_with_next([=](bool mute) {
@@ -742,7 +541,6 @@ void Panel::reinitWithCall(Call *call) {
 			&& state != State::EndedByOtherDevice
 			&& state != State::Failed
 			&& state != State::FailedHangingUp
-			&& state != State::MigrationHangingUp
 			&& state != State::HangingUp) {
 			refreshOutgoingPreviewInBody(state);
 		}
@@ -768,7 +566,10 @@ void Panel::reinitWithCall(Call *call) {
 			}
 			Unexpected("Error type in _call->errors().");
 		}();
-		uiShow()->showToast(text);
+		Ui::Toast::Show(widget(), Ui::Toast::Config{
+			.text = { text },
+			.st = &st::callErrorToast,
+		});
 	}, _callLifetime);
 
 	_name->setText(_user->name());
@@ -782,13 +583,17 @@ void Panel::reinitWithCall(Call *call) {
 		_startVideo->raise();
 	}
 	_mute->raise();
-	_addPeople->raise();
+
+	_powerSaveBlocker = std::make_unique<base::PowerSaveBlocker>(
+		base::PowerSaveBlockType::PreventDisplaySleep,
+		u"Video call is active"_q,
+		window()->windowHandle());
 
 	_incoming->widget()->lower();
 }
 
 void Panel::createRemoteAudioMute() {
-	_remoteAudioMute = base::make_unique_q<Ui::PaddingWrap<Ui::FlatLabel>>(
+	_remoteAudioMute.create(
 		widget(),
 		object_ptr<Ui::FlatLabel>(
 			widget(),
@@ -808,8 +613,6 @@ void Panel::createRemoteAudioMute() {
 		const auto r = _remoteAudioMute->rect();
 
 		auto hq = PainterHighQualityEnabler(p);
-		p.setOpacity(_controlsShownAnimation.value(
-			_controlsShown ? 1. : 0.));
 		p.setBrush(st::videoPlayIconBg);
 		p.setPen(Qt::NoPen);
 		p.drawRoundedRect(r, r.height() / 2, r.height() / 2);
@@ -825,7 +628,7 @@ void Panel::createRemoteAudioMute() {
 }
 
 void Panel::createRemoteLowBattery() {
-	_remoteLowBattery = base::make_unique_q<Ui::PaddingWrap<Ui::FlatLabel>>(
+	_remoteLowBattery.create(
 		widget(),
 		object_ptr<Ui::FlatLabel>(
 			widget(),
@@ -841,26 +644,23 @@ void Panel::createRemoteLowBattery() {
 
 	style::PaletteChanged(
 	) | rpl::start_with_next([=] {
-		_remoteLowBattery = nullptr;
+		_remoteLowBattery.destroy();
 		createRemoteLowBattery();
 	}, _remoteLowBattery->lifetime());
 
 	constexpr auto kBatterySize = QSize(29, 13);
-	const auto scaledBatterySize = QSize(
-		style::ConvertScale(kBatterySize.width()),
-		style::ConvertScale(kBatterySize.height()));
 
 	const auto icon = [&] {
 		auto svg = QSvgRenderer(
 			BatterySvg(kBatterySize, st::videoPlayIconFg->c));
 		auto image = QImage(
-			scaledBatterySize * style::DevicePixelRatio(),
+			kBatterySize * style::DevicePixelRatio(),
 			QImage::Format_ARGB32_Premultiplied);
 		image.setDevicePixelRatio(style::DevicePixelRatio());
 		image.fill(Qt::transparent);
 		{
 			auto p = QPainter(&image);
-			svg.render(&p, Rect(scaledBatterySize));
+			svg.render(&p, Rect(kBatterySize));
 		}
 		return image;
 	}();
@@ -871,15 +671,13 @@ void Panel::createRemoteLowBattery() {
 		const auto r = _remoteLowBattery->rect();
 
 		auto hq = PainterHighQualityEnabler(p);
-		p.setOpacity(_controlsShownAnimation.value(
-			_controlsShown ? 1. : 0.));
 		p.setBrush(st::videoPlayIconBg);
 		p.setPen(Qt::NoPen);
 		p.drawRoundedRect(r, r.height() / 2, r.height() / 2);
 
 		p.drawImage(
 			st::callTooltipMutedIconPosition.x(),
-			(r.height() - scaledBatterySize.height()) / 2,
+			(r.height() - kBatterySize.height()) / 2,
 			icon);
 	}, _remoteLowBattery->lifetime());
 
@@ -909,9 +707,11 @@ void Panel::initLayout() {
 	}) | rpl::start_with_next([=](const Data::PeerUpdate &update) {
 		_name->setText(_call->user()->name());
 		updateControlsGeometry();
-	}, lifetime());
+	}, widget()->lifetime());
 
-	_window->raiseControls();
+#ifndef Q_OS_MAC
+	_controls->wrap.raise();
+#endif // !Q_OS_MAC
 }
 
 void Panel::showControls() {
@@ -921,7 +721,6 @@ void Panel::showControls() {
 	_decline->setVisible(_decline->toggled());
 	_cancel->setVisible(_cancel->toggled());
 	_screencast->setVisible(_screencast->toggled());
-	_addPeople->setVisible(_addPeople->toggled());
 
 	const auto shown = !_incomingFrameSize.isEmpty();
 	_incoming->widget()->setVisible(shown);
@@ -934,16 +733,13 @@ void Panel::showControls() {
 	showRemoteLowBattery();
 }
 
-void Panel::closeBeforeDestroy(bool windowIsReused) {
-	if (!windowIsReused) {
-		window()->close();
-	}
+void Panel::closeBeforeDestroy() {
+	window()->close();
 	reinitWithCall(nullptr);
-	_lifetime.destroy();
 }
 
 rpl::lifetime &Panel::lifetime() {
-	return _lifetime;
+	return window()->lifetime();
 }
 
 void Panel::initGeometry() {
@@ -996,9 +792,6 @@ void Panel::showDevicesMenu(
 		}
 		Core::App().saveSettingsDelayed();
 	};
-	controlsShownForce(true);
-	updateControlsShown();
-
 	_devicesMenu = MakeDeviceSelectionMenu(
 		widget(),
 		&Core::App().mediaDevices(),
@@ -1008,9 +801,6 @@ void Panel::showDevicesMenu(
 		Ui::PopupMenu::VerticalOrigin::Bottom);
 	_devicesMenu->popup(button->mapToGlobal(QPoint())
 		- QPoint(st::callDeviceSelectionMenu.menu.widthMin / 2, 0));
-	QObject::connect(_devicesMenu.get(), &QObject::destroyed, window(), [=] {
-		_controlsShownForceTimer.callOnce(kHideControlsQuickTimeout);
-	});
 }
 
 void Panel::refreshOutgoingPreviewInBody(State state) {
@@ -1043,33 +833,6 @@ QRect Panel::outgoingFrameGeometry() const {
 	return _outgoingVideoBubble->geometry();
 }
 
-void Panel::requestControlsHidden(bool hidden) {
-	_hideControlsRequested = hidden;
-	updateControlsShown();
-}
-
-void Panel::controlsShownForce(bool shown) {
-	_controlsShownForce = shown;
-	if (shown) {
-		_controlsShownForceTimer.cancel();
-	}
-	updateControlsShown();
-}
-
-void Panel::updateControlsShown() {
-	const auto shown = !_incoming
-		|| _incoming->widget()->isHidden()
-		|| _controlsShownForce
-		|| !_hideControlsRequested;
-	if (_controlsShown != shown) {
-		_controlsShown = shown;
-		_controlsShownAnimation.start([=] {
-			updateControlsGeometry();
-		}, shown ? 0. : 1., shown ? 1. : 0., st::slideDuration);
-		updateControlsGeometry();
-	}
-}
-
 void Panel::updateControlsGeometry() {
 	if (widget()->size().isEmpty()) {
 		return;
@@ -1077,11 +840,9 @@ void Panel::updateControlsGeometry() {
 	if (_incoming) {
 		refreshIncomingGeometry();
 	}
-	const auto shown = _controlsShownAnimation.value(
-		_controlsShown ? 1. : 0.);
 	if (_fingerprint) {
 #ifndef Q_OS_MAC
-		const auto controlsGeometry = _window->controlsGeometry();
+		const auto controlsGeometry = _controls->controls.geometry();
 		const auto halfWidth = widget()->width() / 2;
 		const auto minLeft = (controlsGeometry.center().x() < halfWidth)
 			? (controlsGeometry.width() + st::callFingerprintTop)
@@ -1097,14 +858,14 @@ void Panel::updateControlsGeometry() {
 		const auto minRight = 0;
 #endif // _controls
 		const auto desired = (widget()->width() - _fingerprint->width()) / 2;
-		const auto top = anim::interpolate(
-			-_fingerprint->height(),
-			st::callFingerprintTop,
-			shown);
 		if (minLeft) {
-			_fingerprint->moveToLeft(std::max(desired, minLeft), top);
+			_fingerprint->moveToLeft(
+				std::max(desired, minLeft),
+				st::callFingerprintTop);
 		} else {
-			_fingerprint->moveToRight(std::max(desired, minRight), top);
+			_fingerprint->moveToRight(
+				std::max(desired, minRight),
+				st::callFingerprintTop);
 		}
 	}
 	const auto innerHeight = std::max(widget()->height(), st::callHeightMin);
@@ -1127,23 +888,15 @@ void Panel::updateControlsGeometry() {
 		std::min(
 			bodyPreviewSizeMax.height(),
 			st::callOutgoingPreviewMax.height()));
-	const auto bodyContentHeight = _bodySt->height
-		+ (_conferenceParticipants
-			? (_bodySt->participantsTop - _bodySt->statusTop)
-			: 0);
-	const auto contentHeight = bodyContentHeight
+	const auto contentHeight = _bodySt->height
 		+ (_outgoingPreviewInBody ? bodyPreviewSize.height() : 0);
 	const auto remainingHeight = available - contentHeight;
 	const auto skipHeight = remainingHeight
 		/ (_outgoingPreviewInBody ? 3 : 2);
 
 	_bodyTop = availableTop + skipHeight;
-	_buttonsTopShown = availableTop + available;
-	_buttonsTop = anim::interpolate(
-		widget()->height(),
-		_buttonsTopShown,
-		shown);
-	const auto previewTop = _bodyTop + bodyContentHeight + skipHeight;
+	_buttonsTop = availableTop + available;
+	const auto previewTop = _bodyTop + _bodySt->height + skipHeight;
 
 	_userpic->setGeometry(
 		(widget()->width() - _bodySt->photoSize) / 2,
@@ -1154,9 +907,6 @@ void Panel::updateControlsGeometry() {
 		_bodySt->muteSize,
 		_bodySt->muteStroke);
 
-	if (_name->naturalWidth() > innerWidth) {
-		_name->resizeToWidth(innerWidth);
-	}
 	_name->moveToLeft(
 		(widget()->width() - _name->width()) / 2,
 		_bodyTop + _bodySt->nameTop);
@@ -1168,8 +918,6 @@ void Panel::updateControlsGeometry() {
 			(_buttonsTop
 				- st::callRemoteAudioMuteSkip
 				- _remoteAudioMute->height()));
-		_remoteAudioMute->update();
-		_remoteAudioMute->entity()->setOpacity(shown);
 	}
 	if (_remoteLowBattery) {
 		_remoteLowBattery->moveToLeft(
@@ -1177,8 +925,6 @@ void Panel::updateControlsGeometry() {
 			(_buttonsTop
 				- st::callRemoteAudioMuteSkip
 				- _remoteLowBattery->height()));
-		_remoteLowBattery->update();
-		_remoteLowBattery->entity()->setOpacity(shown);
 	}
 
 	if (_outgoingPreviewInBody) {
@@ -1189,7 +935,7 @@ void Panel::updateControlsGeometry() {
 				previewTop,
 				bodyPreviewSize.width(),
 				bodyPreviewSize.height()));
-	} else if (_outgoingVideoBubble) {
+	} else {
 		updateOutgoingVideoBubbleGeometry();
 	}
 
@@ -1207,11 +953,8 @@ void Panel::updateOutgoingVideoBubbleGeometry() {
 }
 
 void Panel::updateHangupGeometry() {
-	const auto isBusy = (_call
-		&& _call->state() == State::Busy);
 	const auto isWaitingUser = (_call
 		&& _call->state() == State::WaitingUserConfirmation);
-	const auto incomingWaiting = _call && _call->isIncomingWaiting();
 	const auto hangupProgress = isWaitingUser
 		? 0.
 		: _hangupShownProgress.value(_hangupShown ? 1. : 0.);
@@ -1220,9 +963,11 @@ void Panel::updateHangupGeometry() {
 	// Screencast - Camera - Cancel/Decline - Answer/Hangup/Redial - Mute.
 	const auto buttonWidth = st::callCancel.button.width;
 	const auto cancelWidth = buttonWidth * (1. - hangupProgress);
-	const auto cancelLeft = (widget()->width() - buttonWidth) / 2
-		- ((isBusy || incomingWaiting) ? buttonWidth : 0)
-		+ ((isWaitingUser || _conferenceSupported) ? 0 : (buttonWidth / 2));
+	const auto cancelLeft = (isWaitingUser)
+		? ((widget()->width() - buttonWidth) / 2)
+		: (_mute->animating())
+		? ((widget()->width() - cancelWidth) / 2)
+		: ((widget()->width() / 2) - cancelWidth);
 
 	_cancel->moveToLeft(cancelLeft, _buttonsTop);
 	_decline->moveToLeft(cancelLeft, _buttonsTop);
@@ -1230,7 +975,6 @@ void Panel::updateHangupGeometry() {
 	_screencast->moveToLeft(_camera->x() - buttonWidth, _buttonsTop);
 	_answerHangupRedial->moveToLeft(cancelLeft + cancelWidth, _buttonsTop);
 	_mute->moveToLeft(_answerHangupRedial->x() + buttonWidth, _buttonsTop);
-	_addPeople->moveToLeft(_mute->x() + buttonWidth, _buttonsTop);
 	if (_startVideo) {
 		_startVideo->moveToLeft(_camera->x(), _camera->y());
 	}
@@ -1260,9 +1004,7 @@ void Panel::paint(QRect clip) {
 bool Panel::handleClose() const {
 	if (_call) {
 		if (_call->state() == Call::State::WaitingUserConfirmation
-			|| _call->state() == Call::State::Busy
-			|| _call->state() == Call::State::Starting
-			|| _call->state() == Call::State::WaitingIncoming) {
+			|| _call->state() == Call::State::Busy) {
 			_call->hangup();
 		} else {
 			window()->hide();
@@ -1273,15 +1015,11 @@ bool Panel::handleClose() const {
 }
 
 not_null<Ui::RpWindow*> Panel::window() const {
-	return _window->window();
+	return _window.window();
 }
 
 not_null<Ui::RpWidget*> Panel::widget() const {
-	return _window->widget();
-}
-
-not_null<UserData*> Panel::user() const {
-	return _user;
+	return _window.widget();
 }
 
 void Panel::stateChanged(State state) {
@@ -1289,16 +1027,16 @@ void Panel::stateChanged(State state) {
 
 	updateStatusText(state);
 
-	const auto isBusy = (state == State::Busy);
-	const auto isWaitingUser = (state == State::WaitingUserConfirmation);
-	_window->togglePowerSaveBlocker(!isBusy && !isWaitingUser);
-
 	if ((state != State::HangingUp)
-		&& (state != State::MigrationHangingUp)
 		&& (state != State::Ended)
 		&& (state != State::EndedByOtherDevice)
 		&& (state != State::FailedHangingUp)
 		&& (state != State::Failed)) {
+		const auto isBusy = (state == State::Busy);
+		const auto isWaitingUser = (state == State::WaitingUserConfirmation);
+		if (isBusy) {
+			_powerSaveBlocker = nullptr;
+		}
 		if (_startVideo && !isWaitingUser) {
 			_startVideo = nullptr;
 		} else if (!_startVideo && isWaitingUser) {
@@ -1313,11 +1051,12 @@ void Panel::stateChanged(State state) {
 		}
 		_camera->setVisible(!_startVideo);
 
-		const auto windowHidden = window()->isHidden();
 		const auto toggleButton = [&](auto &&button, bool visible) {
 			button->toggle(
 				visible,
-				(windowHidden ? anim::type::instant : anim::type::normal));
+				window()->isHidden()
+				? anim::type::instant
+				: anim::type::normal);
 		};
 		const auto incomingWaiting = _call->isIncomingWaiting();
 		if (incomingWaiting) {
@@ -1329,7 +1068,6 @@ void Panel::stateChanged(State state) {
 		toggleButton(
 			_screencast,
 			!(isBusy || isWaitingUser || incomingWaiting));
-		toggleButton(_addPeople, !isWaitingUser && _conferenceSupported);
 		const auto hangupShown = !_decline->toggled()
 			&& !_cancel->toggled();
 		if (_hangupShown != hangupShown) {
@@ -1353,7 +1091,7 @@ void Panel::stateChanged(State state) {
 			refreshAnswerHangupRedialLabel();
 		}
 		if (!_call->isKeyShaForFingerprintReady()) {
-			_fingerprint = nullptr;
+			_fingerprint.destroy();
 		} else if (!_fingerprint) {
 			_fingerprint = CreateFingerprintAndSignalBars(widget(), _call);
 			updateControlsGeometry();
@@ -1380,8 +1118,7 @@ void Panel::updateStatusText(State state) {
 		switch (state) {
 		case State::Starting:
 		case State::WaitingInit:
-		case State::WaitingInitAck:
-		case State::MigrationHangingUp: return tr::lng_call_status_connecting(tr::now);
+		case State::WaitingInitAck: return tr::lng_call_status_connecting(tr::now);
 		case State::Established: {
 			if (_call) {
 				auto durationMs = _call->getDurationMs();
@@ -1399,10 +1136,7 @@ void Panel::updateStatusText(State state) {
 		case State::ExchangingKeys: return tr::lng_call_status_exchanging(tr::now);
 		case State::Waiting: return tr::lng_call_status_waiting(tr::now);
 		case State::Requesting: return tr::lng_call_status_requesting(tr::now);
-		case State::WaitingIncoming:
-			return (_call->conferenceInvite()
-				? tr::lng_call_status_group_invite(tr::now)
-				: tr::lng_call_status_incoming(tr::now));
+		case State::WaitingIncoming: return tr::lng_call_status_incoming(tr::now);
 		case State::Ringing: return tr::lng_call_status_ringing(tr::now);
 		case State::Busy: return tr::lng_call_status_busy(tr::now);
 		case State::WaitingUserConfirmation: return tr::lng_call_status_sure(tr::now);

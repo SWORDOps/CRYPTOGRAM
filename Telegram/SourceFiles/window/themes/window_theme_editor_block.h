@@ -26,8 +26,8 @@ public:
 	};
 	struct Context {
 		struct {
-			base::weak_qptr<Ui::BoxContent> box;
-			base::weak_qptr<ColorEditor> editor;
+			QPointer<Ui::BoxContent> box;
+			QPointer<ColorEditor> editor;
 		} colorEditor;
 		QString name;
 		QString possibleCopyOf;

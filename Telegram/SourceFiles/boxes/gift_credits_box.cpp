@@ -9,7 +9,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "api/api_credits.h"
 #include "boxes/peer_list_controllers.h"
-#include "core/ui_integration.h" // TextContext.
 #include "data/data_peer.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
@@ -24,6 +23,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/rect.h"
 #include "ui/text/text_utilities.h"
 #include "ui/vertical_list.h"
+#include "ui/widgets/label_with_custom_emoji.h"
 #include "window/window_session_controller.h"
 #include "styles/style_boxes.h"
 #include "styles/style_channel_earn.h"
@@ -52,8 +52,9 @@ void GiftCreditsBox(
 	Ui::AddSkip(content);
 	const auto &stUser = st::premiumGiftsUserpicButton;
 	const auto userpicWrap = content->add(
-		object_ptr<Ui::UserpicButton>(content, peer, stUser),
-		style::al_top);
+		object_ptr<Ui::CenterWrap<>>(
+			content,
+			object_ptr<Ui::UserpicButton>(content, peer, stUser)));
 	userpicWrap->setAttribute(Qt::WA_TransparentForMouseEvents);
 	Ui::AddSkip(content);
 	Ui::AddSkip(content);
@@ -66,9 +67,14 @@ void GiftCreditsBox(
 		2.);
 	{
 		Ui::AddSkip(content);
+		const auto arrow = Ui::Text::SingleCustomEmoji(
+			peer->owner().customEmojiManager().registerInternalEmoji(
+				st::topicButtonArrow,
+				st::channelEarnLearnArrowMargins,
+				true));
 		auto link = tr::lng_credits_box_history_entry_gift_about_link(
 			lt_emoji,
-			rpl::single(Ui::Text::IconEmoji(&st::textMoreIconEmoji)),
+			rpl::single(arrow),
 			Ui::Text::RichLangValue
 		) | rpl::map([](TextWithEntities text) {
 			return Ui::Text::Link(
@@ -76,17 +82,19 @@ void GiftCreditsBox(
 				u"internal:stars_examples"_q);
 		});
 		content->add(
-			object_ptr<Ui::FlatLabel>(
+			object_ptr<Ui::CenterWrap<>>(
 				content,
-				tr::lng_credits_box_history_entry_gift_out_about(
-					lt_user,
-					rpl::single(TextWithEntities{ peer->shortName() }),
-					lt_link,
-					std::move(link),
-					Ui::Text::RichLangValue),
-				st::creditsBoxAbout),
-			st::boxRowPadding,
-			style::al_top);
+				Ui::CreateLabelWithCustomEmoji(
+					content,
+					tr::lng_credits_box_history_entry_gift_out_about(
+						lt_user,
+						rpl::single(TextWithEntities{ peer->shortName() }),
+						lt_link,
+						std::move(link),
+						Ui::Text::RichLangValue),
+					{ .session = &peer->session() },
+					st::creditsBoxAbout)),
+			st::boxRowPadding);
 	}
 	Ui::AddSkip(content);
 	Ui::AddSkip(box->verticalLayout());
@@ -95,9 +103,8 @@ void GiftCreditsBox(
 		Main::MakeSessionShow(box->uiShow(), &peer->session()),
 		box->verticalLayout(),
 		peer,
-		CreditsAmount(),
+		StarsAmount(),
 		[=] { gifted(); box->uiShow()->hideLayer(); },
-		box->showFinishes(),
 		tr::lng_credits_summary_options_subtitle(),
 		{});
 

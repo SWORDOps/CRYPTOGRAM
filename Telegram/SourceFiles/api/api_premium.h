@@ -116,9 +116,8 @@ public:
 	[[nodiscard]] auto subscriptionOptions() const
 		-> const Data::PremiumSubscriptionOptions &;
 
-	[[nodiscard]] auto someMessageMoneyRestrictionsResolved() const
-		-> rpl::producer<>;
-	void resolveMessageMoneyRestrictions(not_null<UserData*> user);
+	[[nodiscard]] rpl::producer<> somePremiumRequiredResolved() const;
+	void resolvePremiumRequired(not_null<UserData*> user);
 
 private:
 	void reloadPromo();
@@ -167,10 +166,10 @@ private:
 
 	Data::PremiumSubscriptionOptions _subscriptionOptions;
 
-	rpl::event_stream<> _someMessageMoneyRestrictionsResolved;
-	base::flat_set<not_null<UserData*>> _resolveMessageMoneyRequiredUsers;
-	base::flat_set<not_null<UserData*>> _resolveMessageMoneyRequestedUsers;
-	bool _messageMoneyRequestScheduled = false;
+	rpl::event_stream<> _somePremiumRequiredResolved;
+	base::flat_set<not_null<UserData*>> _resolvePremiumRequiredUsers;
+	base::flat_set<not_null<UserData*>> _resolvePremiumRequestedUsers;
+	bool _premiumRequiredRequestScheduled = false;
 
 };
 
@@ -180,8 +179,7 @@ public:
 
 	[[nodiscard]] rpl::producer<rpl::no_value, QString> request();
 	[[nodiscard]] std::vector<GiftOptionData> optionsForPeer() const;
-	[[nodiscard]] Data::PremiumSubscriptionOptions optionsForGiveaway(
-			int usersCount);
+	[[nodiscard]] Data::PremiumSubscriptionOptions options(int amount);
 	[[nodiscard]] const std::vector<int> &availablePresets() const;
 	[[nodiscard]] int monthsFromPreset(int monthsIndex);
 	[[nodiscard]] Payments::InvoicePremiumGiftCode invoice(
@@ -210,7 +208,6 @@ private:
 	};
 	struct Store final {
 		uint64 amount = 0;
-		QString currency;
 		QString product;
 		int quantity = 0;
 	};
@@ -221,7 +218,7 @@ private:
 	struct {
 		std::vector<int> months;
 		std::vector<int64> totalCosts;
-		std::vector<QString> currencies;
+		QString currency;
 	} _optionsForOnePerson;
 
 	std::vector<int> _availablePresets;
@@ -247,20 +244,12 @@ private:
 
 };
 
-struct MessageMoneyRestriction {
-	int starsPerMessage = 0;
-	bool premiumRequired = false;
-	bool known = false;
-
-	explicit operator bool() const {
-		return starsPerMessage != 0 || premiumRequired;
-	}
-
-	friend inline bool operator==(
-		const MessageMoneyRestriction &,
-		const MessageMoneyRestriction &) = default;
+enum class RequirePremiumState {
+	Unknown,
+	Yes,
+	No,
 };
-[[nodiscard]] MessageMoneyRestriction ResolveMessageMoneyRestrictions(
+[[nodiscard]] RequirePremiumState ResolveRequiresPremiumToWrite(
 	not_null<PeerData*> peer,
 	History *maybeHistory);
 
@@ -270,9 +259,9 @@ struct MessageMoneyRestriction {
 [[nodiscard]] std::optional<Data::StarGift> FromTL(
 	not_null<Main::Session*> session,
 	const MTPstarGift &gift);
-[[nodiscard]] std::optional<Data::SavedStarGift> FromTL(
-	not_null<PeerData*> to,
-	const MTPsavedStarGift &gift);
+[[nodiscard]] std::optional<Data::UserStarGift> FromTL(
+	not_null<UserData*> to,
+	const MTPuserStarGift &gift);
 
 [[nodiscard]] Data::UniqueGiftModel FromTL(
 	not_null<Main::Session*> session,

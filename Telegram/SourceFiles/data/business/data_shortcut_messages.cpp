@@ -54,7 +54,6 @@ constexpr auto kRequestTimeLimit = 60 * crl::time(1000);
 			data.vid(),
 			data.vfrom_id() ? *data.vfrom_id() : MTPPeer(),
 			data.vpeer_id(),
-			data.vsaved_peer_id() ? *data.vsaved_peer_id() : MTPPeer(),
 			data.vreply_to() ? *data.vreply_to() : MTPMessageReplyHeader(),
 			data.vdate(),
 			data.vaction(),
@@ -92,11 +91,7 @@ constexpr auto kRequestTimeLimit = 60 * crl::time(1000);
 			MTP_int(shortcutId),
 			MTP_long(data.veffect().value_or_empty()),
 			(data.vfactcheck() ? *data.vfactcheck() : MTPFactCheck()),
-			MTP_int(data.vreport_delivery_until_date().value_or_empty()),
-			MTP_long(data.vpaid_message_stars().value_or_empty()),
-			(data.vsuggested_post()
-				? *data.vsuggested_post()
-				: MTPSuggestedPost()));
+			MTP_int(data.vreport_delivery_until_date().value_or_empty()));
 	});
 }
 

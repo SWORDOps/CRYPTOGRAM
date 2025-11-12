@@ -27,7 +27,7 @@ public:
 		QWidget *parent,
 		const style::ComposeControls &st,
 		AttachControls::Type type,
-		Fn<bool(AttachActionType)> actionAllowed);
+		Fn<bool()> canToggleSpoiler);
 	~AbstractSingleMediaPreview();
 
 	void setSendWay(SendFilesWay way);
@@ -36,8 +36,6 @@ public:
 	[[nodiscard]] rpl::producer<> deleteRequests() const override;
 	[[nodiscard]] rpl::producer<> editRequests() const override;
 	[[nodiscard]] rpl::producer<> modifyRequests() const override;
-	[[nodiscard]] rpl::producer<> editCoverRequests() const override;
-	[[nodiscard]] rpl::producer<> clearCoverRequests() const override;
 
 	[[nodiscard]] bool isPhoto() const;
 
@@ -76,7 +74,7 @@ private:
 
 	const style::ComposeControls &_st;
 	SendFilesWay _sendWay;
-	Fn<bool(AttachActionType)> _actionAllowed;
+	Fn<bool()> _canToggleSpoiler;
 	bool _animated = false;
 	QPixmap _preview;
 	QPixmap _previewBlurred;
@@ -91,8 +89,6 @@ private:
 	const int _minThumbH;
 	const base::unique_qptr<AttachControlsWidget> _controls;
 	rpl::event_stream<> _photoEditorRequests;
-	rpl::event_stream<> _editCoverRequests;
-	rpl::event_stream<> _clearCoverRequests;
 
 	style::cursor _cursor = style::cur_default;
 	bool _pressed = false;

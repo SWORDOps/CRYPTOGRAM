@@ -59,7 +59,7 @@ public:
 
 class ItemBase : public LayoutItemBase {
 public:
-	ItemBase(not_null<Context*> context, std::shared_ptr<Result> result)
+	ItemBase(not_null<Context*> context, not_null<Result*> result)
 	: _result(result)
 	, _context(context) {
 	}
@@ -80,7 +80,7 @@ public:
 		return false;
 	}
 
-	std::shared_ptr<Result> getResult() const;
+	Result *getResult() const;
 	DocumentData *getDocument() const;
 	PhotoData *getPhoto() const;
 
@@ -112,7 +112,7 @@ public:
 
 	static std::unique_ptr<ItemBase> createLayout(
 		not_null<Context*> context,
-		std::shared_ptr<Result> result,
+		not_null<Result*> result,
 		bool forceThumb);
 	static std::unique_ptr<ItemBase> createLayoutGif(
 		not_null<Context*> context,
@@ -135,7 +135,7 @@ protected:
 	}
 	Data::FileOrigin fileOrigin() const;
 
-	std::shared_ptr<Result> _result;
+	Result *_result = nullptr;
 	DocumentData *_document = nullptr;
 	PhotoData *_photo = nullptr;
 

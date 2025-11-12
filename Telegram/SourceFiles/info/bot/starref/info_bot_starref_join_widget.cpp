@@ -1045,8 +1045,6 @@ std::unique_ptr<Ui::Premium::TopBarAbstract> Widget::setupTop() {
 		_back->entity()->addClickHandler([=] {
 			controller->showBackFromStack();
 		});
-		_back->entity()->setRippleColorOverride(
-			&st::universalRippleAnimation.color);
 		_back->toggledValue(
 		) | rpl::start_with_next([=](bool toggled) {
 			const auto &st = isLayer ? st::infoLayerTopBar : st::infoTopBar;
@@ -1065,8 +1063,6 @@ std::unique_ptr<Ui::Premium::TopBarAbstract> Widget::setupTop() {
 				controller->parentController()->hideLayer();
 				controller->parentController()->hideSpecialLayer();
 			});
-			_close->setRippleColorOverride(
-				&st::universalRippleAnimation.color);
 			raw->widthValue(
 			) | rpl::start_with_next([=] {
 				_close->moveToRight(0, 0);
@@ -1105,7 +1101,7 @@ std::shared_ptr<Info::Memento> Make(not_null<PeerData*> peer) {
 object_ptr<Ui::BoxContent> ProgramsListBox(
 		not_null<Window::SessionController*> window,
 		not_null<PeerData*> peer) {
-	const auto weak = std::make_shared<base::weak_qptr<PeerListBox>>();
+	const auto weak = std::make_shared<QPointer<PeerListBox>>();
 	const auto initBox = [=](not_null<PeerListBox*> box) {
 		*weak = box;
 		box->addButton(tr::lng_close(), [=] {
@@ -1118,7 +1114,7 @@ object_ptr<Ui::BoxContent> ProgramsListBox(
 		peer,
 		JoinType::Existing);
 	controller->addForBotRequests() | rpl::start_with_next([=] {
-		if (const auto strong = weak->get()) {
+		if (const auto strong = weak->data()) {
 			strong->closeBox();
 		}
 	}, controller->lifetime());

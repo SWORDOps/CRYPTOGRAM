@@ -57,7 +57,7 @@ void ConfirmDontWarnBox(
 		std::move(check),
 		false,
 		st::defaultBoxCheckbox);
-	const auto weak = base::make_weak(checkbox.data());
+	const auto weak = Ui::MakeWeak(checkbox.data());
 	auto confirmed = crl::guard(weak, [=, callback = std::move(callback)] {
 		const auto checked = weak->checked();
 		box->closeBox();
@@ -169,11 +169,7 @@ base::binary_guard ReadBackgroundImageAsync(
 		guard = result.make_guard(),
 		callback = std::move(done)
 	]() mutable {
-		auto image = Ui::ReadBackgroundImage(path, bytes, gzipSvg).image;
-		if (image.isNull()) {
-			image = QImage(1, 1, QImage::Format_ARGB32_Premultiplied);
-			image.fill(Qt::black);
-		}
+		auto image = Ui::ReadBackgroundImage(path, bytes, gzipSvg);
 		if (postprocess) {
 			image = postprocess(std::move(image));
 		}
@@ -191,8 +187,7 @@ void ResolveDocument(
 		Window::SessionController *controller,
 		not_null<DocumentData*> document,
 		HistoryItem *item,
-		MsgId topicRootId,
-		PeerId monoforumPeerId) {
+		MsgId topicRootId) {
 	if (document->isNull()) {
 		return;
 	}
@@ -207,7 +202,7 @@ void ResolveDocument(
 			controller->openDocument(
 				document,
 				true,
-				{ msgId, topicRootId, monoforumPeerId });
+				{ msgId, topicRootId });
 		}
 	};
 

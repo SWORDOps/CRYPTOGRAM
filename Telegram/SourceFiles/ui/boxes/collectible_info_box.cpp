@@ -21,7 +21,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/painter.h"
 #include "settings/settings_common.h"
 #include "styles/style_boxes.h"
-#include "styles/style_credits.h"
 #include "styles/style_layers.h"
 
 #include <QtCore/QRegularExpression>
@@ -48,14 +47,16 @@ constexpr auto kTonMultiplier = uint64(1000000000);
 	return langDateTime(base::unixtime::parse(date));
 }
 
-[[nodiscard]] TextWithEntities FormatPrice(const CollectibleInfo &info) {
+[[nodiscard]] TextWithEntities FormatPrice(
+		const CollectibleInfo &info,
+		const CollectibleDetails &details) {
 	auto minor = Info::ChannelEarn::MinorPart(info.cryptoAmount);
 	if (minor.size() == 1 && minor.at(0) == '.') {
 		minor += '0';
 	}
 	auto price = (info.cryptoCurrency == u"TON"_q)
-		? Ui::Text::IconEmoji(
-			&st::tonIconEmoji
+		? base::duplicate(
+			details.tonEmoji
 		).append(
 			Info::ChannelEarn::MajorPart(info.cryptoAmount)
 		).append(minor)
@@ -122,7 +123,8 @@ CollectibleType DetectCollectibleType(const QString &entity) {
 
 void CollectibleInfoBox(
 		not_null<Ui::GenericBox*> box,
-		CollectibleInfo info) {
+		CollectibleInfo info,
+		CollectibleDetails details) {
 	box->setWidth(st::boxWideWidth);
 	box->setStyle(st::collectibleBox);
 
@@ -201,8 +203,7 @@ void CollectibleInfoBox(
 			box,
 			rpl::single(header),
 			st::collectibleHeader),
-		st::collectibleHeaderPadding,
-		style::al_top
+		st::collectibleHeaderPadding
 	)->setClickHandlerFilter([copyCallback](const auto &...) {
 		copyCallback(false);
 		return false;
@@ -217,14 +218,13 @@ void CollectibleInfoBox(
 			lt_date,
 			TextWithEntities{ FormatDate(info.date) },
 			lt_price,
-			FormatPrice(info),
+			FormatPrice(info, details),
 			Ui::Text::RichLangValue);
 	const auto label = box->addRow(
 		object_ptr<Ui::FlatLabel>(box, st::collectibleInfo),
-		st::collectibleInfoPadding,
-		style::al_top);
+		st::collectibleInfoPadding);
 	label->setAttribute(Qt::WA_TransparentForMouseEvents);
-	label->setMarkedText(text);
+	label->setMarkedText(text, details.tonEmojiContext());
 
 	const auto more = box->addRow(
 		object_ptr<Ui::RoundButton>(

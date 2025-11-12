@@ -199,11 +199,11 @@ void FilterRowButton::updateData(
 		st::contactsNameStyle,
 		title.text,
 		kMarkupTextOptions,
-		Core::TextContext({
+		Core::MarkedTextContext{
 			.session = _session,
-			.repaint = [=] { update(); },
+			.customEmojiRepaint = [=] { update(); },
 			.customEmojiLoopLimit = title.isStatic ? -1 : 0,
-		}));
+		});
 	_icon = Ui::ComputeFilterIcon(filter);
 	_colorIndex = filter.colorIndex();
 	if (!ignoreCount) {
@@ -353,7 +353,7 @@ void FilterRowButton::paintEvent(QPaintEvent *e) {
 		not_null<rpl::event_stream<bool>*> tagsButtonEnabled) {
 	auto &lifetime = container->lifetime();
 
-	const auto weak = base::make_weak(container);
+	const auto weak = Ui::MakeWeak(container);
 	const auto session = &controller->session();
 	const auto limit = [=] {
 		return Data::PremiumLimits(session).dialogFiltersCurrent();
@@ -862,12 +862,13 @@ void SetupTopContent(
 	verticalLayout->add(std::move(icon.widget));
 
 	verticalLayout->add(
-		object_ptr<Ui::FlatLabel>(
+		object_ptr<Ui::CenterWrap<>>(
 			verticalLayout,
-			tr::lng_filters_about(),
-			st::settingsFilterDividerLabel),
-		st::settingsFilterDividerLabelPadding,
-		style::al_top)->setTryMakeSimilarLines(true);
+			object_ptr<Ui::FlatLabel>(
+				verticalLayout,
+				tr::lng_filters_about(),
+				st::settingsFilterDividerLabel)),
+		st::settingsFilterDividerLabelPadding);
 
 	verticalLayout->geometryValue(
 	) | rpl::start_with_next([=](const QRect &r) {
@@ -908,9 +909,9 @@ void SetupTagContent(
 		tagsButton->setToggleLocked(!value);
 	}, tagsButton->lifetime());
 
-	const auto send = [=, weak = base::make_weak(tagsButton)](bool checked) {
+	const auto send = [=, weak = Ui::MakeWeak(tagsButton)](bool checked) {
 		session->data().chatsFilters().requestToggleTags(checked, [=] {
-			if ([[maybe_unused]] const auto strong = weak.get()) {
+			if (const auto strong = weak.data()) {
 				state->tagsTurnOff.fire(!checked);
 			}
 		});

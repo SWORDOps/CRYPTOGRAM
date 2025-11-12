@@ -194,15 +194,11 @@ void SlideAnimation::start() {
 		fromLeft ? 0. : 1.,
 		st::slideDuration,
 		transition());
-	if (const auto onstack = _repaintCallback) {
-		onstack();
-	}
+	_repaintCallback();
 }
 
 void SlideAnimation::animationCallback() {
-	if (const auto onstack = _repaintCallback) {
-		onstack();
-	}
+	_repaintCallback();
 	if (!_animation.animating()) {
 		if (const auto onstack = _finishedCallback) {
 			onstack();

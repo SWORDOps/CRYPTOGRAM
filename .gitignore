@@ -19,8 +19,6 @@ Release/
 ipch/
 .vs/
 .vscode/
-.cache/
-compile_commands.json
 
 /Telegram/log.txt
 /Telegram/data
@@ -32,7 +30,6 @@ compile_commands.json
 .DS_Store
 ._*
 .qmake.stash
-.dev_notes/
 /Mac/
 project.xcworkspace
 xcuserdata
@@ -54,18 +51,3 @@ stage
 *.*~
 .idea/
 cmake-build-debug/
-
-# Local configuration files
-settings.local.json
-*.local.json
-.env
-.env.local
-.env.*.local
-
-# Cursor IDE local settings (but keep .cursor/rules/)
-.cursor/*
-!.cursor/rules/
-
-# SpyGram source archive and extracted files (used for porting only)
-SpyGram-main/
-SpyGram-main.7z.*

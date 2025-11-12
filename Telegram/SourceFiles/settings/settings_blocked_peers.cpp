@@ -40,13 +40,15 @@ Blocked::Blocked(
 	{
 		auto padding = st::changePhoneIconPadding;
 		padding.setBottom(padding.top());
-		_loading = base::make_unique_q<Ui::PaddingWrap<>>(
+		_loading = base::make_unique_q<Ui::CenterWrap<>>(
 			this,
-			object_ptr<Ui::FlatLabel>(
+			object_ptr<Ui::PaddingWrap<>>(
 				this,
-				tr::lng_contacts_loading(),
-				st::changePhoneDescription),
-			std::move(padding));
+				object_ptr<Ui::FlatLabel>(
+					this,
+					tr::lng_contacts_loading(),
+					st::changePhoneDescription),
+				std::move(padding)));
 		Ui::ResizeFitChild(
 			this,
 			_loading.get(),
@@ -71,7 +73,7 @@ rpl::producer<QString> Blocked::title() {
 	return tr::lng_settings_blocked_users();
 }
 
-base::weak_qptr<Ui::RpWidget> Blocked::createPinnedToTop(not_null<QWidget*> parent) {
+QPointer<Ui::RpWidget> Blocked::createPinnedToTop(not_null<QWidget*> parent) {
 	const auto content = Ui::CreateChild<Ui::VerticalLayout>(parent.get());
 
 	Ui::AddSkip(content);
@@ -116,7 +118,7 @@ base::weak_qptr<Ui::RpWidget> Blocked::createPinnedToTop(not_null<QWidget*> pare
 		}, subtitle->lifetime());
 	}
 
-	return base::make_weak(not_null<Ui::RpWidget*>{ content });
+	return Ui::MakeWeak(not_null<Ui::RpWidget*>{ content });
 }
 
 void Blocked::setupContent() {
@@ -184,20 +186,22 @@ void Blocked::setupContent() {
 		}, content->lifetime());
 
 		content->add(
-			object_ptr<Ui::FlatLabel>(
+			object_ptr<Ui::CenterWrap<>>(
 				content,
-				tr::lng_blocked_list_empty_title(),
-				st::changePhoneTitle),
-			st::changePhoneTitlePadding,
-			style::al_top);
+				object_ptr<Ui::FlatLabel>(
+					content,
+					tr::lng_blocked_list_empty_title(),
+					st::changePhoneTitle)),
+			st::changePhoneTitlePadding);
 
 		content->add(
-			object_ptr<Ui::FlatLabel>(
+			object_ptr<Ui::CenterWrap<>>(
 				content,
-				tr::lng_blocked_list_empty_description(),
-				st::changePhoneDescription),
-			st::changePhoneDescriptionPadding,
-			style::al_top);
+				object_ptr<Ui::FlatLabel>(
+					content,
+					tr::lng_blocked_list_empty_description(),
+					st::changePhoneDescription)),
+			st::changePhoneDescriptionPadding);
 
 		Ui::AddSkip(content, st::settingsBlockedListIconPadding.top());
 	}

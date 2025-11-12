@@ -34,7 +34,6 @@ public:
 		Data::CreditsEarnStatistics creditsEarn;
 		Data::CreditsStatusSlice creditsStatusSlice;
 		PeerId premiumBotId = PeerId(0);
-		bool canViewCurrencyMegagroupEarn = true;
 	};
 
 	void setState(SavedState states);

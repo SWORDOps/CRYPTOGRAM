@@ -161,7 +161,7 @@ constexpr auto kMaxWallPaperSlugLength = 255;
 		return paper;
 	}
 	const auto &themes = session->data().cloudThemes();
-	if (const auto theme = themes.themeForToken(paper.emojiId())) {
+	if (const auto theme = themes.themeForEmoji(paper.emojiId())) {
 		using Type = Data::CloudThemeType;
 		const auto type = dark ? Type::Dark : Type::Light;
 		const auto i = theme->settings.find(type);
@@ -241,12 +241,12 @@ BackgroundPreviewBox::BackgroundPreviewBox(
 	}, lifetime());
 
 	const auto prepare = [=](bool dark, auto pointer) {
-		const auto weak = base::make_weak(this);
+		const auto weak = Ui::MakeWeak(this);
 		crl::async([=] {
 			auto result = std::make_unique<style::palette>();
 			Window::Theme::PreparePaletteCallback(dark, {})(*result);
 			crl::on_main([=, result = std::move(result)]() mutable {
-				if (const auto strong = weak.get()) {
+				if (const auto strong = weak.data()) {
 					strong->*pointer = std::move(result);
 					strong->paletteReady();
 				}
@@ -685,7 +685,7 @@ void BackgroundPreviewBox::checkLevelForChannel() {
 
 	const auto show = _controller->uiShow();
 	_forPeerLevelCheck = true;
-	const auto weak = base::make_weak(this);
+	const auto weak = Ui::MakeWeak(this);
 	CheckBoostLevel(show, _forPeer, [=](int level) {
 		if (!weak) {
 			return std::optional<Ui::AskBoostReason>();
@@ -1078,9 +1078,7 @@ void BackgroundPreviewBox::updateServiceBg(const std::vector<QColor> &bg) {
 			? tr::lng_background_other_group(tr::now)
 			: forChannel()
 			? tr::lng_background_other_channel(tr::now)
-			: (_forPeer
-				&& !_fromMessageId
-				&& !_forPeer->starsPerMessageChecked())
+			: (_forPeer && !_fromMessageId)
 			? tr::lng_background_other_info(
 				tr::now,
 				lt_user,

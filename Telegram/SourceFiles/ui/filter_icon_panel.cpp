@@ -296,7 +296,7 @@ void FilterIconPanel::leaveEventHook(QEvent *e) {
 	} else {
 		_hideTimer.callOnce(kHideTimeoutMs);
 	}
-	return RpWidget::leaveEventHook(e);
+	return TWidget::leaveEventHook(e);
 }
 
 void FilterIconPanel::otherEnter() {
