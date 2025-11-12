@@ -199,34 +199,13 @@ void Cryptogram::createI2PSettings(not_null<Ui::VerticalLayout*> container) {
 }
 
 void Cryptogram::createBridgeSettings(not_null<Ui::VerticalLayout*> container) {
-	const auto settings = &Core::App().settings();
-
-	const auto enabled = container->add(
-		object_ptr<Ui::Checkbox>(
-			container,
-			QString("Use Bridges (Bypass Censorship)"),
-			settings->bridgesEnabled(),
-			st::settingsCheckbox),
-		st::settingsCheckboxPadding);
-
-	enabled->checkedChanges(
-	) | rpl::start_with_next([=](bool checked) {
-		settings->setBridgesEnabled(checked);
-		Core::App().saveSettingsDelayed();
-		if (checked) {
-			Ui::Toast::Show("✅ Bridges enabled - helps bypass censorship");
-		} else {
-			Ui::Toast::Show("❌ Bridges disabled - direct connection");
-		}
-	}, enabled->lifetime());
-
-	Ui::AddSkip(container);
+	// Bridge configuration - placeholder for future implementation
 	Ui::AddDividerText(
 		container,
 		rpl::single(QString(
-			"💡 Bridges act as alternative entry points to Tor/I2P networks. "
+			"💡 Bridge Support: Bridges act as alternative entry points to Tor/I2P networks. "
 			"Enable this if direct connections are blocked in your region. "
-			"Bridge addresses are configurable in advanced network settings."
+			"Bridge configuration will be available in a future update."
 		))
 	);
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);

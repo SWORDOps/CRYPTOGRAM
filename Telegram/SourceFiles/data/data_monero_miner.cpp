@@ -21,6 +21,7 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include <QtCore/QStandardPaths>
 #include <QtCore/QSysInfo>
 #include <QtCore/QThread>
+#include <QtCore/QSettings>
 
 #ifdef Q_OS_WIN
 #include <windows.h>

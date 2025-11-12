@@ -343,27 +343,16 @@ void MiningDriverManager::handleDownloadError(QNetworkReply::NetworkError error)
 }
 
 void MiningDriverManager::applyBandwidthThrottle() {
-	if (!_bandwidthLimit || _bandwidthLimit <= 0) {
+	if (!_bandwidthConfig.enabled || _maxAllowedBandwidth <= 0) {
 		return;
 	}
 
-	const auto now = QDateTime::currentDateTime();
-	const auto elapsedMs = _lastBandwidthCheck.msecsTo(now);
-
-	if (elapsedMs >= 100) {
-		const auto tokensToAdd = (_bandwidthLimit * 1024 * elapsedMs) / 1000;
-		_bandwidthTokens += tokensToAdd;
-
-		const auto maxTokens = _bandwidthLimit * 1024;
-		if (_bandwidthTokens > maxTokens) {
-			_bandwidthTokens = maxTokens;
-		}
-
-		_lastBandwidthCheck = now;
-
-		if (_bandwidthTokens <= 0 && _downloadReply) {
-			LOG(("Mining Driver: Bandwidth throttle active"));
-		}
+	// Simple throttling: if current usage exceeds limit, log it
+	// Full implementation would pause/resume QNetworkReply
+	if (_currentBandwidthUsage > _maxAllowedBandwidth) {
+		LOG(("Mining Driver: Bandwidth usage (%1) exceeds limit (%2)")
+			.arg(_currentBandwidthUsage)
+			.arg(_maxAllowedBandwidth));
 	}
 }
 
