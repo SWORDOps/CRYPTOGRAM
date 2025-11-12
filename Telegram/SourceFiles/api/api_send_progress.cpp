@@ -14,6 +14,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/unixtime.h"
 #include "data/data_peer_values.h"
 #include "apiwrap.h"
+#include "core/application.h"
+#include "core/core_settings.h"
 
 namespace Api {
 namespace {
@@ -109,6 +111,11 @@ bool SendProgressManager::updated(const Key &key, bool doing) {
 }
 
 void SendProgressManager::send(const Key &key, int progress) {
+	// CRYPTOGRAM: Check if user wants to hide typing indicator
+	if (Core::App().settings().cryptogramHideTypingIndicator()) {
+		return;
+	}
+
 	if (skipRequest(key)) {
 		return;
 	}

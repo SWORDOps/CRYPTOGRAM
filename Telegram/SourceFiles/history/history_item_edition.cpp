@@ -13,9 +13,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session.h"
 
 HistoryMessageEdition::HistoryMessageEdition(
-		not_null<Main::Session*> session,
-		const MTPDmessage &message) {
+	not_null<Main::Session*> session,
+	const MTPDmessage &message)
+: suggest(HistoryMessageSuggestInfo(message.vsuggested_post())) {
 	isEditHide = message.is_edit_hide();
+	isMediaUnread = message.is_media_unread();
 	editDate = message.vedit_date().value_or(-1);
 
 	auto peerId = message.vfrom_id() ? peerFromMTP(*message.vfrom_id()) : PeerId(0);

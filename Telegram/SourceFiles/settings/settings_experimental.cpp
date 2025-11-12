@@ -21,6 +21,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "chat_helpers/tabbed_panel.h"
 #include "dialogs/dialogs_widget.h"
 #include "dialogs/dialogs_inner_widget.h"
+#include "history/history_item_components.h"
 #include "info/profile/info_profile_actions.h"
 #include "lang/lang_keys.h"
 #include "mainwindow.h"
@@ -149,6 +150,7 @@ void SetupExperimental(
 	addToggle(Window::kOptionViewProfileInChatsListContextMenu);
 	addToggle(Dialogs::kOptionCtrlClickChatNewWindow);
 	addToggle(Info::Profile::kOptionShowPeerIdBelowAbout);
+	addToggle(Info::Profile::kOptionShowChannelJoinedBelowAbout);
 	addToggle(Ui::kOptionUseSmallMsgBubbleRadius);
 	addToggle(Ui::kOptionUncoloredQuote);
 	addToggle(Media::Player::kOptionDisableAutoplayNext);
@@ -156,12 +158,17 @@ void SetupExperimental(
 	addToggle(Webview::kOptionWebviewDebugEnabled);
 	addToggle(Webview::kOptionWebviewLegacyEdge);
 	addToggle(kOptionAutoScrollInactiveChat);
+	addToggle(Window::Notifications::kOptionHideReplyButton);
+	addToggle(Window::Notifications::kOptionCustomNotification);
 	addToggle(Window::Notifications::kOptionGNotification);
 	addToggle(Core::kOptionFreeType);
 	addToggle(Core::kOptionSkipUrlSchemeRegister);
 	addToggle(Data::kOptionExternalVideoPlayer);
 	addToggle(Window::kOptionNewWindowsSizeAsFirst);
 	addToggle(MTP::details::kOptionPreferIPv6);
+	if (base::options::lookup<bool>(kOptionFastButtonsMode).value()) {
+		addToggle(kOptionFastButtonsMode);
+	}
 	addToggle(Window::kOptionDisableTouchbar);
 }
 

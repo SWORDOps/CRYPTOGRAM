@@ -504,6 +504,22 @@ uint64 Launcher::installationTag() const {
 	return InstallationTag;
 }
 
+QByteArray Launcher::instanceHash() const {
+	static const auto Result = [&] {
+		QByteArray h(32, 0);
+		if (customWorkingDir()) {
+			const auto d = QFile::encodeName(
+				QDir(cWorkingDir()).absolutePath());
+			hashMd5Hex(d.constData(), d.size(), h.data());
+		} else {
+			const auto f = QFile::encodeName(cExeDir() + cExeName());
+			hashMd5Hex(f.constData(), f.size(), h.data());
+		}
+		return h;
+	}();
+	return Result;
+}
+
 void Launcher::processArguments() {
 	enum class KeyFormat {
 		NoValues,
@@ -520,15 +536,18 @@ void Launcher::processArguments() {
 		{ "-tosettings"     , KeyFormat::NoValues },
 		{ "-startintray"    , KeyFormat::NoValues },
 		{ "-quit"           , KeyFormat::NoValues },
-		{ "-sendpath"       , KeyFormat::AllLeftValues },
 		{ "-workdir"        , KeyFormat::OneValue },
-		{ "--"              , KeyFormat::OneValue },
+		{ "--"              , KeyFormat::AllLeftValues },
 		{ "-scale"          , KeyFormat::OneValue },
 	};
 	auto parseResult = QMap<QByteArray, QStringList>();
 	auto parsingKey = QByteArray();
 	auto parsingFormat = KeyFormat::NoValues;
-	for (const auto &argument : std::as_const(_arguments)) {
+	for (auto i = _arguments.cbegin(); i != _arguments.cend(); ++i) {
+		if (i == _arguments.cbegin()) {
+			continue;
+		}
+		const auto &argument = *i;
 		switch (parsingFormat) {
 		case KeyFormat::OneValue: {
 			parseResult[parsingKey] = QStringList(argument.mid(0, 8192));
@@ -543,7 +562,9 @@ void Launcher::processArguments() {
 			if (it != parseMap.end()) {
 				parsingFormat = it->second;
 				parseResult[parsingKey] = QStringList();
+				continue;
 			}
+			parseResult["--"].push_back(argument.mid(0, 8192));
 		} break;
 		}
 	}
@@ -563,12 +584,15 @@ void Launcher::processArguments() {
 	gStartToSettings = parseResult.contains("-tosettings");
 	gStartInTray = parseResult.contains("-startintray");
 	gQuit = parseResult.contains("-quit");
-	gSendPaths = parseResult.value("-sendpath", {});
 	_customWorkingDir = parseResult.value("-workdir", {}).join(QString());
 	if (!_customWorkingDir.isEmpty()) {
 		_customWorkingDir = QDir(_customWorkingDir).absolutePath() + '/';
 	}
-	gStartUrl = parseResult.value("--", {}).join(QString());
+
+	const auto startUrls = parseResult.value("--", {});
+	gStartUrls = startUrls | ranges::views::transform([&](const QString &url) {
+		return QUrl::fromUserInput(url, _initialWorkingDir);
+	}) | ranges::views::filter(&QUrl::isValid) | ranges::to<QList<QUrl>>;
 
 	const auto scaleKey = parseResult.value("-scale", {});
 	if (scaleKey.size() > 0) {

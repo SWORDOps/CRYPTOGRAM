@@ -35,6 +35,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_chat_helpers.h"
 #include "styles/style_info.h" // inviteLinkListItem.
 #include "styles/style_layers.h"
+#include "GoogleAppTranslator.h"
 
 #include <QLocale>
 
@@ -150,10 +151,7 @@ void TranslateBox(
 		original->entity()->setAnimationsPausedCallback(animationsPaused);
 		original->entity()->setMarkedText(
 			text,
-			Core::MarkedTextContext{
-				.session = &peer->session(),
-				.customEmojiRepaint = [=] { original->entity()->update(); },
-			});
+			Core::TextContext({ .session = &peer->session() }));
 		original->setMinimalHeight(lineHeight);
 		original->hide(anim::type::instant);
 
@@ -211,7 +209,7 @@ void TranslateBox(
 		box,
 		CreateLoadingTextWidget(
 			box,
-			st::aboutLabel,
+			st::aboutLabel.style,
 			std::min(original->entity()->height() / lineHeight, kMaxLines),
 			state->to.value() | rpl::map([=](LanguageId id) {
 				return id.locale().textDirection() == Qt::RightToLeft;
@@ -221,10 +219,7 @@ void TranslateBox(
 		const auto label = translated->entity();
 		label->setMarkedText(
 			text,
-			Core::MarkedTextContext{
-				.session = &peer->session(),
-				.customEmojiRepaint = [=] { label->update(); },
-			});
+			Core::TextContext({ .session = &peer->session() }));
 		translated->show(anim::type::instant);
 		loading->hide(anim::type::instant);
 	};
@@ -232,40 +227,49 @@ void TranslateBox(
 	const auto send = [=](LanguageId to) {
 		loading->show(anim::type::instant);
 		translated->hide(anim::type::instant);
-		auto toTC = GetEnhancedBool("translate_to_tc"); // Override translate setting :)
-		state->api.request(MTPmessages_TranslateText(
-			MTP_flags(flags),
-			msgId ? peer->input : MTP_inputPeerEmpty(),
-			(msgId
-				? MTP_vector<MTPint>(1, MTP_int(msgId))
-				: MTPVector<MTPint>()),
-			(msgId
-				? MTPVector<MTPTextWithEntities>()
-				: MTP_vector<MTPTextWithEntities>(1, MTP_textWithEntities(
-					MTP_string(text.text),
-					Api::EntitiesToMTP(
-						&peer->session(),
-						text.entities,
-						Api::ConvertOption::SkipLocal)))),
-			MTP_string(toTC ? "zh-Hant" : to.twoLetterCode())
-		)).done([=](const MTPmessages_TranslatedText &result) {
-			const auto &data = result.data();
-			const auto &list = data.vresult().v;
-			if (list.isEmpty()) {
-				showText(
-					Ui::Text::Italic(tr::lng_translate_box_error(tr::now)));
-			} else {
-				showText(TextWithEntities{
-					.text = qs(list.front().data().vtext()),
-					.entities = Api::EntitiesFromMTP(
-						&peer->session(),
-						list.front().data().ventities().v),
-				});
-			}
-		}).fail([=](const MTP::Error &error) {
-			showText(
-				Ui::Text::Italic(tr::lng_translate_box_error(tr::now)));
-		}).send();
+
+		crl::async([=] {
+			const auto toTC = GetEnhancedBool("translate_to_tc"); // Override translate setting :)
+			const auto result = GoogleAppTranslator::instance()->translate(
+				  text.text, "auto", toTC ? "zh-Hant" : to.twoLetterCode());
+		  crl::on_main([=] {
+			showText(TextWithEntities{.text = result.translation});
+		  });
+		});
+
+		//state->api.request(MTPmessages_TranslateText(
+		//	MTP_flags(flags),
+		//	msgId ? peer->input : MTP_inputPeerEmpty(),
+		//	(msgId
+		//		? MTP_vector<MTPint>(1, MTP_int(msgId))
+		//		: MTPVector<MTPint>()),
+		//	(msgId
+		//		? MTPVector<MTPTextWithEntities>()
+		//		: MTP_vector<MTPTextWithEntities>(1, MTP_textWithEntities(
+		//			MTP_string(text.text),
+		//			Api::EntitiesToMTP(
+		//				&peer->session(),
+		//				text.entities,
+		//				Api::ConvertOption::SkipLocal)))),
+		//	MTP_string(toTC ? "zh-Hant" : to.twoLetterCode())
+		//)).done([=](const MTPmessages_TranslatedText &result) {
+		//	const auto &data = result.data();
+		//	const auto &list = data.vresult().v;
+		//	if (list.isEmpty()) {
+		//		showText(
+		//			Ui::Text::Italic(tr::lng_translate_box_error(tr::now)));
+		//	} else {
+		//		showText(TextWithEntities{
+		//			.text = qs(list.front().data().vtext()),
+		//			.entities = Api::EntitiesFromMTP(
+		//				&peer->session(),
+		//				list.front().data().ventities().v),
+		//		});
+		//	}
+		//}).fail([=](const MTP::Error &error) {
+		//	showText(
+		//		Ui::Text::Italic(tr::lng_translate_box_error(tr::now)));
+		//}).send();
 	};
 	state->to.value() | rpl::start_with_next(send, box->lifetime());
 
@@ -314,7 +318,7 @@ object_ptr<BoxContent> EditSkipTranslationLanguages() {
 	auto title = tr::lng_translate_settings_choose();
 	const auto selected = std::make_shared<std::vector<LanguageId>>(
 		Core::App().settings().skipTranslationLanguages());
-	const auto weak = std::make_shared<QPointer<BoxContent>>();
+	const auto weak = std::make_shared<base::weak_qptr<BoxContent>>();
 	const auto check = [=](LanguageId id) {
 		const auto already = ranges::contains(*selected, id);
 		if (already) {
@@ -323,7 +327,7 @@ object_ptr<BoxContent> EditSkipTranslationLanguages() {
 			selected->push_back(id);
 		}
 		if (already && selected->empty()) {
-			if (const auto strong = weak->data()) {
+			if (const auto strong = weak->get()) {
 				strong->showToast(
 					tr::lng_translate_settings_one(tr::now),
 					kSkipAtLeastOneDuration);

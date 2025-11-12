@@ -105,7 +105,8 @@ ComposedBadge::ComposedBadge(
 , _badge(
 		this,
 		st::settingsInfoPeerBadge,
-		session->user(),
+		session,
+		Info::Profile::BadgeContentForPeer(session->user()),
 		nullptr,
 		std::move(animationPaused),
 		kPlayStatusLimit,
@@ -118,8 +119,8 @@ ComposedBadge::ComposedBadge(
 		) | rpl::map([=] {
 			auto &owner = session->data();
 			return Badge::UnreadBadge{
-				owner.unreadBadge(),
-				owner.unreadBadgeMuted(),
+				owner.unreadWithMentionsBadge(),
+				owner.unreadWithMentionsBadgeMuted(),
 			};
 		}));
 		rpl::combine(
@@ -453,12 +454,18 @@ void SetupRows(
 
 	Ui::AddSkip(container);
 
+	const auto showEditName = [=] {
+		if (controller->showFrozenError()) {
+			return;
+		}
+		controller->show(Box<EditNameBox>(self));
+	};
 	AddRow(
 		container,
 		tr::lng_settings_name_label(),
 		Info::Profile::NameValue(self) | Ui::Text::ToWithEntities(),
 		tr::lng_profile_copy_fullname(tr::now),
-		[=] { controller->show(Box<EditNameBox>(self)); },
+		showEditName,
 		{ &st::menuIconProfile });
 
 	const auto showChangePhone = [=] {
@@ -511,6 +518,9 @@ void SetupRows(
 		std::move(value),
 		tr::lng_context_copy_mention(tr::now),
 		[=] {
+			if (controller->showFrozenError()) {
+				return;
+			}
 			const auto box = controller->show(
 				Box(UsernamesBox, session->user()));
 			box->boxClosing(

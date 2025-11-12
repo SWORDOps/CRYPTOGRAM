@@ -21,13 +21,16 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "history/history_item.h"
 #include "lang/lang_keys.h"
+#include "main/main_app_config.h"
 #include "main/main_session.h"
 #include "menu/menu_ttl_validator.h"
+#include "ui/boxes/confirm_box.h"
 #include "ui/layers/generic_box.h"
 #include "ui/text/text_utilities.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/labels.h"
+#include "ui/rect.h"
 #include "ui/wrap/slide_wrap.h"
 #include "styles/style_layers.h"
 #include "styles/style_boxes.h"
@@ -109,16 +112,13 @@ void DeleteMessagesBox::prepare() {
 					Ui::Text::RichLangValue);
 			deleteStyle = &st::attentionBoxButton;
 		} else if (_wipeHistoryJustClear) {
-			const auto isChannel = peer->isBroadcast();
-			const auto isPublicGroup = peer->isMegagroup()
-				&& peer->asChannel()->isPublic();
-			if (isChannel || isPublicGroup) {
-				canDelete = false;
-			}
+			const auto isChannel = peer->isChannel() && !peer->isMegagroup();
+			_revokeJustClearForChannel = isChannel;
 			details.text = isChannel
-				? tr::lng_no_clear_history_channel(tr::now)
-				: isPublicGroup
-				? tr::lng_no_clear_history_group(tr::now)
+				? tr::lng_sure_delete_channel_history(
+					tr::now,
+					lt_channel,
+					peer->name())
 				: peer->isSelf()
 				? tr::lng_sure_delete_saved_messages(tr::now)
 				: peer->isUser()
@@ -154,7 +154,8 @@ void DeleteMessagesBox::prepare() {
 			}
 			deleteStyle = &st::attentionBoxButton;
 		}
-		if (auto revoke = revokeText(peer)) {
+		if (_revokeJustClearForChannel) {
+		} else if (auto revoke = revokeText(peer)) {
 			_revoke.create(
 				this,
 				revoke->checkbox,
@@ -195,7 +196,6 @@ void DeleteMessagesBox::prepare() {
 		if (_moderateDeleteAll) {
 			const auto search = lifetime().make_state<Api::MessagesSearch>(
 				_session->data().message(_ids.front())->history());
-
 			_deleteAll.create(
 				this,
 				tr::lng_delete_all_from_user(
@@ -225,12 +225,14 @@ void DeleteMessagesBox::prepare() {
 			search->searchMessages({ .from = _moderateFrom });
 		}
 	} else {
-		details.text = (_ids.size() == 1)
+		details.text = hasSavedMusicMessages()
+			? tr::lng_selected_remove_saved_music(tr::now)
+			: (_ids.size() == 1)
 			? tr::lng_selected_delete_sure_this(tr::now)
 			: tr::lng_selected_delete_sure(tr::now, lt_count, _ids.size());
 		if (const auto peer = checkFromSinglePeer()) {
 			auto count = int(_ids.size());
-			if (hasScheduledMessages()) {
+			if (hasScheduledMessages() || hasSavedMusicMessages()) {
 			} else if (auto revoke = revokeText(peer)) {
 				const auto &settings = Core::App().settings();
 				const auto revokeByDefault
@@ -272,7 +274,8 @@ void DeleteMessagesBox::prepare() {
 				appendDetails({
 					tr::lng_delete_for_me_chat_hint(tr::now, lt_count, count)
 				});
-			} else if (!peer->isSelf()) {
+			} else if (!peer->isSelf()
+				&& (!peer->isUser() || !peer->asUser()->isInaccessible())) {
 				if (const auto user = peer->asUser(); user && user->isBot()) {
 					_revokeForBot = true;
 				}
@@ -283,6 +286,7 @@ void DeleteMessagesBox::prepare() {
 		}
 	}
 	_text.create(this, rpl::single(std::move(details)), st::boxLabel);
+	_text->resizeToWidth(st::boxWidth - rect::m::sum::h(st::boxPadding));
 
 	if (_wipeHistoryJustClear && _wipeHistoryPeer) {
 		const auto validator = TTLMenu::TTLValidator(
@@ -312,40 +316,59 @@ void DeleteMessagesBox::prepare() {
 		addButton(tr::lng_about_done(), [=] { closeBox(); });
 	}
 
-	auto fullHeight = st::boxPadding.top()
-		+ _text->height()
-		+ st::boxPadding.bottom();
-	if (_moderateFrom) {
-		fullHeight += st::boxMediumSkip;
-		if (_banUser) {
-			fullHeight += _banUser->heightNoMargins() + st::boxLittleSkip;
-		}
-		fullHeight += _reportSpam->heightNoMargins();
-		if (_deleteAll) {
-			fullHeight += st::boxLittleSkip + _deleteAll->heightNoMargins();
-		}
+	const auto &padding = st::boxPadding;
+	rpl::combine(
+		widthValue(),
+		_text->naturalWidthValue()
+	) | rpl::start_with_next([=](int full, int) {
+		_text->resizeToNaturalWidth(full - padding.left() - padding.right());
+
+		auto fullHeight = st::boxPadding.top()
+			+ _text->height()
+			+ st::boxPadding.bottom();
+		if (_moderateFrom) {
+			fullHeight += st::boxMediumSkip;
+			if (_banUser) {
+				fullHeight += _banUser->heightNoMargins() + st::boxLittleSkip;
+			}
+			fullHeight += _reportSpam->heightNoMargins();
+			if (_deleteAll) {
+				fullHeight += st::boxLittleSkip + _deleteAll->heightNoMargins();
+			}
 		if (GetEnhancedInt("always_delete_for") == 1 || GetEnhancedInt("always_delete_for") == 3) {
 			_deleteAll->setChecked(true);
 		}
-	} else if (_revoke) {
-		fullHeight += st::boxMediumSkip + _revoke->heightNoMargins();
+		} else if (_revoke) {
+			fullHeight += st::boxMediumSkip + _revoke->heightNoMargins();
 		if (GetEnhancedInt("always_delete_for") == 2 || GetEnhancedInt("always_delete_for") == 3) {
 			_revoke->setChecked(true);
 		}
-	}
-	if (_autoDeleteSettings) {
-		fullHeight += st::boxMediumSkip
-			+ _autoDeleteSettings->height()
-			+ st::boxLittleSkip;
-	}
-	setDimensions(st::boxWidth, fullHeight);
-	_fullHeight = fullHeight;
+		}
+		if (_autoDeleteSettings) {
+			fullHeight += st::boxMediumSkip
+				+ _autoDeleteSettings->height()
+				+ st::boxLittleSkip;
+		}
+		setDimensions(st::boxWidth, fullHeight);
+		_fullHeight = fullHeight;
+	}, lifetime());
 }
 
 bool DeleteMessagesBox::hasScheduledMessages() const {
 	for (const auto &fullId : _ids) {
 		if (const auto item = _session->data().message(fullId)) {
 			if (item->isScheduled()) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool DeleteMessagesBox::hasSavedMusicMessages() const {
+	for (const auto &fullId : _ids) {
+		if (const auto item = _session->data().message(fullId)) {
+			if (item->isSavedMusicItem()) {
 				return true;
 			}
 		}
@@ -498,7 +521,58 @@ void DeleteMessagesBox::keyPressEvent(QKeyEvent *e) {
 	}
 }
 
+PaidPostType DeleteMessagesBox::paidPostType() const {
+	auto result = PaidPostType::None;
+	const auto now = base::unixtime::now();
+	for (const auto &id : _ids) {
+		if (const auto item = _session->data().message(id)) {
+			const auto type = item->paidType();
+			if (type != PaidPostType::None) {
+				const auto date = item->date();
+				const auto config = &item->history()->session().appConfig();
+				const auto limit = config->suggestedPostAgeMin();
+				if (now < date || now - date <= limit) {
+					if (type == PaidPostType::Ton) {
+						return type;
+					} else if (type == PaidPostType::Stars) {
+						result = type;
+					}
+				}
+			}
+		}
+	}
+	return result;
+}
+
 void DeleteMessagesBox::deleteAndClear() {
+	const auto warnPaidType = _confirmedDeletePaidSuggestedPosts
+		? PaidPostType::None
+		: paidPostType();
+	if (warnPaidType != PaidPostType::None) {
+		const auto weak = base::make_weak(this);
+		const auto callback = [=](Fn<void()> close) {
+			close();
+			if (const auto strong = weak.get()) {
+				strong->_confirmedDeletePaidSuggestedPosts = true;
+				strong->deleteAndClear();
+			}
+		};
+		const auto ton = (warnPaidType == PaidPostType::Ton);
+		uiShow()->show(Ui::MakeConfirmBox({
+			.text = (ton
+				? tr::lng_suggest_warn_text_ton
+				: tr::lng_suggest_warn_text_stars)(
+					tr::now,
+					Ui::Text::RichLangValue),
+			.confirmed = callback,
+			.confirmText = tr::lng_suggest_warn_delete_anyway(tr::now),
+			.confirmStyle = &st::attentionBoxButton,
+			.title = (ton
+				? tr::lng_suggest_warn_title_ton
+				: tr::lng_suggest_warn_title_stars)(tr::now),
+		}));
+		return;
+	}
 	if (_revoke
 		&& _revokeRemember
 		&& _revokeRemember->toggled()
@@ -507,16 +581,21 @@ void DeleteMessagesBox::deleteAndClear() {
 			!_revoke->checked());
 		Core::App().saveSettingsDelayed();
 	}
-	const auto revoke = _revoke ? _revoke->checked() : _revokeForBot;
+	const auto revoke = _revoke
+		? _revoke->checked()
+		: (_revokeForBot || _revokeJustClearForChannel);
 	const auto session = _session;
 	const auto invokeCallbackAndClose = [&] {
 		// deleteMessages can initiate closing of the current section,
 		// which will cause this box to be destroyed.
-		const auto weak = Ui::MakeWeak(this);
+		const auto weak = base::make_weak(this);
+		if (hasSavedMusicMessages()) {
+			uiShow()->showToast(tr::lng_saved_music_removed(tr::now));
+		}
 		if (const auto callback = _deleteConfirmedCallback) {
 			callback();
 		}
-		if (const auto strong = weak.data()) {
+		if (const auto strong = weak.get()) {
 			strong->closeBox();
 		}
 	};

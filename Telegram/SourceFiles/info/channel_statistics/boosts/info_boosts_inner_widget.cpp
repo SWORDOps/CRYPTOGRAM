@@ -174,7 +174,7 @@ void FillShareLink(
 		std::shared_ptr<Ui::Show> show,
 		const QString &link,
 		not_null<PeerData*> peer) {
-	const auto weak = Ui::MakeWeak(content);
+	const auto weak = base::make_weak(content);
 	const auto copyLink = crl::guard(weak, [=] {
 		QGuiApplication::clipboard()->setText(link);
 		show->showToast(tr::lng_channel_public_link_copied(tr::now));
@@ -185,7 +185,7 @@ void FillShareLink(
 
 	const auto label = content->lifetime().make_state<Ui::InviteLinkLabel>(
 		content,
-		rpl::single(link),
+		rpl::single(base::duplicate(link).replace(u"https://"_q, QString())),
 		nullptr);
 	content->add(
 		label->take(),
@@ -307,6 +307,7 @@ void InnerWidget::fill() {
 			delete Ui::VerticalLayout::widgetAt(0);
 		}
 		load();
+		_showFinished.fire({});
 	});
 
 	{
@@ -391,7 +392,9 @@ void InnerWidget::fill() {
 		}
 
 		Ui::AddSkip(inner);
-		Ui::AddDivider(inner);
+		Ui::AddDividerText(
+			inner,
+			tr::lng_boosts_prepaid_giveaway_title_subtext());
 		Ui::AddSkip(inner);
 	}
 
@@ -456,9 +459,9 @@ void InnerWidget::fill() {
 				inner,
 				object_ptr<Ui::CustomWidthSlider>(
 					inner,
-					st::dialogsSearchTabs)),
-			st::boxRowPadding);
-		if (const auto shadow = Ui::CreateChild<Ui::PlainShadow>(inner)) {
+					st::dialogsSearchTabs)));
+		if (!hasOneTab) {
+			const auto shadow = Ui::CreateChild<Ui::PlainShadow>(inner);
 			shadow->show();
 			slider->geometryValue(
 			) | rpl::start_with_next([=](const QRect &r) {

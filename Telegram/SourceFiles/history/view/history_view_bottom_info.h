@@ -51,6 +51,7 @@ public:
 		QString author;
 		QString msgId;
 		EffectId effectId = 0;
+		int stars = 0;
 		std::optional<int> views;
 		std::optional<int> replies;
 		std::optional<int> forwardsCount;
@@ -76,9 +77,6 @@ public:
 		bool inverted,
 		const PaintContext &context) const;
 
-	void animateEffect(
-		Ui::ReactionFlyAnimationArgs &&args,
-		Fn<void()> repaint);
 	[[nodiscard]] auto takeEffectAnimation()
 		-> std::unique_ptr<Ui::ReactionFlyAnimation>;
 	void continueEffectAnimation(

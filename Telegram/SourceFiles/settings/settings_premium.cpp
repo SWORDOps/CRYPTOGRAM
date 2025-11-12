@@ -13,9 +13,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/application.h"
 #include "core/click_handler_types.h"
 #include "core/local_url_handlers.h" // Core::TryConvertUrlToLocal.
-#include "core/ui_integration.h" // MarkedTextContext.
+#include "core/ui_integration.h" // TextContext.
 #include "data/data_document.h"
 #include "data/data_document_media.h"
+#include "data/data_emoji_statuses.h"
 #include "data/data_peer_values.h"
 #include "data/data_session.h"
 #include "data/stickers/data_custom_emoji.h" // SerializeCustomEmojiId.
@@ -35,6 +36,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/effects/premium_graphics.h"
 #include "ui/effects/premium_stars_colored.h"
 #include "ui/effects/premium_top_bar.h"
+#include "ui/controls/swipe_handler.h"
+#include "ui/controls/swipe_handler_data.h"
 #include "ui/layers/generic_box.h"
 #include "ui/text/format_values.h"
 #include "ui/text/text_utilities.h"
@@ -84,11 +87,14 @@ using SectionCustomTopBarData = Info::Settings::SectionCustomTopBarData;
 
 		if (option.duration == tr::lng_months(tr::now, lt_count, 1)) {
 			option.costPerMonth = QString();
+			option.costNoDiscount = QString();
 			option.duration = tr::lng_premium_subscribe_months_1(tr::now);
 		} else if (option.duration == tr::lng_months(tr::now, lt_count, 6)) {
 			option.duration = tr::lng_premium_subscribe_months_6(tr::now);
 		} else if (option.duration == tr::lng_years(tr::now, lt_count, 1)) {
 			option.duration = tr::lng_premium_subscribe_months_12(tr::now);
+		} else if (option.duration == tr::lng_years(tr::now, lt_count, 2)) {
+			option.duration = tr::lng_premium_subscribe_months_24(tr::now);
 		}
 	}
 	return result;
@@ -162,6 +168,45 @@ struct Data {
 }
 
 } // namespace EmojiStatus
+
+namespace PremiumGift {
+
+struct Data {
+	DocumentId documentId = 0;
+	int perUserTotal = 0;
+
+	explicit operator bool() const {
+		return documentId != 0;
+	}
+};
+
+[[nodiscard]] QString Serialize(const Data &gift) {
+	return u"premiumgift_:%1,peruser_:%2"_q
+		.arg(gift.documentId)
+		.arg(gift.perUserTotal);
+}
+
+[[nodiscard]] Data Parse(QStringView data) {
+	if (data.startsWith(u"premiumgift_:"_q)) {
+		const auto components = data.split(',');
+		if (components.size() != 2) {
+			return {};
+		}
+		const auto first = components[0].split(':');
+		const auto second = components[1].split(':');
+		if (first.size() != 2 || second.size() != 2) {
+			return {};
+		}
+		return {
+			.documentId = DocumentId(first[1].toULongLong()),
+			.perUserTotal = second[1].toInt(),
+		};
+	}
+	return {};
+}
+
+} // namespace PremiumGift
+
 } // namespace Ref
 
 struct Entry {
@@ -210,7 +255,6 @@ using Order = std::vector<QString>;
 				tr::lng_premium_summary_subtitle_tags_for_messages(),
 				tr::lng_premium_summary_about_tags_for_messages(),
 				PremiumFeature::TagsForMessages,
-				true,
 			},
 		},
 		{
@@ -220,7 +264,6 @@ using Order = std::vector<QString>;
 				tr::lng_premium_summary_subtitle_last_seen(),
 				tr::lng_premium_summary_about_last_seen(),
 				PremiumFeature::LastSeen,
-				true,
 			},
 		},
 		{
@@ -230,7 +273,6 @@ using Order = std::vector<QString>;
 				tr::lng_premium_summary_subtitle_message_privacy(),
 				tr::lng_premium_summary_about_message_privacy(),
 				PremiumFeature::MessagePrivacy,
-				true,
 			},
 		},
 		{
@@ -375,7 +417,6 @@ using Order = std::vector<QString>;
 				tr::lng_premium_summary_subtitle_business(),
 				tr::lng_premium_summary_about_business(),
 				PremiumFeature::Business,
-				true,
 			},
 		},
 		{
@@ -385,6 +426,15 @@ using Order = std::vector<QString>;
 				tr::lng_premium_summary_subtitle_effects(),
 				tr::lng_premium_summary_about_effects(),
 				PremiumFeature::Effects,
+			},
+		},
+		{
+			u"todo"_q,
+			Entry{
+				&st::settingsPremiumIconChecklist,
+				tr::lng_premium_summary_subtitle_todo_lists(),
+				tr::lng_premium_summary_about_todo_lists(),
+				PremiumFeature::TodoLists,
 				true,
 			},
 		},
@@ -535,12 +585,29 @@ void EmojiStatusTopBar::paint(QPainter &p) {
 	}
 }
 
-class TopBarUser final : public Ui::Premium::TopBarAbstract {
+enum class TopBarWithStickerType {
+	EmojiStatus,
+	PremiumGift,
+};
+
+struct TopBarWithStickerArgs {
+	rpl::producer<DocumentData*> stickerValue;
+	rpl::producer<QString> nameValue;
+	rpl::producer<TextWithEntities> aboutValue;
+	TopBarWithStickerType type = TopBarWithStickerType::EmojiStatus;
+};
+
+class TopBarWithSticker final : public Ui::Premium::TopBarAbstract {
 public:
-	TopBarUser(
+	TopBarWithSticker(
 		not_null<QWidget*> parent,
 		not_null<Window::SessionController*> controller,
 		not_null<PeerData*> peer,
+		rpl::producer<> showFinished);
+	TopBarWithSticker(
+		not_null<QWidget*> parent,
+		not_null<Window::SessionController*> controller,
+		TopBarWithStickerArgs args,
 		rpl::producer<> showFinished);
 
 	void setPaused(bool paused) override;
@@ -555,10 +622,13 @@ protected:
 private:
 	void updateTitle(
 		DocumentData *document,
-		TextWithEntities name,
+		const TextWithEntities &name,
 		not_null<Window::SessionController*> controller);
-	void updateAbout(DocumentData *document) const;
+	void updateAbout(
+		DocumentData *document,
+		const TextWithEntities &about) const;
 
+	TopBarWithStickerType _type = TopBarWithStickerType::EmojiStatus;
 	object_ptr<Ui::RpWidget> _content;
 	object_ptr<Ui::FlatLabel> _title;
 	object_ptr<Ui::FlatLabel> _about;
@@ -579,12 +649,35 @@ private:
 
 };
 
-TopBarUser::TopBarUser(
+TopBarWithSticker::TopBarWithSticker(
 	not_null<QWidget*> parent,
 	not_null<Window::SessionController*> controller,
 	not_null<PeerData*> peer,
 	rpl::producer<> showFinished)
+: TopBarWithSticker(parent, controller, {
+	.stickerValue = Info::Profile::EmojiStatusIdValue(
+		peer
+	) | rpl::map([=](EmojiStatusId id) -> DocumentData* {
+		const auto documentId = id.collectible
+			? id.collectible->documentId
+			: id.documentId;
+		const auto document = documentId
+			? controller->session().data().document(documentId).get()
+			: nullptr;
+		return (document && document->sticker()) ? document : nullptr;
+	}),
+	.nameValue = Info::Profile::NameValue(peer),
+	.type = TopBarWithStickerType::EmojiStatus,
+}, std::move(showFinished)) {
+}
+
+TopBarWithSticker::TopBarWithSticker(
+	not_null<QWidget*> parent,
+	not_null<Window::SessionController*> controller,
+	TopBarWithStickerArgs args,
+	rpl::producer<> showFinished)
 : TopBarAbstract(parent, st::userPremiumCover)
+, _type(args.type)
 , _content(this)
 , _title(_content, st::settingsPremiumUserTitle)
 , _about(_content, st::userPremiumCover.about)
@@ -597,6 +690,10 @@ TopBarUser::TopBarUser(
 }) {
 	_starRect = TopBarAbstract::starRect(1., 1.);
 
+	if (_type == TopBarWithStickerType::PremiumGift) {
+		_ministars.setColorOverride(Ui::Premium::CreditsIconGradientStops());
+	}
+
 	rpl::single() | rpl::then(
 		style::PaletteChanged()
 	) | rpl::start_with_next([=] {
@@ -604,21 +701,20 @@ TopBarUser::TopBarUser(
 		update();
 	}, lifetime());
 
-	auto documentValue = Info::Profile::EmojiStatusIdValue(
-		peer
-	) | rpl::map([=](DocumentId id) -> DocumentData* {
-		const auto document = id
-			? controller->session().data().document(id).get()
-			: nullptr;
-		return (document && document->sticker()) ? document : nullptr;
-	});
-
 	rpl::combine(
-		std::move(documentValue),
-		Info::Profile::NameValue(peer)
+		(args.stickerValue
+			? std::move(args.stickerValue)
+			: rpl::single((DocumentData*)nullptr)),
+		(args.nameValue
+			? std::move(args.nameValue)
+			: rpl::single(QString())),
+		(args.aboutValue
+			? std::move(args.aboutValue)
+			: rpl::single(TextWithEntities()))
 	) | rpl::start_with_next([=](
 			DocumentData *document,
-			const QString &name) {
+			const QString &name,
+			const TextWithEntities &about) {
 		if (document) {
 			_emojiStatus = std::make_unique<EmojiStatusTopBar>(
 				document,
@@ -631,12 +727,20 @@ TopBarUser::TopBarUser(
 		}
 
 		updateTitle(document, { name }, controller);
-		updateAbout(document);
+		updateAbout(document, about);
 
 		auto event = QResizeEvent(size(), size());
 		resizeEvent(&event);
 		update();
 	}, lifetime());
+
+	_title->naturalWidthValue() | rpl::start_with_next([=] {
+		_title->resizeToNaturalWidth(st::settingsPremiumUserTitle.minWidth);
+	}, _title->lifetime());
+
+	_about->naturalWidthValue() | rpl::start_with_next([=] {
+		_about->resizeToNaturalWidth(st::userPremiumCover.about.minWidth);
+	}, _about->lifetime());
 
 	rpl::combine(
 		_title->sizeValue(),
@@ -736,14 +840,15 @@ TopBarUser::TopBarUser(
 			p.drawImage(_starRect.topLeft(), _imageStar);
 		}
 	}, lifetime());
-
 }
 
-void TopBarUser::updateTitle(
+void TopBarWithSticker::updateTitle(
 		DocumentData *document,
-		TextWithEntities name,
+		const TextWithEntities &name,
 		not_null<Window::SessionController*> controller) {
-	if (!document) {
+	if (_type == TopBarWithStickerType::PremiumGift) {
+		return _title->setMarkedText(name);
+	} else if (!document) {
 		return _title->setMarkedText(
 			tr::lng_premium_summary_user_title(
 				tr::now,
@@ -787,11 +892,9 @@ void TopBarUser::updateTitle(
 			lt_link,
 			{ .text = text, .entities = entities, },
 			Ui::Text::WithEntities);
-	const auto context = Core::MarkedTextContext{
-		.session = &controller->session(),
-		.customEmojiRepaint = [=] { _title->update(); },
-	};
-	_title->setMarkedText(std::move(title), context);
+	_title->setMarkedText(
+		std::move(title),
+		Core::TextContext({ .session = &controller->session() }));
 	auto link = std::make_shared<LambdaClickHandler>([=,
 			stickerSetIdentifier = stickerInfo->set] {
 		setPaused(true);
@@ -808,36 +911,40 @@ void TopBarUser::updateTitle(
 	_title->setLink(linkIndex, std::move(link));
 }
 
-void TopBarUser::updateAbout(DocumentData *document) const {
-	_about->setMarkedText((document
-		? tr::lng_premium_emoji_status_about
-		: tr::lng_premium_summary_user_about)(
-			tr::now,
-			Ui::Text::RichLangValue));
+void TopBarWithSticker::updateAbout(
+		DocumentData *document,
+		const TextWithEntities &about) const {
+	_about->setMarkedText((_type == TopBarWithStickerType::PremiumGift)
+		? about
+		: (document
+			? tr::lng_premium_emoji_status_about
+			: tr::lng_premium_summary_user_about)(
+				tr::now,
+				Ui::Text::RichLangValue));
 }
 
-void TopBarUser::setPaused(bool paused) {
+void TopBarWithSticker::setPaused(bool paused) {
 	_ministars.setPaused(paused);
 	if (_emojiStatus) {
 		_emojiStatus->setPaused(paused);
 	}
 }
 
-void TopBarUser::setTextPosition(int x, int y) {
+void TopBarWithSticker::setTextPosition(int x, int y) {
 	_smallTop.position = { x, y };
 }
 
-rpl::producer<int> TopBarUser::additionalHeight() const {
+rpl::producer<int> TopBarWithSticker::additionalHeight() const {
 	return rpl::never<int>();
 }
 
-void TopBarUser::paintEvent(QPaintEvent *e) {
+void TopBarWithSticker::paintEvent(QPaintEvent *e) {
 	auto p = QPainter(this);
 
 	TopBarAbstract::paintEdges(p);
 }
 
-void TopBarUser::resizeEvent(QResizeEvent *e) {
+void TopBarWithSticker::resizeEvent(QResizeEvent *e) {
 	_starRect = TopBarAbstract::starRect(1., 1.);
 
 	_ministars.setCenter(_starRect.toRect());
@@ -855,9 +962,9 @@ public:
 
 	[[nodiscard]] rpl::producer<QString> title() override;
 
-	[[nodiscard]] QPointer<Ui::RpWidget> createPinnedToTop(
+	[[nodiscard]] base::weak_qptr<Ui::RpWidget> createPinnedToTop(
 		not_null<QWidget*> parent) override;
-	[[nodiscard]] QPointer<Ui::RpWidget> createPinnedToBottom(
+	[[nodiscard]] base::weak_qptr<Ui::RpWidget> createPinnedToBottom(
 		not_null<Ui::RpWidget*> parent) override;
 
 	void showFinished() override;
@@ -870,6 +977,7 @@ public:
 
 private:
 	void setupContent();
+	void setupSwipeBack();
 	void setupSubscriptionOptions(not_null<Ui::VerticalLayout*> container);
 
 	const not_null<Window::SessionController*> _controller;
@@ -898,6 +1006,7 @@ Premium::Premium(
 , _ref(ResolveRef(controller->premiumRef()))
 , _radioGroup(std::make_shared<Ui::RadiobuttonGroup>()) {
 	setupContent();
+	setupSwipeBack();
 	_controller->session().api().premium().reload();
 }
 
@@ -976,6 +1085,46 @@ void Premium::setupSubscriptionOptions(
 	) | rpl::map([](bool value) { return !value; }), anim::type::instant);
 }
 
+void Premium::setupSwipeBack() {
+	using namespace Ui::Controls;
+	
+	auto swipeBackData = lifetime().make_state<SwipeBackResult>();
+	
+	auto update = [=](SwipeContextData data) {
+		if (data.translation > 0) {
+			if (!swipeBackData->callback) {
+				(*swipeBackData) = SetupSwipeBack(
+					this,
+					[]() -> std::pair<QColor, QColor> {
+						return {
+							st::historyForwardChooseBg->c,
+							st::historyForwardChooseFg->c,
+						};
+					});
+			}
+			swipeBackData->callback(data);
+			return;
+		} else if (swipeBackData->lifetime) {
+			(*swipeBackData) = {};
+		}
+	};
+	
+	auto init = [=](int, Qt::LayoutDirection direction) {
+		return (direction == Qt::RightToLeft)
+			? DefaultSwipeBackHandlerFinishData([=] {
+				_showBack.fire({});
+			})
+			: SwipeHandlerFinishData();
+	};
+	
+	SetupSwipeHandler({
+		.widget = this,
+		.scroll = v::null,
+		.update = std::move(update),
+		.init = std::move(init),
+	});
+}
+
 void Premium::setupContent() {
 	const auto content = Ui::CreateChild<Ui::VerticalLayout>(this);
 
@@ -1015,7 +1164,7 @@ void Premium::setupContent() {
 
 }
 
-QPointer<Ui::RpWidget> Premium::createPinnedToTop(
+base::weak_qptr<Ui::RpWidget> Premium::createPinnedToTop(
 		not_null<QWidget*> parent) {
 	auto title = _controller->session().premium()
 		? tr::lng_premium_summary_title()
@@ -1045,7 +1194,9 @@ QPointer<Ui::RpWidget> Premium::createPinnedToTop(
 	}();
 
 	const auto emojiStatusData = Ref::EmojiStatus::Parse(_ref);
+	const auto premiumGiftData = Ref::PremiumGift::Parse(_ref);
 	const auto isEmojiStatus = (!!emojiStatusData);
+	const auto isPremiumGift = (!!premiumGiftData);
 
 	auto peerWithPremium = [&]() -> PeerData* {
 		if (isEmojiStatus) {
@@ -1056,13 +1207,34 @@ QPointer<Ui::RpWidget> Premium::createPinnedToTop(
 		}
 		return nullptr;
 	}();
+	auto premiumGift = [&]() -> DocumentData* {
+		if (isPremiumGift) {
+			auto &data = _controller->session().data();
+			return data.document(premiumGiftData.documentId);
+		}
+		return nullptr;
+	}();
 
 	const auto content = [&]() -> Ui::Premium::TopBarAbstract* {
 		if (peerWithPremium) {
-			return Ui::CreateChild<TopBarUser>(
+			return Ui::CreateChild<TopBarWithSticker>(
 				parent.get(),
 				_controller,
 				peerWithPremium,
+				_showFinished.events());
+		} else if (premiumGift) {
+			return Ui::CreateChild<TopBarWithSticker>(
+				parent.get(),
+				_controller,
+				TopBarWithStickerArgs{
+					.stickerValue = rpl::single(premiumGift),
+					.nameValue = tr::lng_gift_premium_title(),
+					.aboutValue = tr::lng_gift_premium_text(
+						lt_count,
+						rpl::single(premiumGiftData.perUserTotal * 1.),
+						Ui::Text::RichLangValue),
+					.type = TopBarWithStickerType::PremiumGift,
+				},
 				_showFinished.events());
 		}
 		const auto weak = base::make_weak(_controller);
@@ -1094,7 +1266,7 @@ QPointer<Ui::RpWidget> Premium::createPinnedToTop(
 	}, content->lifetime());
 
 	const auto calculateMaximumHeight = [=] {
-		return isEmojiStatus
+		return (isEmojiStatus || isPremiumGift)
 			? st::settingsPremiumUserHeight + TopTransitionSkip()
 			: st::settingsPremiumTopHeight;
 	};
@@ -1160,14 +1332,14 @@ QPointer<Ui::RpWidget> Premium::createPinnedToTop(
 		}
 	}, content->lifetime());
 
-	return Ui::MakeWeak(not_null<Ui::RpWidget*>{ content });
+	return base::make_weak(not_null<Ui::RpWidget*>{ content });
 }
 
 void Premium::showFinished() {
 	_showFinished.fire({});
 }
 
-QPointer<Ui::RpWidget> Premium::createPinnedToBottom(
+base::weak_qptr<Ui::RpWidget> Premium::createPinnedToBottom(
 		not_null<Ui::RpWidget*> parent) {
 	const auto content = Ui::CreateChild<Ui::RpWidget>(parent.get());
 
@@ -1184,7 +1356,7 @@ QPointer<Ui::RpWidget> Premium::createPinnedToBottom(
 			if (const auto peer = data.peer(emojiStatusData.peerId)) {
 				return Info::Profile::EmojiStatusIdValue(
 					peer
-				) | rpl::map([=](DocumentId id) {
+				) | rpl::map([=](EmojiStatusId id) {
 					return id
 						? tr::lng_premium_emoji_status_button()
 						: _buttonText.value();
@@ -1270,7 +1442,7 @@ QPointer<Ui::RpWidget> Premium::createPinnedToBottom(
 		_subscribe->setVisible(!premium && premiumPossible);
 	}, _subscribe->lifetime());
 
-	return Ui::MakeWeak(not_null<Ui::RpWidget*>{ content });
+	return base::make_weak(not_null<Ui::RpWidget*>{ content });
 }
 
 } // namespace
@@ -1337,7 +1509,20 @@ void ShowGiftPremium(
 void ShowEmojiStatusPremium(
 		not_null<Window::SessionController*> controller,
 		not_null<PeerData*> peer) {
-	ShowPremium(controller, Ref::EmojiStatus::Serialize({ peer->id }));
+	if (const auto unique = peer->emojiStatusId().collectible.get()) {
+		Core::ResolveAndShowUniqueGift(controller->uiShow(), unique->slug);
+	} else {
+		ShowPremium(controller, Ref::EmojiStatus::Serialize({ peer->id }));
+	}
+}
+
+void ShowPremiumGiftPremium(
+		not_null<Window::SessionController*> controller,
+		const Data::StarGift &gift) {
+	ShowPremium(controller, Ref::PremiumGift::Serialize({
+		.documentId = gift.document->id,
+		.perUserTotal = gift.perUserTotal,
+	}));
 }
 
 void StartPremiumPayment(
@@ -1376,19 +1561,17 @@ void ShowPremiumPromoToast(
 		TextWithEntities textWithLink,
 		const QString &ref) {
 	ShowPremiumPromoToast(show, [=](
-			not_null<Main::Session*> session,
-			ChatHelpers::WindowUsage usage) {
+			not_null<Main::Session*> session) {
 		Expects(&show->session() == session);
 
-		return show->resolveWindow(usage);
+		return show->resolveWindow();
 	}, std::move(textWithLink), ref);
 }
 
 void ShowPremiumPromoToast(
 		std::shared_ptr<Main::SessionShow> show,
 		Fn<Window::SessionController*(
-			not_null<Main::Session*>,
-			ChatHelpers::WindowUsage)> resolveWindow,
+			not_null<Main::Session*>)> resolveWindow,
 		TextWithEntities textWithLink,
 		const QString &ref) {
 	using WeakToast = base::weak_ptr<Ui::Toast::Instance>;
@@ -1403,8 +1586,7 @@ void ShowPremiumPromoToast(
 					strong->hideAnimated();
 					(*toast) = nullptr;
 					if (const auto controller = resolveWindow(
-							&show->session(),
-							ChatHelpers::WindowUsage::PremiumPromo)) {
+							&show->session())) {
 						Settings::ShowPremium(controller, ref);
 					}
 					return true;
@@ -1476,12 +1658,10 @@ not_null<Ui::GradientButton*> CreateSubscribeButton(
 	Expects(args.show || args.controller);
 
 	auto show = args.show ? std::move(args.show) : args.controller->uiShow();
-	auto resolve = [show](
-			not_null<Main::Session*> session,
-			ChatHelpers::WindowUsage usage) {
+	auto resolve = [show](not_null<Main::Session*> session) {
 		Expects(session == &show->session());
 
-		return show->resolveWindow(usage);
+		return show->resolveWindow();
 	};
 	return CreateSubscribeButton(
 		std::move(show),
@@ -1492,8 +1672,7 @@ not_null<Ui::GradientButton*> CreateSubscribeButton(
 not_null<Ui::GradientButton*> CreateSubscribeButton(
 		std::shared_ptr<::Main::SessionShow> show,
 		Fn<Window::SessionController*(
-			not_null<::Main::Session*>,
-			ChatHelpers::WindowUsage)> resolveWindow,
+			not_null<::Main::Session*>)> resolveWindow,
 		SubscribeButtonArgs &&args) {
 	const auto result = Ui::CreateChild<Ui::GradientButton>(
 		args.parent.get(),
@@ -1508,8 +1687,7 @@ not_null<Ui::GradientButton*> CreateSubscribeButton(
 			computeRef = args.computeRef,
 			computeBotUrl = args.computeBotUrl] {
 		const auto window = resolveWindow(
-			&show->session(),
-			ChatHelpers::WindowUsage::PremiumPromo);
+			&show->session());
 		if (!window) {
 			return;
 		} else if (promo) {
@@ -1612,6 +1790,8 @@ std::vector<PremiumFeature> PremiumFeaturesOrder(
 			return PremiumFeature::Wallpapers;
 		} else if (s == u"effects"_q) {
 			return PremiumFeature::Effects;
+		} else if (s == u"todo"_q) {
+			return PremiumFeature::TodoLists;
 		}
 		return PremiumFeature::kCount;
 	}) | ranges::views::filter([](PremiumFeature type) {

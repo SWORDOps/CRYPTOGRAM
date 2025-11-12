@@ -11,13 +11,16 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/runtime_composer.h"
 #include "base/flags.h"
 #include "base/weak_ptr.h"
+#include "ui/userpic_view.h"
 
 class History;
 class HistoryBlock;
 class HistoryItem;
 struct HistoryMessageReply;
+struct PreparedServiceText;
 
 namespace Data {
+class Thread;
 struct Reaction;
 struct ReactionId;
 } // namespace Data
@@ -34,6 +37,7 @@ class ChatStyle;
 struct ReactionFlyAnimationArgs;
 class ReactionFlyAnimation;
 class RippleAnimation;
+struct ColorCollectible;
 } // namespace Ui
 
 namespace HistoryView::Reactions {
@@ -57,6 +61,7 @@ enum class Context : char {
 	Pinned,
 	AdminLog,
 	ContactPreview,
+	Monoforum,
 	SavedSublist,
 	TTLViewer,
 	ShortcutMessages,
@@ -73,6 +78,12 @@ enum class OnlyEmojiAndSpaces : char {
 struct SelectionModeResult {
 	bool inSelectionMode = false;
 	float64 progress = 0.0;
+};
+
+enum class ElementChatMode : char {
+	Default,
+	Wide,
+	Narrow, // monoforum with left tabs
 };
 
 class Element;
@@ -111,7 +122,7 @@ public:
 		const QString &query,
 		const FullMsgId &context) = 0;
 	virtual void elementHandleViaClick(not_null<UserData*> bot) = 0;
-	virtual bool elementIsChatWide() = 0;
+	virtual ElementChatMode elementChatMode() = 0;
 	virtual not_null<Ui::PathShiftGradient*> elementPathShiftGradient() = 0;
 	virtual void elementReplyTo(const FullReplyTo &to) = 0;
 	virtual void elementStartInteraction(not_null<const Element*> view) = 0;
@@ -166,7 +177,7 @@ public:
 		const QString &query,
 		const FullMsgId &context) override;
 	void elementHandleViaClick(not_null<UserData*> bot) override;
-	bool elementIsChatWide() override;
+	ElementChatMode elementChatMode() override;
 	void elementReplyTo(const FullReplyTo &to) override;
 	void elementStartInteraction(not_null<const Element*> view) override;
 	void elementStartPremium(
@@ -219,7 +230,7 @@ QString DateTooltipText(not_null<Element*> view);
 
 // Any HistoryView::Element can have this Component for
 // displaying the unread messages bar above the message.
-struct UnreadBar : public RuntimeComponent<UnreadBar, Element> {
+struct UnreadBar : RuntimeComponent<UnreadBar, Element> {
 	void init(const QString &string);
 
 	static int height();
@@ -230,7 +241,7 @@ struct UnreadBar : public RuntimeComponent<UnreadBar, Element> {
 		const PaintContext &context,
 		int y,
 		int w,
-		bool chatWide) const;
+		ElementChatMode mode) const;
 
 	QString text;
 	int width = 0;
@@ -240,7 +251,7 @@ struct UnreadBar : public RuntimeComponent<UnreadBar, Element> {
 
 // Any HistoryView::Element can have this Component for
 // displaying the day mark above the message.
-struct DateBadge : public RuntimeComponent<DateBadge, Element> {
+struct DateBadge : RuntimeComponent<DateBadge, Element> {
 	void init(const QString &date);
 
 	int height() const;
@@ -256,27 +267,78 @@ struct DateBadge : public RuntimeComponent<DateBadge, Element> {
 
 };
 
+struct ForumThreadBar : RuntimeComponent<ForumThreadBar, Element> {
+	void init(
+		not_null<PeerData*> parentChat,
+		not_null<Data::Thread*> thread);
+
+	int height() const;
+	void paint(
+		Painter &p,
+		not_null<const Ui::ChatStyle*> st,
+		int y,
+		int w,
+		bool chatWide,
+		bool skipPatternLine) const;
+	static int PaintForGetWidth(
+		Painter &p,
+		not_null<const Ui::ChatStyle*> st,
+		not_null<Element*> itemView,
+		Ui::PeerUserpicView &userpicView,
+		int y,
+		int w,
+		bool chatWide);
+
+	base::weak_ptr<Data::Thread> thread;
+	Ui::Text::String text;
+	mutable Ui::PeerUserpicView view;
+	int width = 0;
+
+private:
+	static void Paint(
+		Painter &p,
+		not_null<const Ui::ChatStyle*> st,
+		not_null<Data::Thread*> thread,
+		const Ui::Text::String &text,
+		int width,
+		Ui::PeerUserpicView &view,
+		int y,
+		int w,
+		bool chatWide,
+		bool skipPatternLine);
+
+};
+
 // Any HistoryView::Element can have this Component for
 // displaying some text in layout of a service message above the message.
-struct ServicePreMessage
-	: public RuntimeComponent<ServicePreMessage, Element> {
-	void init(TextWithEntities string);
+struct ServicePreMessage : RuntimeComponent<ServicePreMessage, Element> {
+	void init(
+		not_null<Element*> view,
+		PreparedServiceText string,
+		ClickHandlerPtr fullClickHandler,
+		std::unique_ptr<Media> media = nullptr);
 
-	int resizeToWidth(int newWidth, bool chatWide);
+	int resizeToWidth(int newWidth, ElementChatMode mode);
 
 	void paint(
 		Painter &p,
 		const PaintContext &context,
 		QRect g,
-		bool chatWide) const;
+		ElementChatMode mode) const;
+	[[nodiscard]] ClickHandlerPtr textState(
+		QPoint point,
+		const StateRequest &request,
+		QRect g) const;
 
+	std::unique_ptr<Media> media;
 	Ui::Text::String text;
+	ClickHandlerPtr handler;
 	int width = 0;
 	int height = 0;
 
 };
 
-struct FakeBotAboutTop : public RuntimeComponent<FakeBotAboutTop, Element> {
+struct FakeBotAboutTop : RuntimeComponent<FakeBotAboutTop, Element> {
 	void init();
 
 	Ui::Text::String text;
@@ -284,8 +346,13 @@ struct FakeBotAboutTop : public RuntimeComponent<FakeBotAboutTop, Element> {
 	int height = 0;
 };
 
-struct PurchasedTag : public RuntimeComponent<PurchasedTag, Element> {
+struct PurchasedTag : RuntimeComponent<PurchasedTag, Element> {
 	Ui::Text::String text;
+};
+
+struct ViewAddedMargins : RuntimeComponent<ViewAddedMargins, Element> {
+	int top = 0;
+	int bottom = 0;
 };
 
 struct TopicButton {
@@ -298,12 +365,11 @@ struct TopicButton {
 
 struct SelectedQuote {
 	HistoryItem *item = nullptr;
-	TextWithEntities text;
-	int offset = 0;
+	MessageHighlightId highlight;
 	bool overflown = false;
 
 	explicit operator bool() const {
-		return item && !text.empty();
+		return item && !highlight.quote.empty();
 	}
 	friend inline bool operator==(SelectedQuote, SelectedQuote) = default;
 };
@@ -348,7 +414,14 @@ public:
 	void refreshDataId();
 
 	[[nodiscard]] uint8 colorIndex() const;
+	[[nodiscard]] auto colorCollectible() const
+		-> const std::shared_ptr<Ui::ColorCollectible> &;
+
 	[[nodiscard]] uint8 contentColorIndex() const;
+	[[nodiscard]] DocumentId contentBackgroundEmojiId() const;
+	[[nodiscard]] auto contentColorCollectible() const
+		-> const std::shared_ptr<Ui::ColorCollectible> &;
+
 	[[nodiscard]] QDateTime dateTime() const;
 
 	[[nodiscard]] int y() const;
@@ -356,6 +429,8 @@ public:
 
 	[[nodiscard]] virtual int marginTop() const = 0;
 	[[nodiscard]] virtual int marginBottom() const = 0;
+
+	void addVerticalMargins(int top, int bottom);
 
 	void setPendingResize();
 	[[nodiscard]] bool pendingResize() const;
@@ -403,7 +478,10 @@ public:
 
 	// For blocks context this should be called only from recountDisplayDate().
 	void setDisplayDate(bool displayDate);
-	void setServicePreMessage(TextWithEntities text);
+	void setServicePreMessage(
+		PreparedServiceText text,
+		ClickHandlerPtr fullClickHandler = nullptr,
+		std::unique_ptr<Media> media = nullptr);
 
 	bool computeIsAttachToPrevious(not_null<Element*> previous);
 
@@ -413,6 +491,9 @@ public:
 	[[nodiscard]] int displayedDateHeight() const;
 	[[nodiscard]] bool displayDate() const;
 	[[nodiscard]] bool isInOneDayWithPrevious() const;
+
+	[[nodiscard]] bool displayForumThreadBar() const;
+	[[nodiscard]] bool isInOneBunchWithPrevious() const;
 
 	virtual void draw(Painter &p, const PaintContext &context) const = 0;
 	[[nodiscard]] virtual PointState pointState(QPoint point) const = 0;
@@ -479,10 +560,6 @@ public:
 	[[nodiscard]] virtual int minWidthForMedia() const {
 		return 0;
 	}
-	[[nodiscard]] virtual bool hasFastReply() const;
-	[[nodiscard]] virtual bool displayFastReply() const;
-	[[nodiscard]] virtual bool displayFastForward() const;
-
 	[[nodiscard]] virtual std::optional<QSize> rightActionSize() const;
 	virtual void drawRightAction(
 		Painter &p,
@@ -572,7 +649,6 @@ public:
 		Data::ReactionId,
 		std::unique_ptr<Ui::ReactionFlyAnimation>>;
 
-	virtual void animateEffect(Ui::ReactionFlyAnimationArgs &&args);
 	void animateUnreadEffect();
 	[[nodiscard]] virtual auto takeEffectAnimation()
 	-> std::unique_ptr<Ui::ReactionFlyAnimation>;
@@ -628,14 +704,17 @@ protected:
 	std::unique_ptr<Reactions::InlineList> _reactions;
 
 private:
+	void recountThreadBarInBlocks();
+
 	// This should be called only from previousInBlocksChanged()
 	// to add required bits to the Composer mask
 	// after that always use Has<DateBadge>().
 	void recountDisplayDateInBlocks();
 
 	// This should be called only from previousInBlocksChanged() or when
-	// DateBadge or UnreadBar bit is changed in the Composer mask
-	// then the result should be cached in a client side flag
+	// DateBadge or UnreadBar or MonoforumSenderBar bit
+	// is changed in the Composer mask then the result
+	// should be cached in a client side flag
 	// HistoryView::Element::Flag::AttachedToPrevious.
 	void recountAttachToPreviousInBlocks();
 
@@ -684,7 +763,20 @@ private:
 	uint16 symbol,
 	int yfrom = 0);
 
+[[nodiscard]] int FindViewTaskY(
+	not_null<Element*> view,
+	int taskId,
+	int yfrom = 0);
+
 [[nodiscard]] Window::SessionController *ExtractController(
 	const ClickContext &context);
+
+[[nodiscard]] TextSelection FindSearchQueryHighlight(
+	const QString &text,
+	const QString &query);
+
+[[nodiscard]] TextSelection FindSearchQueryHighlight(
+	const QString &text,
+	QStringView lower);
 
 } // namespace HistoryView

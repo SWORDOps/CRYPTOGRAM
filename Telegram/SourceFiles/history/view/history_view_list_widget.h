@@ -292,8 +292,6 @@ public:
 		not_null<Main::Session*> session,
 		not_null<ListDelegate*> delegate);
 
-	static const crl::time kItemRevealDuration;
-
 	[[nodiscard]] Main::Session &session() const;
 	[[nodiscard]] not_null<Window::SessionController*> controller() const;
 	[[nodiscard]] not_null<ListDelegate*> delegate() const;
@@ -314,8 +312,7 @@ public:
 	bool isBelowPosition(Data::MessagePosition position) const;
 	void highlightMessage(
 		FullMsgId itemId,
-		const TextWithEntities &part,
-		int partOffsetHint);
+		const MessageHighlightId &highlight);
 
 	void showAtPosition(
 		Data::MessagePosition position,
@@ -428,7 +425,7 @@ public:
 		const QString &query,
 		const FullMsgId &context) override;
 	void elementHandleViaClick(not_null<UserData*> bot) override;
-	bool elementIsChatWide() override;
+	ElementChatMode elementChatMode() override;
 	not_null<Ui::PathShiftGradient*> elementPathShiftGradient() override;
 	void elementReplyTo(const FullReplyTo &to) override;
 	void elementStartInteraction(not_null<const Element*> view) override;
@@ -443,7 +440,7 @@ public:
 	bool elementHideTopicButton(not_null<const Element*> view) override;
 
 	void setEmptyInfoWidget(base::unique_qptr<Ui::RpWidget> &&w);
-	void overrideIsChatWide(bool isWide);
+	void overrideChatMode(std::optional<ElementChatMode> mode);
 
 	~ListWidget();
 
@@ -816,6 +813,7 @@ private:
 	uint16 _mouseTextSymbol = 0;
 	bool _pressWasInactive = false;
 	bool _overSenderUserpic = false;
+	bool _mouseActive = false;
 
 	bool _selectEnabled = false;
 	HistoryItem *_selectedTextItem = nullptr;
@@ -833,7 +831,7 @@ private:
 	bool _refreshingViewer = false;
 	bool _showFinished = false;
 	bool _resizePending = false;
-	std::optional<bool> _overrideIsChatWide;
+	std::optional<ElementChatMode> _overrideChatMode;
 
 	// _menu must be destroyed before _whoReactedMenuLifetime.
 	rpl::lifetime _whoReactedMenuLifetime;
