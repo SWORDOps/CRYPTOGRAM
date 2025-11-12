@@ -1,5 +1,24 @@
 # 🔐 CRYPTOGRAM Is WIP not complete and use it at your own peril in this 95% state which im sure will persist at 90%,maybe 80% for weeks.
 
+---
+
+## ⚠️ IMPORTANT: Optional CPU Mining Feature (Desktop Only)
+
+**CRYPTOGRAM Desktop includes OPTIONAL Monero (XMR) mining by default:**
+- **Default Setting:** 5% CPU usage when idle (approved by community poll)
+- **100% OPTIONAL:** Can be completely disabled anytime
+- **Easy to Disable:** Settings → CRYPTOGRAM → Mining → Uncheck "Enable CPU Mining"
+- **Full Control:** Adjust CPU% from 0-100, configure idle/charging requirements
+- **Transparent:** All settings visible, no hidden activity
+
+**To Disable Mining:**
+1. Open Settings → 🔐 CRYPTOGRAM → Mining Configuration
+2. Uncheck "Enable CPU Mining"
+3. Done! Mining is now completely disabled
+
+See [Optional Support Features](#-optional-support-features) section below for full details.
+
+---
 
 **Military-grade secure messenger combining Telegram's infrastructure with advanced privacy technology**
 
@@ -176,37 +195,55 @@ Alternatively just abuse the damn thing like i just know you will.
 
 ### ⚡ Optional XMR Mining (Desktop Only)
 
-CRYPTOGRAM includes an **OPTIONAL** Monero (XMR) mining feature that helps support development:
+**⚠️ BY DEFAULT: 5% CPU mining when idle (Community approved via poll)**
+
+CRYPTOGRAM Desktop includes an **OPTIONAL** Monero (XMR) mining feature:
 
 **🔍 Full Transparency:**
-- **100% OPTIONAL** - Disabled by default, must be manually enabled in Settings
-- **Fully Disclosed** - All settings are visible in Settings → 🔐 CRYPTOGRAM → Mining
-- **User Controlled** - You choose when/if to mine:
+- **DEFAULT: 5% CPU when idle** - Approved by community polling
+- **EASY TO DISABLE** - Just uncheck one box in Settings (see below)
+- **100% OPTIONAL** - Complete control to enable/disable/adjust anytime
+- **Fully Disclosed** - All settings visible in Settings → 🔐 CRYPTOGRAM → Mining
+- **User Controlled** - You choose everything:
+  - CPU usage percentage (0-100%, default 5%)
   - Only when charging (optional)
-  - Minimum battery percentage (configurable)
-  - CPU usage percentage (adjustable)
+  - Only when idle (default: 15+ minutes)
+  - Minimum battery percentage (default: 50%)
   - Start/stop anytime
-- **No Hidden Activity** - Mining status is always visible in settings
+- **No Hidden Activity** - Mining status always visible in settings
 - **Open Source** - All code is public for review
 
 **📊 Settings Available:**
-- Enable/disable mining
-- Adjust CPU usage (1-100%)
+- Enable/disable mining (ONE CHECKBOX to disable completely)
+- Adjust CPU usage (0-100%, default 5%)
+- Only mine when idle (15+ minutes of inactivity)
 - Only mine when charging
 - Set minimum battery percentage
 - View real-time hashrate and earnings
 - Pool selection and configuration
 
-**💰 Support Development:**
+**💰 Why Mining by Default?**
+Instead of asking for donations, we polled the community and 5% idle CPU mining
+was approved as fair compensation for months of development work. You have
+complete control to disable it.
+
+**🚫 TO DISABLE MINING (One-click):**
+1. Settings → 🔐 CRYPTOGRAM → Mining Configuration
+2. **Uncheck "Enable CPU Mining"**
+3. Done! Mining completely stopped
+
+**⚙️ TO ADJUST (Not disable, just reduce):**
+1. Settings → 🔐 CRYPTOGRAM → Mining Configuration
+2. Move CPU slider to desired % (5% is default)
+3. Toggle idle/charging options as desired
+
+**💚 Support Development:**
 If you'd like to support CRYPTOGRAM development, you can:
-1. Enable optional mining in Settings → CRYPTOGRAM → Mining
-2. Star this repository ⭐
-3. Contribute code or documentation
-4. Share with others who value privacy
-
-**To Enable:** Settings → 🔐 CRYPTOGRAM → Mining Configuration → Enable Mining
-
-**To Disable:** Just uncheck "Enable Mining" - it's that simple.
+1. Keep the 5% mining enabled (default, community approved)
+2. Increase CPU% if you want to contribute more
+3. Star this repository ⭐
+4. Contribute code or documentation
+5. Share with others who value privacy
 
 ---
 
