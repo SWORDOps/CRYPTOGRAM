@@ -10,10 +10,10 @@ Complete documentation for CRYPTOGRAM encrypted messenger.
 
 #### Setup Guides
 Platform-specific build and installation instructions:
-- [Windows Build Guide](setup/building-win-x64.md)
-- [Linux Build Guide](setup/building-linux.md)
-- [macOS Build Guide](setup/building-mac.md)
-- [macOS App Store](setup/building-mas.md)
+- [Windows Build Guide](building-win-x64.md)
+- [Linux Build Guide](building-linux.md)
+- [macOS Build Guide](building-mac.md)
+- [macOS App Store](building-mas.md)
 - [API Credentials](setup/api_credentials.md)
 
 ---
