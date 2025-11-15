@@ -85,7 +85,7 @@ RUN wget -q https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.2
     cmake --version
 
 # Build and install ada-url library (required for URL parsing)
-RUN git clone -b v3.2.4 --depth=1 https://github.com/ada-url/ada.git /tmp/ada && \
+RUN git clone -b v3.3.0 --depth=1 https://github.com/ada-url/ada.git /tmp/ada && \
     cd /tmp/ada && \
     cmake -B build . \
         -DCMAKE_BUILD_TYPE=Release \
