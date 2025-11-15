@@ -12,9 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref_name == github.event.repository.default_branch
 
-    env:
-      IMAGE_TAG: ghcr.io/${{ github.repository }}/centos_env:latest
-
     steps:
       - name: Clone.
         uses: actions/checkout@v5
@@ -26,6 +23,9 @@ jobs:
           sudo apt update
           curl -sSL https://install.python-poetry.org | python3 -
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
+
+      - name: Set image tag (lowercase).
+        run: echo "IMAGE_TAG=$(echo 'ghcr.io/${{ github.repository }}/centos_env:latest' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Free up some disk space.
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
