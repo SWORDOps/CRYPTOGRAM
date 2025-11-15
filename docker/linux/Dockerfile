@@ -32,12 +32,21 @@ RUN apt-get update && apt-get install -y \
     libqt5svg5-dev \
     libqt5waylandclient5-dev \
     qtwayland5 \
+    # C++ libraries
+    libboost-dev \
+    libboost-regex-dev \
     # Media libraries
     libavcodec-dev \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
     libswresample-dev \
+    # Image formats
+    libjpeg-dev \
+    libpng-dev \
+    libjxl-dev \
+    libavif-dev \
+    libheif-dev \
     # Audio
     libasound2-dev \
     libpulse-dev \
