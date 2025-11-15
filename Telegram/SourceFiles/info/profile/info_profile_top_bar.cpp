@@ -76,6 +76,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/painter.h"
 #include "ui/peer/video_userpic_player.h"
 #include "ui/rect.h"
+#include <ui/toast/toast.h>
 #include "ui/text/text_utilities.h"
 #include "ui/top_background_gradient.h"
 #include "ui/ui_utility.h"
@@ -316,7 +317,8 @@ TopBar::TopBar(
 		}
 	});
 	return owned;
-}()) {
+}())
+, _id(this, st::infoProfileCover.status) {
 	_peer->updateFull();
 	if (const auto broadcast = _peer->monoforumBroadcast()) {
 		broadcast->updateFull();
@@ -675,7 +677,7 @@ void TopBar::setupActions(not_null<Window::SessionController*> controller) {
 				: int(h * (ratio - 0.5) / 0.5);
 			_actions->setGeometry(
 				padding.left(),
-				size.height() - resultHeight - padding.bottom(),
+				size.height() - resultHeight - padding.bottom() + 5,
 				size.width() - rect::m::sum::h(padding),
 				resultHeight);
 		}, _actions->lifetime());
@@ -1428,6 +1430,8 @@ void TopBar::updateLabelsPosition() {
 
 		updateGiftButtonsGeometry(progressCurrent, userpicRect);
 	}
+
+	setupChatId();
 }
 
 void TopBar::updateStatusPosition(float64 progressCurrent) {
@@ -1484,6 +1488,26 @@ void TopBar::updateStatusPosition(float64 progressCurrent) {
 			Qt::WA_TransparentForMouseEvents,
 			!progressCurrent);
 	}
+
+	auto idTop = anim::interpolate(
+		_st.subtitlePosition.y(),
+		st::infoProfileTopBarStatusTop,
+		progressCurrent);
+
+	const auto idLeft = anim::interpolate(
+		statusMostLeft(),
+		(width() - _id->textMaxWidth()) / 2,
+		progressCurrent);
+
+	_id->resizeToWidth(_id->textMaxWidth());
+	auto scale = 20;
+	if (cScreenScale() > 100) {
+		scale = cScreenScale() / 100 * 6 + 20;
+	}
+	idTop = idTop + scale;
+	_id->moveToLeft(
+		idLeft,
+		idTop);
 }
 
 void TopBar::resizeEvent(QResizeEvent *e) {
@@ -2512,6 +2536,34 @@ void TopBar::setupStatusWithRating() {
 		}, _status->lifetime());
 		rating->raise();
 	}
+}
+
+void TopBar::setupChatId() {
+	auto idText = TextWithEntities();
+	auto id = QString();
+
+	if (_peer->isChat()) {
+		id = QString("-%1").arg(_peer->id.to<ChatId>().bare);
+		idText = Ui::Text::Link(QString("ID: -%L1").arg(_peer->id.to<ChatId>().bare).replace(",", " "));
+	}
+	else if (_peer->isMonoforum()) {
+		id = QString("-%1").arg(_peer->id.to<ChannelId>().bare);
+		idText = Ui::Text::Link(QString("ID: -%L1").arg(_peer->id.to<ChannelId>().bare).replace(",", " "));
+	}
+	else if (_peer->isMegagroup() || _peer->isChannel()) {
+		id = QString("-100%1").arg(_peer->id.to<ChannelId>().bare);
+		idText = Ui::Text::Link(QString("ID: -1 00%L1").arg(_peer->id.to<ChannelId>().bare).replace(",", " "));
+	}
+	else {
+		id = QString("%1").arg(_peer->id.to<UserId>().bare);
+		idText = Ui::Text::Link(QString("ID: %L1").arg(_peer->id.to<UserId>().bare).replace(",", " "));
+	}
+	_id->setMarkedText(idText);
+
+	_id->setLink(1, std::make_shared<LambdaClickHandler>([=] {
+		QGuiApplication::clipboard()->setText(id);
+		Ui::Toast::Show(tr::lng_copy_profile_id(tr::now));
+	}));
 }
 
 rpl::producer<std::optional<QColor>> TopBar::edgeColor() const {

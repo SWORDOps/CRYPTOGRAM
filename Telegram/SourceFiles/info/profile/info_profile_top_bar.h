@@ -187,6 +187,7 @@ private:
 	void setupStatusWithRating();
 	[[nodiscard]] TopBarActionButtonStyle mapActionStyle(
 		std::optional<QColor> c) const;
+	void setupChatId();
 
 	[[nodiscard]] rpl::producer<QString> nameValue() const;
 
@@ -224,6 +225,7 @@ private:
 	object_ptr<Ui::RoundButton> _showLastSeen = { nullptr };
 	object_ptr<Ui::RoundButton> _forumButton = { nullptr };
 	QGraphicsOpacityEffect *_showLastSeenOpacity = nullptr;
+	object_ptr<Ui::FlatLabel> _id;
 
 	std::shared_ptr<style::FlatLabel> _statusSt;
 	std::shared_ptr<style::InfoPeerBadge> _botVerifySt;
