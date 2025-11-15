@@ -51,7 +51,7 @@ RUN wget -q https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.2
 
 # Build and install ada-url library (required for URL parsing)
 # Cross-compile for Windows using MinGW
-RUN git clone -b v3.3.0 --depth=1 https://github.com/ada-url/ada.git /tmp/ada && \
+RUN git clone -b v2.7.8 --depth=1 https://github.com/ada-url/ada.git /tmp/ada && \
     cd /tmp/ada && \
     cmake -B build . \
         -DCMAKE_BUILD_TYPE=Release \
@@ -60,8 +60,7 @@ RUN git clone -b v3.3.0 --depth=1 https://github.com/ada-url/ada.git /tmp/ada &&
         -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc \
         -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++ \
         -DADA_TESTING=OFF \
-        -DADA_TOOLS=OFF \
-        -DADA_INCLUDE_URL_PATTERN=OFF && \
+        -DADA_TOOLS=OFF && \
     cmake --build build --parallel ${JOBS} && \
     cmake --install build && \
     cd / && \

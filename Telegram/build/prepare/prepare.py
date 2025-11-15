@@ -1873,14 +1873,13 @@ release:
 """)
 
 stage('ada', """
-    git clone -b v3.3.0 https://github.com/ada-url/ada.git
+    git clone -b v2.7.8 https://github.com/ada-url/ada.git
     cd ada
 win:
     cmake -B out . ^
         -A %WIN32X64% ^
         -D ADA_TESTING=OFF ^
         -D ADA_TOOLS=OFF ^
-        -D ADA_INCLUDE_URL_PATTERN=OFF ^
         -D CMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded$<$<CONFIG:Debug>:Debug>"
     cmake --build out --config Debug --parallel
     cmake --build out --config Release --parallel

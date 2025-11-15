@@ -803,13 +803,12 @@ RUN git init tg_owt \
 	&& rm -rf tg_owt
 
 FROM builder AS ada
-RUN git clone -b v3.3.0 --depth=1 https://github.com/ada-url/ada.git \
+RUN git clone -b v2.7.8 --depth=1 https://github.com/ada-url/ada.git \
 	&& cd ada \
 	&& cmake -B build . \
         -D CMAKE_INSTALL_PREFIX=/usr/local \
         -D ADA_TESTING=OFF \
         -D ADA_TOOLS=OFF \
-        -D ADA_INCLUDE_URL_PATTERN=OFF \
 	&& cmake --build build \
 	&& DESTDIR=/usr/src/ada-cache cmake --install build \
 	&& cd .. \

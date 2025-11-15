@@ -642,13 +642,10 @@ PRIVATE
     data/data_msg_id.h
     data/data_network_integration.cpp
     data/data_network_mesh.cpp
-    data/data_network_mesh.h
     data/data_network_mtproto_integration.cpp
-    data/data_network_mtproto_integration.h
     data/data_network_security.cpp
     data/data_network_security.h
     data/data_network_signal_integration.cpp
-    data/data_network_signal_integration.h
     data/data_openvino_translation.cpp
     data/data_openvino_translation.h
     data/data_peer.cpp
@@ -677,7 +674,6 @@ PRIVATE
     data/data_pts_waiter.cpp
     data/data_pts_waiter.h
     data/data_quantum_signal_impl.cpp
-    data/data_quantum_signal_impl.h
     data/data_quantum_storage.cpp
     data/data_quantum_storage.h
     data/data_replies_list.cpp
@@ -719,7 +715,6 @@ PRIVATE
     data/data_thread.cpp
     data/data_thread.h
     data/data_tsm_factory.cpp
-    data/data_tsm_factory.h
     data/data_todo_list.cpp
     data/data_todo_list.h
     data/data_types.cpp
@@ -1221,8 +1216,6 @@ PRIVATE
     lang/lang_instance.h
     lang/lang_numbers_animation.cpp
     lang/lang_numbers_animation.h
-    lang/lang_translator.cpp
-    lang/lang_translator.h
     layout/layout_document_generic_preview.cpp
     layout/layout_document_generic_preview.h
     layout/layout_item_base.cpp
