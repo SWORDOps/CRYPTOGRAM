@@ -1845,15 +1845,7 @@ if (WIN32)
         target_link_libraries(Telegram PRIVATE desktop-app::win_directx_helper)
     endif()
 
-    add_custom_command(
-    TARGET
-        Telegram
-    PRE_LINK
-    COMMAND
-        ${CMAKE_COMMAND} -E rm -f "$<TARGET_FILE_DIR:Telegram>/Telegram.pdb"
-    COMMENT
-        "Deleting broken Telegram.pdb before link (MSVC workaround)"
-    )
+    target_link_options(Telegram PRIVATE /PDBPAGESIZE:8192)
 elseif (APPLE)
     if (NOT DESKTOP_APP_USE_PACKAGED)
         target_link_libraries(Telegram PRIVATE desktop-app::external_iconv)
