@@ -410,9 +410,10 @@ infoLayerTopBarBlackEdit: IconButton(infoLayerTopBarEdit) {
 	ripple: universalRippleAnimation;
 }
 
-infoProfileTopBarHeightMax: 180px + infoLayerTopBarHeight;
+infoProfileTopBarHeightMax: 200px + infoLayerTopBarHeight;
 infoProfileTopBarTitleTop: 113px;
 infoProfileTopBarStatusTop: 134px;
+infoProfileTopBarChatIdTop: 155px;
 infoProfileTopBarPhotoTop: 24px;
 infoProfileTopBarPhotoBgShift: 55px;
 infoProfileTopBarPhotoBgNoActionsShift: 30px;

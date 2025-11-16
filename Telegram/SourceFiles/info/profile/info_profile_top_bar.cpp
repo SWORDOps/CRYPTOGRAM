@@ -677,7 +677,7 @@ void TopBar::setupActions(not_null<Window::SessionController*> controller) {
 				: int(h * (ratio - 0.5) / 0.5);
 			_actions->setGeometry(
 				padding.left(),
-				size.height() - resultHeight - padding.bottom() + 5,
+				size.height() - resultHeight - padding.bottom(),
 				size.width() - rect::m::sum::h(padding),
 				resultHeight);
 		}, _actions->lifetime());
@@ -1491,7 +1491,7 @@ void TopBar::updateStatusPosition(float64 progressCurrent) {
 
 	auto idTop = anim::interpolate(
 		_st.subtitlePosition.y(),
-		st::infoProfileTopBarStatusTop,
+		st::infoProfileTopBarChatIdTop,
 		progressCurrent);
 
 	const auto idLeft = anim::interpolate(
@@ -1500,11 +1500,6 @@ void TopBar::updateStatusPosition(float64 progressCurrent) {
 		progressCurrent);
 
 	_id->resizeToWidth(_id->textMaxWidth());
-	auto scale = 20;
-	if (cScreenScale() > 100) {
-		scale = cScreenScale() / 100 * 6 + 20;
-	}
-	idTop = idTop + scale;
 	_id->moveToLeft(
 		idLeft,
 		idTop);
