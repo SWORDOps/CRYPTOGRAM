@@ -149,13 +149,21 @@ if [ ! -f "cmake/.git" ]; then
 fi
 
 print_step "Updating all submodules..."
-git submodule update --init --recursive 2>&1 | tail -5 || true
-print_info "All submodules initialized"
+git submodule update --init --recursive cmake 2>&1 | tail -5 || true
+print_info "cmake submodule initialized"
 
-# Verify cmake files exist
+# Verify cmake files exist and retry if needed
 if [ ! -f "cmake/version.cmake" ] || [ ! -f "cmake/validate_special_target.cmake" ]; then
-    fail "cmake submodule files missing. Try: git submodule update --init --recursive cmake"
+    print_warning "cmake submodule files not found, retrying full init..."
+    git submodule update --init --recursive 2>&1 | tail -10 || true
+
+    # Final check
+    if [ ! -f "cmake/version.cmake" ] || [ ! -f "cmake/validate_special_target.cmake" ]; then
+        fail "cmake submodule files still missing. Try manually: git submodule update --init --recursive cmake"
+    fi
 fi
+
+print_info "All submodules verified and initialized"
 
 echo ""
 
@@ -351,21 +359,34 @@ if [ $SKIP_CRYPTOGRAM -eq 0 ]; then
     print_step "Configuring CMake..."
 
     # Run CMake with proper environment
-    if CC="$CC_BIN" CXX="$CXX_BIN" cmake \
+    CMAKE_OUTPUT=$(CC="$CC_BIN" CXX="$CXX_BIN" cmake \
         -DCMAKE_BUILD_TYPE=Release \
         -DDESKTOP_APP_DISABLE_AUTOUPDATE=ON \
         -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON \
-        "$PROJECT_ROOT" 2>&1 | tail -30; then
-        print_info "CMake configured successfully"
-    else
-        print_error "CMake configuration failed"
+        "$PROJECT_ROOT" 2>&1)
+
+    CMAKE_EXIT=$?
+
+    # Show last 30 lines of output
+    echo "$CMAKE_OUTPUT" | tail -30
+
+    # Check for errors in output
+    if echo "$CMAKE_OUTPUT" | grep -q "CMake Error"; then
+        print_error "CMake configuration failed!"
         echo ""
-        echo "Checking for Qt6..."
+        echo "Checking for missing dependencies..."
         if ! dpkg -l | grep -q qt6-base-dev; then
-            fail "Qt6 not installed. Run: sudo apt-get install qt6-base-dev qt6-base-private-dev"
+            fail "Qt6 not installed. The script should have installed it. Try: sudo apt-get install qt6-base-dev qt6-base-private-dev"
+        elif ! [ -f "cmake/version.cmake" ]; then
+            fail "cmake/version.cmake not found. cmake submodule not properly initialized. Try: git submodule update --init --recursive cmake"
         else
-            fail "CMake configuration failed. Check the output above."
+            fail "CMake configuration failed. Check the errors above."
         fi
+    elif [ $CMAKE_EXIT -ne 0 ]; then
+        print_error "CMake returned non-zero exit code: $CMAKE_EXIT"
+        fail "CMake configuration failed"
+    else
+        print_info "CMake configured successfully"
     fi
 
     print_step "Building CRYPTOGRAM (this may take 10-30 minutes)..."
