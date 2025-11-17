@@ -1146,11 +1146,7 @@ void TopBar::setupUserpicButton(
 
 			(*menu)->popup(QCursor::pos());
 		} else if (button == Qt::LeftButton) {
-			if (_hasStories) {
-				controller->openPeerStories(_peer->id);
-			} else {
-				openPhoto();
-			}
+			openPhoto();
 		}
 	}, _userpicButton->lifetime());
 }
