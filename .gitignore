@@ -54,6 +54,9 @@ stage
 *.*~
 .idea/
 cmake-build-debug/
+build_release/
+build_debug/
+build/
 
 # Local configuration files
 settings.local.json
