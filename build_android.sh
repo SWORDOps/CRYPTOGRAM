@@ -92,6 +92,7 @@ TSM_MDNS_SERVICE="${TSM_MDNS_SERVICE:-_tsm._tcp}"  # mDNS service name
 
 # Build state
 declare -A BUILD_STATE=(
+    ["submodules_initialized"]=0
     ["sdk_validated"]=0
     ["ndk_validated"]=0
     ["dependencies_fetched"]=0
@@ -101,6 +102,8 @@ declare -A BUILD_STATE=(
 
 # Component timing
 declare -A COMPONENT_TIMES=(
+    ["system"]=0
+    ["submodules"]=0
     ["sdk"]=0
     ["ndk"]=0
     ["dependencies"]=0
@@ -292,7 +295,7 @@ save_state() {
 # System Validation
 # ──────────────────────────────────────────────────────────────────────────────
 check_system() {
-    print_step "1" "7" "System Requirements Check"
+    print_step "1" "8" "System Requirements Check"
 
     local start_time
     start_time=$(date +%s)
@@ -371,7 +374,114 @@ check_system() {
     local elapsed=$(($(date +%s) - start_time))
     COMPONENT_TIMES["system"]=$elapsed
 
-    print_step_complete "1/7"
+    print_step_complete "1/8"
+    echo ""
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Git Submodule Initialization (with recursive support)
+# ──────────────────────────────────────────────────────────────────────────────
+initialize_submodules() {
+    print_step "2" "8" "Git Submodule Initialization"
+
+    local start_time
+    start_time=$(date +%s)
+
+    if [ "${BUILD_STATE["submodules_initialized"]}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ]; then
+        print_info "Submodules already initialized, skipping..."
+        print_step_complete "2/8"
+        echo ""
+        return 0
+    fi
+
+    # Check if we're in a git repository
+    if [ ! -d "$ANDROID_ROOT/.git" ] && [ ! -f "$ANDROID_ROOT/.git" ]; then
+        print_warning "Not a git repository: $ANDROID_ROOT"
+        print_info "Skipping submodule initialization"
+        print_step_complete "2/8"
+        echo ""
+        return 0
+    fi
+
+    cd "$ANDROID_ROOT" || fail "Cannot change to Android directory"
+
+    print_progress "Checking git submodules..."
+    log "SUBMODULE" "Starting submodule initialization"
+
+    # Get list of submodules
+    local submodule_count
+    submodule_count=$(git config --file .gitmodules --get-regexp path 2>/dev/null | wc -l)
+    if [ "$submodule_count" -eq 0 ]; then
+        print_info "No submodules found in .gitmodules"
+        log "SUBMODULE" "No submodules configured"
+        BUILD_STATE["submodules_initialized"]=1
+        save_state
+        print_step_complete "2/8"
+        echo ""
+        return 0
+    fi
+
+    print_info "Found $submodule_count submodule(s)"
+    log "SUBMODULE" "Found $submodule_count submodules"
+
+    # Initialize submodules
+    print_progress "Initializing git submodules..."
+    if ! git submodule init 2>&1 | tee -a "$LOG_FILE"; then
+        print_error "Failed to initialize git submodules"
+        log "ERROR" "git submodule init failed"
+        fail "Failed to initialize git submodules"
+    fi
+    print_info "Submodules initialized"
+    log "SUBMODULE" "Submodules initialized successfully"
+
+    # Update submodules recursively
+    print_progress "Updating git submodules recursively (this may take a while)..."
+    log "SUBMODULE" "Running git submodule update --init --recursive"
+
+    local update_start
+    update_start=$(date +%s)
+    if ! git submodule update --init --recursive 2>&1 | tee -a "$LOG_FILE"; then
+        print_error "Failed to update git submodules"
+        log "ERROR" "git submodule update --init --recursive failed"
+        echo ""
+        echo "Common solutions:"
+        echo "  1. Check network connectivity"
+        echo "  2. Ensure you have access to all submodule repositories"
+        echo "  3. Verify .gitmodules configuration"
+        echo "  4. Try manually: git submodule update --init --recursive --force"
+        echo ""
+        fail "Failed to update git submodules"
+    fi
+
+    local update_time=$(($(date +%s) - update_start))
+    print_info "Submodules updated successfully in $(format_time "$update_time")"
+    log "SUBMODULE" "Submodules updated in $(format_time "$update_time")"
+
+    # Verify submodules
+    print_progress "Verifying submodule status..."
+    local broken_submodules=0
+    while IFS= read -r submodule_path; do
+        if [ ! -d "$submodule_path/.git" ] && [ ! -f "$submodule_path/.git" ]; then
+            print_warning "Submodule not properly initialized: $submodule_path"
+            ((broken_submodules++))
+        fi
+    done < <(git config --file .gitmodules --get-regexp path | awk '{print $2}')
+
+    if [ "$broken_submodules" -gt 0 ]; then
+        print_warning "Found $broken_submodules broken submodule(s)"
+        log "WARN" "Broken submodules: $broken_submodules"
+    else
+        print_info "All submodules verified"
+        log "SUBMODULE" "All submodules verified successfully"
+    fi
+
+    BUILD_STATE["submodules_initialized"]=1
+    save_state
+
+    local elapsed=$(($(date +%s) - start_time))
+    COMPONENT_TIMES["submodules"]=$elapsed
+
+    print_step_complete "2/8"
     echo ""
 }
 
@@ -379,14 +489,14 @@ check_system() {
 # Android SDK Validation
 # ──────────────────────────────────────────────────────────────────────────────
 check_android_sdk() {
-    print_step "2" "7" "Android SDK Validation"
+    print_step "3" "8" "Android SDK Validation"
 
     local start_time
     start_time=$(date +%s)
 
     if [ "${BUILD_STATE["sdk_validated"]}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ]; then
         print_info "SDK already validated, skipping..."
-        print_step_complete "2/7"
+        print_step_complete "3/8"
         echo ""
         return 0
     fi
@@ -438,7 +548,7 @@ check_android_sdk() {
     local elapsed=$(($(date +%s) - start_time))
     COMPONENT_TIMES["sdk"]=$elapsed
 
-    print_step_complete "2/7"
+    print_step_complete "3/8"
     echo ""
 }
 
@@ -446,14 +556,14 @@ check_android_sdk() {
 # Android NDK Validation
 # ──────────────────────────────────────────────────────────────────────────────
 check_android_ndk() {
-    print_step "3" "7" "Android NDK Validation"
+    print_step "4" "8" "Android NDK Validation"
 
     local start_time
     start_time=$(date +%s)
 
     if [ "${BUILD_STATE["ndk_validated"]}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ]; then
         print_info "NDK already validated, skipping..."
-        print_step_complete "3/7"
+        print_step_complete "4/8"
         echo ""
         return 0
     fi
@@ -495,7 +605,7 @@ check_android_ndk() {
     local elapsed=$(($(date +%s) - start_time))
     COMPONENT_TIMES["ndk"]=$elapsed
 
-    print_step_complete "3/7"
+    print_step_complete "4/8"
     echo ""
 }
 
@@ -503,21 +613,21 @@ check_android_ndk() {
 # TSM Integration
 # ──────────────────────────────────────────────────────────────────────────────
 initialize_tsm() {
-    print_step "4" "7" "TSM (Telegram Security Module) Integration"
+    print_step "5" "8" "TSM (Telegram Security Module) Integration"
 
     local start_time
     start_time=$(date +%s)
 
     if [ "$TSM_ENABLED" -eq 0 ]; then
         print_info "TSM integration disabled"
-        print_step_complete "4/7"
+        print_step_complete "5/8"
         echo ""
         return 0
     fi
 
     if [ "${BUILD_STATE["tsm_initialized"]}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ]; then
         print_info "TSM already initialized, skipping..."
-        print_step_complete "4/7"
+        print_step_complete "5/8"
         echo ""
         return 0
     fi
@@ -604,7 +714,7 @@ initialize_tsm() {
         if [ ! -d "$TSM_ROOT" ]; then
             print_warning "Could not create TSM directory - TSM disabled"
             TSM_ENABLED=0
-            print_step_complete "4/7"
+            print_step_complete "5/8"
             echo ""
             return 0
         fi
@@ -665,7 +775,7 @@ EOF
     local elapsed=$(($(date +%s) - start_time))
     COMPONENT_TIMES["tsm"]=$elapsed
 
-    print_step_complete "4/7"
+    print_step_complete "5/8"
     echo ""
 }
 
@@ -673,14 +783,14 @@ EOF
 # Fetch Dependencies
 # ──────────────────────────────────────────────────────────────────────────────
 fetch_dependencies() {
-    print_step "5" "7" "Fetching Dependencies"
+    print_step "6" "8" "Fetching Dependencies"
 
     local start_time
     start_time=$(date +%s)
 
     if [ "${BUILD_STATE["dependencies_fetched"]}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ]; then
         print_info "Dependencies already fetched, skipping..."
-        print_step_complete "5/7"
+        print_step_complete "6/8"
         echo ""
         return 0
     fi
@@ -716,7 +826,7 @@ fetch_dependencies() {
     local elapsed=$(($(date +%s) - start_time))
     COMPONENT_TIMES["dependencies"]=$elapsed
 
-    print_step_complete "5/7"
+    print_step_complete "6/8"
     echo ""
 }
 
@@ -724,7 +834,7 @@ fetch_dependencies() {
 # Build Android App
 # ──────────────────────────────────────────────────────────────────────────────
 build_android_app() {
-    print_step "6" "7" "Building Android Application"
+    print_step "7" "8" "Building Android Application"
 
     local start_time
     start_time=$(date +%s)
@@ -799,7 +909,7 @@ build_android_app() {
     local elapsed=$(($(date +%s) - start_time))
     COMPONENT_TIMES["build"]=$elapsed
 
-    print_step_complete "6/7"
+    print_step_complete "7/8"
     echo ""
 }
 
@@ -807,7 +917,7 @@ build_android_app() {
 # Locate and Verify Build Artifacts
 # ──────────────────────────────────────────────────────────────────────────────
 verify_artifacts() {
-    print_step "7" "7" "Locating Build Artifacts"
+    print_step "8" "8" "Locating Build Artifacts"
 
     if [ ! -d "$ANDROID_ROOT" ]; then
         fail "Android project not found"
@@ -883,7 +993,7 @@ verify_artifacts() {
         echo ""
     } > "$SUMMARY_FILE"
 
-    print_step_complete "7/7"
+    print_step_complete "8/8"
     echo ""
 }
 
@@ -908,7 +1018,7 @@ show_summary() {
     echo "Timings:"
     printf "  %-20s: %s\n" "Total Time" "$(format_time "$total_time")"
 
-    for component in sdk ndk dependencies tsm build; do
+    for component in system submodules sdk ndk tsm dependencies build; do
         if [ -n "${COMPONENT_TIMES[$component]:-}" ] && [ "${COMPONENT_TIMES[$component]}" -gt 0 ]; then
             printf "  %-20s: %s\n" "$component" "$(format_time "${COMPONENT_TIMES[$component]}")"
         fi
@@ -1081,6 +1191,7 @@ main() {
 
     # Execute build steps
     check_system
+    initialize_submodules
     check_android_sdk
     check_android_ndk
     initialize_tsm
