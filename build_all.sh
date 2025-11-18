@@ -765,8 +765,8 @@ check_submodules() {
         local fixed_count=0
 
         while IFS= read -r submodule_path; do
-            if [ -d "$submodule_path" ] && [ ! -d "$submodule_path/.git" ]; then
-                # Directory exists but is not a git repository
+            if [ -d "$submodule_path" ] && [ ! -d "$submodule_path/.git" ] && [ ! -f "$submodule_path/.git" ]; then
+                # Directory exists but is not a git repository (no .git dir or file)
                 if [ -z "$(ls -A "$submodule_path" 2>/dev/null)" ]; then
                     # Directory is empty, safe to remove
                     print_warning "Removing empty submodule directory: $submodule_path"
