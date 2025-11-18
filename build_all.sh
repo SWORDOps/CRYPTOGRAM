@@ -50,8 +50,14 @@ if [ ! -t 0 ] || [ ! -t 1 ]; then
     INTERACTIVE_MODE=0
 fi
 
-# Paths
-readonly CRYPTOGRAM_ROOT="${CRYPTOGRAM_ROOT:-$HOME/CRYPTOGRAM}"
+# Paths (derive dynamically, no hardcoded defaults)
+# Base directory where this script lives
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# CRYPTOGRAM root: allow override via env, otherwise use script directory
+readonly CRYPTOGRAM_ROOT="${CRYPTOGRAM_ROOT:-$SCRIPT_DIR}"
+
+# Build directory under CRYPTOGRAM root
 readonly BUILD_DIR="${CRYPTOGRAM_ROOT}/build_release"
 
 # Make log directory user-specific to avoid permission conflicts
@@ -108,6 +114,28 @@ declare -A BUILD_STATE=(
 
 # Timing tracking
 declare -A COMPONENT_TIMES
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Git Submodule Management
+# ──────────────────────────────────────────────────────────────────────────────
+ensure_submodules() {
+    # If this is not a git checkout or there are no submodules, skip.
+    if [ ! -d "$CRYPTOGRAM_ROOT/.git" ] || [ ! -f "$CRYPTOGRAM_ROOT/.gitmodules" ]; then
+        return 0
+    fi
+
+    print_progress "Ensuring git submodules are initialized (recursive)..."
+
+    if [ $DRY_RUN -eq 1 ]; then
+        print_info "[DRY RUN] Would run: git submodule update --init --recursive"
+        return 0
+    fi
+
+    (
+        cd "$CRYPTOGRAM_ROOT"
+        git submodule update --init --recursive
+    ) || fail "Failed to initialize git submodules"
+}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Initialize Environment
@@ -185,7 +213,9 @@ log() {
     shift
     local msg="$*"
     echo "[$(get_timestamp)] [$level] $msg" >> "$LOG_FILE"
-    [ "$level" = "ERROR" ] && echo "[$(get_timestamp)] $msg" >> "$ERROR_LOG"
+    if [ "$level" = "ERROR" ]; then
+        echo "[$(get_timestamp)] $msg" >> "$ERROR_LOG"
+    fi
 }
 
 print_header() {
@@ -512,6 +542,13 @@ build_ada() {
     run_cmd_verbose "git clone --depth 1 https://github.com/ada-url/ada.git '$ada_dir'" || fail "Failed to clone Ada"
     BUILD_STATE["ada_cloned"]=1
     save_state
+
+    # In dry-run mode, don't attempt to cd or run cmake in a directory
+    # that wasn't really created; just report what would happen.
+    if [ $DRY_RUN -eq 1 ]; then
+        print_info "[DRY RUN] Skipping Ada configure/build/install steps"
+        return 0
+    fi
     
     print_progress "Configuring Ada..."
     cd "$ada_dir"
@@ -569,6 +606,11 @@ build_protobuf() {
     run_cmd_verbose "git clone --depth 1 https://github.com/protocolbuffers/protobuf.git '$protobuf_dir'" || fail "Failed to clone Protobuf"
     BUILD_STATE["protobuf_cloned"]=1
     save_state
+
+    if [ $DRY_RUN -eq 1 ]; then
+        print_info "[DRY RUN] Skipping Protobuf configure/build/install steps"
+        return 0
+    fi
     
     print_progress "Configuring Protobuf..."
     cd "$protobuf_dir"
@@ -656,11 +698,15 @@ configure_cryptogram() {
     fi
     
     print_progress "Running CMake configuration..."
-    run_cmd_verbose "cmake -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_PREFIX_PATH='$INSTALL_PREFIX' \
-        -DDESKTOP_APP_DISABLE_AUTOUPDATE=ON \
-        -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON \
-        '$CRYPTOGRAM_ROOT'" || fail "CMake configuration failed"
+    if [ $DRY_RUN -eq 1 ]; then
+        print_info "[DRY RUN] Would run CMake configuration for CRYPTOGRAM"
+    else
+        run_cmd_verbose "cmake -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH='$INSTALL_PREFIX' \
+            -DDESKTOP_APP_DISABLE_AUTOUPDATE=ON \
+            -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON \
+            '$CRYPTOGRAM_ROOT'" || fail "CMake configuration failed"
+    fi
     
     BUILD_STATE["cryptogram_configured"]=1
     save_state
@@ -686,11 +732,14 @@ build_cryptogram() {
     print_progress "Starting CRYPTOGRAM build with $PARALLEL_JOBS parallel jobs..."
     print_warning "This will take 20-60 minutes depending on your system"
     echo ""
-    
-    run_cmd_verbose "cmake --build . --config Release --parallel $PARALLEL_JOBS" || fail "CRYPTOGRAM build failed"
-    
-    BUILD_STATE["cryptogram_built"]=1
-    save_state
+
+    if [ $DRY_RUN -eq 1 ]; then
+        print_info "[DRY RUN] Would run CRYPTOGRAM build"
+    else
+        run_cmd_verbose "cmake --build . --config Release --parallel $PARALLEL_JOBS" || fail "CRYPTOGRAM build failed"
+        BUILD_STATE["cryptogram_built"]=1
+        save_state
+    fi
     
     local elapsed=$(($(date +%s) - start_time))
     COMPONENT_TIMES["cryptogram"]=$elapsed
@@ -801,6 +850,9 @@ main() {
     
     # Initialize
     initialize
+
+    # Make sure any git submodules (including CMake helpers) are present
+    ensure_submodules
     
     # Clear screen for interactive mode
     [ $INTERACTIVE_MODE -eq 1 ] && [ -t 1 ] && clear
@@ -817,8 +869,8 @@ main() {
     [ $RESUME_BUILD -eq 1 ] && echo "  Mode: RESUME"
     echo ""
     
-    # Try to load previous state
-    load_state
+    # Try to load previous state (ignore if none or resume disabled)
+    load_state || true
     
     # Interactive confirmation
     if [ $INTERACTIVE_MODE -eq 1 ] && [ -t 0 ]; then
