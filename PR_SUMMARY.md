@@ -8,6 +8,7 @@
 This PR fixes critical bugs in `build_all.sh` that were causing:
 1. **False positive verification** - Protobuf installation always reported success even when it failed
 2. **Permission conflicts** - Multiple users couldn't run builds due to shared log directories
+3. **Unbound variable errors** - Script failed with "unbound variable" errors due to `set -u`
 
 ## Commits
 
@@ -72,7 +73,52 @@ If `/tmp` is not writable, falls back to `$HOME/.cache/cryptogram_builds`
 - Respects `LOG_DIR` environment variable for custom locations
 - Clear error messages if log directory is not writable
 
-### 3. Add verification tests (149981d)
+### 3. Fix unbound variable errors with set -u (2033374)
+
+**The Problem:**
+Script has `set -Eeuo pipefail` which includes `set -u` (nounset). This causes errors when referencing unbound variables:
+```
+./build_all.sh: line 62: LOG_DIR: unbound variable
+```
+
+Three critical issues:
+1. `LOG_DIR` check failed when not set in environment
+2. `CC/CXX` could be unbound if no compiler found
+3. Export statements tried to export potentially unbound variables
+
+**The Solution:**
+
+1. **LOG_DIR check (line 63):**
+   ```bash
+   # Before
+   if [ -z "$LOG_DIR" ]; then
+
+   # After
+   if [ -z "${LOG_DIR:-}" ]; then
+   ```
+   Parameter expansion with empty default prevents unbound error
+
+2. **Compiler detection (lines 459-481):**
+   ```bash
+   # Initialize before loops
+   CC=""
+   CXX=""
+
+   # Check with safe parameter expansion
+   [ -z "${CC:-}" ] && fail "No C compiler found"
+   [ -z "${CXX:-}" ] && fail "No C++ compiler found"
+
+   # Export after validation
+   export CC
+   export CXX
+   ```
+
+**Benefits:**
+- Script works correctly with strict mode (`set -u`)
+- No false errors when environment variables aren't pre-set
+- Cleaner error messages when compilers aren't found
+
+### 4. Add verification tests (149981d & 2033374)
 
 Created `test_build_fixes.sh` to verify all fixes work correctly.
 
@@ -84,6 +130,7 @@ Created `test_build_fixes.sh` to verify all fixes work correctly.
 5. ✓ User isolation - different users get separate directories
 6. ✓ Verification message format (PASSED/FAILED)
 7. ✓ Diagnostic output on installation failures
+8. ✓ Unbound variable protection with safe parameter expansion
 
 All tests pass! ✓
 
@@ -105,14 +152,16 @@ Changes verified:
   2. Protobuf verification logic correctly detects missing libraries
   3. Clear PASSED/FAILED messaging for installations
   4. Detailed diagnostics on failures
+  5. No unbound variable errors with set -u
 ```
 
 ## Files Changed
 
 ```
- build_all.sh         | 113 ++++++++++++++++++++++++++++++++++--------
- test_build_fixes.sh  | 115 +++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 206 insertions(+), 22 deletions(-)
+ PR_SUMMARY.md       | 160 ++++++++++++++++++++++++++++++++++
+ build_all.sh        | 132 +++++++++++++++++++++++++++---
+ test_build_fixes.sh | 137 ++++++++++++++++++++++++++++++
+ 3 files changed, 401 insertions(+), 28 deletions(-)
 ```
 
 ## Testing Performed
@@ -121,18 +170,22 @@ Changes verified:
 - ✅ Tested with both root and regular user accounts
 - ✅ Confirmed fallback to user cache directory works
 - ✅ Validated error messages provide useful diagnostics
-- ✅ All automated tests pass
+- ✅ Tested with unset environment variables (LOG_DIR, CC, CXX)
+- ✅ Confirmed script works with strict mode (`set -u`)
+- ✅ All 8 automated tests pass
 
 ## Impact
 
 **Before:**
 - Protobuf verification always succeeded (false positive)
 - Permission denied errors when switching users
+- Unbound variable errors with strict mode
 - Difficult to diagnose installation failures
 
 **After:**
 - Protobuf verification correctly detects failures
 - Each user has isolated log directory
+- Script works correctly with `set -u` (strict mode)
 - Clear diagnostics show exactly what went wrong
 - Multiple users can run builds on same system
 
