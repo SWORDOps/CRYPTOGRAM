@@ -486,14 +486,22 @@ build_ada() {
     
     print_progress "Installing Ada..."
     run_cmd_verbose "cmake --install . --prefix '$INSTALL_PREFIX'" || fail "Ada installation failed"
-    BUILD_STATE["ada_installed"]=1
-    save_state
-    
+
     # Verify
+    print_progress "Verifying Ada installation..."
     if ls "$INSTALL_PREFIX"/lib/libada.* >/dev/null 2>&1; then
-        print_info "Ada installed successfully"
+        print_info "Ada verification PASSED"
+        print_info "Libraries installed to: $INSTALL_PREFIX/lib"
+        BUILD_STATE["ada_installed"]=1
+        save_state
     else
-        fail "Ada installation verification failed"
+        print_error "Ada installation verification FAILED"
+        echo ""
+        echo "Diagnostics:"
+        echo "  Expected location: $INSTALL_PREFIX/lib/libada.*"
+        echo "  Contents of $INSTALL_PREFIX/lib:"
+        ls -lA "$INSTALL_PREFIX/lib" 2>&1 | head -20 | sed 's/^/    /'
+        fail "Ada installation verification failed - no libraries found"
     fi
     
     cd /
@@ -534,19 +542,48 @@ build_protobuf() {
     save_state
     
     print_progress "Installing Protobuf..."
-    run_cmd_verbose "cmake --install . --prefix '$INSTALL_PREFIX'" || fail "Protobuf installation failed"
-    BUILD_STATE["protobuf_installed"]=1
-    save_state
-    
-    # Verify
+    if ! run_cmd_verbose "cmake --install . --prefix '$INSTALL_PREFIX'"; then
+        print_warning "Protobuf installation command failed or had errors"
+    fi
+    print_info "Protobuf installation command completed"
+
+    # Verify installation
+    echo ""
+    print_progress "Verifying Protobuf installation..."
+
+    # Show what was installed
+    print_debug "Checking $INSTALL_PREFIX/lib for Protobuf libraries..."
+    if ls -lh "$INSTALL_PREFIX"/lib/libprotobuf*.* 2>/dev/null; then
+        print_debug "Files listed above"
+    else
+        print_debug "No files found in $INSTALL_PREFIX/lib"
+    fi
+
+    # Check if libraries exist
     if ls "$INSTALL_PREFIX"/lib/libprotobuf.* >/dev/null 2>&1; then
-        print_info "Protobuf installed successfully"
+        print_info "Protobuf verification PASSED"
+        print_info "Libraries installed to: $INSTALL_PREFIX/lib"
+        BUILD_STATE["protobuf_installed"]=1
+        save_state
     else
         # Check system paths as fallback
-        if find /usr -name 'libprotobuf.so*' 2>/dev/null | head -n1; then
-            print_warning "Using system Protobuf"
+        print_warning "Protobuf libraries not found in $INSTALL_PREFIX/lib"
+        SYSTEM_PROTO=$(find /usr -name 'libprotobuf.so*' -o -name 'libprotobuf.a' 2>/dev/null | head -n1)
+        if [ -n "$SYSTEM_PROTO" ]; then
+            print_warning "Found system Protobuf at: $SYSTEM_PROTO"
+            print_warning "Using system Protobuf instead"
+            BUILD_STATE["protobuf_installed"]=1
+            save_state
         else
-            fail "Protobuf installation verification failed"
+            print_error "Protobuf installation verification FAILED"
+            echo ""
+            echo "Diagnostics:"
+            echo "  Expected location: $INSTALL_PREFIX/lib/libprotobuf.*"
+            echo "  Permissions on $INSTALL_PREFIX/lib:"
+            ls -ld "$INSTALL_PREFIX/lib" 2>&1 | sed 's/^/    /'
+            echo "  Contents of $INSTALL_PREFIX/lib:"
+            ls -lA "$INSTALL_PREFIX/lib" 2>&1 | head -20 | sed 's/^/    /'
+            fail "Protobuf installation verification failed - no libraries found"
         fi
     fi
     
