@@ -59,7 +59,8 @@ readonly BUILD_DIR="${CRYPTOGRAM_ROOT}/build_release"
 LOG_USER="${USER:-$(whoami 2>/dev/null || echo "user${UID}")}"
 
 # Determine writable log directory with fallback
-if [ -z "$LOG_DIR" ]; then
+# Use ${LOG_DIR:-} to avoid "unbound variable" error with set -u
+if [ -z "${LOG_DIR:-}" ]; then
     # Try /tmp first (user-specific)
     if mkdir -p "/tmp/cryptogram_builds_${LOG_USER}" 2>/dev/null && \
        [ -w "/tmp/cryptogram_builds_${LOG_USER}" ]; then
@@ -455,23 +456,29 @@ configure_compiler() {
     print_progress "Detecting compilers..."
     
     # C Compiler
+    CC=""
     for cc in gcc-13 gcc-12 gcc-11 gcc clang; do
         if command -v "$cc" >/dev/null 2>&1; then
-            export CC="$(command -v "$cc")"
+            CC="$(command -v "$cc")"
             break
         fi
     done
-    
+
     # C++ Compiler
+    CXX=""
     for cxx in g++-13 g++-12 g++-11 g++ clang++; do
         if command -v "$cxx" >/dev/null 2>&1; then
-            export CXX="$(command -v "$cxx")"
+            CXX="$(command -v "$cxx")"
             break
         fi
     done
-    
-    [ -z "$CC" ] && fail "No C compiler found"
-    [ -z "$CXX" ] && fail "No C++ compiler found"
+
+    # Check if compilers were found (use ${VAR:-} to avoid unbound variable error with set -u)
+    [ -z "${CC:-}" ] && fail "No C compiler found"
+    [ -z "${CXX:-}" ] && fail "No C++ compiler found"
+
+    export CC
+    export CXX
     
     print_info "C compiler: $CC"
     print_info "C++ compiler: $CXX"
