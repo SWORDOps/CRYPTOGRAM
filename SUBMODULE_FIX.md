@@ -22,7 +22,7 @@ The build script now includes **automatic submodule repair**:
 1. **Detection**: Checks for empty or broken submodule directories
 2. **Repair**: Automatically removes empty directories
 3. **Initialization**: Properly initializes all submodules
-4. **Update**: Recursively updates submodules
+4. **Update**: Recursively updates submodules with `--init --recursive` for complete checkout
 
 Simply run:
 ```bash

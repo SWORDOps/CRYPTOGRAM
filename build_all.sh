@@ -760,17 +760,18 @@ check_submodules() {
 
     # Update submodules
     print_progress "Updating git submodules (this may take a while)..."
-    log "SUBMODULE" "Running git submodule update --recursive"
+    log "SUBMODULE" "Running git submodule update --init --recursive"
 
     local update_start=$(date +%s)
-    if ! git submodule update --recursive 2>&1 | tee -a "$LOG_FILE"; then
+    if ! git submodule update --init --recursive 2>&1 | tee -a "$LOG_FILE"; then
         print_error "Failed to update git submodules"
-        log "ERROR" "git submodule update failed"
+        log "ERROR" "git submodule update --init --recursive failed"
         echo ""
         echo "Common solutions:"
         echo "  1. Check network connectivity"
         echo "  2. Ensure you have access to all submodule repositories"
-        echo "  3. Try: git submodule update --init --recursive"
+        echo "  3. Verify .gitmodules configuration"
+        echo "  4. Try manually: git submodule update --init --recursive --force"
         echo ""
         fail "Failed to update git submodules"
     fi

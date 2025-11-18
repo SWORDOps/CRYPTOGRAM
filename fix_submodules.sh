@@ -161,10 +161,10 @@ main() {
 
     # Update submodules
     echo ""
-    print_progress "Updating git submodules (this may take a while)..."
+    print_progress "Updating git submodules recursively (this may take a while)..."
     echo ""
 
-    if git submodule update --recursive 2>&1; then
+    if git submodule update --init --recursive 2>&1; then
         echo ""
         print_info "Submodules updated successfully"
     else
@@ -174,7 +174,8 @@ main() {
         echo "Common solutions:"
         echo "  1. Check network connectivity"
         echo "  2. Verify access to submodule repositories"
-        echo "  3. Try manually: git submodule update --init --recursive"
+        echo "  3. Verify .gitmodules configuration"
+        echo "  4. Try manually: git submodule update --init --recursive --force"
         echo ""
         fail "Submodule update failed"
     fi
