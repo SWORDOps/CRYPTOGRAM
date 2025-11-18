@@ -68,7 +68,6 @@ auto TopVideoStreamDonors(not_null<Calls::GroupCall*> call)
 		messages->starsValueChanges()
 	) | rpl::map([=] {
 		const auto &list = messages->starsTop().topDonors;
-		const auto peer = call->peer();
 		auto still = Ui::MaxTopPaidDonorsShown();
 		auto result = std::vector<Data::MessageReactionsTopPaid>();
 		result.reserve(list.size());
@@ -238,10 +237,7 @@ VideoStream::VideoStream(
 		TopDonorPlaces(_call.get()),
 		_call->messages()->idUpdates(),
 		_call->canManageValue(),
-		rpl::combine(
-			_call->messagesEnabledValue(),
-			_commentsShown.value(),
-			rpl::mappers::_1 && rpl::mappers::_2))) {
+		_commentsShown.value())) {
 	Core::App().calls().registerVideoStream(_call.get());
 	setupMembers();
 	setupVideo();

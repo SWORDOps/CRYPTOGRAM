@@ -127,7 +127,7 @@ namespace {
 		.autocompleteMentions = false,
 		.autocompleteCommands = false,
 		.recordMediaMessage = !videoStream,
-		.editMessageStars = videoStream && !videoStreamManager,
+		.editMessageStars = videoStream,
 		.emojiOnlyPanel = videoStream,
 	};
 }
@@ -1016,7 +1016,6 @@ rpl::producer<int> ReplyArea::starsPerMessageValue() const {
 void ReplyArea::updateVideoStream(not_null<Calls::GroupCall*> videoStream) {
 	_type = ReplyAreaType::VideoStreamComment;
 	_videoStream = videoStream;
-	const auto messages = videoStream->messages();
 	_controls->setStarsReactionTop(View::TopVideoStreamDonors(videoStream));
 }
 

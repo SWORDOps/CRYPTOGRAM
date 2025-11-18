@@ -551,7 +551,14 @@ void MessagesUi::updateMessageSize(MessageView &entry) {
 	entry.left = _streamMode ? 0 : (_width - entry.width) / 2;
 	entry.textLeft = leftSkip;
 	entry.textTop = padding.top() + nameHeight;
-	entry.nameWidth = std::min(entry.width - widthSkip, nameWidth);
+	entry.nameWidth = std::min(
+		nameWidth,
+		(entry.width
+			- widthSkip
+			- space
+			- _liveBadge.maxWidth()
+			- space
+			- _adminBadge.maxWidth()));
 	updateReactionPosition(entry);
 
 	const auto contentHeight = entry.textTop + textHeight + padding.bottom();
@@ -871,7 +878,6 @@ void MessagesUi::appendPinned(const Message &data, TimeId now) {
 		return;
 	}
 
-	const auto id = data.id;
 	const auto peer = data.peer;
 	const auto finishes = crl::now()
 		+ (data.pinFinishDate - now) * crl::time(1000);
@@ -906,9 +912,6 @@ void MessagesUi::appendPinned(const Message &data, TimeId now) {
 		.place = donorPlace(peer),
 		.left = left,
 	});
-	const auto repaint = [=] {
-		repaintPinned(id);
-	};
 	setContent(entry);
 	updatePinnedSize(entry);
 	entry.width = 0;
@@ -1279,6 +1282,7 @@ void MessagesUi::setupMessagesWidget() {
 					},
 					.availableWidth = entry.nameWidth,
 					.palette = &st::groupCallMessagePalette,
+					.elisionLines = 1,
 				});
 				const auto liveLeft = x + textLeft + entry.nameWidth + space;
 				_liveBadge.draw(p, {
@@ -1597,9 +1601,6 @@ void MessagesUi::setupPinnedWidget() {
 			const auto position = QPoint(
 				x + userpicPadding.left(),
 				y + userpicPadding.top());
-			const auto rect = QRect(
-				position,
-				QSize(userpicSize, userpicSize));
 			entry.from->paintUserpic(p, entry.view, {
 				.position = position,
 				.size = userpicSize,
