@@ -412,18 +412,18 @@ check_tools() {
 
 check_permissions() {
     print_step "3/8" "Permission Check"
-    
+
     print_progress "Checking installation directory permissions..."
-    
+
     if [ ! -d "$CRYPTOGRAM_ROOT" ]; then
         fail "CRYPTOGRAM directory not found at $CRYPTOGRAM_ROOT"
     fi
-    
+
     if [ -w "$INSTALL_PREFIX" ]; then
         print_info "Write access to $INSTALL_PREFIX: OK"
     else
         print_warning "No write access to $INSTALL_PREFIX"
-        
+
         if [ $INTERACTIVE_MODE -eq 1 ]; then
             echo ""
             echo "Options:"
@@ -445,12 +445,84 @@ check_permissions() {
             fi
         fi
     fi
-    
+
+    echo ""
+}
+
+check_submodules() {
+    print_step "4/8" "Git Submodules Check"
+
+    # Check if we're in a git repository
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+        print_warning "Not in a git repository, skipping submodule check"
+        return 0
+    fi
+
+    # Check if there are any submodules configured
+    if [ ! -f ".gitmodules" ]; then
+        print_info "No submodules configured, skipping"
+        return 0
+    fi
+
+    print_progress "Checking git submodules..."
+
+    # Get list of submodules
+    local submodule_count=$(git config --file .gitmodules --get-regexp path | wc -l)
+    if [ "$submodule_count" -eq 0 ]; then
+        print_info "No submodules found"
+        return 0
+    fi
+
+    print_info "Found $submodule_count submodule(s)"
+
+    # Check for broken submodule directories
+    print_progress "Checking for broken submodule directories..."
+    local fixed_count=0
+
+    while IFS= read -r submodule_path; do
+        if [ -d "$submodule_path" ] && [ ! -d "$submodule_path/.git" ]; then
+            # Directory exists but is not a git repository
+            if [ -z "$(ls -A "$submodule_path" 2>/dev/null)" ]; then
+                # Directory is empty, safe to remove
+                print_warning "Removing empty submodule directory: $submodule_path"
+                rmdir "$submodule_path" || print_warning "Failed to remove $submodule_path"
+                ((fixed_count++))
+            else
+                # Directory has content but no .git - this is problematic
+                print_error "Submodule directory exists but is not a git repository: $submodule_path"
+                print_error "Please manually remove or backup this directory"
+                fail "Broken submodule state detected"
+            fi
+        fi
+    done < <(git config --file .gitmodules --get-regexp path | awk '{print $2}')
+
+    if [ $fixed_count -gt 0 ]; then
+        print_info "Fixed $fixed_count broken submodule director(ies)"
+    fi
+
+    # Initialize submodules
+    print_progress "Initializing git submodules..."
+    if ! git submodule init 2>&1 | tee -a "$LOG_FILE"; then
+        fail "Failed to initialize git submodules"
+    fi
+    print_info "Submodules initialized"
+
+    # Update submodules
+    print_progress "Updating git submodules (this may take a while)..."
+    if ! git submodule update --recursive 2>&1 | tee -a "$LOG_FILE"; then
+        fail "Failed to update git submodules"
+    fi
+    print_info "Submodules updated successfully"
+
+    # Show submodule status
+    print_debug "Submodule status:"
+    git submodule status --recursive >> "$LOG_FILE" 2>&1
+
     echo ""
 }
 
 configure_compiler() {
-    print_step "4/8" "Compiler Configuration"
+    print_step "5/8" "Compiler Configuration"
     
     # Detect best available compiler
     print_progress "Detecting compilers..."
@@ -497,7 +569,7 @@ configure_compiler() {
 # Build Functions
 # ──────────────────────────────────────────────────────────────────────────────
 build_ada() {
-    print_step "5/8" "Building Ada URL Parser"
+    print_step "6/8" "Building Ada URL Parser"
     
     if [ ${BUILD_STATE["ada_installed"]} -eq 1 ] && [ $FORCE_REBUILD -eq 0 ]; then
         print_info "Ada already installed, skipping..."
@@ -554,7 +626,7 @@ build_ada() {
 }
 
 build_protobuf() {
-    print_step "6/8" "Building Protocol Buffers"
+    print_step "7/8" "Building Protocol Buffers"
     
     if [ ${BUILD_STATE["protobuf_installed"]} -eq 1 ] && [ $FORCE_REBUILD -eq 0 ]; then
         print_info "Protobuf already installed, skipping..."
@@ -637,7 +709,7 @@ build_protobuf() {
 }
 
 configure_cryptogram() {
-    print_step "7/8" "Configuring CRYPTOGRAM"
+    print_step "8/8" "Configuring CRYPTOGRAM"
     
     if [ ${BUILD_STATE["cryptogram_configured"]} -eq 1 ] && [ $FORCE_REBUILD -eq 0 ]; then
         print_info "CRYPTOGRAM already configured, skipping..."
@@ -673,7 +745,7 @@ configure_cryptogram() {
 }
 
 build_cryptogram() {
-    print_step "8/8" "Building CRYPTOGRAM Desktop"
+    print_step "9/9" "Building CRYPTOGRAM Desktop"
     
     if [ ${BUILD_STATE["cryptogram_built"]} -eq 1 ] && [ $FORCE_REBUILD -eq 0 ]; then
         print_info "CRYPTOGRAM already built, skipping..."
@@ -831,6 +903,7 @@ main() {
     check_system
     check_tools
     check_permissions
+    check_submodules
     configure_compiler
     build_ada
     build_protobuf
