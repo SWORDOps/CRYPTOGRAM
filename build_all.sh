@@ -53,7 +53,25 @@ fi
 # Paths
 readonly CRYPTOGRAM_ROOT="${CRYPTOGRAM_ROOT:-$HOME/CRYPTOGRAM}"
 readonly BUILD_DIR="${CRYPTOGRAM_ROOT}/build_release"
-readonly LOG_DIR="${LOG_DIR:-/tmp/cryptogram_builds}"
+
+# Make log directory user-specific to avoid permission conflicts
+# Use username in path if available, otherwise use UID
+LOG_USER="${USER:-$(whoami 2>/dev/null || echo "user${UID}")}"
+
+# Determine writable log directory with fallback
+if [ -z "$LOG_DIR" ]; then
+    # Try /tmp first (user-specific)
+    if mkdir -p "/tmp/cryptogram_builds_${LOG_USER}" 2>/dev/null && \
+       [ -w "/tmp/cryptogram_builds_${LOG_USER}" ]; then
+        LOG_DIR="/tmp/cryptogram_builds_${LOG_USER}"
+    else
+        # Fallback to user's cache directory
+        LOG_DIR="$HOME/.cache/cryptogram_builds"
+        mkdir -p "$LOG_DIR" 2>/dev/null || true
+    fi
+fi
+
+readonly LOG_DIR
 readonly LOG_FILE="${LOG_DIR}/build_${BUILD_DATE}.log"
 readonly ERROR_LOG="${LOG_DIR}/errors_${BUILD_DATE}.log"
 readonly STATE_FILE="${LOG_DIR}/state_${BUILD_DATE}.json"
@@ -94,19 +112,33 @@ declare -A COMPONENT_TIMES
 # Initialize Environment
 # ──────────────────────────────────────────────────────────────────────────────
 initialize() {
-    # Create directories
-    mkdir -p "$LOG_DIR"
-    
-    # Initialize logs
-    : > "$LOG_FILE"
-    : > "$ERROR_LOG"
-    
+    # Ensure log directory exists (should already be created, but double-check)
+    if ! mkdir -p "$LOG_DIR" 2>/dev/null; then
+        echo "ERROR: Cannot create log directory: $LOG_DIR"
+        echo "Please check permissions or set LOG_DIR environment variable to a writable location."
+        exit 1
+    fi
+
+    # Initialize log files with error handling
+    if ! : > "$LOG_FILE" 2>/dev/null; then
+        echo "ERROR: Cannot write to log file: $LOG_FILE"
+        echo "Log directory: $LOG_DIR"
+        ls -ld "$LOG_DIR" 2>&1
+        exit 1
+    fi
+
+    if ! : > "$ERROR_LOG" 2>/dev/null; then
+        echo "ERROR: Cannot write to error log: $ERROR_LOG"
+        exit 1
+    fi
+
     # Log header
     {
         echo "════════════════════════════════════════════════════════════════"
         echo "BUILD LOG - TSM + CRYPTOGRAM v${SCRIPT_VERSION}"
         echo "Started: $(date '+%Y-%m-%d %H:%M:%S')"
         echo "Build ID: $BUILD_ID"
+        echo "Log Directory: $LOG_DIR"
         echo "Interactive: $([ $INTERACTIVE_MODE -eq 1 ] && echo "Yes" || echo "No")"
         echo "════════════════════════════════════════════════════════════════"
         echo ""
