@@ -605,10 +605,8 @@ void FillMenu(
 		}
 	});
 	menu->addAction(cVoiceChatPinned() ? tr::lng_settings_unpin_voice_chat(tr::now) : tr::lng_settings_pin_voice_chat(tr::now), [=] {
-		if (const auto strong = weak.get()) {
-			cSetVoiceChatPinned(!cVoiceChatPinned());
-			Core::App().calls().setVoiceChatPinned(cVoiceChatPinned());
-		}
+		cSetVoiceChatPinned(!cVoiceChatPinned());
+		Core::App().calls().setVoiceChatPinned(cVoiceChatPinned());
 	});
 	const auto finish = [=] {
 		if (const auto strong = weak.get()) {
