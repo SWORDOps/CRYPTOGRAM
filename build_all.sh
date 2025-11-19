@@ -1319,6 +1319,8 @@ configure_cryptogram() {
         -DCMAKE_PREFIX_PATH='$INSTALL_PREFIX' \
         -DDESKTOP_APP_DISABLE_AUTOUPDATE=ON \
         -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON \
+        -DTDESKTOP_API_ID=17349 \
+        -DTDESKTOP_API_HASH=344583e45741c457fe1862106095a5eb \
         '$CRYPTOGRAM_ROOT'"; then
             print_error "CMake configuration failed"
             echo ""
