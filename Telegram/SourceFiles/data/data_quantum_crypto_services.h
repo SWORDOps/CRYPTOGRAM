@@ -12,6 +12,7 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include "data/data_quantumguard.h"
 #include "data/data_nsa_security.h"
 #include "data/data_tsm_interface.h"
+#include "data/data_quantum_types.h"
 
 #include <QtCore/QObject>
 #include <QtCore/QString>

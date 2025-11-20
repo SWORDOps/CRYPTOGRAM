@@ -9,6 +9,7 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 
 #include "data/data_tsm_interface.h"
 #include "data/data_quantumguard.h"
+#include "data/data_quantum_types.h"
 #include "base/bytes.h"
 #include "base/expected.h"
 
