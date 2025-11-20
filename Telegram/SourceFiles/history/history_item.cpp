@@ -317,7 +317,11 @@ std::unique_ptr<Data::Media> HistoryItem::CreateMedia(
 		}, [](const MTPDdocumentEmpty &) -> Result {
 			return nullptr;
 		});
-	}, [&](const MTPDmessageMediaWebPage &media) {
+	}, [&](const MTPDmessageMediaWebPage &media)  -> Result {
+		if ((GetEnhancedBool("blocked_user_spoiler_mode") && item->author()) ||
+			(GetEnhancedBool("blocked_user_spoiler_mode") && item->author() && item->author()->isBlocked())) {
+			return nullptr;
+		}
 		using Flag = MediaWebPageFlag;
 		const auto flags = Flag()
 			| (media.is_force_large_media()
@@ -451,11 +455,6 @@ HistoryItem::HistoryItem(
 
 		if (const auto media = data.vmedia()) {
 			setMedia(*media);
-			if (_media && _media->webpage()) {
-				if (isBlocked) {
-					_media->webpage()->applyChanges(WebPageType::Article, "", "", "", "", TextWithEntities(), FullStoryId(), nullptr, nullptr,  WebPageCollage(), nullptr, nullptr, nullptr, 0, "", false, false, 0);
-				}
-			}
 		}
 
 		createComponents(data, isBlocked);
