@@ -1312,8 +1312,9 @@ void TopBar::setupUserpicButton(
 						});
 					}
 				}
-			} else if (_hasStories) {
-			openPhoto();
+			} else {
+				openPhoto();
+			}
 		}
 	}, _userpicButton->lifetime());
 }
