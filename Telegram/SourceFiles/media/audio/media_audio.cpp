@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "media/audio/media_audio.h"
 
+#include "media/audio/media_audio_capture.h"
 #include "media/audio/media_audio_ffmpeg_loader.h"
 #include "media/audio/media_child_ffmpeg_loader.h"
 #include "media/audio/media_audio_loaders.h"
@@ -46,6 +47,12 @@ Webrtc::DeviceResolvedId AudioDeviceLastUsedId{
 auto VolumeMultiplierAll = 1.;
 auto VolumeMultiplierSong = 1.;
 
+} // namespace
+
+namespace {
+Fn<void(QByteArray &)> g_voiceProcessingCallback;
+Fn<void(const QByteArray &)> g_voiceRecordingCallback;
+Fn<void(bool)> g_voiceRecordingFinished;
 } // namespace
 
 namespace Media {
@@ -225,6 +232,53 @@ bool SupportsSpeedControl() {
 			&& avfilter_get_by_name("atempo");
 	}();
 	return result;
+}
+
+void StartRecording(
+		Fn<void(const QByteArray &)> sampleCallback,
+		Fn<void(bool)> finishedCallback) {
+	auto capture = ::Media::Capture::instance();
+	if (!capture || !capture->available()) {
+		if (finishedCallback) {
+			finishedCallback(false);
+		}
+		return;
+	}
+	if (capture->started()) {
+		if (finishedCallback) {
+			finishedCallback(false);
+		}
+		return;
+	}
+	g_voiceRecordingCallback = std::move(sampleCallback);
+	g_voiceRecordingFinished = std::move(finishedCallback);
+	capture->start([=](Media::Capture::Chunk chunk) {
+		auto data = chunk.samples;
+		if (g_voiceProcessingCallback) {
+			g_voiceProcessingCallback(data);
+		}
+		if (!data.isEmpty() && g_voiceRecordingCallback) {
+			g_voiceRecordingCallback(data);
+		}
+	});
+}
+
+void StopRecording() {
+	auto capture = ::Media::Capture::instance();
+	if (!capture || !capture->started()) {
+		return;
+	}
+	capture->stop([=](Media::Capture::Result &&result) {
+		if (g_voiceRecordingFinished) {
+			g_voiceRecordingFinished(!result.bytes.isEmpty());
+		}
+		g_voiceRecordingCallback = {};
+		g_voiceRecordingFinished = {};
+	});
+}
+
+void SetVoiceProcessingCallback(VoiceProcessingCallback callback) {
+	g_voiceProcessingCallback = std::move(callback);
 }
 
 } // namespace Audio

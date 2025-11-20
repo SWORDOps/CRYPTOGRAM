@@ -647,6 +647,23 @@ void DocumentData::setDataAndCache(const QByteArray &data) {
 				base::duplicate(data),
 				cacheTag()));
 	}
+	_cachedData = data;
+}
+
+QByteArray DocumentData::data() const {
+	return _cachedData;
+}
+
+void DocumentData::setSecureVoiceToken(const QByteArray &token) {
+	_secureVoiceToken = token;
+}
+
+QByteArray DocumentData::secureVoiceToken() const {
+	return _secureVoiceToken;
+}
+
+bool DocumentData::hasSecureVoiceToken() const {
+	return !_secureVoiceToken.isEmpty();
 }
 
 bool DocumentData::checkWallPaperProperties() {

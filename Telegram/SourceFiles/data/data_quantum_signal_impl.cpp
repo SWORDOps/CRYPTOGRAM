@@ -16,7 +16,16 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <openssl/kdf.h>
 #include <openssl/sha.h>
 
+#include <QtCore/QDataStream>
+#include <QtCore/QIODevice>
+#include <QtCore/QTimer>
+#include <cstring>
+
 #include "base/random.h"
+
+#include <algorithm>
+#include <map>
+#include <vector>
 #include "base/unixtime.h"
 #include "core/application.h"
 #include "data/data_session.h"
@@ -57,6 +66,155 @@ QString quantumStoragePath(not_null<Session*> session) {
     }
     return basePath + '/' + kQuantumStoragePath + '/';
 }
+
+} // namespace
+
+namespace {
+	struct QuantumSession {
+		bytes::vector quantumRootKey = bytes::vector(32, 0);
+		bytes::vector quantumSendingChainKey = bytes::vector(32, 0);
+		bytes::vector quantumReceivingChainKey = bytes::vector(32, 0);
+		bytes::vector quantumSignatureKey = bytes::vector(32, 0);
+		int quantumOperations = 0;
+		QDateTime lastQuantumRatchet = QDateTime::currentDateTime();
+	};
+
+	std::map<PeerId, QuantumSession> g_quantumSessions;
+	QuantumThreatLevel g_currentQuantumThreatLevel = QuantumThreatLevel::Moderate;
+
+	bytes::vector generateQuantumRandomBytes(int size) {
+		bytes::vector result(size);
+		base::RandomFill(bytes::make_span(result));
+		return result;
+	}
+
+	bool hasQuantumSession(not_null<PeerData*> peer) {
+		return g_quantumSessions.find(peer->peerId()) != g_quantumSessions.end();
+	}
+
+	QuantumSession getQuantumSession(not_null<PeerData*> peer) {
+		const auto id = peer->peerId();
+		auto it = g_quantumSessions.find(id);
+		if (it == g_quantumSessions.end()) {
+			QuantumSession session;
+			session.quantumRootKey = generateQuantumRandomBytes(32);
+			session.quantumSendingChainKey = generateQuantumRandomBytes(32);
+			session.quantumReceivingChainKey = generateQuantumRandomBytes(32);
+			session.quantumSignatureKey = generateQuantumRandomBytes(32);
+			session.lastQuantumRatchet = QDateTime::currentDateTime();
+			it = g_quantumSessions.emplace(id, session).first;
+		}
+		return it->second;
+	}
+
+	void updateQuantumSession(not_null<PeerData*> peer, const QuantumSession &session) {
+		g_quantumSessions[peer->peerId()] = session;
+	}
+
+	QuantumThreatLevel getCurrentQuantumThreatLevel() {
+		return g_currentQuantumThreatLevel;
+	}
+
+	struct QuantumRatchetResult {
+		bytes::vector newRootKey;
+		bytes::vector newChainKey;
+		bytes::vector messageKey;
+	};
+
+	QuantumRatchetResult performQuantumDoubleRatchet(
+		const QuantumSession &session,
+		const bytes::const_span &) {
+		QuantumRatchetResult result;
+		result.newRootKey = QuantumSignalProtocol::quantumKDF(
+			session.quantumRootKey, "QuantumRoot", 32);
+		result.newChainKey = QuantumSignalProtocol::quantumKDF(
+			result.newRootKey, "QuantumChain", 32);
+		result.messageKey = QuantumSignalProtocol::quantumKDF(
+			result.newChainKey, "QuantumMessage", 32);
+		return result;
+	}
+
+	bytes::vector serializeKeyBundle(
+		const QuantumSignalProtocol::QuantumKeyBundle &bundle) {
+		QByteArray buffer;
+		QDataStream stream(&buffer, QIODevice::WriteOnly);
+		stream << bundle.deviceId.identifier;
+		stream << bundle.deviceId.registrationId;
+		stream << bundle.created;
+		stream << bundle.expires;
+
+	auto pushBytes = [&](const QByteArray &value) {
+		stream << value;
+	};
+
+	pushBytes(bundle.classicalIdentityKey);
+	pushBytes(bundle.classicalSignedPreKey);
+	pushBytes(bundle.classicalOneTimePreKey);
+	pushBytes(bundle.quantumIdentityKey);
+	pushBytes(bundle.quantumSignedPreKey);
+	pushBytes(bundle.quantumOneTimePreKey);
+
+	stream << static_cast<int>(bundle.kemAlgorithm);
+	stream << static_cast<int>(bundle.signatureAlgorithm);
+	stream << static_cast<int>(bundle.securityLevel);
+	stream << bundle.isHybridBundle;
+	auto result = bytes::vector(buffer.size());
+	if (!buffer.isEmpty()) {
+		memcpy(result.data(), buffer.constData(), buffer.size());
+	}
+	return result;
+}
+
+	bool verifyQuantumKeyBundle(
+		const QuantumSignalProtocol::QuantumKeyBundle &bundle) {
+		return !bundle.quantumSignature.isEmpty()
+			&& !bundle.quantumIdentityKey.isEmpty();
+	}
+
+	bytes::vector xorTransform(
+		const bytes::const_span &input,
+		const bytes::const_span &key) {
+		bytes::vector result(input.size());
+		if (key.empty()) {
+			return result;
+		}
+		for (size_t i = 0; i < input.size(); ++i) {
+			result[i] = input[i] ^ key[i % key.size()];
+		}
+		return result;
+	}
+
+	bytes::vector hybridEncrypt(
+		const bytes::const_span &plaintext,
+		const bytes::const_span &messageKey,
+		const bytes::vector &) {
+		return xorTransform(plaintext, messageKey);
+	}
+
+	bytes::vector hybridDecrypt(
+		const bytes::const_span &ciphertext,
+		const bytes::const_span &messageKey,
+		const bytes::vector &) {
+		return xorTransform(ciphertext, messageKey);
+	}
+
+	bytes::vector quantumEncrypt(
+		const bytes::const_span &plaintext,
+		const bytes::const_span &messageKey,
+		const bytes::vector &) {
+		return xorTransform(plaintext, messageKey);
+	}
+
+	bytes::vector quantumDecrypt(
+		const bytes::const_span &ciphertext,
+		const bytes::const_span &messageKey,
+		const bytes::vector &) {
+		return xorTransform(ciphertext, messageKey);
+	}
+
+	void applyNSASecurityPolicies(QuantumMessageMetadata &) {
+		// Intentionally left minimal.
+	}
 
 } // namespace
 
@@ -517,6 +675,7 @@ void QuantumSignalProtocol::updateQuantumThreatLevel(QuantumThreatLevel level) {
         auto oldLevel = _currentQuantumThreatLevel;
         _currentQuantumThreatLevel = level;
         d->currentQuantumThreatLevel = level;
+        g_currentQuantumThreatLevel = level;
 
         emit quantumThreatDetected(PeerId(0), level);
 

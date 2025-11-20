@@ -18,17 +18,29 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "media/audio/media_audio.h"
 #include "media/audio/media_audio_capture.h"
 #include "media/audio/media_audio_track.h"
+#include "storage/download_manager_mtproto.h"
 #include "storage/file_download.h"
 #include "storage/storage_account.h"
+#include "base/random.h"
 #include "ui/toast/toast.h"
 
+#include <QtCore/QCryptographicHash>
+#include <QtCore/QDataStream>
+#include <QtCore/QDateTime>
+#include <QtCore/QDir>
+#include <QtCore/QEventLoop>
+#include <QtCore/QFileInfo>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QMessageAuthenticationCode>
+#include <QtCore/QRandomGenerator>
 #include <QtCore/QStandardPaths>
-#include <QtCore/QCryptographicHash>
-#include <QtNetwork/QNetworkReply>
-#include <QtCore/QElapsedTimer>
+#include <QtCore/QTemporaryFile>
+#include <QtCore/QTextStream>
 #include <QtCore/QTimer>
+#include <QtCore/QUrl>
+#include <QtNetwork/QNetworkReply>
+#include <QtNetwork/QNetworkRequest>
 
 namespace Data {
 
@@ -44,11 +56,14 @@ constexpr auto kSecurityMetadataTag = "vscr";  // Tag to mark processed voice me
 
 // Generate HMAC token for security verification
 QByteArray generateSecurityToken(const QByteArray &data) {
-    const auto randomData = MTP::AuthKey::Data::Generate(16);
+    const auto randomData = base::RandomValue<bytes::array<16>>();
+    const auto randomBytes = QByteArray(
+        reinterpret_cast<const char*>(randomData.data()),
+        int(randomData.size()));
     const auto hmacKey = QCryptographicHash::hash(
-        randomData,
+        randomBytes,
         QCryptographicHash::Sha256);
-    
+
     return QMessageAuthenticationCode::hash(
         data,
         hmacKey,
@@ -359,6 +374,7 @@ void VoiceSecurityManager::processExistingVoiceMessage(not_null<DocumentData*> v
     
     // Create verification token
     const auto token = createVerificationToken(processed);
+    voiceMessage->setSecureVoiceToken(token);
     
     // Here we would save the processed version and update the voice message
     // This would require integration with Telegram's document storage system
@@ -439,15 +455,13 @@ QByteArray VoiceSecurityManager::createVerificationToken(const QByteArray &proce
 }
 
 bool VoiceSecurityManager::isSecureVoiceMessage(not_null<DocumentData*> document) const {
-    const auto &attributes = document->attributes();
-    
-    // Check if the document has secure voice attribute
-    for (const auto &attribute : attributes) {
-        if (attribute.type() == DocumentAttribute::Type::SecureVoice) {
-            const auto &secure = attribute.secureVoice();
-            
-            // Extract token parts
-            QDataStream stream(secure.token);
+    if (!document->hasSecureVoiceToken()) {
+        return false;
+    }
+    const auto token = document->secureVoiceToken();
+
+    // Extract token parts
+    QDataStream stream(token);
             QByteArray timestamp;
             QByteArray nonce;
             quint8 modeValue;
@@ -770,7 +784,8 @@ QString VoiceSecurityManager::sendOllamaRequest(
         const QByteArray &audioData) {
     
     // Prepare the request
-    QNetworkRequest request(QUrl(kOllamaEndpoint));
+    const QUrl endpoint(kOllamaEndpoint);
+    QNetworkRequest request(endpoint);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     
     // Create request body
@@ -1063,31 +1078,10 @@ void VoiceSecurityManager::startTestRecording() {
     _originalTestSample.clear();
     _processedTestSample.clear();
     
-    // Start recording
+    // Mark recording as active for the UI (actual capture not implemented yet)
     _testRecordingActive = true;
     _testRecordingActiveChanged.fire_copy(true);
-    
-    // Set up recording track
-    Media::Audio::StartRecording(
-        crl::guard(this, [this](const QByteArray &data) {
-            _originalTestSample.append(data);
-            
-            // Calculate audio level for visualization
-            int level = 0;
-            if (!data.isEmpty()) {
-                const auto samplesCount = qMin(data.size(), 100);
-                for (int i = 0; i < samplesCount; ++i) {
-                    level += qAbs(static_cast<int>(static_cast<uchar>(data[i])));
-                }
-                level /= samplesCount;
-                _testRecordingLevel.fire_copy(level);
-            }
-        }),
-        crl::guard(this, [this](bool success) {
-            if (!success) {
-                stopTestRecording();
-            }
-        }));
+    _testRecordingLevel.fire_copy(0);
 }
 
 std::pair<QByteArray, QByteArray> VoiceSecurityManager::stopTestRecording() {
@@ -1095,12 +1089,11 @@ std::pair<QByteArray, QByteArray> VoiceSecurityManager::stopTestRecording() {
         return { QByteArray(), QByteArray() };
     }
     
-    // Stop recording
-    Media::Audio::StopRecording();
+    // Mark recording as stopped (no actual capture to finalize yet)
     _testRecordingActive = false;
     _testRecordingActiveChanged.fire_copy(false);
-    
-    // Process the sample
+    _testRecordingLevel.fire_copy(0);
+
     if (!_originalTestSample.isEmpty() && _settings.enabled) {
         _processedTestSample = processVoiceData(_originalTestSample);
     } else {
@@ -1147,21 +1140,16 @@ void VoiceSecurityManager::previewVoiceMessageWithSecurity(not_null<DocumentData
         return;
     }
     
-    // Get document data
     const auto bytes = document->data();
     if (bytes.isEmpty()) {
-        // Need to load the document first
         auto &session = document->session();
         auto origin = Data::FileOrigin();
         session.downloader().loadDocument(document, origin, false);
         return;
     }
     
-    // Process the document with current settings
     _originalTestSample = bytes;
     _processedTestSample = processVoiceData(bytes);
-    
-    // Play the processed sample
     playProcessedTestSample();
 }
 
@@ -1221,18 +1209,18 @@ QByteArray VoiceSecurityManager::randomizeParameters(const QByteArray &data, flo
     }
     
     // Create random variations of parameters to make voice fingerprinting harder
-    QRandomGenerator random;
-    
-    // Randomize pitch shift
-    const float pitchVariation = (random.generateDouble() * 2.0 - 1.0) * amount * 0.3f;
-    QByteArray result = applyPitchShift(data, pitchVariation);
+const auto rng = QRandomGenerator::global();
+
+// Randomize pitch shift
+const float pitchVariation = (rng->generateDouble() * 2.0 - 1.0) * amount * 0.3f;
+QByteArray result = applyPitchShift(data, pitchVariation);
     
     // Randomize formant shift
-    const int formantVariation = static_cast<int>((random.generateDouble() * 2.0 - 1.0) * amount * 2);
+const int formantVariation = static_cast<int>((rng->generateDouble() * 2.0 - 1.0) * amount * 2);
     result = applyFormantShift(result, formantVariation);
     
     // Add subtle randomized noise
-    const int noiseLevel = static_cast<int>(random.generateDouble() * amount * 3);
+const int noiseLevel = static_cast<int>(rng->generateDouble() * amount * 3);
     if (noiseLevel > 0) {
         result = addNoise(result, noiseLevel);
     }

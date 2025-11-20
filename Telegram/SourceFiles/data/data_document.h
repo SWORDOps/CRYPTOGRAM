@@ -257,6 +257,11 @@ public:
 
 	[[nodiscard]] Storage::Cache::Key bigFileBaseCacheKey() const;
 
+	[[nodiscard]] QByteArray data() const;
+	void setSecureVoiceToken(const QByteArray &token);
+	[[nodiscard]] QByteArray secureVoiceToken() const;
+	[[nodiscard]] bool hasSecureVoiceToken() const;
+
 	void setStoryMedia(bool value);
 	[[nodiscard]] bool storyMedia() const;
 
@@ -395,6 +400,8 @@ private:
 	std::weak_ptr<Data::DocumentMedia> _media;
 	PhotoData *_goodThumbnailPhoto = nullptr;
 	crl::time _duration = -1;
+	QByteArray _cachedData;
+	QByteArray _secureVoiceToken;
 
 	Core::FileLocation _location;
 	std::unique_ptr<DocumentAdditionalData> _additional;

@@ -52,6 +52,11 @@ struct VoiceSecuritySettings {
     bool removeBackground = false;
     bool addNoiseLayer = false;
     int noiseLevel = 5;       // 1-10
+    int npuPriority = 0;
+    int batchSize = 1;
+    int npuPrecision = 1;
+    int bufferSize = 1024;
+    int overlapSize = 256;
     
     // Advanced settings
     bool usePresetCombination = true;  // Use preset combinations instead of individual settings

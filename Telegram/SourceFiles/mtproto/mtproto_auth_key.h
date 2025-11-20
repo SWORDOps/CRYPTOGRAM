@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "base/bytes.h"
+#include "base/random.h"
 #include <array>
 #include <memory>
 
@@ -47,6 +48,8 @@ public:
 	[[nodiscard]] crl::time creationTime() const; // > 0 if known.
 	[[nodiscard]] TimeId expiresAt() const;
 	void setExpiresAt(TimeId expiresAt);
+	[[nodiscard]] bool created() const;
+	[[nodiscard]] static Data GenerateRandomData();
 
 	static void FillData(Data &authKey, bytes::const_span computedAuthKey);
 

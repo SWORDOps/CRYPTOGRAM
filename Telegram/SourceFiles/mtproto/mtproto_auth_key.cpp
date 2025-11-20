@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "mtproto/mtproto_auth_key.h"
 
+#include "base/random.h"
+
 #include "base/openssl_help.h"
 
 #include <QtCore/QDataStream>
@@ -127,6 +129,16 @@ void AuthKey::setExpiresAt(TimeId expiresAt) {
 	Expects(_type == Type::Temporary);
 
 	_expiresAt = expiresAt;
+}
+
+bool AuthKey::created() const {
+	return _creationTime > 0;
+}
+
+AuthKey::Data AuthKey::GenerateRandomData() {
+	Data data;
+	base::RandomFill(bytes::make_span(data));
+	return data;
 }
 
 void AuthKey::FillData(Data &authKey, bytes::const_span computedAuthKey) {
