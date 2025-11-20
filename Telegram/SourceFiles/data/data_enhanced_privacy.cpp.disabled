@@ -20,7 +20,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "storage/file_upload.h"
 #include "styles/style_chat.h"
 #include "data/data_file_origin.h"
-#include "data/data_taglib_wrapper.h"  // Use our wrapper instead of direct includes
+// #include "data/data_taglib_wrapper.h"  // Not available - using fallback
 
 #include "base/random.h"
 #include "base/timer.h"
@@ -35,7 +35,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QImageWriter>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QTemporaryFile>
 #include <QDataStream>
 #include <QRandomGenerator>

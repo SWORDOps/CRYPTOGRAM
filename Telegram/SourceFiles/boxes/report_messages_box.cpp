@@ -158,9 +158,7 @@ void ShowReportMessageBox(
 							const auto background
 								= CreateChild<BoxContentDivider>(
 									widget,
-									st::boxDividerHeight,
-									st->dividerBg,
-									RectPart::Top | RectPart::Bottom);
+									st::boxDividerHeight);
 							background->lower();
 							widget->sizeValue(
 							) | rpl::start_with_next([=](const QSize &s) {

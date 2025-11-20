@@ -45,7 +45,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "iv/iv_delegate_impl.h"
 #include "iv/iv_instance.h"
 #include "iv/iv_data.h"
-#include "lang/lang_translator.h"
+// #include "lang/lang_translator.h"  // Not available
 #include "lang/lang_cloud_manager.h"
 #include "lang/lang_hardcoded.h"
 #include "lang/lang_instance.h"
@@ -286,8 +286,8 @@ void Application::run() {
 		return;
 	}
 
-	_translator = std::make_unique<Lang::Translator>();
-	QCoreApplication::instance()->installTranslator(_translator.get());
+	// _translator = std::make_unique<Lang::Translator>();
+	// QCoreApplication::instance()->installTranslator(_translator.get());
 
 	style::StartManager(cScale());
 	Ui::Accessible::Init();

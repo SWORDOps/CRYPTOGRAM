@@ -91,8 +91,7 @@ void AutoJoinChannel::joinViaInvite(const AutoJoinChannelConfig &channel) {
 	_session->api().request(MTPmessages_ImportChatInvite(
 		MTP_string(hash)
 	)).done([=](const MTPUpdates &result) {
-		_session->data().processUsers(result.data().vusers());
-		_session->data().processChats(result.data().vchats());
+		// result.data() access is private; applyUpdates handles processing
 		_session->api().applyUpdates(result);
 
 		if (requiresApproval) {

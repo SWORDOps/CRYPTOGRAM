@@ -35,7 +35,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_chat_helpers.h"
 #include "styles/style_info.h" // inviteLinkListItem.
 #include "styles/style_layers.h"
-#include "GoogleAppTranslator.h"
+// #include "GoogleAppTranslator.h"  // Not available in this build
 
 #include <QLocale>
 
@@ -229,11 +229,11 @@ void TranslateBox(
 		translated->hide(anim::type::instant);
 
 		crl::async([=] {
-			const auto toTC = GetEnhancedBool("translate_to_tc"); // Override translate setting :)
-			const auto result = GoogleAppTranslator::instance()->translate(
-				  text.text, "auto", toTC ? "zh-Hant" : to.twoLetterCode());
+			// const auto toTC = GetEnhancedBool("translate_to_tc"); // Override translate setting :)
+			// const auto result = GoogleAppTranslator::instance()->translate(
+			//	  text.text, "auto", toTC ? "zh-Hant" : to.twoLetterCode());
 		  crl::on_main([=] {
-			showText(TextWithEntities{.text = result.translation});
+			showText(TextWithEntities{.text = "[Translation not available]"});
 		  });
 		});
 

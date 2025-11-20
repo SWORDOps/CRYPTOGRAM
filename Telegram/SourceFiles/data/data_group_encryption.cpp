@@ -163,7 +163,9 @@ bytes::vector GroupEncryption::encryptGroupMessage(
 
 	// Convert plaintext to bytes
 	auto plaintextUtf8 = plaintext.toUtf8();
-	bytes::vector plaintextBytes(plaintextUtf8.begin(), plaintextUtf8.end());
+	bytes::vector plaintextBytes(
+		reinterpret_cast<const std::byte*>(plaintextUtf8.data()),
+		reinterpret_cast<const std::byte*>(plaintextUtf8.data() + plaintextUtf8.size()));
 
 	// Encrypt with MLS
 	auto ciphertext = _mlsProtocol->encryptMessage(mlsGroupId, plaintextBytes);
