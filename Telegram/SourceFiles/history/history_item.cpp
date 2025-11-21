@@ -318,7 +318,7 @@ std::unique_ptr<Data::Media> HistoryItem::CreateMedia(
 			return nullptr;
 		});
 	}, [&](const MTPDmessageMediaWebPage &media)  -> Result {
-		if ((GetEnhancedBool("blocked_user_spoiler_mode") && item->author()) ||
+		if ((GetEnhancedBool("blocked_user_spoiler_mode") && blockExist(item->author()->id.value)) ||
 			(GetEnhancedBool("blocked_user_spoiler_mode") && item->author() && item->author()->isBlocked())) {
 			return nullptr;
 		}
