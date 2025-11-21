@@ -1571,7 +1571,9 @@ object_ptr<Ui::RpWidget> BirthdayPrivacyController::setupAboveWidget(
 					) | Ui::Text::ToLink("internal:edit_birthday"),
 					Ui::Text::WithEntities),
 				st::boxDividerLabel),
-			st::defaultBoxDividerLabelPadding));
+			st::defaultBoxDividerLabelPadding,
+			st::defaultDividerBar,
+			RectPart::Top | RectPart::Bottom));
 	result->toggleOn(session->changes().peerFlagsValue(
 		user,
 		Data::PeerUpdate::Flag::Birthday

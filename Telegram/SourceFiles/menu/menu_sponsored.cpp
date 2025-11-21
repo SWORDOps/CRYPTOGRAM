@@ -346,7 +346,8 @@ void ShowReportSponsoredBox(
 									Ui::Text::WithEntities),
 								st::boxDividerLabel),
 							st::defaultBoxDividerLabelPadding,
-							RectPart::Top | RectPart::Bottom));
+							st::defaultDividerBar,
+						RectPart::Top | RectPart::Bottom));
 					}
 					box->addButton(
 						tr::lng_close(),
