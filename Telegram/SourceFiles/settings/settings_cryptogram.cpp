@@ -349,7 +349,6 @@ void Cryptogram::createMiningConfiguration(not_null<Ui::VerticalLayout*> contain
 		object_ptr<Ui::MediaSlider>(container, st::settingsSlider),
 		st::settingsCheckboxPadding);
 
-	slider->resize(st::settingsSlider.seekSize);
 	slider->setPseudoDiscrete(
 		101, // 0-100%
 		[](int value) { return value; },
@@ -629,7 +628,7 @@ void Cryptogram::createKeyExchangeUI(not_null<Ui::VerticalLayout*> container) {
 		st::settingsCheckboxPadding);
 
 	// Group encryption status
-	auto groupEncryption = GetGroupEncryption();
+	auto groupEncryption = Data::GetGroupEncryption();
 	if (groupEncryption) {
 		const auto totalGroups = groupEncryption->totalEncryptedGroups();
 		container->add(
@@ -880,8 +879,6 @@ void Cryptogram::createPrivacyToggles(not_null<Ui::VerticalLayout*> container) {
 		))
 	);
 }
-
-} // namespace Settings
 
 void Cryptogram::setupTranslationSection(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
@@ -1215,7 +1212,6 @@ void Cryptogram::createDownloadedModels(not_null<Ui::VerticalLayout*> container)
 	const auto ruProgressSlider = container->add(
 		object_ptr<Ui::MediaSlider>(container, st::settingsSlider),
 		st::settingsCheckboxPadding);
-	ruProgressSlider->resize(st::settingsSlider.seekSize);
 	ruProgressSlider->setValue(0.0);  // 0% initially
 	ruProgressSlider->setDisabled(true);
 
@@ -1254,7 +1250,6 @@ void Cryptogram::createDownloadedModels(not_null<Ui::VerticalLayout*> container)
 	const auto zhProgressSlider = container->add(
 		object_ptr<Ui::MediaSlider>(container, st::settingsSlider),
 		st::settingsCheckboxPadding);
-	zhProgressSlider->resize(st::settingsSlider.seekSize);
 	zhProgressSlider->setValue(0.0);  // 0% initially
 	zhProgressSlider->setDisabled(true);
 
@@ -1845,3 +1840,5 @@ void Cryptogram::updateCACStatus() {
 		}
 	}
 }
+
+} // namespace Settings

@@ -63,6 +63,9 @@ private:
     void createTorSnowflakeSettings(not_null<Ui::VerticalLayout*> container);
     void createI2PRelaySettings(not_null<Ui::VerticalLayout*> container);
 
+    // Device Trust Section
+    void setupDeviceTrustSection(not_null<Ui::VerticalLayout*> container);
+
     // Encryption & Privacy Section
     void setupEncryptionSection(not_null<Ui::VerticalLayout*> container);
     void createEncryptionToggle(not_null<Ui::VerticalLayout*> container);
