@@ -108,7 +108,7 @@ private:
 	bool _forPeerLevelCheck = false;
 	FullMsgId _fromMessageId;
 	std::unique_ptr<Ui::ChatStyle> _chatStyle;
-	const not_null<History*> _serviceHistory;
+	const not_null<Data::History*> _serviceHistory;
 	AdminLog::OwnedItem _service;
 	AdminLog::OwnedItem _text1;
 	AdminLog::OwnedItem _text2;

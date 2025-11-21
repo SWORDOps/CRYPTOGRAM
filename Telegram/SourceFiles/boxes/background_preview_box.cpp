@@ -192,8 +192,8 @@ BackgroundPreviewBox::BackgroundPreviewBox(
 , _fromMessageId(args.fromMessageId)
 , _chatStyle(std::make_unique<Ui::ChatStyle>(
 	controller->session().colorIndicesValue()))
-, _serviceHistory(not_null<History*>(_controller->session().data().history(
-	PeerData::kServiceNotificationsId).get()))
+, _serviceHistory(_controller->session().data().history(
+	PeerData::kServiceNotificationsId))
 , _service(nullptr)
 , _text1(GenerateTextItem(
 	delegate(),
