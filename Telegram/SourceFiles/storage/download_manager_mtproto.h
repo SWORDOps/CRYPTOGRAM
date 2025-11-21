@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include "data/data_document.h"
 #include "data/data_file_origin.h"
 #include "base/timer.h"
 #include "base/weak_ptr.h"
@@ -63,6 +64,11 @@ public:
 	[[nodiscard]] rpl::producer<DocumentId> nonPremiumDelays() const {
 		return _nonPremiumDelays.events();
 	}
+
+	void loadDocument(
+		not_null<Data::DocumentData*> document,
+		const Data::FileOrigin &origin,
+		bool fromCloud);
 
 private:
 	class Queue final {

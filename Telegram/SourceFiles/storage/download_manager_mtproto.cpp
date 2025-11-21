@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "storage/download_manager_mtproto.h"
+#include "data/data_document.h"
 
 #include "mtproto/facade.h"
 #include "mtproto/mtproto_auth_key.h"
@@ -133,6 +134,13 @@ DownloadManagerMtproto::DownloadManagerMtproto(not_null<ApiWrap*> api)
 
 DownloadManagerMtproto::~DownloadManagerMtproto() {
 	killSessions();
+}
+
+void DownloadManagerMtproto::loadDocument(
+	not_null<Data::DocumentData*> document,
+	const Data::FileOrigin &origin,
+	bool) {
+	document->save(origin, QString(), Data::LoadFromCloudOrLocal, false);
 }
 
 void DownloadManagerMtproto::enqueue(not_null<Task*> task, int priority) {

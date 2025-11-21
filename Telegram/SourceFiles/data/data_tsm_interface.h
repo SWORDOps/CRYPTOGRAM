@@ -43,7 +43,8 @@ enum class TSMKeyType {
     SignalPreKey,       // X25519 for Signal Protocol pre-keys
     SignalOneTime,      // X25519 for one-time pre-keys
     DeviceAttestation,  // Device attestation key
-    CustomEncryption    // Custom encryption key
+    CustomEncryption,   // Custom encryption key
+    AES256              // AES-256 symmetric key
 };
 
 // Hardware platform types
@@ -105,7 +106,8 @@ class TSMInterface : public QObject {
     Q_OBJECT
 
 public:
-    virtual ~TSMInterface() = default;
+    explicit TSMInterface(QObject *parent = nullptr);
+    ~TSMInterface() override = default;
 
     // Initialization and capability detection
     virtual TSMResult initialize() = 0;
@@ -146,6 +148,8 @@ public:
         const bytes::const_span &data,
         const bytes::const_span &signature) = 0;
 
+    virtual TSMResult sealData(const bytes::const_span &data) = 0;
+
     // Device attestation and verification
     virtual base::expected<TSMAttestationResult, TSMResult> generateAttestation(
         const bytes::const_span &challenge = {}) = 0;
@@ -170,24 +174,6 @@ protected:
     virtual QString generateUniqueKeyId() const;
     virtual bool validateKeyId(const QString &keyId) const;
     virtual TSMResult mapPlatformError(int platformErrorCode) const;
-};
-
-// Factory class for creating platform-specific TSM implementations
-class TSMFactory {
-public:
-    // Create the best available TSM implementation for current platform
-    static std::unique_ptr<TSMInterface> create();
-
-    // Create specific TSM implementation (for testing/debugging)
-    static std::unique_ptr<TSMInterface> createTPM20();
-    static std::unique_ptr<TSMInterface> createAndroidKeyStore();
-    static std::unique_ptr<TSMInterface> createAppleSecureEnclave();
-    static std::unique_ptr<TSMInterface> createSoftwareFallback();
-
-    // Platform detection
-    static TSMPlatform detectPlatform();
-    static bool isPlatformSupported(TSMPlatform platform);
-    static QStringList getSupportedPlatforms();
 };
 
 // Integration class for Signal Protocol + TSM
@@ -243,5 +229,7 @@ private:
     QString createSignalKeyId(TSMKeyType keyType) const;
     TSMResult validateTSMCapabilities() const;
 };
+
+std::unique_ptr<TSMInterface> createSoftwareTSM();
 
 } // namespace Data

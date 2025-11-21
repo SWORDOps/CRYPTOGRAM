@@ -50,9 +50,9 @@ auto VolumeMultiplierSong = 1.;
 } // namespace
 
 namespace {
-Fn<void(QByteArray &)> g_voiceProcessingCallback;
-Fn<void(const QByteArray &)> g_voiceRecordingCallback;
-Fn<void(bool)> g_voiceRecordingFinished;
+std::function<void(QByteArray &)> g_voiceProcessingCallback;
+std::function<void(const QByteArray &)> g_voiceRecordingCallback;
+std::function<void(bool)> g_voiceRecordingFinished;
 } // namespace
 
 namespace Media {
@@ -235,8 +235,8 @@ bool SupportsSpeedControl() {
 }
 
 void StartRecording(
-		Fn<void(const QByteArray &)> sampleCallback,
-		Fn<void(bool)> finishedCallback) {
+		std::function<void(const QByteArray &)> sampleCallback,
+		std::function<void(bool)> finishedCallback) {
 	auto capture = ::Media::Capture::instance();
 	if (!capture || !capture->available()) {
 		if (finishedCallback) {

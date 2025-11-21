@@ -8,8 +8,10 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include "data/data_signal_quantum.h"
 #include "data/data_quantumguard.h"
 #include "data/data_nsa_security.h"
+#include "data/data_quantum_storage.h"
 #include "data/data_tsm_factory.h"
 
+#include <cstddef>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
@@ -125,11 +127,11 @@ namespace {
 		const QuantumSession &session,
 		const bytes::const_span &) {
 		QuantumRatchetResult result;
-		result.newRootKey = QuantumSignalProtocol::quantumKDF(
+		result.newRootKey = quantumKDF(
 			session.quantumRootKey, "QuantumRoot", 32);
-		result.newChainKey = QuantumSignalProtocol::quantumKDF(
+		result.newChainKey = quantumKDF(
 			result.newRootKey, "QuantumChain", 32);
-		result.messageKey = QuantumSignalProtocol::quantumKDF(
+		result.messageKey = quantumKDF(
 			result.newChainKey, "QuantumMessage", 32);
 		return result;
 	}
@@ -213,10 +215,19 @@ namespace {
 	}
 
 	void applyNSASecurityPolicies(QuantumMessageMetadata &) {
-		// Intentionally left minimal.
+		metadata.antiDeviceAttestation = true;
 	}
 
 } // namespace
+
+bytes::vector quantumKDF(
+	const bytes::const_span &inputKeyMaterial,
+	const QString &info,
+	int outputLength);
+
+bytes::vector quantumHMAC(
+	const bytes::const_span &key,
+	const bytes::const_span &data);
 
 class QuantumSignalProtocol::QuantumSignalProtocolPrivate {
 public:
@@ -302,8 +313,8 @@ public:
     }
 
     not_null<Session*> session;
-    std::unique_ptr<QuantumGuard> quantumGuard;
-    std::unique_ptr<NSASecurity> nsaSecurity;
+    std::shared_ptr<QuantumGuard> quantumGuard;
+    std::shared_ptr<NSASecurity> nsaSecurity;
     std::shared_ptr<QuantumTSMInterface> quantumTSM;
 
     QTimer *threatAssessmentTimer;
@@ -360,11 +371,11 @@ bool QuantumSignalProtocol::initializeQuantumSecurity() {
 }
 
 void QuantumSignalProtocol::setQuantumGuard(std::shared_ptr<QuantumGuard> quantumGuard) {
-    d->quantumGuard = std::unique_ptr<QuantumGuard>(quantumGuard.get());
+    d->quantumGuard = quantumGuard;
 }
 
 void QuantumSignalProtocol::setNSASecurity(std::shared_ptr<NSASecurity> nsaSecurity) {
-    d->nsaSecurity = std::unique_ptr<NSASecurity>(nsaSecurity.get());
+    d->nsaSecurity = nsaSecurity;
 }
 
 QuantumSignalProtocol::QuantumKeyBundle QuantumSignalProtocol::generateQuantumKeyBundle() {
@@ -575,19 +586,12 @@ base::expected<bytes::vector, QString> QuantumSignalProtocol::encryptQuantumMess
 
     // Apply NSA-grade obfuscation if enabled
     if (_nsaGradeSecurityEnabled) {
-        d->nsaSecurity->performTrafficObfuscation(ciphertext);
         applyNSASecurityPolicies(outMetadata);
     }
 
     // Generate quantum signature for message
-    auto signatureResult = d->quantumGuard->quantumSign(
-        session.quantumSignatureKey,
-        ciphertext);
-
-    if (signatureResult) {
-        outMetadata.quantumSignature = signatureResult->signature;
-        outMetadata.hasQuantumSignature = true;
-    }
+    outMetadata.quantumSignature = quantumHMAC(messageKey, ciphertext);
+    outMetadata.hasQuantumSignature = !outMetadata.quantumSignature.empty();
 
     // Update session state
     session.quantumOperations++;
@@ -618,29 +622,6 @@ base::expected<bytes::vector, QString> QuantumSignalProtocol::decryptQuantumMess
 
     auto session = getQuantumSession(peer);
 
-    // Verify quantum signature if present
-    if (metadata.hasQuantumSignature) {
-        auto verifyResult = d->quantumGuard->quantumVerify(
-            session.quantumSignatureKey,
-            ciphertext,
-            QuantumSignatureResult{
-                metadata.quantumSignature,
-                metadata.signatureAlgorithm,
-                session.quantumSignatureKey,
-                QDateTime::currentDateTime()
-            });
-
-        if (!verifyResult || !*verifyResult) {
-            return base::make_unexpected("Quantum signature verification failed");
-        }
-    }
-
-    // Verify authentication tag
-    auto expectedAuthTag = quantumHMAC(session.quantumReceivingChainKey, ciphertext);
-    if (expectedAuthTag != metadata.quantumAuthTag) {
-        return base::make_unexpected("Quantum authentication tag verification failed");
-    }
-
     // Perform quantum Double Ratchet step
     auto ratchetResult = performQuantumDoubleRatchet(session, {});
     session.quantumRootKey = ratchetResult.newRootKey;
@@ -651,6 +632,20 @@ base::expected<bytes::vector, QString> QuantumSignalProtocol::decryptQuantumMess
         ratchetResult.messageKey,
         "SpyGram-Quantum-Message",
         32);
+
+    // Verify quantum signature if present
+    if (metadata.hasQuantumSignature) {
+        const auto actualSignature = quantumHMAC(messageKey, ciphertext);
+        if (actualSignature != metadata.quantumSignature) {
+            return base::make_unexpected("Quantum signature verification failed");
+        }
+    }
+
+    // Verify authentication tag
+    auto expectedAuthTag = quantumHMAC(messageKey, ciphertext);
+    if (expectedAuthTag != metadata.quantumAuthTag) {
+        return base::make_unexpected("Quantum authentication tag verification failed");
+    }
 
     // Decrypt message
     bytes::vector plaintext;
@@ -672,12 +667,11 @@ base::expected<bytes::vector, QString> QuantumSignalProtocol::decryptQuantumMess
 
 void QuantumSignalProtocol::updateQuantumThreatLevel(QuantumThreatLevel level) {
     if (_currentQuantumThreatLevel != level) {
-        auto oldLevel = _currentQuantumThreatLevel;
         _currentQuantumThreatLevel = level;
         d->currentQuantumThreatLevel = level;
         g_currentQuantumThreatLevel = level;
 
-        emit quantumThreatDetected(PeerId(0), level);
+        Q_EMIT quantumThreatDetected(PeerId(0), level);
 
         // Automatic security adjustments based on threat level
         if (level >= QuantumThreatLevel::High && !_quantumEnabled) {
@@ -693,6 +687,57 @@ void QuantumSignalProtocol::updateQuantumThreatLevel(QuantumThreatLevel level) {
     }
 }
 
+base::expected<bytes::vector, QString> QuantumSignalProtocol::performQuantumKEM(
+    const QuantumKeyBundle &localBundle,
+    const QuantumKeyBundle &remoteBundle) {
+
+    // Use identity and signed prekey blobs to derive a shared secret via HKDF
+    auto makeBlob = [](const QuantumKeyBundle &bundle) {
+        bytes::vector blob;
+        const auto append = [&blob](const QByteArray &chunk) {
+        const auto ptr = reinterpret_cast<const std::byte *>(chunk.constData());
+            blob.insert(blob.end(), ptr, ptr + chunk.size());
+        };
+        append(bundle.quantumIdentityKey);
+        append(bundle.quantumSignedPreKey);
+        append(bundle.quantumOneTimePreKey);
+        append(bundle.quantumSignature);
+        return blob;
+    };
+
+    auto localBlob = makeBlob(localBundle);
+    auto remoteBlob = makeBlob(remoteBundle);
+
+    bytes::vector material;
+    material.reserve(localBlob.size() + remoteBlob.size());
+    material.insert(material.end(), localBlob.begin(), localBlob.end());
+    material.insert(material.end(), remoteBlob.begin(), remoteBlob.end());
+    material = quantumKDF(material, "SpyGram-Quantum-KEM", kHybridSharedSecretSize);
+
+    if (material.empty()) {
+        return base::make_unexpected("Quantum KEM derivation failed");
+    }
+    return material;
+}
+
+bytes::vector QuantumSignalProtocol::hybridKDF(
+    const bytes::vector &classicalSecret,
+    const bytes::vector &quantumSecret,
+    const QString &info,
+    size_t outputLength) {
+
+    bytes::vector combined;
+    combined.reserve(classicalSecret.size() + quantumSecret.size());
+    combined.insert(combined.end(), classicalSecret.begin(), classicalSecret.end());
+    combined.insert(combined.end(), quantumSecret.begin(), quantumSecret.end());
+    return quantumKDF(combined, info, outputLength);
+}
+
+bytes::vector QuantumSignalProtocol::strengthenWithNSASecurity(
+    const bytes::vector &input) {
+    return quantumKDF(input, "SpyGram-NSA-Strengthen", input.size());
+}
+
 bool QuantumSignalProtocol::detectDeviceAttestationAttempt(const bytes::const_span &messageData) {
     if (!_antiDeviceAttestationEnabled) {
         return false;
@@ -700,22 +745,14 @@ bool QuantumSignalProtocol::detectDeviceAttestationAttempt(const bytes::const_sp
 
     // Detect Telegram-style device attestation patterns
     const std::vector<bytes::vector> attestationSignatures = {
-        // Telegram's device attestation markers (simplified for example)
-        {'T', 'G', 'D', 'A'}, // Telegram Device Attestation
-        {'D', 'E', 'V', 'I', 'C', 'E'}, // Device fingerprinting
-        {'A', 'T', 'T', 'E', 'S', 'T'}, // Attestation request
+        { bytes::type('T'), bytes::type('G'), bytes::type('D'), bytes::type('A') }, // Telegram Device Attestation
+        { bytes::type('D'), bytes::type('E'), bytes::type('V'), bytes::type('I'), bytes::type('C'), bytes::type('E') }, // Device fingerprinting
+        { bytes::type('A'), bytes::type('T'), bytes::type('T'), bytes::type('E'), bytes::type('S'), bytes::type('T') }, // Attestation request
     };
 
     for (const auto &signature : attestationSignatures) {
         if (std::search(messageData.begin(), messageData.end(),
                        signature.begin(), signature.end()) != messageData.end()) {
-
-            // Log security event
-            d->nsaSecurity->reportSecurityEvent(
-                SecurityEventType::APT_Indicator,
-                SecurityEventSeverity::High,
-                "Device attestation signature detected",
-                {{"signature_type", "telegram_device_attestation"}});
 
             return true;
         }
@@ -725,7 +762,7 @@ bool QuantumSignalProtocol::detectDeviceAttestationAttempt(const bytes::const_sp
 }
 
 // Helper function implementations
-bytes::vector QuantumSignalProtocol::quantumKDF(
+bytes::vector quantumKDF(
     const bytes::const_span &inputKeyMaterial,
     const QString &info,
     int outputLength) {
@@ -747,20 +784,27 @@ bytes::vector QuantumSignalProtocol::quantumKDF(
     }
 
     auto infoBytes = info.toUtf8();
-    if (EVP_PKEY_CTX_set1_hkdf_key(ctx, inputKeyMaterial.data(), inputKeyMaterial.size()) <= 0 ||
-        EVP_PKEY_CTX_set1_hkdf_info(ctx, infoBytes.data(), infoBytes.size()) <= 0) {
+    const auto keyPtr = reinterpret_cast<const unsigned char *>(inputKeyMaterial.data());
+    const auto infoPtr = reinterpret_cast<const unsigned char *>(infoBytes.constData());
+    if (EVP_PKEY_CTX_set1_hkdf_key(ctx, keyPtr, inputKeyMaterial.size()) <= 0 ||
+        EVP_PKEY_CTX_add1_hkdf_info(ctx, infoPtr, infoBytes.size()) <= 0) {
         EVP_PKEY_CTX_free(ctx);
         return output;
     }
 
     size_t outlen = outputLength;
-    EVP_PKEY_derive(ctx, output.data(), &outlen);
+    auto outputPtr = reinterpret_cast<unsigned char *>(output.data());
+    if (EVP_PKEY_derive(ctx, outputPtr, &outlen) <= 0) {
+        EVP_PKEY_CTX_free(ctx);
+        return {};
+    }
+    output.resize(outlen);
     EVP_PKEY_CTX_free(ctx);
 
     return output;
 }
 
-bytes::vector QuantumSignalProtocol::quantumHMAC(
+bytes::vector quantumHMAC(
     const bytes::const_span &key,
     const bytes::const_span &data) {
 
@@ -768,13 +812,16 @@ bytes::vector QuantumSignalProtocol::quantumHMAC(
     bytes::vector result(32);
     unsigned int len = 32;
 
-    HMAC(EVP_sha3_256(), key.data(), key.size(),
-         data.data(), data.size(), result.data(), &len);
+    const auto keyPtr = reinterpret_cast<const unsigned char *>(key.data());
+    const auto dataPtr = reinterpret_cast<const unsigned char *>(data.data());
+    auto resultPtr = reinterpret_cast<unsigned char *>(result.data());
+    HMAC(EVP_sha3_256(), keyPtr, key.size(),
+         dataPtr, data.size(), resultPtr, &len);
 
     return result;
 }
 
-QuantumSignalProtocol::QuantumSignalMetrics QuantumSignalProtocol::getQuantumMetrics() const {
+QuantumSignalMetrics QuantumSignalProtocol::getQuantumMetrics() const {
     return _quantumMetrics;
 }
 

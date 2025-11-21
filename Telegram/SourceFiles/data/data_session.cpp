@@ -54,6 +54,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_group_call.h"
 #include "data/data_folder.h"
 #include "data/data_channel.h"
+#include "data/data_document.h"
 #include "data/data_chat.h"
 #include "data/data_user.h"
 #include "data/data_file_origin.h"
@@ -3897,14 +3898,14 @@ void Session::webpageApplyFields(
 	const auto document = data.vdocument();
 	const auto lookupInAttribute = [&](
 			const MTPDwebPageAttributeTheme &data) -> DocumentData* {
-		if (const auto documents = data.vdocuments()) {
-			for (const auto &document : documents->v) {
-				const auto processed = processDocument(document);
-				if (processed->isTheme()) {
-					return processed;
+				if (const auto documents = data.vdocuments()) {
+					for (const auto &document : documents->v) {
+						const auto processed = processDocument(document);
+						if (processed->isTheme()) {
+							return processed.get();
+						}
+					}
 				}
-			}
-		}
 		return nullptr;
 	};
 

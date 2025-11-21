@@ -207,6 +207,7 @@ private:
     QByteArray processWithOllama(const QByteArray &data);
     void initializeOllama();
     QString sendOllamaRequest(const QString &prompt, const QByteArray &audioData);
+    bool checkOllamaAvailability();
     
     // Hybrid processing (both OpenVINO and Ollama)
     QByteArray processWithHybrid(const QByteArray &data);

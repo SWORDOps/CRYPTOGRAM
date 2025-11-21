@@ -13,6 +13,7 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 
+#include "base/bytes.h"
 #include "base/random.h"
 #include "base/unixtime.h"
 #include "core/application.h"
@@ -33,6 +34,22 @@ constexpr auto kDataContainerDir = "containers";
 constexpr auto kAuditLogFile = "audit.log";
 constexpr auto kMetricsFile = "metrics.json";
 constexpr auto kPolicyFile = "policies.json";
+
+inline const unsigned char *asConstUChar(const bytes::const_span &span) {
+    return reinterpret_cast<const unsigned char *>(span.data());
+}
+
+inline unsigned char *asUChar(bytes::span span) {
+    return reinterpret_cast<unsigned char *>(span.data());
+}
+
+inline const unsigned char *asConstUChar(const bytes::vector &value) {
+    return asConstUChar(bytes::make_span(value));
+}
+
+inline unsigned char *asUChar(bytes::vector &value) {
+    return asUChar(bytes::make_span(value));
+}
 
 // Encryption parameters
 constexpr auto kAES256KeySize = 32;
@@ -172,7 +189,7 @@ public:
             bytes::vector randomData(size);
 
             for (int pass = 0; pass < 3; ++pass) {
-                RAND_bytes(randomData.data(), randomData.size());
+                RAND_bytes(asUChar(randomData), randomData.size());
                 file.seek(0);
                 file.write(reinterpret_cast<const char*>(randomData.data()), size);
                 file.flush();
@@ -245,8 +262,8 @@ bool QuantumSecureStorage::initialize(SecureStorageTier targetTier) {
     // Initialize TSM interface
     if (_currentTier <= SecureStorageTier::Tier2_Enhanced) {
         auto tsm = TSMFactory::createForPlatform();
-        if (tsm && tsm->initialize()) {
-            _tsmInterface = tsm;
+        if (tsm && tsm->initialize() == TSMResult::Success) {
+            _tsmInterface = std::shared_ptr<TSMInterface>(std::move(tsm));
         } else {
             // Fallback to software TSM
             _currentTier = SecureStorageTier::Tier3_Standard;
@@ -556,7 +573,7 @@ SecureStorageResult QuantumSecureStorage::storeDataTier1(
 
     // Hardware-accelerated AES encryption (if NPU available)
     bytes::vector iv(16);
-    RAND_bytes(iv.data(), iv.size());
+    RAND_bytes(asUChar(iv), iv.size());
 
     bytes::vector ciphertext(data.size() + 16); // AES block padding
     // Perform AES encryption using hardware acceleration...
@@ -588,8 +605,8 @@ SecureStorageResult QuantumSecureStorage::storeDataTier3(
     // Generate software encryption key
     bytes::vector key(kAES256KeySize);
     bytes::vector iv(kAES256IvSize);
-    RAND_bytes(key.data(), key.size());
-    RAND_bytes(iv.data(), iv.size());
+    RAND_bytes(asUChar(key), key.size());
+    RAND_bytes(asUChar(iv), iv.size());
 
     // AES-256-GCM encryption
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
@@ -597,20 +614,30 @@ SecureStorageResult QuantumSecureStorage::storeDataTier3(
         return SecureStorageResult::DecryptionFailed;
     }
 
-    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, key.data(), iv.data()) != 1) {
+    if (EVP_EncryptInit_ex(
+            ctx,
+            EVP_aes_256_gcm(),
+            nullptr,
+            asConstUChar(key),
+            asConstUChar(iv)) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return SecureStorageResult::DecryptionFailed;
     }
 
     bytes::vector ciphertext(data.size());
     int len;
-    if (EVP_EncryptUpdate(ctx, ciphertext.data(), &len, data.data(), data.size()) != 1) {
+    if (EVP_EncryptUpdate(
+            ctx,
+            asUChar(ciphertext),
+            &len,
+            asConstUChar(data),
+            data.size()) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return SecureStorageResult::DecryptionFailed;
     }
 
     int ciphertext_len = len;
-    if (EVP_EncryptFinal_ex(ctx, ciphertext.data() + len, &len) != 1) {
+    if (EVP_EncryptFinal_ex(ctx, asUChar(ciphertext) + len, &len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return SecureStorageResult::DecryptionFailed;
     }
@@ -618,7 +645,11 @@ SecureStorageResult QuantumSecureStorage::storeDataTier3(
 
     // Get authentication tag
     bytes::vector tag(16);
-    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag.data()) != 1) {
+    if (EVP_CIPHER_CTX_ctrl(
+            ctx,
+            EVP_CTRL_GCM_GET_TAG,
+            16,
+            reinterpret_cast<void*>(tag.data())) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return SecureStorageResult::DecryptionFailed;
     }
@@ -690,6 +721,26 @@ std::unique_ptr<QuantumSecureStorage> QuantumSecureStorageFactory::createOptimiz
 SecureStorageTier QuantumSecureStorageFactory::detectOptimalTier() {
     QuantumSecureStorage::QuantumSecureStoragePrivate helper;
     return helper.detectOptimalTier();
+}
+
+std::shared_ptr<QuantumGuard> QuantumGuardFactory::createOptimized() {
+    auto guard = std::make_shared<QuantumGuard>();
+    guard->initialize();
+    guard->setProtected(true);
+    return guard;
+}
+
+bool QuantumGuardFactory::isQuantumHardwareAvailable() {
+    return QFile::exists("/dev/accel/accel0")
+        || QFile::exists("/dev/tpm0")
+        || QFile::exists("/dev/tpmrm0");
+}
+
+std::shared_ptr<NSASecurity> NSASecurityFactory::createForQuantumThreats() {
+    auto security = std::make_shared<NSASecurity>();
+    security->initialize();
+    security->setSecured(true);
+    return security;
 }
 
 } // namespace Data

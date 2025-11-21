@@ -597,7 +597,11 @@ auto DocumentData::resolveQualities(HistoryItem *context) const
 	static const auto empty = std::vector<not_null<DocumentData*>>();
 	const auto info = video();
 	const auto media = context ? context->media() : nullptr;
-	if (!info || !media || media->document() != this) {
+	if (!info || !media) {
+		return empty;
+	}
+	const auto mediaDocument = media->document();
+	if (mediaDocument != this) {
 		return empty;
 	}
 	return media->hasQualitiesList() ? info->qualities : empty;
@@ -1922,12 +1926,12 @@ PhotoData *LookupVideoCover(
 		HistoryItem *item) {
 	const auto media = item ? item->media() : nullptr;
 	if (const auto webpage = media ? media->webpage() : nullptr) {
-		if (webpage->document == document && webpage->photoIsVideoCover) {
+		if (webpage->document == document.get() && webpage->photoIsVideoCover) {
 			return webpage->photo;
 		}
 		return nullptr;
 	}
-	return (media && media->document() == document)
+	return (media && media->document() == document.get())
 		? media->videoCover()
 		: nullptr;
 }

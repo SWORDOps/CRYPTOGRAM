@@ -7,15 +7,14 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 */
 #pragma once
 
-#include "data/data_tsm_interface.h"
-
-#include <memory>
+#include "base/bytes.h"
+#include <QString>
 
 namespace Data {
 
-class TSMFactory {
-public:
-	static std::unique_ptr<TSMInterface> createForPlatform();
-};
+bytes::vector deriveSignalHKDF(
+        const bytes::const_span &inputKeyMaterial,
+        const QString &info,
+        size_t outputLength);
 
 } // namespace Data

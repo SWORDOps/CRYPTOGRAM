@@ -24,6 +24,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/random.h"
 #include "ui/toast/toast.h"
 
+#include <gsl/gsl>
+
 #include <QtCore/QCryptographicHash>
 #include <QtCore/QDataStream>
 #include <QtCore/QDateTime>
@@ -32,8 +34,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtCore/QFileInfo>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QJsonArray>
 #include <QtCore/QMessageAuthenticationCode>
 #include <QtCore/QRandomGenerator>
+#include <vector>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QTemporaryFile>
 #include <QtCore/QTextStream>
@@ -41,6 +45,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtCore/QUrl>
 #include <QtNetwork/QNetworkReply>
 #include <QtNetwork/QNetworkRequest>
+
+#include <gsl/gsl>
 
 namespace Data {
 
@@ -345,7 +351,7 @@ void VoiceSecurityManager::stopRealTimeProcessing() {
     Media::Audio::SetVoiceProcessingCallback(nullptr);
 }
 
-void VoiceSecurityManager::processExistingVoiceMessage(not_null<DocumentData*> voiceMessage) {
+void VoiceSecurityManager::processExistingVoiceMessage(gsl::not_null<DocumentData*> voiceMessage) {
     if (!_settings.enabled || 
         _settings.mode == VoiceSecurityMode::Disabled ||
         !voiceMessage->isVoiceMessage()) {
@@ -360,7 +366,7 @@ void VoiceSecurityManager::processExistingVoiceMessage(not_null<DocumentData*> v
         auto origin = Data::FileOrigin();
         
         session.downloader().loadDocument(
-            voiceMessage, 
+            voiceMessage,
             origin,
             false);
             
@@ -384,20 +390,32 @@ QByteArray VoiceSecurityManager::createVerificationToken(const QByteArray &proce
     // Create a verification token to prove this voice was processed by our security system
     // This helps prevent spoofing and validates that voice anonymization was applied
     
-    // Get the session's auth key as a secure key source
-    MTP::AuthKey::Data authKeyData;
-    MTP::AuthKey key(authKeyData);
-    
-    const auto &session = static_cast<Main::Session*>(_owner)->session();
-    if (const auto realKey = session.mtp().mainDcId().authKey()) {
-        key = *realKey;
+    auto session = Core::App().maybePrimarySession();
+    if (!session) {
+        LOG(("Voice Security: Cannot create verification token - no active session"));
+        return QByteArray();
     }
-    
-    if (key.empty()) {
+
+    const auto keys = session->mtp().getKeysForWrite();
+    if (keys.empty()) {
         LOG(("Voice Security: Cannot create verification token - no auth key"));
         return QByteArray();
     }
-    
+
+    const auto &authKey = keys.front();
+    const auto authSpan = authKey->data();
+    QByteArray hmacKey;
+    if (!authSpan.empty()) {
+        hmacKey = QByteArray(
+            reinterpret_cast<const char*>(authSpan.data()),
+            authSpan.size());
+    } else {
+        const auto randomKey = MTP::AuthKey::GenerateRandomData();
+        hmacKey = QByteArray(
+            reinterpret_cast<const char*>(randomKey.data()),
+            randomKey.size());
+    }
+
     // Create a unique message that includes:
     // 1. Hash of the processed audio data
     // 2. Applied security settings (serialized)
@@ -434,13 +452,19 @@ QByteArray VoiceSecurityManager::createVerificationToken(const QByteArray &proce
     
     // Create HMAC-SHA256 signature
     QMessageAuthenticationCode hmac(QCryptographicHash::Sha256);
-    const auto keyData = key.created() 
-        ? key.data() 
+    const auto keyData = authKey->creationTime() > 0
+        ? authSpan
         : MTP::AuthKey::GenerateRandomData();
     
-    hmac.setKey(QByteArray(
-        reinterpret_cast<const char*>(keyData.data()), 
-        keyData.size()));
+    QByteArray keyBytes;
+    if (!keyData.empty()) {
+        keyBytes = QByteArray(
+            reinterpret_cast<const char*>(keyData.data()),
+            keyData.size());
+    } else {
+        keyBytes = hmacKey;
+    }
+    hmac.setKey(keyBytes);
     hmac.addData(message);
     
     // Build final token structure
@@ -454,42 +478,31 @@ QByteArray VoiceSecurityManager::createVerificationToken(const QByteArray &proce
     return token;
 }
 
-bool VoiceSecurityManager::isSecureVoiceMessage(not_null<DocumentData*> document) const {
+bool VoiceSecurityManager::isSecureVoiceMessage(gsl::not_null<DocumentData*> document) const {
     if (!document->hasSecureVoiceToken()) {
         return false;
     }
     const auto token = document->secureVoiceToken();
-
-    // Extract token parts
     QDataStream stream(token);
-            QByteArray timestamp;
-            QByteArray nonce;
-            quint8 modeValue;
-            QByteArray signature;
-            
-            stream >> timestamp;
-            stream >> nonce;
-            stream >> modeValue;
-            stream >> signature;
-            
-            // Validate the token age (must not be too old)
-            const qint64 tokenTime = timestamp.toLongLong();
-            const qint64 currentTime = QDateTime::currentSecsSinceEpoch();
-            const qint64 maxAge = 7 * 24 * 60 * 60; // 7 days
-            
-            if (currentTime - tokenTime > maxAge) {
-                // Token too old
-                return false;
-            }
-            
-            // For further validation, we'd need the audio data
-            // which we may not have loaded yet
-            // For now, we'll return true if the token structure is valid
-            return !signature.isEmpty();
-        }
+    QByteArray timestamp;
+    QByteArray nonce;
+    quint8 modeValue;
+    QByteArray signature;
+
+    stream >> timestamp;
+    stream >> nonce;
+    stream >> modeValue;
+    stream >> signature;
+
+    const qint64 tokenTime = timestamp.toLongLong();
+    const qint64 currentTime = QDateTime::currentSecsSinceEpoch();
+    const qint64 maxAge = 7 * 24 * 60 * 60;
+
+    if (currentTime - tokenTime > maxAge) {
+        return false;
     }
-    
-    return false;
+
+    return !signature.isEmpty();
 }
 
 rpl::producer<std::vector<VoiceProcessorType>> VoiceSecurityManager::availableProcessors() const {
@@ -632,7 +645,7 @@ QByteArray VoiceSecurityManager::processWithOllama(const QByteArray &data) {
     params["temperature"] = 0.7;
     params["pitch_shift"] = _settings.pitchShift;
     params["formant_shift"] = _settings.formantShift;
-    params["add_noise"] = _settings.addNoise;
+    params["add_noise"] = _settings.addNoiseLayer;
     params["noise_level"] = _settings.noiseLevel;
     params["remove_background"] = _settings.removeBackground;
     
@@ -1078,10 +1091,38 @@ void VoiceSecurityManager::startTestRecording() {
     _originalTestSample.clear();
     _processedTestSample.clear();
     
-    // Mark recording as active for the UI (actual capture not implemented yet)
+    // Mark recording as active for the UI
     _testRecordingActive = true;
     _testRecordingActiveChanged.fire_copy(true);
     _testRecordingLevel.fire_copy(0);
+
+    auto dataGuard = crl::guard(this, [this](const QByteArray &data) {
+        _originalTestSample.append(data);
+        
+        int level = 0;
+        if (!data.isEmpty()) {
+            const auto samplesCount = qMin(data.size(), 100);
+            for (int i = 0; i < samplesCount; ++i) {
+                level += qAbs(static_cast<int>(static_cast<uchar>(data[i])));
+            }
+            level /= samplesCount;
+            _testRecordingLevel.fire_copy(level);
+        }
+    });
+
+    auto finishGuard = crl::guard(this, [this](bool success) {
+        if (!success) {
+            stopTestRecording();
+        }
+    });
+
+    Media::Audio::StartRecording(
+        [dataGuard = std::move(dataGuard)](const QByteArray &data) mutable {
+            dataGuard(data);
+        },
+        [finishGuard = std::move(finishGuard)](bool success) mutable {
+            finishGuard(success);
+        });
 }
 
 std::pair<QByteArray, QByteArray> VoiceSecurityManager::stopTestRecording() {
@@ -1089,6 +1130,8 @@ std::pair<QByteArray, QByteArray> VoiceSecurityManager::stopTestRecording() {
         return { QByteArray(), QByteArray() };
     }
     
+    Media::Audio::StopRecording();
+
     // Mark recording as stopped (no actual capture to finalize yet)
     _testRecordingActive = false;
     _testRecordingActiveChanged.fire_copy(false);
@@ -1135,7 +1178,7 @@ void VoiceSecurityManager::playProcessedTestSample() {
     _processedTrack->playOnce();
 }
 
-void VoiceSecurityManager::previewVoiceMessageWithSecurity(not_null<DocumentData*> document) {
+void VoiceSecurityManager::previewVoiceMessageWithSecurity(gsl::not_null<DocumentData*> document) {
     if (!document->isVoiceMessage() || !_settings.enabled) {
         return;
     }

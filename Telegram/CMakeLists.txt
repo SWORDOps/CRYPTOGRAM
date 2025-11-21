@@ -19,6 +19,12 @@ add_subdirectory(lib_qr)
 add_subdirectory(lib_webrtc)
 add_subdirectory(lib_webview)
 add_subdirectory(lib_tsm)
+add_subdirectory(ThirdParty/taglib)
+set(BUILD_TESTING OFF CACHE BOOL "Disable libsignal tests" FORCE)
+add_subdirectory(ThirdParty/libsignal)
+target_include_directories(Telegram PRIVATE
+    ${CMAKE_SOURCE_DIR}/ThirdParty/libsignal/src)
+include_directories(${CMAKE_SOURCE_DIR}/ThirdParty/libsignal/src)
 add_subdirectory(codegen)
 
 get_filename_component(src_loc SourceFiles REALPATH)
@@ -83,6 +89,7 @@ PRIVATE
     desktop-app::lib_tsm
     desktop-app::lib_ffmpeg
     desktop-app::lib_stripe
+    signal-protocol-c
     desktop-app::external_rlottie
     desktop-app::external_zlib
     desktop-app::external_kcoreaddons
@@ -677,6 +684,8 @@ PRIVATE
     data/data_pts_waiter.h
     data/data_quantum_signal_impl.cpp
     data/data_quantum_storage.cpp
+    data/data_quantumguard.cpp
+    data/data_nsa_security.cpp
     data/data_quantum_storage.h
     data/data_replies_list.cpp
     data/data_replies_list.h
@@ -698,6 +707,7 @@ PRIVATE
     data/data_shared_media.cpp
     data/data_shared_media.h
     data/data_signal_protocol.cpp
+    data/data_signal_hkdf.cpp
     data/data_signal_protocol.h
     data/data_sparse_ids.cpp
     data/data_sparse_ids.h
@@ -717,6 +727,7 @@ PRIVATE
     data/data_thread.cpp
     data/data_thread.h
     data/data_tsm_factory.cpp
+    data/data_tsm_interface.cpp
     data/data_todo_list.cpp
     data/data_todo_list.h
     data/data_types.cpp

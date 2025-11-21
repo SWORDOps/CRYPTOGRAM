@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_item.h"
 #include "ui/image/image_location.h"
 #include "window/window_session_controller_link_info.h"
+#include "data/data_media_preload.h"
 
 class History;
 
@@ -177,6 +178,12 @@ public:
 private:
 	using OwnedItem = std::unique_ptr<HistoryItem, HistoryItem::Destroyer>;
 	struct Entry {
+		Entry(FullMsgId fullId, SponsoredMessage &&message)
+		: item(nullptr)
+		, itemFullId(fullId)
+		, sponsored(std::move(message)) {
+		}
+
 		OwnedItem item;
 		FullMsgId itemFullId;
 		SponsoredMessage sponsored;

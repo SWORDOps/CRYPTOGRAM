@@ -412,6 +412,11 @@ private:
 
 };
 
+
+namespace Data {
+using DocumentData = ::DocumentData;
+} // namespace Data
+
 [[nodiscard]] PhotoData *LookupVideoCover(
 	not_null<DocumentData*> document,
 	HistoryItem *item);

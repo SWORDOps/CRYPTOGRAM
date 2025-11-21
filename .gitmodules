@@ -103,3 +103,12 @@
 [submodule "Telegram/tg_owt"]
 	path = Telegram/tg_owt
 	url = https://github.com/desktop-app/tg_owt.git
+[submodule "Telegram/ThirdParty/taglib"]
+	path = Telegram/ThirdParty/taglib
+	url = https://github.com/taglib/taglib
+[submodule "Telegram/ThirdParty/openmls"]
+	path = Telegram/ThirdParty/openmls
+	url = https://github.com/openmls/openmls
+[submodule "Telegram/ThirdParty/libsignal"]
+	path = Telegram/ThirdParty/libsignal
+	url = https://github.com/signalapp/libsignal-protocol-c

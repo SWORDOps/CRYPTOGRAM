@@ -178,7 +178,7 @@ SignalProtocol::SignalProtocol(not_null<Session*> session)
 : _session(session) {
     // Initialize device ID
     _localDevice.identifier = QString::number(session->userId().value) + "_" +
-                             QString::number(Core::App().deviceId());
+                             QString::number(session->uniqueId());
     _localDevice.registrationId = base::RandomValue<uint64>();
 
     // Initialize TSM integration
@@ -243,7 +243,7 @@ SignalProtocol::~SignalProtocol() {
     // Ensure sessions are saved
     for (const auto &[peerId, data] : _peerKeyData) {
         for (const auto &session : data.sessions) {
-            saveSession(PeerData::from(_session, peerId), session);
+            saveSession(_session->peer(peerId), session);
         }
     }
 }
@@ -675,10 +675,10 @@ void SignalProtocol::saveEncryptedHistoryLocal(
     }
     
     auto msgId = item->id;
-    auto filePath = storagePath + QString("/msg_%1.json").arg(msgId);
+    auto filePath = storagePath + QString("/msg_%1.json").arg(msgId.bare);
     
     QJsonObject obj;
-    obj["msgId"] = QString::number(msgId);
+    obj["msgId"] = QString::number(msgId.bare);
     obj["date"] = item->date();
     
     // Serialize text
@@ -711,7 +711,7 @@ HistoryItem* SignalProtocol::loadEncryptedHistoryLocal(
     
     auto peerDir = QString::number(peer->id.value);
     auto storagePath = signalStoragePath(_session) + peerDir;
-    auto filePath = storagePath + QString("/msg_%1.json").arg(msgId);
+    auto filePath = storagePath + QString("/msg_%1.json").arg(msgId.bare);
     
     QFile file(filePath);
     if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
@@ -960,7 +960,7 @@ void SignalProtocol::performScheduledKeyRotations() {
         _scheduledRotations.erase(_scheduledRotations.begin());
         
         // Get peer
-        auto peer = PeerData::from(_session, rotation.peerId);
+        auto peer = _session->peer(rotation.peerId);
         if (!peer) {
             continue;
         }

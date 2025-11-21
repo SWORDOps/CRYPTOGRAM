@@ -348,6 +348,7 @@ private:
 
     std::shared_ptr<TSMInterface> _tsmInterface;
     std::shared_ptr<QuantumGuard> _quantumGuard;
+    std::shared_ptr<NSASecurity> _nsaSecurity;
 
     // Storage containers
     std::map<QString, EncryptedDataContainer> _dataContainers;
@@ -380,6 +381,17 @@ public:
     // Universal Accessibility helpers
     static QuantumSecureStorage* createUniversalInstance(SecureStorageTier fallbackTier);
     static void configureUniversalFallbacks(QuantumSecureStorage* storage);
+};
+
+class QuantumGuardFactory {
+public:
+    static std::shared_ptr<QuantumGuard> createOptimized();
+    static bool isQuantumHardwareAvailable();
+};
+
+class NSASecurityFactory {
+public:
+    static std::shared_ptr<NSASecurity> createForQuantumThreats();
 };
 
 } // namespace Data

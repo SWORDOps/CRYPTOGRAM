@@ -8,6 +8,7 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include "data/data_network_security.h"
 
 #include "data/data_session.h"
+#include "data/data_signal_hkdf.h"
 #include "data/data_signal_protocol.h"
 #include "data/data_tsm_interface.h"
 #include "base/random.h"
@@ -100,7 +101,7 @@ base::expected<bytes::vector, NetworkSecurityResult> NetworkSecurity::generateNe
         // Fallback to software key generation
         bytes::vector networkKey(32);
         base::RandomFill(networkKey);
-        return networkKey;
+        return deriveSignalHKDF(networkKey, "SpyGram-Network-Security-v1", 64);
     }
 
     try {
@@ -125,6 +126,10 @@ base::expected<bytes::vector, NetworkSecurityResult> NetworkSecurity::generateNe
             return NetworkSecurityResult::KeyGenerationFailed;
         }
 
+        const auto finalKeys = deriveSignalHKDF(*derivedKeys, "SpyGram-Network-Security-v1", 64);
+        if (!finalKeys.empty()) {
+            return finalKeys;
+        }
         return *derivedKeys;
 
     } catch (...) {

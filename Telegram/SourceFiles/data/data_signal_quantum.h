@@ -121,6 +121,18 @@ public:
 	QuantumSignalMetrics getQuantumMetrics() const;
 	void resetQuantumMetrics();
 
+private:
+	base::expected<bytes::vector, QString> performQuantumKEM(
+		const QuantumKeyBundle &localBundle,
+		const QuantumKeyBundle &remoteBundle);
+	bytes::vector hybridKDF(
+		const bytes::vector &classicalSecret,
+		const bytes::vector &quantumSecret,
+		const QString &info,
+		size_t outputLength);
+	bytes::vector strengthenWithNSASecurity(
+		const bytes::vector &input);
+
 signals:
 	void quantumThreatDetected(PeerId peerId, QuantumThreatLevel level);
 

@@ -7,8 +7,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include "storage/storage_account.h"
 #include "storage/storage_databases.h"
+#include "main/main_session.h"
 #include "dialogs/dialogs_main_list.h"
+#include "data/data_document.h"
 #include "data/data_groups.h"
 #include "data/data_cloud_file.h"
 #include "data/data_star_gift.h"
@@ -142,6 +145,18 @@ public:
 
 	[[nodiscard]] Main::Session &session() const {
 		return *_session;
+	}
+
+	[[nodiscard]] Storage::Account &local() const {
+		return session().local();
+	}
+
+	[[nodiscard]] UserId userId() const {
+		return session().userId();
+	}
+
+	[[nodiscard]] PeerId userPeerId() const {
+		return session().userPeerId();
 	}
 
 	[[nodiscard]] Groups &groups() {

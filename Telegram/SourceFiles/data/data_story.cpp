@@ -6,6 +6,9 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_story.h"
+#include "data/data_document.h"
+
+#include <gsl/gsl>
 
 #include "base/unixtime.h"
 #include "api/api_text_entities.h"
@@ -928,9 +931,10 @@ StoryPreload::StoryPreload(not_null<Story*> story, Fn<void()> done)
 			done();
 		}
 	} else if (const auto video = _story->document()) {
-		if (VideoPreload::Can(video)) {
+		auto notNullVideo = gsl::not_null<DocumentData*>(video);
+		if (VideoPreload::Can(notNullVideo)) {
 			_task = std::make_unique<VideoPreload>(
-				video,
+				notNullVideo,
 				story->fullId(),
 				std::move(done));
 		} else {

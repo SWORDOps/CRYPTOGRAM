@@ -7,34 +7,55 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 */
 #pragma once
 
+#include "base/bytes.h"
+#include "base/expected.h"
+#include "base/random.h"
+#include "data/data_quantum_types.h"
+
+#include <QtCore/QByteArray>
+#include <QtCore/QCryptographicHash>
+#include <QtCore/QString>
+
 #include <memory>
-#include <QString>
 
 namespace Data {
 
-// Quantum Guard - Provides post-quantum cryptographic protection
-class QuantumGuard {
+struct QuantumKeyResult {
+    QString keyId;
+    QByteArray publicKey;
+};
+
+struct QuantumSignatureResult {
+    QString keyId;
+    QByteArray signature;
+};
+
+class QuantumGuard final {
 public:
     QuantumGuard() = default;
     ~QuantumGuard() = default;
 
-    // Initialize the quantum guard module
-    void initialize();
-
-    // Check if quantum protection is active
-    bool isProtected() const;
-
-    // Enable/disable quantum protection
-    void setProtected(bool protected_);
-
-    // Encrypt data with quantum-resistant algorithm
-    QByteArray encrypt(const QByteArray &plaintext);
-
-    // Decrypt data with quantum-resistant algorithm
-    QByteArray decrypt(const QByteArray &ciphertext);
+    bool initialize();
+    bool isInitialized() const;
+    bool enableQuantumSignalProtocol(bool enabled);
+    bool enableHardwareAcceleration(bool enabled);
+    base::expected<QuantumKeyResult, QString> generateQuantumKey(
+        QuantumKeyType type,
+        QuantumAlgorithm algorithm);
+    QuantumAlgorithm selectOptimalKEM(QuantumSecurityLevel level) const;
+    QuantumAlgorithm selectOptimalSignature(QuantumSecurityLevel level) const;
+    base::expected<QuantumSignatureResult, QString> quantumSign(
+        const QString &keyId,
+        const QByteArray &data);
 
 private:
-    bool _protected = false;
+    bytes::vector randomBytes(int size);
+    QString makeKeyId() const;
+    QByteArray makeSignature(const QByteArray &key, const QByteArray &data) const;
+
+    bool _initialized = false;
+    bool _quantumSignalEnabled = false;
+    bool _hardwareAcceleration = false;
     QuantumGuard(const QuantumGuard &other) = delete;
     QuantumGuard &operator=(const QuantumGuard &other) = delete;
 };
