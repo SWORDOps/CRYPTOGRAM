@@ -30,6 +30,13 @@ struct QuantumSignatureResult {
     QByteArray signature;
 };
 
+struct QuantumEncryptionResult {
+    QString keyId;
+    QuantumAlgorithm algorithm = QuantumAlgorithm::ML_KEM_1024;
+    bytes::vector ciphertext;
+    bytes::vector encapsulatedSecret;
+};
+
 class QuantumGuard final {
 public:
     QuantumGuard() = default;
@@ -47,6 +54,9 @@ public:
     base::expected<QuantumSignatureResult, QString> quantumSign(
         const QString &keyId,
         const QByteArray &data);
+    base::expected<QuantumEncryptionResult, QString> quantumEncrypt(
+        const QString &keyId,
+        const bytes::const_span &plaintext);
 
 private:
     bytes::vector randomBytes(int size);

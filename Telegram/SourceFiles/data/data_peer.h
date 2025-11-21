@@ -352,6 +352,10 @@ public:
 	[[nodiscard]] const QString &shortName() const;
 	[[nodiscard]] const QString &topBarNameText() const;
 
+	[[nodiscard]] PeerId peerId() const {
+		return id;
+	}
+
 	[[nodiscard]] QString username() const;
 	[[nodiscard]] QString editableUsername() const;
 	[[nodiscard]] const std::vector<QString> &usernames() const;

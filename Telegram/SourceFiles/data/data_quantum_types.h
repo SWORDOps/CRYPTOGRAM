@@ -11,13 +11,16 @@ namespace Data {
 
 // Quantum cryptographic algorithms
 enum class QuantumAlgorithm {
-    ML_KEM_512,         // NIST ML-KEM-512 (Kyber-512)
-    ML_KEM_768,         // NIST ML-KEM-768 (Kyber-768)
-    ML_KEM_1024,        // NIST ML-KEM-1024 (Kyber-1024)
-    ML_DSA_44,          // NIST ML-DSA-44 (Dilithium-2)
-    ML_DSA_65,          // NIST ML-DSA-65 (Dilithium-3)
-    ML_DSA_87,          // NIST ML-DSA-87 (Dilithium-5)
-    SLH_DSA_SHA2_128s,  // SPHINCS+-SHA2-128s
+    Kyber512,
+    Kyber768,
+    Kyber1024,
+    ML_KEM_512,
+    ML_KEM_768,
+    ML_KEM_1024,
+    ML_DSA_44,
+    ML_DSA_65,
+    ML_DSA_87,
+    SLH_DSA_SHA2_128s,
     HybridEd25519_ML_DSA_87,
     HybridX25519_ML_KEM_1024,
     Unknown             // Unknown or custom algorithm
@@ -49,7 +52,8 @@ enum class QuantumKeyType {
     Encapsulation,   // Key encapsulation mechanism (KEM)
     Signature,       // Digital signature mechanism (DSM)
     Symmetric,       // Symmetric key (hybrid)
-    Hybrid           // Hybrid classical/quantum key
+    Hybrid,          // Hybrid classical/quantum key
+    Backup           // TPM-backed backup key
 };
 
 enum class SecurityEventType {

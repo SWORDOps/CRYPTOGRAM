@@ -73,10 +73,11 @@ QString quantumStoragePath(not_null<Session*> session) {
 
 namespace {
 	struct QuantumSession {
-		bytes::vector quantumRootKey = bytes::vector(32, 0);
-		bytes::vector quantumSendingChainKey = bytes::vector(32, 0);
-		bytes::vector quantumReceivingChainKey = bytes::vector(32, 0);
-		bytes::vector quantumSignatureKey = bytes::vector(32, 0);
+		const auto kZero = bytes::type(0);
+		bytes::vector quantumRootKey = bytes::vector(32, kZero);
+		bytes::vector quantumSendingChainKey = bytes::vector(32, kZero);
+		bytes::vector quantumReceivingChainKey = bytes::vector(32, kZero);
+		bytes::vector quantumSignatureKey = bytes::vector(32, kZero);
 		int quantumOperations = 0;
 		QDateTime lastQuantumRatchet = QDateTime::currentDateTime();
 	};
@@ -214,7 +215,7 @@ namespace {
 		return xorTransform(ciphertext, messageKey);
 	}
 
-	void applyNSASecurityPolicies(QuantumMessageMetadata &) {
+	void applyNSASecurityPolicies(QuantumMessageMetadata &metadata) {
 		metadata.antiDeviceAttestation = true;
 	}
 

@@ -116,6 +116,8 @@ public:
 		Cache::Database::SettingsUpdate &update,
 		Cache::Database::SettingsUpdate &updateBig);
 
+	[[nodiscard]] QString basePath() const;
+
 	[[nodiscard]] EncryptionKey cacheBigFileKey() const;
 	[[nodiscard]] QString cacheBigFilePath() const;
 	[[nodiscard]] Cache::Database::Settings cacheBigFileSettings() const;

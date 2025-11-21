@@ -197,6 +197,10 @@ QString Account::supportModePath() const {
 	return _databasePath + u"support"_q;
 }
 
+QString Account::basePath() const {
+	return _basePath;
+}
+
 StartResult Account::legacyStart(const QByteArray &passcode) {
 	const auto result = readMapWith(MTP::AuthKeyPtr(), passcode);
 	if (result == ReadMapResult::Failed) {
