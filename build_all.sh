@@ -262,12 +262,20 @@ ensure_tg_owt_from_source() {
         return 0
     fi
 
+    # Skip tg_owt if directory is empty or doesn't have CMakeLists.txt
+    if [ -d "$tg_src" ] && [ ! -f "$tg_src/CMakeLists.txt" ]; then
+        print_warning "tg_owt directory exists but is empty or not initialized, skipping tg_owt build"
+        log "WARN" "tg_owt not initialized, skipping"
+        return 0
+    fi
+
     if [ ! -d "$tg_src" ]; then
         print_warning "tg_owt directory missing ($tg_src), cloning"
         tg_src="/tmp/tg_owt_${BUILD_ID}"
         run_cmd "rm -rf '$tg_src'"
         if ! run_cmd_verbose "git clone --depth 1 https://github.com/desktop-app/tg_owt.git '$tg_src'"; then
-            fail "Failed to clone tg_owt"
+            print_warning "Failed to clone tg_owt, skipping WebRTC support"
+            return 0
         fi
     fi
 
