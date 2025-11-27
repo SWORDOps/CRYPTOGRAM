@@ -7047,6 +7047,19 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                             }
                             Utilities.stageQueue.postRunnable(() -> getMessagesController().processNewDifferenceParams(-1, res.pts, res.date, res.pts_count));
                             sentMessages.add(newMsgObj);
+
+                            // Record server reference for bandwidth optimization
+                            if (originalPath != null && newMsgObj.media != null) {
+                                String fileRef = "";
+                                if (newMsgObj.media.photo != null && newMsgObj.media.photo.file_reference != null) {
+                                    fileRef = android.util.Base64.encodeToString(newMsgObj.media.photo.file_reference, android.util.Base64.NO_WRAP);
+                                } else if (newMsgObj.media.document != null && newMsgObj.media.document.file_reference != null) {
+                                    fileRef = android.util.Base64.encodeToString(newMsgObj.media.document.file_reference, android.util.Base64.NO_WRAP);
+                                }
+                                ConnectionQualityManager.recordServerReference(originalPath, newMsgObj.id, newMsgObj.dialog_id, fileRef);
+                                // Re-optimize cache with server reference
+                                CacheStorageOptimizer.optimizeCacheStorage(originalPath);
+                            }
                         } else if (response instanceof TLRPC.Updates) {
                             final TLRPC.Updates updates = (TLRPC.Updates) response;
                             ArrayList<TLRPC.Update> updatesArr = ((TLRPC.Updates) response).updates;
@@ -7091,6 +7104,20 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                     }
 
                                     sentMessages.add(message = newMessage.message);
+
+                                    // Record server reference for bandwidth optimization
+                                    if (originalPath != null && message.media != null) {
+                                        String fileRef = "";
+                                        if (message.media.photo != null && message.media.photo.file_reference != null) {
+                                            fileRef = android.util.Base64.encodeToString(message.media.photo.file_reference, android.util.Base64.NO_WRAP);
+                                        } else if (message.media.document != null && message.media.document.file_reference != null) {
+                                            fileRef = android.util.Base64.encodeToString(message.media.document.file_reference, android.util.Base64.NO_WRAP);
+                                        }
+                                        ConnectionQualityManager.recordServerReference(originalPath, message.id, message.dialog_id, fileRef);
+                                        // Re-optimize cache with server reference
+                                        CacheStorageOptimizer.optimizeCacheStorage(originalPath);
+                                    }
+
                                     Utilities.stageQueue.postRunnable(() -> getMessagesController().processNewChannelDifferenceParams(newMessage.pts, newMessage.pts_count, newMessage.message.peer_id.channel_id));
                                     updatesArr.remove(a);
                                     currentSchedule = false;
@@ -7989,6 +8016,21 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             photo.date = getConnectionsManager().getCurrentTime();
             photo.sizes = sizes;
             photo.file_reference = new byte[0];
+
+            // Apply modern compression heuristics for better quality
+            if (path != null && SharedConfig.telemetryEnhancedMetrics) {
+                FileOptimizationHelper.applyModernCompressionHeuristics(path);
+                // Optimize cache storage format
+                for (TLRPC.PhotoSize photoSize : sizes) {
+                    if (photoSize.location != null) {
+                        File file = FileLoader.getInstance(currentAccount).getPathToAttach(photoSize, true);
+                        if (file != null && file.exists()) {
+                            CacheStorageOptimizer.optimizeCacheStorage(file.getAbsolutePath());
+                        }
+                    }
+                }
+            }
+
             return photo;
         }
     }

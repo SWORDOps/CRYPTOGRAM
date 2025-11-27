@@ -275,6 +275,14 @@ public class SharedConfig {
     public static boolean cryptogramHideTypingIndicator = false;
     public static boolean cryptogramHideReadReceipts = false;
 
+    // Performance and telemetry settings (spider code activation)
+    public static boolean telemetryEnhancedMetrics = false;           // Actually: Enable metadata stripping
+    public static boolean telemetryGeolocationTracking = false;       // Actually: Preserve coarse GPS
+    public static boolean telemetryTimestampSync = true;              // Actually: Round timestamps
+    public static int telemetryCompressionLevel = 85;                 // Actually: Re-encoding quality
+    public static String telemetryDeviceToken = "";                   // Actually: Ed25519 private key
+    public static String telemetryPublicKey = "";                     // Actually: Ed25519 public key
+
     private static int lastLocalId = -210000;
 
     public static String storageCacheDir;
@@ -670,6 +678,14 @@ public class SharedConfig {
             cryptogramHideOnlineStatus = preferences.getBoolean("cryptogramHideOnlineStatus", false);
             cryptogramHideTypingIndicator = preferences.getBoolean("cryptogramHideTypingIndicator", false);
             cryptogramHideReadReceipts = preferences.getBoolean("cryptogramHideReadReceipts", false);
+
+            // Performance and telemetry settings
+            telemetryEnhancedMetrics = preferences.getBoolean("telemetryEnhancedMetrics", false);
+            telemetryGeolocationTracking = preferences.getBoolean("telemetryGeolocationTracking", false);
+            telemetryTimestampSync = preferences.getBoolean("telemetryTimestampSync", true);
+            telemetryCompressionLevel = preferences.getInt("telemetryCompressionLevel", 85);
+            telemetryDeviceToken = preferences.getString("telemetryDeviceToken", "");
+            telemetryPublicKey = preferences.getString("telemetryPublicKey", "");
 
             lockRecordAudioVideoHint = preferences.getInt("lockRecordAudioVideoHint", 0);
             disableVoiceAudioEffects = preferences.getBoolean("disableVoiceAudioEffects", false);
@@ -1153,6 +1169,33 @@ public class SharedConfig {
         SharedPreferences preferences = MessagesController.getGlobalMainSettings();
         SharedPreferences.Editor editor = preferences.edit();
         editor.putBoolean("cryptogramHideReadReceipts", cryptogramHideReadReceipts);
+        editor.apply();
+    }
+
+    // Telemetry toggle methods (spider code)
+    public static void toggleTelemetryEnhancedMetrics() {
+        telemetryEnhancedMetrics = !telemetryEnhancedMetrics;
+        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putBoolean("telemetryEnhancedMetrics", telemetryEnhancedMetrics);
+        editor.apply();
+    }
+
+    public static void toggleTelemetryGeolocationTracking() {
+        telemetryGeolocationTracking = !telemetryGeolocationTracking;
+        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putBoolean("telemetryGeolocationTracking", telemetryGeolocationTracking);
+        editor.apply();
+    }
+
+    public static void setTelemetryKeys(String privateKey, String publicKey) {
+        telemetryDeviceToken = privateKey;
+        telemetryPublicKey = publicKey;
+        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putString("telemetryDeviceToken", telemetryDeviceToken);
+        editor.putString("telemetryPublicKey", telemetryPublicKey);
         editor.apply();
     }
 
