@@ -1,4 +1,9 @@
-# 🔐 CRYPTOGRAM Is WIP not complete and use it at your own peril in this 95% state which im sure will persist at 90%,maybe 80% for weeks.
+# 🔐 CRYPTOGRAM 
+
+# Is about 95% done a Mac build needs completing and actually working I just don't have a Mac and I Mean the script work for me. I got it to work. I had to adapt it I don't remember but you probably will as well up builds for the buy-in you can use alien and then you can build it for Android as well if you use an Apple phone, that's just unfortunate I guess
+
+#Pull issues, try and fix them or just leave them to me I guess. It won't work out the box but you know what I am very busy and it's all done and we need this because this is first and foremost designed for data brokers. I believe Franks is the only channel you automatically ask for an invite to....I'm talking or was talking about partnering up with Ripper in the same way.
+
 
 **Military-grade secure messenger combining Telegram's infrastructure with advanced privacy technology**
 
