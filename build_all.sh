@@ -211,7 +211,7 @@ ensure_system_dependencies() {
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
             libswresample-dev libavfilter-dev libopus-dev libwebp-dev libjpeg-dev
             libpng-dev libminizip-dev libopenh264-dev libavif-dev libjxl-dev
-            libfmt-dev libhunspell-dev libvpx-dev
+            libfmt-dev libhunspell-dev libvpx-dev libopenal-dev liblz4-dev
         )
         pkgs+=(
             libgbm-dev libegl-dev libxcomposite-dev libxdamage-dev libxtst-dev
