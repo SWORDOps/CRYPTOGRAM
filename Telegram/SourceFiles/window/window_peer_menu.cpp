@@ -203,7 +203,7 @@ void SetActionText(not_null<QAction*> action, rpl::producer<QString> &&text) {
 	const auto lifetime = Ui::CreateChild<rpl::lifetime>(action.get());
 	std::move(
 		text
-	) | rpl::start_with_next([=](const QString &actionText) {
+	) | rpl::on_next([=](const QString &actionText) {
 		action->setText(actionText);
 	}, *lifetime);
 }
@@ -1033,7 +1033,7 @@ void Filler::addBotToGroup() {
 	}
 	[[maybe_unused]] const auto lifetime = Info::Profile::InviteToChatButton(
 		user
-	) | rpl::take(1) | rpl::start_with_next([=](QString label) {
+	) | rpl::take(1) | rpl::on_next([=](QString label) {
 		if (!label.isEmpty()) {
 			const auto controller = _controller;
 			_addAction(
@@ -2126,7 +2126,7 @@ void PeerMenuCreatePoll(
 		}));
 	};
 	box->submitRequests(
-	) | rpl::start_with_next(state->create, box->lifetime());
+	) | rpl::on_next(state->create, box->lifetime());
 	controller->show(std::move(box), Ui::LayerOption::CloseOther);
 }
 
@@ -2236,7 +2236,7 @@ void PeerMenuCreateTodoList(
 		}));
 	};
 	box->submitRequests(
-	) | rpl::start_with_next(state->create, box->lifetime());
+	) | rpl::on_next(state->create, box->lifetime());
 	controller->show(std::move(box), Ui::LayerOption::CloseOther);
 }
 
@@ -2254,7 +2254,7 @@ void PeerMenuEditTodoList(
 	auto box = Box<EditTodoListBox>(controller, item);
 	const auto weak = base::make_weak(box);
 	box->submitRequests(
-	) | rpl::start_with_next([=](const EditTodoListBox::Result &result) {
+	) | rpl::on_next([=](const EditTodoListBox::Result &result) {
 		const auto api = &item->history()->session().api();
 		api->todoLists().edit(
 			item,
@@ -2295,7 +2295,7 @@ void PeerMenuAddTodoListTasks(
 	auto box = Box<AddTodoListTasksBox>(controller, item);
 	const auto raw = box.data();
 	box->submitRequests(
-	) | rpl::start_with_next([=](const AddTodoListTasksBox::Result &result) {
+	) | rpl::on_next([=](const AddTodoListTasksBox::Result &result) {
 		const auto show = raw->uiShow();
 		raw->closeBox();
 		session->api().todoLists().add(
@@ -2584,7 +2584,7 @@ object_ptr<Ui::BoxContent> PrepareChooseRecipientBox(
 			state->starsToSend = perMessage;
 		};
 		raw->selectionChanges(
-		) | rpl::start_with_next([=] {
+		) | rpl::on_next([=] {
 			box->clearButtons();
 			state->refreshStarsToSend();
 			const auto shown = raw->hasSelected();
@@ -2619,7 +2619,7 @@ object_ptr<Ui::BoxContent> PrepareChooseRecipientBox(
 					if (!waiting.empty()) {
 						session->changes().peerUpdates(
 							Data::PeerUpdate::Flag::FullInfo
-						) | rpl::start_with_next([=](const Data::PeerUpdate &update) {
+						) | rpl::on_next([=](const Data::PeerUpdate &update) {
 							if (waiting.contains(update.peer)) {
 								withPaymentApproved(alreadyApproved);
 							}
@@ -2629,7 +2629,7 @@ object_ptr<Ui::BoxContent> PrepareChooseRecipientBox(
 							session->credits().loadedValue(
 							) | rpl::filter(
 								rpl::mappers::_1
-							) | rpl::take(1) | rpl::start_with_next([=] {
+							) | rpl::take(1) | rpl::on_next([=] {
 								withPaymentApproved(alreadyApproved);
 							}, state->submitLifetime);
 						}
@@ -2971,10 +2971,10 @@ base::weak_qptr<Ui::BoxContent> ShowForwardMessagesBox(
 					});
 					return lifetime;
 				})
-			) | rpl::start_with_next([box](int h, bool hasQuery) {
+			) | rpl::on_next([box](int h, bool hasQuery) {
 				box->setAddedTopScrollSkip(hasQuery ? 0 : h);
 			}, box->lifetime());
-			box->multiSelectHeightValue() | rpl::start_with_next([=](int h) {
+			box->multiSelectHeightValue() | rpl::on_next([=](int h) {
 				chatsFilters->moveToLeft(0, h);
 			}, chatsFilters->lifetime());
 		};
@@ -3030,7 +3030,7 @@ base::weak_qptr<Ui::BoxContent> ShowForwardMessagesBox(
 			}
 		};
 		state->controller->singleChosen(
-		) | rpl::start_with_next(std::move(callback), state->box->lifetime());
+		) | rpl::on_next(std::move(callback), state->box->lifetime());
 	}
 
 	const auto comment = Ui::CreateChild<Ui::SlideWrap<Ui::InputField>>(
@@ -3085,7 +3085,7 @@ base::weak_qptr<Ui::BoxContent> ShowForwardMessagesBox(
 			if (!waiting.empty()) {
 				session->changes().peerUpdates(
 					Data::PeerUpdate::Flag::FullInfo
-				) | rpl::start_with_next([=](const Data::PeerUpdate &update) {
+				) | rpl::on_next([=](const Data::PeerUpdate &update) {
 					if (waiting.contains(update.peer)) {
 						withPaymentApproved(alreadyApproved);
 					}
@@ -3095,7 +3095,7 @@ base::weak_qptr<Ui::BoxContent> ShowForwardMessagesBox(
 					session->credits().loadedValue(
 					) | rpl::filter(
 						rpl::mappers::_1
-					) | rpl::take(1) | rpl::start_with_next([=] {
+					) | rpl::take(1) | rpl::on_next([=] {
 						withPaymentApproved(alreadyApproved);
 					}, state->submitLifetime);
 				}
@@ -3165,7 +3165,7 @@ base::weak_qptr<Ui::BoxContent> ShowForwardMessagesBox(
 					nullptr);
 				std::move(
 					text
-				) | rpl::start_with_next([action = item->action()](
+				) | rpl::on_next([action = item->action()](
 						QString text) {
 					action->setText(text);
 				}, item->lifetime());
@@ -3219,7 +3219,7 @@ base::weak_qptr<Ui::BoxContent> ShowForwardMessagesBox(
 	rpl::combine(
 		state->box->sizeValue(),
 		comment->heightValue()
-	) | rpl::start_with_next([=](const QSize &size, int commentHeight) {
+	) | rpl::on_next([=](const QSize &size, int commentHeight) {
 		comment->moveToLeft(0, size.height() - commentHeight);
 		comment->resizeToWidth(size.width());
 
@@ -3227,7 +3227,7 @@ base::weak_qptr<Ui::BoxContent> ShowForwardMessagesBox(
 	}, comment->lifetime());
 
 	field->submits(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		if (const auto onstack = state->submit) {
 			onstack({});
 		}
@@ -3241,21 +3241,21 @@ base::weak_qptr<Ui::BoxContent> ShowForwardMessagesBox(
 		},
 	});
 	field->setSubmitSettings(Core::App().settings().sendSubmitWay());
-	field->changes() | rpl::start_with_next([=] {
+	field->changes() | rpl::on_next([=] {
 		state->refreshStarsToSend();
 	}, field->lifetime());
 
 	Ui::SendPendingMoveResizeEvents(comment);
 
 	state->box->focusRequests(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		if (!comment->isHidden()) {
 			comment->entity()->setFocusFast();
 		}
 	}, comment->lifetime());
 
 	state->controller->selectionChanges(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		const auto shown = state->controller->hasSelected();
 
 		state->box->clearButtons();
@@ -3270,7 +3270,7 @@ base::weak_qptr<Ui::BoxContent> ShowForwardMessagesBox(
 				});
 			send->setAcceptBoth();
 			send->clicks(
-			) | rpl::start_with_next([=](Qt::MouseButton button) {
+			) | rpl::on_next([=](Qt::MouseButton button) {
 				if (button == Qt::RightButton) {
 					showMenu(send);
 				}
@@ -3391,7 +3391,7 @@ base::weak_qptr<Ui::BoxContent> ShowDropMediaBox(
 		});
 
 		forum->destroyed(
-		) | rpl::start_with_next([=] {
+		) | rpl::on_next([=] {
 			box->closeBox();
 		}, box->lifetime());
 	};
@@ -3431,7 +3431,7 @@ base::weak_qptr<Ui::BoxContent> ShowDropMediaBox(
 		});
 
 		monoforum->destroyed(
-		) | rpl::start_with_next([=] {
+		) | rpl::on_next([=] {
 			box->closeBox();
 		}, box->lifetime());
 	};
@@ -4038,7 +4038,7 @@ void PeerMenuConfirmToggleFee(
 			rpl::variable<int>
 		>();
 		*paid = paidAmount->value();
-		paid->value() | rpl::start_with_next([=](int already) {
+		paid->value() | rpl::on_next([=](int already) {
 			if (!already) {
 				delete base::take(*refund).get();
 			} else if (!*refund) {

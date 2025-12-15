@@ -267,7 +267,7 @@ InnerWidget::InnerWidget(
 	Window::ChatThemeValueFromPeer(
 		controller,
 		channel
-	) | rpl::start_with_next([=](std::shared_ptr<Ui::ChatTheme> &&theme) {
+	) | rpl::on_next([=](std::shared_ptr<Ui::ChatTheme> &&theme) {
 		_theme = std::move(theme);
 		controller->setChatStyleTheme(_theme);
 	}, lifetime());
@@ -275,25 +275,25 @@ InnerWidget::InnerWidget(
 	setMouseTracking(true);
 	_scrollDateHideTimer.setCallback([=] { scrollDateHideByTimer(); });
 	session().data().viewRepaintRequest(
-	) | rpl::start_with_next([=](auto view) {
+	) | rpl::on_next([=](auto view) {
 		if (myView(view)) {
 			repaintItem(view);
 		}
 	}, lifetime());
 	session().data().viewResizeRequest(
-	) | rpl::start_with_next([=](auto view) {
+	) | rpl::on_next([=](auto view) {
 		if (myView(view)) {
 			resizeItem(view);
 		}
 	}, lifetime());
 	session().data().itemViewRefreshRequest(
-	) | rpl::start_with_next([=](auto item) {
+	) | rpl::on_next([=](auto item) {
 		if (const auto view = viewForItem(item)) {
 			refreshItem(view);
 		}
 	}, lifetime());
 	session().data().viewLayoutChanged(
-	) | rpl::start_with_next([=](auto view) {
+	) | rpl::on_next([=](auto view) {
 		if (myView(view)) {
 			if (view->isUnderCursor()) {
 				updateSelected();
@@ -301,7 +301,7 @@ InnerWidget::InnerWidget(
 		}
 	}, lifetime());
 	session().data().itemDataChanges(
-	) | rpl::start_with_next([=](not_null<HistoryItem*> item) {
+	) | rpl::on_next([=](not_null<HistoryItem*> item) {
 		if (const auto view = viewForItem(item)) {
 			view->itemDataChanged();
 		}
@@ -312,7 +312,7 @@ InnerWidget::InnerWidget(
 		return (_history == query.item->history())
 			&& query.item->isAdminLogEntry()
 			&& isVisible();
-	}) | rpl::start_with_next([=](
+	}) | rpl::on_next([=](
 			const Data::Session::ItemVisibilityQuery &query) {
 		if (const auto view = viewForItem(query.item)) {
 			auto top = itemTop(view);
@@ -325,7 +325,7 @@ InnerWidget::InnerWidget(
 	}, lifetime());
 
 	controller->adaptive().chatWideValue(
-	) | rpl::start_with_next([=](bool wide) {
+	) | rpl::on_next([=](bool wide) {
 		_isChatWide = wide;
 	}, lifetime());
 
@@ -1610,7 +1610,7 @@ void InnerWidget::suggestRestrictParticipant(
 			participant->session().changes().peerUpdates(
 				_channel,
 				Data::PeerUpdate::Flag::Members
-			) | rpl::start_with_next([=](const Data::PeerUpdate &update) {
+			) | rpl::on_next([=](const Data::PeerUpdate &update) {
 				_downLoaded = false;
 				preloadMore(Direction::Down);
 				lifetime->destroy();

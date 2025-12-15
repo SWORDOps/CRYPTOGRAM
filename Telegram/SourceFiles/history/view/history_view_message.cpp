@@ -341,12 +341,6 @@ void Message::animateReaction(Ui::ReactionFlyAnimationArgs &&args) {
 	const auto bubble = drawBubble();
 	const auto reactionsInBubble = _reactions && embedReactionsInBubble();
 	const auto mediaDisplayed = media && media->isDisplayed();
-	const auto keyboard = item->inlineReplyKeyboard();
-	auto keyboardHeight = 0;
-	if (keyboard) {
-		keyboardHeight = keyboard->naturalHeight();
-		g.setHeight(g.height() - st::msgBotKbButton.margin - keyboardHeight);
-	}
 
 	if (_reactions && !reactionsInBubble) {
 		const auto reactionsHeight = st::mediaInBubbleSkip + _reactions->height();
@@ -357,6 +351,13 @@ void Message::animateReaction(Ui::ReactionFlyAnimationArgs &&args) {
 		const auto reactionsPosition = QPoint(reactionsLeft + g.left(), g.top() + g.height() + st::mediaInBubbleSkip);
 		_reactions->animate(args.translated(-reactionsPosition), repainter);
 		return;
+	}
+
+	const auto keyboard = item->inlineReplyKeyboard();
+	auto keyboardHeight = 0;
+	if (keyboard) {
+		keyboardHeight = keyboard->naturalHeight();
+		g.setHeight(g.height() - st::msgBotKbButton.margin - keyboardHeight);
 	}
 
 	if (bubble) {
@@ -869,13 +870,17 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 	const auto displayInfo = needInfoDisplay();
 	const auto reactionsInBubble = _reactions && embedReactionsInBubble();
 
+	// We need to count geometry without keyboard and reactions
+	// for bubble selection intervals counting below.
+	auto gForIntervals = g;
+	if (_reactions && !reactionsInBubble) {
+		const auto reactionsHeight = st::mediaInBubbleSkip + _reactions->height();
+		gForIntervals.setHeight(gForIntervals.height() - reactionsHeight);
+	}
 	const auto keyboard = item->inlineReplyKeyboard();
-	const auto fullGeometry = g;
 	if (keyboard) {
-		// We need to count geometry without keyboard for bubble selection
-		// intervals counting below.
 		const auto keyboardHeight = st::msgBotKbButton.margin + keyboard->naturalHeight();
-		g.setHeight(g.height() - keyboardHeight);
+		gForIntervals.setHeight(gForIntervals.height() - keyboardHeight);
 	}
 
 	auto mediaSelectionIntervals = (!context.selected() && mediaDisplayed)
@@ -884,7 +889,7 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 	auto localMediaTop = 0;
 	const auto customHighlight = mediaDisplayed && media->customHighlight();
 	if (!mediaSelectionIntervals.empty() || customHighlight) {
-		auto localMediaBottom = g.top() + g.height();
+		auto localMediaBottom = gForIntervals.top() + gForIntervals.height();
 		if (data()->repliesAreComments() || data()->externalReply()) {
 			localMediaBottom -= st::historyCommentsButtonHeight;
 		}
@@ -919,7 +924,7 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 		if (customHighlight) {
 			media->drawHighlight(p, context, localMediaTop);
 		} else {
-			paintHighlight(p, context, fullGeometry.height());
+			paintHighlight(p, context, g.height());
 		}
 		if (selectionTranslation) {
 			p.translate(selectionTranslation, 0);
@@ -929,26 +934,13 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 	const auto roll = media ? media->bubbleRoll() : Media::BubbleRoll();
 	if (roll) {
 		p.save();
-		p.translate(fullGeometry.center());
+		p.translate(g.center());
 		p.rotate(roll.rotate);
 		p.scale(roll.scale, roll.scale);
-		p.translate(-fullGeometry.center());
+		p.translate(-g.center());
 	}
 
 	p.setTextPalette(stm->textPalette);
-
-	const auto messageRounding = countMessageRounding();
-	if (keyboard) {
-		const auto keyboardPosition = QPoint(g.left(), g.top() + g.height() + st::msgBotKbButton.margin);
-		p.translate(keyboardPosition);
-		keyboard->paint(
-			p,
-			context.st,
-			messageRounding,
-			g.width(),
-			context.clip.translated(-keyboardPosition));
-		p.translate(-keyboardPosition);
-	}
 
 	if (_reactions && !reactionsInBubble) {
 		const auto reactionsHeight = st::mediaInBubbleSkip + _reactions->height();
@@ -964,6 +956,22 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 			context.reactionInfo->position = reactionsPosition;
 		}
 		p.translate(-reactionsPosition);
+	}
+
+	const auto messageRounding = countMessageRounding();
+	if (keyboard) {
+		const auto keyboardHeight = st::msgBotKbButton.margin + keyboard->naturalHeight();
+		g.setHeight(g.height() - keyboardHeight);
+
+		const auto keyboardPosition = QPoint(g.left(), g.top() + g.height() + st::msgBotKbButton.margin);
+		p.translate(keyboardPosition);
+		keyboard->paint(
+			p,
+			context.st,
+			messageRounding,
+			g.width(),
+			context.clip.translated(-keyboardPosition));
+		p.translate(-keyboardPosition);
 	}
 
 	if (context.highlightPathCache) {
@@ -2261,12 +2269,6 @@ TextState Message::textState(
 	const auto bubble = drawBubble();
 	const auto reactionsInBubble = _reactions && embedReactionsInBubble();
 	const auto mediaDisplayed = media && media->isDisplayed();
-	auto keyboard = item->inlineReplyKeyboard();
-	auto keyboardHeight = 0;
-	if (keyboard) {
-		keyboardHeight = keyboard->naturalHeight();
-		g.setHeight(g.height() - st::msgBotKbButton.margin - keyboardHeight);
-	}
 
 	if (_reactions && !reactionsInBubble) {
 		const auto reactionsHeight = st::mediaInBubbleSkip + _reactions->height();
@@ -2278,6 +2280,22 @@ TextState Message::textState(
 		if (_reactions->getState(point - reactionsPosition, &result)) {
 			result.symbol += visibleMediaTextLen + visibleTextLen;
 			return result;
+		}
+	}
+
+	const auto keyboard = item->inlineReplyKeyboard();
+	auto keyboardHeight = 0;
+	if (keyboard) {
+		keyboardHeight = keyboard->naturalHeight();
+		g.setHeight(g.height() - st::msgBotKbButton.margin - keyboardHeight);
+
+		if (item->isHistoryEntry()) {
+			const auto keyboardPosition = QPoint(g.left(), g.top() + g.height() + st::msgBotKbButton.margin);
+			if (QRect(keyboardPosition, QSize(g.width(), keyboardHeight)).contains(point)) {
+				result.symbol += visibleMediaTextLen + visibleTextLen;
+				result.link = keyboard->getLink(point - keyboardPosition);
+				return result;
+			}
 		}
 	}
 
@@ -2478,18 +2496,6 @@ TextState Message::textState(
 			result.cursor = CursorState::None;
 		}
 		result.symbol += visibleTextLength();
-	}
-
-	if (keyboard && item->isHistoryEntry()) {
-		const auto keyboardTop = g.top()
-			+ g.height()
-			+ st::msgBotKbButton.margin
-			+ ((_reactions && !reactionsInBubble)
-				? (st::mediaInBubbleSkip + _reactions->height())
-				: 0);
-		if (QRect(g.left(), keyboardTop, g.width(), keyboardHeight).contains(point)) {
-			result.link = keyboard->getLink(point - QPoint(g.left(), keyboardTop));
-		}
 	}
 
 	return result;
@@ -2845,7 +2851,14 @@ void Message::updatePressed(QPoint point) {
 	}
 
 	auto g = countGeometry();
-	auto keyboard = item->inlineReplyKeyboard();
+
+	const auto reactionsInBubble = _reactions && embedReactionsInBubble();
+	if (_reactions && !reactionsInBubble) {
+		const auto reactionsHeight = st::mediaInBubbleSkip + _reactions->height();
+		g.setHeight(g.height() - reactionsHeight);
+	}
+
+	const auto keyboard = item->inlineReplyKeyboard();
 	if (keyboard) {
 		auto keyboardHeight = st::msgBotKbButton.margin + keyboard->naturalHeight();
 		g.setHeight(g.height() - keyboardHeight);

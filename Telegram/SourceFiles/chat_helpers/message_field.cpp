@@ -183,11 +183,11 @@ void EditLinkBox(
 			tr::lng_formatting_link_url(),
 			link));
 	url->heightValue(
-	) | rpl::start_with_next([placeholder](int height) {
+	) | rpl::on_next([placeholder](int height) {
 		placeholder->resize(placeholder->width(), height);
 	}, placeholder->lifetime());
 	placeholder->widthValue(
-	) | rpl::start_with_next([=](int width) {
+	) | rpl::on_next([=](int width) {
 		url->resize(width, url->height());
 	}, placeholder->lifetime());
 	url->move(placeholder->pos());
@@ -236,11 +236,11 @@ void EditLinkBox(
 	};
 
 	text->submits(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		url->setFocusFast();
 	}, text->lifetime());
 	url->submits(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		if (text->getLastText().isEmpty()) {
 			text->setFocusFast();
 		} else {
@@ -288,12 +288,12 @@ void EditLinkBox(
 	};
 
 	url->tabbed(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		clearFullSelection(url);
 		text->setFocus();
 	}, url->lifetime());
 	text->tabbed(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		if (!url->empty()) {
 			url->selectAll();
 		}
@@ -340,7 +340,7 @@ void EditCodeLanguageBox(
 		}
 	};
 	field->submits(
-	) | rpl::start_with_next(callback, field->lifetime());
+	) | rpl::on_next(callback, field->lifetime());
 	box->addButton(tr::lng_settings_save(), callback);
 	box->addButton(tr::lng_cancel(), [=] {
 		box->closeBox();
@@ -712,12 +712,12 @@ void InitMessageFieldFade(
 	};
 	generateFade();
 	style::PaletteChanged(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		generateFade();
 	}, topFade->lifetime());
 
 	field->sizeValue(
-	) | rpl::start_with_next_done([=](const QSize &size) {
+	) | rpl::on_next_done([=](const QSize &size) {
 		topFade->resizeToWidth(size.width());
 		bottomFade->resizeToWidth(size.width());
 		bottomFade->move(
@@ -733,7 +733,7 @@ void InitMessageFieldFade(
 		field->changes(),
 		field->scrollTop().changes() | rpl::to_empty,
 		field->sizeValue() | rpl::to_empty
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		// InputField::changes fires before the auto-resize is being applied,
 		// so for the scroll values to be accurate we enqueue the check.
 		InvokeQueued(field, [=] {
@@ -905,7 +905,7 @@ MessageLinksParser::MessageLinksParser(not_null<Ui::InputField*> field)
 : _field(field)
 , _timer([=] { parse(); }) {
 	_lifetime = _field->changes(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		const auto length = _field->getTextWithTags().text.size();
 		if (!length) {
 			_lastLength = 0;
@@ -1159,14 +1159,14 @@ base::unique_qptr<Ui::RpWidget> CreateDisabledFieldView(
 			+ customFontMarginTop, 0, 0);
 
 	raw->widthValue(
-	) | rpl::start_with_next([=](int width) {
+	) | rpl::on_next([=](int width) {
 		const auto available = width - margins.left() - margins.right();
 		const auto skip = st::historySendDisabledIconSkip;
 		label->resizeToWidth(available - skip);
 		label->moveToLeft(margins.left() + skip, margins.top(), width);
 	}, label->lifetime());
 	raw->paintRequest(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		auto p = QPainter(raw);
 		const auto &icon = st::historySendDisabledIcon;
 		icon.paint(
@@ -1234,11 +1234,11 @@ std::unique_ptr<Ui::RpWidget> TextErrorSendRestriction(
 		text,
 		st::historySendPremiumRequired);
 	label->setAttribute(Qt::WA_TransparentForMouseEvents);
-	raw->paintRequest() | rpl::start_with_next([=](QRect clip) {
+	raw->paintRequest() | rpl::on_next([=](QRect clip) {
 		QPainter(raw).fillRect(clip, st::windowBg);
 	}, raw->lifetime());
 	raw->sizeValue(
-	) | rpl::start_with_next([=](QSize size) {
+	) | rpl::on_next([=](QSize size) {
 		const auto &st = st::historyComposeField;
 		const auto width = size.width();
 		const auto margins = (st.textMargins + st.placeholderMargins);
@@ -1269,11 +1269,11 @@ std::unique_ptr<Ui::RpWidget> PremiumRequiredSendRestriction(
 	const auto link = CreateChild<Ui::LinkButton>(
 		result.get(),
 		tr::lng_restricted_send_non_premium_more(tr::now));
-	raw->paintRequest() | rpl::start_with_next([=](QRect clip) {
+	raw->paintRequest() | rpl::on_next([=](QRect clip) {
 		QPainter(raw).fillRect(clip, st::windowBg);
 	}, raw->lifetime());
 	raw->widthValue(
-	) | rpl::start_with_next([=](int width) {
+	) | rpl::on_next([=](int width) {
 		const auto &st = st::historyComposeField;
 		const auto margins = (st.textMargins + st.placeholderMargins);
 		const auto available = width - margins.left() - margins.right();
@@ -1343,14 +1343,14 @@ std::unique_ptr<Ui::AbstractButton> FrozenWriteRestriction(
 	const auto shadow = bar ? CreateChild<PlainShadow>(raw) : nullptr;
 	const auto icon = bar ? CreateChild<RpWidget>(raw) : nullptr;
 	if (icon) {
-		icon->paintRequest() | rpl::start_with_next([=] {
+		icon->paintRequest() | rpl::on_next([=] {
 			auto p = QPainter(icon);
 			st::menuIconDisableAttention.paintInCenter(p, icon->rect());
 		}, icon->lifetime());
 		icon->show();
 	}
 
-	raw->sizeValue() | rpl::start_with_next([=](QSize size) {
+	raw->sizeValue() | rpl::on_next([=](QSize size) {
 		if (bar) {
 			const auto toggle = [&](auto &&widget, bool shown) {
 				if (widget->isHidden() == shown) {
@@ -1526,7 +1526,7 @@ void FrozenInfoBox(
 		- buttonPadding.right();
 	button->widthValue() | rpl::filter([=] {
 		return (button->widthNoMargins() != buttonWidth);
-	}) | rpl::start_with_next([=] {
+	}) | rpl::on_next([=] {
 		button->resizeToWidth(buttonWidth);
 	}, button->lifetime());
 }
