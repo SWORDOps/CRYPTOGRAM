@@ -93,7 +93,7 @@ void StripExternalLinks(TextWithEntities &text) {
 } // namespace
 
 rpl::producer<TextWithEntities> StringValue(QString text) {
-	return rpl::single(QString("%1").arg(text)) | Ui::Text::ToWithEntities();
+	return rpl::single(QString("%1").arg(text)) | rpl::map(tr::marked);
 }
 
 rpl::producer<QString> NameValue(not_null<PeerData*> peer) {

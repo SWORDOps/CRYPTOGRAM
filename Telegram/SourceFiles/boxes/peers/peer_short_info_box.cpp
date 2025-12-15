@@ -813,7 +813,7 @@ void PeerShortInfoBox::prepareRows() {
 		tr::lng_context_copy_mention(tr::now));
 	addInfoOneLine(
 		rpl::single(QString("ID")),
-		userIdValue() | Ui::Text::ToWithEntities(),
+		userIdValue() | rpl::map(tr::marked),
 		tr::lng_context_copy_text(tr::now));
 	addInfoOneLine(
 		birthdayLabel(),
