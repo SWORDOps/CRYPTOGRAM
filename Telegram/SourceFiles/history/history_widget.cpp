@@ -967,7 +967,7 @@ HistoryWidget::HistoryWidget(
 		setMembersShowAreaActive(active);
 	}, _topBar->lifetime());
 	_topBar->oldForwardSelectionRequest(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		oldForwardSelected();
 	}, _topBar->lifetime());
 	_topBar->forwardSelectionRequest(
@@ -975,11 +975,11 @@ HistoryWidget::HistoryWidget(
 		forwardSelected();
 	}, _topBar->lifetime());
 	_topBar->forwardNoQuoteSelectionRequest(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		forwardNoQuoteSelected();
 	}, _topBar->lifetime());
 	_topBar->savedMessagesSelectionRequest(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		forwardSelectedToSavedMessages();
 	}, _topBar->lifetime());
 	_topBar->deleteSelectionRequest(

@@ -1900,7 +1900,7 @@ void SessionController::reloadFiltersMenu() {
 			rpl::empty_value()
 		) | rpl::then(
 			filtersMenuChanged()
-		) | rpl::start_with_next([=] {
+		) | rpl::on_next([=] {
 			toggleFiltersMenu(true);
 			if (previousFilter) {
 				if (activeChatsFilterCurrent() != previousFilter) {

@@ -5494,7 +5494,7 @@ void HistoryInner::setupShortcuts() {
 		return Ui::AppInFocus()
 			   && Ui::InFocusChain(this)
 			   && !_controller->isLayerShown();
-	}) | rpl::start_with_next([=](not_null<Shortcuts::Request*> request) {
+	}) | rpl::on_next([=](not_null<Shortcuts::Request*> request) {
 		using Command = Shortcuts::Command;
 		request->check(Command::FastForward, 1) && request->handle([=] {
 			auto selectedState = getSelectionState();

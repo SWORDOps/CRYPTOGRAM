@@ -574,7 +574,7 @@ void TopBar::adjustColors(const std::optional<QColor> &edgeColor) {
 		}
 		_id->show();
 		setupChatId();
-		_id->widthValue() | rpl::start_with_next([=] {
+		_id->widthValue() | rpl::on_next([=] {
 			updateStatusPosition(_progress.current());
 		}, _id->lifetime());
 		_id->setTextColorOverride(shouldOverrideId

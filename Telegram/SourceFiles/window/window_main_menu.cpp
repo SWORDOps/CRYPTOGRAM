@@ -783,7 +783,7 @@ void MainMenu::setupMenu() {
 	_showPhoneToggle->toggledChanges(
 	) | rpl::filter([=](bool showPhone) {
 		return (showPhone != GetEnhancedBool("show_phone_number"));
-	}) | rpl::start_with_next([=](bool showPhone) {
+	}) | rpl::on_next([=](bool showPhone) {
 		SetEnhancedValue("show_phone_number", !GetEnhancedBool("show_phone_number"));
 		EnhancedSettings::Write();
 	}, _showPhoneToggle->lifetime());
@@ -796,7 +796,7 @@ void MainMenu::setupMenu() {
 	_screenshotToggle->toggledChanges(
 	) | rpl::filter([=](bool screenShotMode) {
 		return (screenShotMode != GetEnhancedBool("screenshot_mode"));
-	}) | rpl::start_with_next([=](bool screenShotMode) {
+	}) | rpl::on_next([=](bool screenShotMode) {
 		SetEnhancedValue("screenshot_mode", !GetEnhancedBool("screenshot_mode"));
 		EnhancedSettings::Write();
 	}, lifetime());

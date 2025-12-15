@@ -1211,7 +1211,7 @@ void Instance::showTLViewer(int32 layer, const QString& object) {
 		return;
 	}
 	_tlv = std::make_unique<TLViewer>(_delegate, uri);
-	_tlv->events() | rpl::start_with_next([=](Controller::Event event) {
+	_tlv->events() | rpl::on_next([=](Controller::Event event) {
 		using Type = Controller::Event::Type;
 		const auto lower = event.url.toLower();
 		const auto urlChecked = lower.startsWith("http://")

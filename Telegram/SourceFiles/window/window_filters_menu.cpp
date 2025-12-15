@@ -381,7 +381,7 @@ base::unique_qptr<Ui::SideBarButton> FiltersMenu::prepareButton(
 		raw->events(
 		) | rpl::filter([=](not_null<QEvent*> e) {
 			return e->type() == QEvent::ContextMenu;
-		}) | rpl::start_with_next([=] {
+		}) | rpl::on_next([=] {
 			_popupMenu = base::make_unique_q<Ui::PopupMenu>(
 				raw,
 				st::popupMenuWithIcons);;
@@ -410,7 +410,7 @@ base::unique_qptr<Ui::SideBarButton> FiltersMenu::prepareButton(
 				|| e->type() == QEvent::DragMove
 				|| e->type() == QEvent::DragLeave
 				|| e->type() == QEvent::Drop;
-		}) | rpl::start_with_next([=](not_null<QEvent*> e) {
+		}) | rpl::on_next([=](not_null<QEvent*> e) {
 			using namespace Storage;
 			if (e->type() == QEvent::DragEnter) {
 				const auto d = static_cast<QDragEnterEvent*>(e.get());

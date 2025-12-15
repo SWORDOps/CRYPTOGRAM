@@ -315,7 +315,7 @@ ChatWidget::ChatWidget(
 		confirmDeleteSelected();
 	}, _topBar->lifetime());
 	_topBar->oldForwardSelectionRequest(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		confirmOldForwardSelected();
 	}, _topBar->lifetime());
 	_topBar->forwardSelectionRequest(
@@ -323,11 +323,11 @@ ChatWidget::ChatWidget(
 		confirmForwardSelected();
 	}, _topBar->lifetime());
 	_topBar->forwardNoQuoteSelectionRequest(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		confirmForwardNoQuoteSelected();
 	}, _topBar->lifetime());
 	_topBar->savedMessagesSelectionRequest(
-	) | rpl::start_with_next([=] {
+	) | rpl::on_next([=] {
 		confirmForwardSelectedToSavedMessages();
 	}, _topBar->lifetime());
 	_topBar->clearSelectionRequest(

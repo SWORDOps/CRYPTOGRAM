@@ -141,7 +141,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("show_messages_id"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("show_messages_id", toggled);
 			EnhancedSettings::Write();
 			Core::Restart();
@@ -156,7 +156,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("show_repeater_option"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("show_repeater_option", toggled);
 			EnhancedSettings::Write();
 		}, container->lifetime());
@@ -171,7 +171,7 @@ namespace Settings {
 			)->toggledChanges(
 			) | rpl::filter([=](bool toggled) {
 				return (toggled != GetEnhancedBool("repeater_reply_to_orig_msg"));
-			}) | rpl::start_with_next([=](bool toggled) {
+			}) | rpl::on_next([=](bool toggled) {
 				SetEnhancedValue("repeater_reply_to_orig_msg", toggled);
 				EnhancedSettings::Write();
 			}, container->lifetime());
@@ -192,7 +192,7 @@ namespace Settings {
 				st::settingsButtonNoIcon
 		);
 		btn->events(
-		) | rpl::start_with_next([=](not_null<QEvent*> e) {
+		) | rpl::on_next([=](not_null<QEvent*> e) {
 			const auto event = e->type();
 			if (event == QEvent::UpdateLater) _AlwaysDeleteChanged.fire({});
 		}, container->lifetime());
@@ -209,7 +209,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("disable_cloud_draft_sync"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("disable_cloud_draft_sync", toggled);
 			EnhancedSettings::Write();
 		}, container->lifetime());
@@ -225,7 +225,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("hide_classic_fwd"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("hide_classic_fwd", toggled);
 			EnhancedSettings::Write();
 		}, container->lifetime());
@@ -239,7 +239,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("disable_link_warning"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("disable_link_warning", toggled);
 			EnhancedSettings::Write();
 		}, container->lifetime());
@@ -253,7 +253,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("disable_premium_animation"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("disable_premium_animation", toggled);
 			EnhancedSettings::Write();
 		}, container->lifetime());
@@ -267,7 +267,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("disable_global_search"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("disable_global_search", toggled);
 			EnhancedSettings::Write();
 		}, container->lifetime());
@@ -281,7 +281,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("show_group_sender_avatar"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("show_group_sender_avatar", toggled);
 			EnhancedSettings::Write();
 		}, container->lifetime());
@@ -297,7 +297,7 @@ namespace Settings {
 			)->toggledChanges(
 			) | rpl::filter([=](bool toggled) {
 				return (toggled != GetEnhancedBool("translate_to_tc"));
-			}) | rpl::start_with_next([=](bool toggled) {
+			}) | rpl::on_next([=](bool toggled) {
 				SetEnhancedValue("translate_to_tc", toggled);
 				EnhancedSettings::Write();
 			}, container->lifetime());
@@ -314,7 +314,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("show_seconds"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("show_seconds", toggled);
 			EnhancedSettings::Write();
 			QTimer::singleShot(1 * 1000, []{ Core::Restart(); });
@@ -330,7 +330,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("show_json"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("show_json", toggled);
 			EnhancedSettings::Write();
 		}, container->lifetime());
@@ -346,7 +346,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("blocked_user_spoiler_mode"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("blocked_user_spoiler_mode", toggled);
 			EnhancedSettings::Write();
 			if (toggled) {
@@ -354,7 +354,7 @@ namespace Settings {
 
 				App::wnd()->sessionController()->session().api().blockedPeers().slice() | rpl::take(
 					1
-				) | rpl::start_with_next([&](const Api::BlockedPeers::Slice &result) {
+				) | rpl::on_next([&](const Api::BlockedPeers::Slice &result) {
 					if (blockList.length() == result.total) {
 						return;
 					}
@@ -389,7 +389,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("show_emoji_button_as_text"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("show_emoji_button_as_text", toggled);
 			EnhancedSettings::Write();
 			Core::Restart();
@@ -406,7 +406,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("show_scheduled_button"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("show_scheduled_button", toggled);
 			EnhancedSettings::Write();
 		}, container->lifetime());
@@ -444,7 +444,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("auto_unmute"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("auto_unmute", toggled);
 			EnhancedSettings::Write();
 		}, container->lifetime());
@@ -466,7 +466,7 @@ namespace Settings {
 				st::settingsButtonNoIcon
 		);
 		btn->events(
-		) | rpl::start_with_next([=](not_null<QEvent*> e) {
+		) | rpl::on_next([=](not_null<QEvent*> e) {
 			const auto event = e->type();
 			if (event == QEvent::UpdateLater) _BitrateChanged.fire({});
 		}, container->lifetime());
@@ -483,7 +483,7 @@ namespace Settings {
 		)->toggledChanges(
 		) | rpl::filter([=](bool toggled) {
 			return (toggled != GetEnhancedBool("hd_video"));
-		}) | rpl::start_with_next([=](bool toggled) {
+		}) | rpl::on_next([=](bool toggled) {
 			SetEnhancedValue("hd_video", toggled);
 			Ui::Toast::Show(tr::lng_hd_video_hint(tr::now));
 			EnhancedSettings::Write();
@@ -508,7 +508,7 @@ namespace Settings {
 		)->toggledValue(
 		) | rpl::filter([](bool enabled) {
 			return (enabled != GetEnhancedBool("hide_all_chats"));
-		}) | rpl::start_with_next([=](bool enabled) {
+		}) | rpl::on_next([=](bool enabled) {
 			SetEnhancedValue("hide_all_chats", enabled);
 			EnhancedSettings::Write();
 			Core::Restart();
@@ -523,7 +523,7 @@ namespace Settings {
 		)->toggledValue(
 		) | rpl::filter([](bool enabled) {
 			return (enabled != GetEnhancedBool("replace_edit_button"));
-		}) | rpl::start_with_next([=](bool enabled) {
+		}) | rpl::on_next([=](bool enabled) {
 			SetEnhancedValue("replace_edit_button", enabled);
 			EnhancedSettings::Write();
 			controller->reloadFiltersMenu();
@@ -538,7 +538,7 @@ namespace Settings {
 		)->toggledValue(
 		) | rpl::filter([](bool enabled) {
 			return (enabled != GetEnhancedBool("skip_to_next"));
-		}) | rpl::start_with_next([=](bool enabled) {
+		}) | rpl::on_next([=](bool enabled) {
 			SetEnhancedValue("skip_to_next", enabled);
 			EnhancedSettings::Write();
 		}, container->lifetime());
@@ -554,7 +554,7 @@ namespace Settings {
 		)->toggledValue(
 		) | rpl::filter([](bool enabled) {
 			return (enabled != GetEnhancedBool("hide_counter"));
-		}) | rpl::start_with_next([=](bool enabled) {
+		}) | rpl::on_next([=](bool enabled) {
 			SetEnhancedValue("hide_counter", enabled);
 			EnhancedSettings::Write();
 		}, container->lifetime());
@@ -568,7 +568,7 @@ namespace Settings {
 		)->toggledValue(
 		) | rpl::filter([](bool enabled) {
 			return (enabled != GetEnhancedBool("hide_stories"));
-		}) | rpl::start_with_next([=](bool enabled) {
+		}) | rpl::on_next([=](bool enabled) {
 			SetEnhancedValue("hide_stories", enabled);
 			EnhancedSettings::Write();
 		}, container->lifetime());
@@ -588,7 +588,7 @@ namespace Settings {
 				st::settingsButtonNoIcon
 		);
 		btn->events(
-		) | rpl::start_with_next([=](not_null<QEvent*> e) {
+		) | rpl::on_next([=](not_null<QEvent*> e) {
 			const auto event = e->type();
 			if (event == QEvent::UpdateLater) _BitrateChanged.fire({});
 		}, container->lifetime());
