@@ -3510,7 +3510,8 @@ bool Message::hasOutLayout() const {
 			if (context() == Context::ShortcutMessages) {
 				return true;
 			}
-			return (context() == Context::SavedSublist)
+			return (context() == Context::SavedSublist
+					|| context() == Context::History)
 				&& (!forwarded->forwardOfForward()
 					? (forwarded->originalSender
 						&& forwarded->originalSender->isSelf())

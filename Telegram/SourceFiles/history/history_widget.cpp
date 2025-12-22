@@ -4133,7 +4133,7 @@ void HistoryWidget::firstLoadMessages() {
 	_firstLoadRequest = histories.sendRequest(history, type, [=](
 			Fn<void()> finish) {
 		return history->session().api().request(MTPmessages_GetHistory(
-			history->peer->input,
+			history->peer->input(),
 			MTP_int(offsetId),
 			MTP_int(offsetDate),
 			MTP_int(offset),
@@ -4191,7 +4191,7 @@ void HistoryWidget::loadMessages() {
 	_preloadRequest = histories.sendRequest(history, type, [=](
 			Fn<void()> finish) {
 		return history->session().api().request(MTPmessages_GetHistory(
-			history->peer->input,
+			history->peer->input(),
 			MTP_int(offsetId),
 			MTP_int(offsetDate),
 			MTP_int(addOffset),
@@ -4257,7 +4257,7 @@ void HistoryWidget::loadMessagesDown() {
 	_preloadDownRequest = histories.sendRequest(history, type, [=](
 			Fn<void()> finish) {
 		return history->session().api().request(MTPmessages_GetHistory(
-			history->peer->input,
+			history->peer->input(),
 			MTP_int(offsetId + 1),
 			MTP_int(offsetDate),
 			MTP_int(addOffset),
@@ -4335,7 +4335,7 @@ void HistoryWidget::delayedShowAt(
 	_delayedShowAtRequest = histories.sendRequest(history, type, [=](
 			Fn<void()> finish) {
 		return history->session().api().request(MTPmessages_GetHistory(
-			history->peer->input,
+			history->peer->input(),
 			MTP_int(offsetId),
 			MTP_int(offsetDate),
 			MTP_int(offset),
@@ -5190,7 +5190,7 @@ void HistoryWidget::checkSuggestToGigagroup() {
 		if (!controller()->isLayerShown()) {
 			group->owner().setSuggestToGigagroup(group, false);
 			group->session().api().request(MTPhelp_DismissSuggestion(
-				group->input,
+				group->input(),
 				MTP_string("convert_to_gigagroup")
 			)).send();
 			controller()->show(Box([=](not_null<Ui::GenericBox*> box) {
