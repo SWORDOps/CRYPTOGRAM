@@ -1920,7 +1920,8 @@ void Message::paintText(
 		trect.setY(trect.y() + botTop->height);
 	}
 	if (!context.clip.intersects(trect)
-		&& context.skipDrawingParts == PaintContext::SkipDrawingParts::None) {
+		&& context.skipDrawingParts == PaintContext::SkipDrawingParts::None
+		&& !context.gestureHorizontal.translation) {
 		return;
 	}
 	prepareCustomEmojiPaint(p, context, text());

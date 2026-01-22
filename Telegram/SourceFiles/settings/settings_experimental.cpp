@@ -152,6 +152,7 @@ void SetupExperimental(
 	addToggle(ChatHelpers::kOptionTabbedPanelShowOnClick);
 	addToggle(Dialogs::kOptionForumHideChatsList);
 	addToggle(Core::kOptionFractionalScalingEnabled);
+	addToggle(Core::kOptionHighDpiDownscale);
 	addToggle(Window::kOptionViewProfileInChatsListContextMenu);
 	addToggle(Dialogs::kOptionCtrlClickChatNewWindow);
 	addToggle(Info::Profile::kOptionShowPeerIdBelowAbout);
