@@ -739,6 +739,15 @@ struct ActionSuggestBirthday {
 	Birthday birthday;
 };
 
+struct ActionNoForwardsToggle {
+	bool newValue = false;
+};
+
+struct ActionNoForwardsRequest {
+	bool expired = false;
+	bool newValue = false;
+};
+
 struct ActionNewCreatorPending {
 	UserId newCreatorId = 0;
 };
@@ -801,6 +810,8 @@ struct ServiceAction {
 		ActionSuggestedPostSuccess,
 		ActionSuggestedPostRefund,
 		ActionSuggestBirthday,
+		ActionNoForwardsToggle,
+		ActionNoForwardsRequest,
 		ActionNewCreatorPending,
 		ActionChangeCreator> content;
 };
