@@ -128,6 +128,9 @@ not_null<PeerData*> SendAsPeers::ResolveChosen(
 		not_null<PeerData*> peer,
 		const std::vector<SendAsPeer> &list,
 		PeerId chosen) {
+	if (peer->amAnonymous() && list.size() == 1) {
+		return peer;
+	}
 	const auto fallback = peer->amAnonymous()
 		? peer
 		: peer->session().user();
