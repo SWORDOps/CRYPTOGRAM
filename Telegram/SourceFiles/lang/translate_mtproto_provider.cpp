@@ -8,11 +8,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/translate_mtproto_provider.h"
 
 #include "api/api_text_entities.h"
+#include "boxes/GoogleAppTranslator.h"
 #include "data/data_peer.h"
 #include "data/data_session.h"
 #include "main/main_session.h"
 #include "mtproto/sender.h"
 #include "spellcheck/platform/platform_language.h"
+#include "ui/text/text_utilities.h"
 
 namespace Ui {
 namespace {
@@ -88,27 +90,42 @@ public:
 					&& (request.msgId != 0);
 			});
 		if (allWithIds) {
-			const auto peer = _session->data().peerLoaded(firstPeer);
-			if (!peer) {
+			//const auto peer = _session->data().peerLoaded(firstPeer);
+			//if (!peer) {
+			//	failAll();
+			//	return;
+			//}
+			//auto ids = QVector<MTPint>();
+			//ids.reserve(requests.size());
+			//for (const auto &request : requests) {
+			//	ids.push_back(MTP_int(MsgId(request.msgId)));
+			//}
+			//_api.request(MTPmessages_TranslateText(
+			//	MTP_flags(Flag::f_peer | Flag::f_id),
+			//	peer->input(),
+			//	MTP_vector<MTPint>(ids),
+			//	MTPVector<MTPTextWithEntities>(),
+			//	MTP_string(to.twoLetterCode())
+			//)).done([=](const MTPmessages_TranslatedText &result) {
+			//	doneFromList(result.data().vresult().v);
+			//}).fail([=](const MTP::Error &) {
+			//	failAll();
+			//}).send();
+			auto toTC = GetEnhancedBool("translate_to_tc"); // Override translate setting :)
+
+			try {
+				auto result = GoogleAppTranslator::instance()->translate(requests[0].text.text, "auto", toTC ? "zh-Hant" : to.twoLetterCode());
+				auto text = QVector<MTPTextWithEntities>();
+				text.push_back(MTP_textWithEntities(
+					MTP_string(result.translation),
+					Api::EntitiesToMTP(
+						_session,
+						TextWithEntities().entities,
+						Api::ConvertOption::SkipLocal)));
+				doneFromList(text);
+			} catch (...) {
 				failAll();
-				return;
 			}
-			auto ids = QVector<MTPint>();
-			ids.reserve(requests.size());
-			for (const auto &request : requests) {
-				ids.push_back(MTP_int(MsgId(request.msgId)));
-			}
-			_api.request(MTPmessages_TranslateText(
-				MTP_flags(Flag::f_peer | Flag::f_id),
-				peer->input(),
-				MTP_vector<MTPint>(ids),
-				MTPVector<MTPTextWithEntities>(),
-				MTP_string(to.twoLetterCode())
-			)).done([=](const MTPmessages_TranslatedText &result) {
-				doneFromList(result.data().vresult().v);
-			}).fail([=](const MTP::Error &) {
-				failAll();
-			}).send();
 			return;
 		}
 
@@ -126,27 +143,44 @@ public:
 			return;
 		}
 
-		auto text = QVector<MTPTextWithEntities>();
-		text.reserve(requests.size());
-		for (const auto &request : requests) {
+		//auto text = QVector<MTPTextWithEntities>();
+		//text.reserve(requests.size());
+		//for (const auto &request : requests) {
+		//	text.push_back(MTP_textWithEntities(
+		//		MTP_string(request.text.text),
+		//		Api::EntitiesToMTP(
+		//			_session,
+		//			request.text.entities,
+		//			Api::ConvertOption::SkipLocal)));
+		//}
+		//_api.request(MTPmessages_TranslateText(
+		//	MTP_flags(Flag::f_text),
+		//	MTP_inputPeerEmpty(),
+		//	MTPVector<MTPint>(),
+		//	MTP_vector<MTPTextWithEntities>(text),
+		//	MTP_string(to.twoLetterCode())
+		//)).done([=](const MTPmessages_TranslatedText &result) {
+		//	doneFromList(result.data().vresult().v);
+		//}).fail([=](const MTP::Error &) {
+		//	failAll();
+		//}).send();
+
+		auto toTC = GetEnhancedBool("translate_to_tc"); // Override translate setting :)
+
+		try {
+			auto result = GoogleAppTranslator::instance()->translate(requests[0].text.text, "auto", toTC ? "zh-Hant" : to.twoLetterCode());
+			auto text = QVector<MTPTextWithEntities>();
 			text.push_back(MTP_textWithEntities(
-				MTP_string(request.text.text),
+				MTP_string(result.translation),
 				Api::EntitiesToMTP(
-					_session,
-					request.text.entities,
-					Api::ConvertOption::SkipLocal)));
+				_session,
+				TextWithEntities().entities,
+				Api::ConvertOption::SkipLocal)));
+			doneFromList(text);
 		}
-		_api.request(MTPmessages_TranslateText(
-			MTP_flags(Flag::f_text),
-			MTP_inputPeerEmpty(),
-			MTPVector<MTPint>(),
-			MTP_vector<MTPTextWithEntities>(text),
-			MTP_string(to.twoLetterCode())
-		)).done([=](const MTPmessages_TranslatedText &result) {
-			doneFromList(result.data().vresult().v);
-		}).fail([=](const MTP::Error &) {
+		catch (...) {
 			failAll();
-		}).send();
+		}
 	}
 
 private:
