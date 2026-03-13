@@ -50,6 +50,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtCore/QJsonDocument>
 #include <QtGui/QGuiApplication>
 
+#include "ui/chat/chat_style.h"
+
 namespace Settings {
 namespace {
 
