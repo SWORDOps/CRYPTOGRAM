@@ -52,7 +52,6 @@ constexpr auto kRecompressAfterBpp = 4;
 
 using Ui::ValidateThumbDimensions;
 
-	.defaultValue = true,
 struct PreparedFileThumbnail {
 	uint64 id = 0;
 	QString name;

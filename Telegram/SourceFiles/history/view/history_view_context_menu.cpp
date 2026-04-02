@@ -1814,6 +1814,7 @@ base::unique_qptr<Ui::PopupMenu> FillContextMenu(
 		if (poll && !poll->closed() && poll->hideResultsUntilClose()) {
 			InsertPollHiddenResultsLabel(result.get());
 		}
+	}
 
 	if (hasPollOption) {
 		const auto raw = result.get();
