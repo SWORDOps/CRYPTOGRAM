@@ -719,6 +719,14 @@ struct ActionTodoAppendTasks {
 	std::vector<TodoListItem> items;
 };
 
+struct ActionPollAppendAnswer {
+	Utf8String option;
+};
+
+struct ActionPollDeleteAnswer {
+	Utf8String option;
+};
+
 struct ActionSuggestedPostApproval {
 	Utf8String rejectComment;
 	TimeId scheduleDate = 0;
@@ -754,6 +762,10 @@ struct ActionNewCreatorPending {
 
 struct ActionChangeCreator {
 	UserId newCreatorId = 0;
+};
+
+struct ActionManagedBotCreated {
+	UserId botId = 0;
 };
 
 struct ServiceAction {
@@ -806,6 +818,8 @@ struct ServiceAction {
 		ActionPaidMessagesPrice,
 		ActionTodoCompletions,
 		ActionTodoAppendTasks,
+		ActionPollAppendAnswer,
+		ActionPollDeleteAnswer,
 		ActionSuggestedPostApproval,
 		ActionSuggestedPostSuccess,
 		ActionSuggestedPostRefund,
@@ -813,7 +827,8 @@ struct ServiceAction {
 		ActionNoForwardsToggle,
 		ActionNoForwardsRequest,
 		ActionNewCreatorPending,
-		ActionChangeCreator> content;
+		ActionChangeCreator,
+		ActionManagedBotCreated> content;
 };
 
 ServiceAction ParseServiceAction(

@@ -460,8 +460,8 @@ void ChannelData::applyEditAdmin(
 			setMembersCount(membersCount() + 1);
 			if (user->isBot() && !mgInfo->bots.contains(user)) {
 				mgInfo->bots.insert(user);
-				if (mgInfo->botStatus != 0 && mgInfo->botStatus < 2) {
-					mgInfo->botStatus = 2;
+				if (mgInfo->botStatus == Data::BotStatus::NoBots) {
+					mgInfo->botStatus = Data::BotStatus::HasBots;
 				}
 			}
 		}
@@ -578,8 +578,8 @@ void ChannelData::applyEditBanned(
 				setKickedCount(kickedCount() + 1);
 				if (mgInfo->bots.contains(user)) {
 					mgInfo->bots.remove(user);
-					if (mgInfo->bots.empty() && mgInfo->botStatus > 0) {
-						mgInfo->botStatus = -1;
+					if (mgInfo->bots.empty() && mgInfo->botStatus == Data::BotStatus::HasBots) {
+						mgInfo->botStatus = Data::BotStatus::NoBots;
 					}
 				}
 			}
