@@ -50,7 +50,7 @@ public:
 			const LanguageId &to,
 			Fn<void(int, TranslateProviderResult)> doneOne,
 			Fn<void()> doneAll) override {
-		using Flag = MTPmessages_TranslateText::Flag;
+		// using Flag = MTPmessages_TranslateText::Flag;
 		if (requests.empty()) {
 			doneAll();
 			return;
