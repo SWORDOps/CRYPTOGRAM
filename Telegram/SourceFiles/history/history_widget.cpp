@@ -6334,6 +6334,9 @@ bool HistoryWidget::fieldOrDisabledShown() const {
 }
 
 bool HistoryWidget::hasEnoughLinesForAi() const {
+	if (true) {
+		return false;
+	}
 	if (!_history
 		|| _voiceRecordBar->isActive()
 		|| session().appConfig().aiComposeStyles().empty()) {
