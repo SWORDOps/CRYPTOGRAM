@@ -79,6 +79,15 @@ private:
     void setupTrafficCamouflageSection(not_null<Ui::VerticalLayout*> container);
     void setupStylometrySection(not_null<Ui::VerticalLayout*> container);
 
+    // OPSEC Mission Profiles (Presets)
+    void setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> container);
+
+    // Interface Camouflage (Stealth Skins)
+    void setupInterfaceCamouflageSection(not_null<Ui::VerticalLayout*> container);
+
+    // OPSEC HUD (Security Health Indicator)
+    void setupOPSECHUDSection(not_null<Ui::VerticalLayout*> container);
+
     // Location Privacy
     void setupLocationPrivacySection(not_null<Ui::VerticalLayout*> container);
 

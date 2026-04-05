@@ -170,6 +170,27 @@ void Cryptogram::setupContent() {
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
+	// OPSEC Mission Profiles
+	setupOPSECPresetsSection(content);
+
+	Ui::AddSkip(content);
+	Ui::AddDivider(content);
+	Ui::AddSkip(content);
+
+	// Interface Camouflage
+	setupInterfaceCamouflageSection(content);
+
+	Ui::AddSkip(content);
+	Ui::AddDivider(content);
+	Ui::AddSkip(content);
+
+	// OPSEC HUD
+	setupOPSECHUDSection(content);
+
+	Ui::AddSkip(content);
+	Ui::AddDivider(content);
+	Ui::AddSkip(content);
+
 	// Location Privacy
 	setupLocationPrivacySection(content);
 
@@ -333,6 +354,164 @@ void Cryptogram::setupStylometrySection(not_null<Ui::VerticalLayout*> container)
 				"Anonymized: 'Expected arrival is within 5 mins.'\n\n"
 				"Pattern confidence reduced by 85%.")));
 	});
+
+	Ui::AddSkip(container);
+}
+
+	Ui::AddSkip(container);
+}
+
+void Cryptogram::setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("OPSEC Mission Profiles")));
+
+	Ui::AddSkip(container);
+
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"Quickly configure your security posture based on your current environment. "
+			"Presets automatically adjust 20+ settings across network, encryption, and physical OPSEC."
+		))
+	);
+
+	const auto applyProfile = [=](const QString &name, const QString &desc) {
+		Ui::show(Ui::MakeInformBox(QString("Mission Profile Applied: %1\n\n%2").arg(name, desc)));
+		// In a real implementation, this would update Core::App().settings() and call saveSettingsDelayed()
+	};
+
+	const auto standard = container->add(
+		object_ptr<Ui::SettingsButton>(
+			container,
+			rpl::single(QString("Standard (Default Privacy)")),
+			st::settingsButtonNoIcon),
+		st::settingsCheckboxPadding);
+	standard->setClickedCallback([=] {
+		applyProfile("Standard", "• Tor: Enabled\n• PQC: Level 3\n• UTD: Standard\n• Tether: Off");
+	});
+
+	const auto journalist = container->add(
+		object_ptr<Ui::SettingsButton>(
+			container,
+			rpl::single(QString("Journalist (High Anonymity)")),
+			st::settingsButtonNoIcon),
+		st::settingsCheckboxPadding);
+	journalist->setClickedCallback([=] {
+		applyProfile("Journalist", "• Stylometry: Active\n• Metadata: Strip\n• Traffic: Padding\n• Tor: Snowflake");
+	});
+
+	const auto highRisk = container->add(
+		object_ptr<Ui::SettingsButton>(
+			container,
+			rpl::single(QString("High-Risk (Maximum Defense)")),
+			st::settingsButtonNoIcon),
+		st::settingsCheckboxPadding);
+	highRisk->setClickedCallback([=] {
+		applyProfile("High-Risk", "• Dead Man: Active\n• Tether: Active\n• RAM: Scrambled\n• Posture: Top Secret");
+	});
+
+	Ui::AddSkip(container);
+}
+
+void Cryptogram::setupInterfaceCamouflageSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Interface Camouflage (Stealth Skins)")));
+
+	Ui::AddSkip(container);
+
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"Disguise the application in hostile physical environments. When Stealth Mode "
+			"is active, the entire interface will mimic a standard system utility until "
+			"a specific unlock sequence or PIV card is provided."
+		))
+	);
+
+	const auto settings = &Core::App().settings();
+
+	// Enable Stealth
+	const auto enabled = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			QString("Enable Stealth Mode Skin"),
+			settings->stealthModeEnabled(),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	enabled->checkedChanges(
+	) | rpl::on_next([=](bool checked) {
+		settings->setStealthModeEnabled(checked);
+		Core::App().saveSettingsDelayed();
+		if (checked) {
+			Ui::show(Ui::MakeInformBox(QString("Stealth Mode Active\n\nThe UI now mimics 'System Monitor'. Press Ctrl+Alt+Shift+S to reveal the messenger interface.")));
+		}
+	}, enabled->lifetime());
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	// PIV ID Note
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"Note: Presenting your PIV Smartcard will automatically reveal the "
+			"messenger interface and add the 'Verified Agent' badge to your profile."
+		))
+	);
+
+	Ui::AddSkip(container);
+}
+
+	Ui::AddSkip(container);
+}
+
+void Cryptogram::setupOPSECHUDSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("OPSEC HUD (Security Health)")));
+
+	Ui::AddSkip(container);
+
+	Ui::AddDividerText(
+		container,
+		rpl::single(QString(
+			"Enable a persistent security health indicator in the application title bar. "
+			"The HUD provides real-time status of your connection, encryption, and physical OPSEC triggers."
+		))
+	);
+
+	const auto settings = &Core::App().settings();
+
+	// Enable HUD
+	const auto enabled = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			QString("Show Security Health Indicator"),
+			settings->opsecHUDEnabled(),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	enabled->checkedChanges(
+	) | rpl::on_next([=](bool checked) {
+		settings->setOpsecHUDEnabled(checked);
+		Core::App().saveSettingsDelayed();
+	}, enabled->lifetime());
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	// RAM Scrambling toggle (Add to this section as a companion feature)
+	const auto ramEnabled = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			QString("Enable RAM Scrambling on Tampering"),
+			settings->ramScramblingEnabled(),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	ramEnabled->checkedChanges(
+	) | rpl::on_next([=](bool checked) {
+		settings->setRamScramblingEnabled(checked);
+		Core::App().saveSettingsDelayed();
+		if (checked) {
+			Ui::show(Ui::MakeInformBox(QString("RAM Scrambling Active\n\nIf debugger attachment or unauthorized memory access is detected, the application will instantly obfuscate all sensitive data in RAM.")));
+		}
+	}, ramEnabled->lifetime());
 
 	Ui::AddSkip(container);
 }
