@@ -392,8 +392,6 @@ historyInfoToast: Toast(defaultToast) {
 	minWidth: msgMinWidth;
 	maxWidth: 380px;
 	padding: margins(54px, 13px, 19px, 12px);
-	icon: icon {{ "toast_info", toastFg }};
-	iconPosition: point(13px, 13px);
 }
 
 bubbleRadiusSmall: 6px;
@@ -1145,12 +1143,6 @@ previewMenu: PopupMenu(defaultPopupMenu) {
 	}
 	maxHeight: 420px;
 	radius: boxRadius;
-	shadow: roundShadowRadius8px;
-	boxShadow: boxRoundShadow;
-	animation: PanelAnimation(defaultPanelAnimation) {
-		shadow: roundShadowRadius8px;
-	boxShadow: boxRoundShadow;
-	}
 }
 previewTop: PeerListItem(defaultPeerListItem) {
 	height: 52px;

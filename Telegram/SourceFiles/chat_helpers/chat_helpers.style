@@ -408,8 +408,6 @@ emojiTabs: defaultTabsSlider;
 emojiCategoryIconTop: 6px;
 emojiPanAnimation: PanelAnimation(defaultPanelAnimation) {
 	fadeBg: emojiPanBg;
-	shadow: roundShadowRadius8px;
-	boxShadow: boxRoundShadow;
 }
 emojiPanWidth: 345px;
 emojiPanMinHeight: 278px;
@@ -818,12 +816,12 @@ reactPanelScrollRounded: ScrollArea(emojiScroll) {
 }
 selfForwardsTaggerStripSkip: 26px;
 selfForwardsTaggerIcon: size(32px, 32px);
+selfForwardsTaggerIconPosition: point(15px, 6px);
 selfForwardsTaggerToast: Toast(defaultToast) {
 	minWidth: 160px;
 	maxWidth: 380px;
 	radius: 9px;
 	padding: margins(54px, 12px, 19px, 12px);
-	iconPosition: point(15px, 6px);
 }
 
 choosePeerGroupIcon: icon {{ "info/edit/create_group", lightButtonFg }};

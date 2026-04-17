@@ -533,16 +533,6 @@ callTitle: WindowTitle(defaultWindowTitle) {
 	}
 	closeIconActive: callTitleCloseIcon;
 	closeIconActiveOver: callTitleCloseIconOver;
-
-	// Dummy values.
-	top: IconButton(callTitleButton) {
-	}
-	topIconActive: callTitleMinimizeIcon;
-	topIconActiveOver: callTitleMinimizeIcon;
-	top2Icon: callTitleMinimizeIcon;
-	top2IconOver: callTitleMinimizeIcon;
-	top2IconActive: callTitleMinimizeIcon;
-	top2IconActiveOver: callTitleMinimizeIcon;
 }
 callTitleShadowRight: icon {{ "calls/calls_shadow_controls", windowShadowFg }};
 callTitleShadowLeft: icon {{ "calls/calls_shadow_controls-flip_horizontal", windowShadowFg }};
@@ -591,15 +581,12 @@ groupCallMenuShadow: Shadow(defaultEmptyShadow) {
 }
 groupCallPanelAnimation: PanelAnimation(defaultPanelAnimation) {
 	fadeBg: groupCallMenuBg;
-	shadow: groupCallMenuShadow;
 }
 groupCallPopupMenu: PopupMenu(defaultPopupMenu) {
-	shadow: groupCallMenuShadow;
 	menu: groupCallMenu;
 	animation: groupCallPanelAnimation;
 }
 groupCallPopupMenuWithIcons: PopupMenu(popupMenuWithIcons) {
-	shadow: groupCallMenuShadow;
 	menu: Menu(groupCallMenu, menuWithIcons) {
 		arrow: icon {{ "menu/submenu_arrow", groupCallMemberNotJoinedStatus }};
 	}
@@ -676,7 +663,6 @@ groupCallRecordingTimerPadding: margins(0px, 4px, 0px, 4px);
 groupCallRecordingTimerFont: font(12px);
 
 groupCallInnerDropdown: InnerDropdown(defaultInnerDropdown) {
-	shadow: groupCallMenuShadow;
 	animation: groupCallPanelAnimation;
 	bg: groupCallMenuBg;
 	scroll: defaultSolidScroll;
@@ -1236,16 +1222,6 @@ groupCallTitle: WindowTitle(defaultWindowTitle) {
 	}
 	closeIconActive: groupCallTitleCloseIcon;
 	closeIconActiveOver: groupCallTitleCloseIconOver;
-
-	// Dummy values.
-	top: IconButton(callTitleButton) {
-	}
-	topIconActive: callTitleMinimizeIcon;
-	topIconActiveOver: callTitleMinimizeIcon;
-	top2Icon: callTitleMinimizeIcon;
-	top2IconOver: callTitleMinimizeIcon;
-	top2IconActive: callTitleMinimizeIcon;
-	top2IconActiveOver: callTitleMinimizeIcon;
 }
 groupCallPinOnTop: IconButton(groupCallTitleButton) {
 	icon: icon{{ "calls/navbar_pin", groupCallMemberNotJoinedStatus }};

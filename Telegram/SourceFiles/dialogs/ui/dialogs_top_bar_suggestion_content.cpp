@@ -124,8 +124,6 @@ not_null<Ui::SlideWrap<Ui::VerticalLayout>*> CreateUnconfirmedAuthContent(
 		buttons,
 		tr::lng_unconfirmed_auth_deny(),
 		st::dialogsUnconfirmedAuthButtonNo);
-	yes->setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
-	no->setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
 	yes->setClickedCallback([=] {
 		wrap->toggle(false, anim::type::normal);
 		base::call_delayed(st::universalDuration, wrap, [=] {

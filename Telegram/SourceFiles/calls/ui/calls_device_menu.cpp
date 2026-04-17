@@ -25,7 +25,7 @@ namespace {
 class Subsection final : public Ui::Menu::ItemBase {
 public:
 	Subsection(
-		not_null<RpWidget*> parent,
+		not_null<Ui::Menu::Menu*> parent,
 		const style::Menu &st,
 		const QString &text);
 
@@ -44,7 +44,7 @@ private:
 class Selector final : public Ui::Menu::ItemBase {
 public:
 	Selector(
-		not_null<RpWidget*> parent,
+		not_null<Ui::Menu::Menu*> parent,
 		const style::Menu &st,
 		rpl::producer<std::vector<Webrtc::DeviceInfo>> devices,
 		rpl::producer<Webrtc::DeviceResolvedId> chosen,

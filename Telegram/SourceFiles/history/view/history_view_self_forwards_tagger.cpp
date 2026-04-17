@@ -261,7 +261,7 @@ void SelfForwardsTagger::createLottieIcon(
 	});
 	const auto icon = state->lottieIcon.get();
 	lottieWidget->resize(st::selfForwardsTaggerIcon);
-	lottieWidget->move(st::selfForwardsTaggerToast.iconPosition);
+	lottieWidget->move(st::selfForwardsTaggerIconPosition);
 	lottieWidget->show();
 	lottieWidget->raise();
 	icon->animate(

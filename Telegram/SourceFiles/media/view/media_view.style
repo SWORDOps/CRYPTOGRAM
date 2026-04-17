@@ -172,10 +172,8 @@ mediaviewMenuShadow: Shadow(defaultEmptyShadow) {
 }
 mediaviewPanelAnimation: PanelAnimation(defaultPanelAnimation) {
 	fadeBg: groupCallMenuBg;
-	shadow: mediaviewMenuShadow;
 }
 mediaviewPopupMenu: PopupMenu(defaultPopupMenu) {
-	shadow: mediaviewMenuShadow;
 	menu: mediaviewMenu;
 	animation: mediaviewPanelAnimation;
 }
@@ -185,7 +183,6 @@ mediaviewDropdownMenu: DropdownMenu(defaultDropdownMenu) {
 		bg: groupCallMenuBg;
 		animation: mediaviewPanelAnimation;
 		scrollPadding: margins(0px, 8px, 0px, 8px);
-		shadow: mediaviewMenuShadow;
 	}
 }
 
@@ -293,12 +290,6 @@ mediaviewTitle: WindowTitle(defaultWindowTitle) {
 	}
 	closeIconActive: mediaviewTitleClose;
 	closeIconActiveOver: mediaviewTitleClose;
-	topIconActive: mediaviewTitleMinimize;
-	topIconActiveOver: mediaviewTitleMinimize;
-	top2Icon: mediaviewTitleMinimize;
-	top2IconOver: mediaviewTitleMinimize;
-	top2IconActive: mediaviewTitleMinimize;
-	top2IconActiveOver: mediaviewTitleMinimize;
 }
 
 mediaviewTitleButtonMac: icon{
@@ -530,7 +521,6 @@ storiesMenu: Menu(defaultMenu) {
 storiesMenuShadow: mediaviewMenuShadow;
 storiesMenuAnimation: mediaviewPanelAnimation;
 storiesPopupMenu: PopupMenu(defaultPopupMenu) {
-	shadow: storiesMenuShadow;
 	menu: storiesMenu;
 	animation: storiesMenuAnimation;
 }

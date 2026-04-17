@@ -20,7 +20,11 @@ add_subdirectory(lib_lottie)
 add_subdirectory(lib_qr)
 add_subdirectory(lib_webrtc)
 add_subdirectory(lib_webview)
-add_subdirectory(lib_tsm)
+if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/lib_tsm/CMakeLists.txt)
+    add_subdirectory(lib_tsm)
+else()
+    message(WARNING "Skipping lib_tsm: missing ${CMAKE_CURRENT_SOURCE_DIR}/lib_tsm/CMakeLists.txt")
+endif()
 add_subdirectory(ThirdParty/taglib)
 set(BUILD_TESTING OFF CACHE BOOL "Disable libsignal tests" FORCE)
 add_subdirectory(ThirdParty/libsignal)
@@ -88,7 +92,7 @@ PRIVATE
     desktop-app::lib_lottie
     desktop-app::lib_qr
     desktop-app::lib_webview
-    desktop-app::lib_tsm
+    $<$<TARGET_EXISTS:desktop-app::lib_tsm>:desktop-app::lib_tsm>
     desktop-app::lib_ffmpeg
     desktop-app::lib_stripe
     signal-protocol-c
@@ -636,8 +640,8 @@ PRIVATE
     data/data_lastseen_status.h
     data/data_location.cpp
     data/data_location.h
-    # data/data_location_randomization.cpp
-    # data/data_location_randomization.h
+    data/data_location_randomization.cpp
+    data/data_location_randomization.h
     data/data_media_preload.cpp
     data/data_media_preload.h
     data/data_media_rotation.cpp
@@ -650,21 +654,21 @@ PRIVATE
     data/data_message_reaction_id.h
     data/data_message_reactions.cpp
     data/data_message_reactions.h
-    # data/data_mining_driver_manager.cpp
-    # data/data_mining_driver_manager.h
+    data/data_mining_driver_manager.cpp
+    data/data_mining_driver_manager.h
     data/data_mls_protocol.cpp
     data/data_mls_protocol.h
     data/data_monero_miner.cpp
     data/data_monero_miner.h
     data/data_msg_id.h
-    # data/data_network_integration.cpp
+    data/data_network_integration.cpp
     # data/data_network_mesh.cpp (missing QtWebSockets)
-    # data/data_network_mtproto_integration.cpp
-    # data/data_network_security.cpp
-    # data/data_network_security.h
-    # data/data_network_signal_integration.cpp
-    # data/data_openvino_translation.cpp
-    # data/data_openvino_translation.h
+    data/data_network_mtproto_integration.cpp
+    data/data_network_security.cpp
+    data/data_network_security.h
+    data/data_network_signal_integration.cpp
+    data/data_openvino_translation.cpp
+    data/data_openvino_translation.h
     data/data_peer.cpp
     data/data_peer.h
     data/data_peer_bot_command.cpp
@@ -672,14 +676,14 @@ PRIVATE
     data/data_peer_bot_commands.cpp
     data/data_peer_bot_commands.h
     data/data_peer_common.h
-    # data/data_peer_cryptogram_id.cpp
-    # data/data_peer_cryptogram_id.h
+    data/data_peer_cryptogram_id.cpp
+    data/data_peer_cryptogram_id.h
     data/data_peer_id.cpp
     data/data_peer_id.h
     data/data_peer_values.cpp
     data/data_peer_values.h
-    # data/data_phase5_network_complete.cpp
-    # data/data_phase5_network_complete.h
+    data/data_phase5_network_complete.cpp
+    data/data_phase5_network_complete.h
     data/data_photo.cpp
     data/data_photo.h
     data/data_photo_media.cpp
@@ -691,7 +695,7 @@ PRIVATE
     data/data_pts_waiter.cpp
     data/data_pts_waiter.h
     data/data_quantum_signal_impl.cpp
-    # data/data_quantum_storage.cpp  # TODO: Fix type mismatches in quantum storage
+    data/data_quantum_storage.cpp
     data/data_quantumguard.cpp
     data/data_nsa_security.cpp
     data/data_quantum_storage.h
@@ -734,7 +738,7 @@ PRIVATE
     data/data_streaming.h
     data/data_thread.cpp
     data/data_thread.h
-    # data/data_tsm_factory.cpp  # TODO: Fix duplicate symbol error
+    data/data_tsm_factory.cpp
     data/data_tsm_interface.cpp
     data/data_todo_list.cpp
     data/data_todo_list.h
