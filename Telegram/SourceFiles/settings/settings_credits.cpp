@@ -510,7 +510,7 @@ void Credits::setupContent() {
 						lt_emoji,
 						rpl::single(Ui::Text::SingleCustomEmoji(u"+"_q)),
 						Ui::Text::WithEntities)));
-		button->setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
+		button->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
 		const auto show = _controller->uiShow();
 		if (isCurrency) {
 			const auto url = tr::lng_suggest_low_ton_fragment_url(tr::now);

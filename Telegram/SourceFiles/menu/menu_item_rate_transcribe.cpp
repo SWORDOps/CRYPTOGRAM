@@ -31,11 +31,11 @@ RateTranscribe::RateTranscribe(
 	not_null<Ui::PopupMenu*> parent,
 	const style::Menu &st,
 	Fn<void(bool)> rate)
-: Ui::Menu::ItemBase(parent, st)
+: Ui::Menu::ItemBase(parent->menu(), st)
 , _dummyAction(Ui::CreateChild<QAction>(this)) {
 	setAcceptBoth(true);
 
-	initResizeHook(parent->sizeValue());
+	fitToMenuWidth();
 
 	enableMouseSelecting();
 

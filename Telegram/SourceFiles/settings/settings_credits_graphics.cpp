@@ -3141,7 +3141,7 @@ void AddWithdrawalWidget(
 		tr::lng_bot_earn_balance_button_buy_ads(),
 		stButton);
 	buttonCredits->setTextTransform(
-		Ui::RoundButton::TextTransform::NoTransform);
+		Ui::RoundButtonTextTransform::NoTransform);
 
 	Ui::ToggleChildrenVisibility(buttonsContainer, true);
 

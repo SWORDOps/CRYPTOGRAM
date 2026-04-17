@@ -605,7 +605,7 @@ base::options::toggle ShowChannelJoinedBelowAbout({
 		labelWrap,
 		std::move(linkText),
 		st::defaultTableSmallButton);
-	link->setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
+	link->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
 	link->setClickedCallback([=] {
 		state->myTimezone = !state->myTimezone.current();
 		state->expanded = true;
@@ -2139,7 +2139,7 @@ void DetailsFiller::setupMainApp() {
 			st::infoOpenApp),
 		st::infoOpenAppMargin,
 		style::al_justify);
-	button->setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
+	button->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
 
 	const auto user = _peer->asUser();
 	const auto controller = _controller->parentController();

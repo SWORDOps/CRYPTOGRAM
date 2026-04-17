@@ -178,8 +178,8 @@ FilterRowButton::FilterRowButton(
 , _restore(this, tr::lng_filters_restore(), st::stickersUndoRemove)
 , _add(this, tr::lng_filters_recommended_add(), st::stickersTrendingAdd)
 , _state(description.isEmpty() ? State::Normal : State::Suggested) {
-	_restore.setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
-	_add.setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
+	_restore.setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
+	_add.setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
 	setup(filter, description.isEmpty()
 		? ComputeCountString(session, filter)
 		: description);

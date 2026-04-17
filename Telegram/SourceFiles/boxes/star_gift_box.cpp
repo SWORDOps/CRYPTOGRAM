@@ -1049,16 +1049,16 @@ struct ResaleTabs {
 			modifier(now);
 			state->filter = now;
 		};
-		const auto actionWithIcon = [=](
-				QString text,
-				Fn<void()> callback,
-				not_null<const style::icon*> icon,
-				bool checked = false) {
-			auto action = base::make_unique_q<Ui::GiftResaleFilterAction>(
-				menu,
-				menu->st().menu,
-				TextWithEntities{ text },
-				Ui::Text::MarkedContext(),
+			const auto actionWithIcon = [=](
+					QString text,
+					Fn<void()> callback,
+					not_null<const style::icon*> icon,
+					bool checked = false) {
+				auto action = base::make_unique_q<Ui::GiftResaleFilterAction>(
+					menu->menu(),
+					menu->st().menu,
+					TextWithEntities{ text },
+					Ui::Text::MarkedContext(),
 				QString(),
 				icon);
 			action->setChecked(checked);
@@ -1073,16 +1073,16 @@ struct ResaleTabs {
 				? std::make_unique<Ui::GiftResaleColorEmoji>(data)
 				: original(data, context);
 		};
-		const auto actionWithEmoji = [=](
-				TextWithEntities text,
-				Fn<void()> callback,
-				QString data,
-				bool checked) {
-			auto action = base::make_unique_q<Ui::GiftResaleFilterAction>(
-				menu,
-				menu->st().menu,
-				std::move(text),
-				context,
+			const auto actionWithEmoji = [=](
+					TextWithEntities text,
+					Fn<void()> callback,
+					QString data,
+					bool checked) {
+				auto action = base::make_unique_q<Ui::GiftResaleFilterAction>(
+					menu->menu(),
+					menu->st().menu,
+					std::move(text),
+					context,
 				data,
 				nullptr);
 			action->setChecked(checked);

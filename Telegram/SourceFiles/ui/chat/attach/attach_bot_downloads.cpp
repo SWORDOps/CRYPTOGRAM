@@ -23,7 +23,7 @@ namespace {
 class Action final : public Menu::ItemBase {
 public:
 	Action(
-		not_null<RpWidget*> parent,
+		not_null<PopupMenu*> parent,
 		const DownloadsEntry &entry,
 		Fn<void(DownloadsAction)> callback);
 
@@ -57,10 +57,10 @@ private:
 };
 
 Action::Action(
-	not_null<RpWidget*> parent,
+	not_null<PopupMenu*> parent,
 	const DownloadsEntry &entry,
 	Fn<void(DownloadsAction)> callback)
-: ItemBase(parent, st::defaultMenu)
+: ItemBase(parent->menu(), st::defaultMenu)
 , _dummyAction(new QAction(parent))
 , _progress(this, st::botDownloadProgress)
 , _cancel(this, st::botDownloadCancel)
@@ -69,8 +69,8 @@ Action::Action(
 	+ st::ttlItemTimerFont->height
 	+ st::ttlItemPadding.bottom()) {
 	setAcceptBoth(true);
-	initResizeHook(parent->sizeValue());
-	setClickedCallback([=] {
+	fitToMenuWidth();
+	setActionTriggered([=] {
 		if (isEnabled()) {
 			callback(DownloadsAction::Open);
 		}

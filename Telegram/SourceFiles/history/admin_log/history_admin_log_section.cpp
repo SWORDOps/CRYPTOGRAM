@@ -127,7 +127,7 @@ FixedBar::FixedBar(
 	_search->setClickedCallback([=] { showSearch(); });
 	_cancel->setClickedCallback([=] { cancelSearch(); });
 	_field->hide();
-	_filter->setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
+	_filter->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
 	_field->cancelled(
 	) | rpl::on_next([=] {
 		cancelSearch();
