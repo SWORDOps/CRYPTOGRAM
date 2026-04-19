@@ -605,8 +605,7 @@ void PaintRow(
 		|| (supportMode
 			&& entry->session().supportHelper().isOccupiedBySomeone(history))) {
 		if (!promoted) {
-			const auto dateString = Ui::FormatDialogsDate(date, GetEnhancedBool("show_seconds"));
-			PaintDialogDate(p, entry, fakeRow, dateString, rectForName, context);
+			PaintDialogDate(p, entry, fakeRow, date, rectForName, context);
 		}
 
 		auto availableWidth = namewidth;
@@ -737,8 +736,7 @@ void PaintRow(
 		}
 	} else if (!item->isEmpty()) {
 		if ((thread || sublist) && !promoted) {
-			const auto dateString = Ui::FormatDialogsDate(date, GetEnhancedBool("show_seconds"));
-			PaintDialogDate(p, entry, fakeRow, dateString, rectForName, context);
+			PaintDialogDate(p, entry, fakeRow, date, rectForName, context);
 		}
 
 		paintItemCallback(nameleft, namewidth);
