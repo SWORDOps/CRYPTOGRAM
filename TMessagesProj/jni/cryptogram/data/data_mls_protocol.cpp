@@ -27,7 +27,7 @@ constexpr int kX25519KeySize = 32;
 constexpr int kX448KeySize = 56;
 constexpr int kEd25519KeySize = 32;
 constexpr int kEd448KeySize = 57;
-constexpr int kSHA384Size = 48; // Upgraded from 32 (legacy hash)
+constexpr int kSHA256Size = 32;
 constexpr int kSHA512Size = 64;
 constexpr int kAES128KeySize = 16;
 constexpr int kAES256KeySize = 32;
@@ -119,17 +119,17 @@ int getHashSize(MLSCiphersuite ciphersuite) {
 	switch (ciphersuite) {
 	case MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519:
 	case MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519:
-		return kSHA384Size; // Upgraded to SHA-384
+		return kSHA256Size;
 	case MLSCiphersuite::MLS_256_DHKEMX448_CHACHA20POLY1305_SHA512_Ed448:
 		return kSHA512Size;
 	}
-	return kSHA384Size;
+	return kSHA256Size;
 }
 
-// Compute SHA-384 hash (replaces SHA-256)
-bytes::vector computeSHA384(const bytes::vector &data) {
-	bytes::vector result(kSHA384Size);
-	SHA384(data.data(), data.size(), result.data());
+// Compute SHA-256 hash
+bytes::vector computeSHA256(const bytes::vector &data) {
+	bytes::vector result(kSHA256Size);
+	SHA256(data.data(), data.size(), result.data());
 	return result;
 }
 
@@ -145,11 +145,19 @@ bytes::vector hashData(const bytes::vector &data, MLSCiphersuite ciphersuite) {
 	switch (ciphersuite) {
 	case MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519:
 	case MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519:
-		return computeSHA384(data);
+		return computeSHA256(data);
 	case MLSCiphersuite::MLS_256_DHKEMX448_CHACHA20POLY1305_SHA512_Ed448:
 		return computeSHA512(data);
 	}
-	return computeSHA384(data);
+	return computeSHA256(data);
+}
+
+const EVP_MD* selectHkdfDigestForLength(int length) {
+	return (length > kSHA256Size) ? EVP_sha512() : EVP_sha256();
+}
+
+int digestSize(const EVP_MD *md) {
+	return EVP_MD_size(md);
 }
 
 // Generate random bytes
@@ -532,6 +540,10 @@ bool MLSProtocol::addMember(const MLSGroupId &groupId, UserId newMember) {
 	// Create Add proposal
 	MLSProposal proposal;
 	proposal.type = MLSProposalType::Add;
+	proposal.proposer = !state._members.isEmpty()
+		? state._members.first().userId
+		: UserId(0);
+	proposal.targetUser = newMember;
 	proposal.addKeyPackage = keyPackage;
 	proposal.timestamp = QDateTime::currentDateTime();
 
@@ -565,6 +577,10 @@ bool MLSProtocol::removeMember(const MLSGroupId &groupId, UserId memberToRemove)
 	// Create Remove proposal
 	MLSProposal proposal;
 	proposal.type = MLSProposalType::Remove;
+	proposal.proposer = !state._members.isEmpty()
+		? state._members.first().userId
+		: UserId(0);
+	proposal.targetUser = memberToRemove;
 	proposal.removeLeaf = leafIndex.value();
 	proposal.timestamp = QDateTime::currentDateTime();
 
@@ -582,13 +598,24 @@ bool MLSProtocol::updateOwnKey(const MLSGroupId &groupId) {
 		LOG(("MLS: Cannot update key - group not found"));
 		return false;
 	}
+	const auto &state = it.value();
+	if (state._members.isEmpty()) {
+		LOG(("MLS: Cannot update key - no local member"));
+		return false;
+	}
 
 	// Generate new key pair
-	auto [publicKey, privateKey] = generateKeyPair(it.value().ciphersuite());
+	auto [publicKey, privateKey] = generateKeyPair(state.ciphersuite());
+	if (publicKey.empty()) {
+		LOG(("MLS: Cannot update key - key generation failed"));
+		return false;
+	}
 
 	// Create Update proposal
 	MLSProposal proposal;
 	proposal.type = MLSProposalType::Update;
+	proposal.proposer = state._members.first().userId;
+	proposal.targetUser = state._members.first().userId;
 	proposal.updateKey = publicKey;
 	proposal.timestamp = QDateTime::currentDateTime();
 
@@ -755,17 +782,22 @@ MLSGroupId MLSProtocol::processWelcome(const MLSWelcome &welcome) {
 	// Decrypt group secrets and initialize group state
 	// This is called when added to a new group
 
-	// In a real implementation, we would decrypt encryptedGroupInfo to get the groupId
-	// For this port, we'll use a derived ID or a random one if decryption is stubbed
-	auto groupId = hashData(welcome.encryptedGroupSecrets, welcome.ciphersuite);
+	auto groupIdSource = !welcome.encryptedGroupInfo.empty()
+		? welcome.encryptedGroupInfo
+		: welcome.encryptedGroupSecrets;
+	auto groupId = hashData(groupIdSource, welcome.ciphersuite);
 	if (groupId.empty()) {
 		groupId = generateRandomBytes(32);
 	}
 
 	// Create new group state from welcome
 	MLSGroupState state(groupId, welcome.ciphersuite);
-	state._initSecret = welcome.encryptedGroupSecrets; // Simplified
+	state._initSecret = !welcome.encryptedGroupSecrets.empty()
+		? hkdfExtract(groupId, welcome.encryptedGroupSecrets)
+		: generateRandomBytes(getHashSize(welcome.ciphersuite));
 	state._epochSecret = state.deriveEpochSecret();
+	state._confirmedTranscriptHash = hashData(groupIdSource, welcome.ciphersuite);
+	state._interimTranscriptHash = hashData(welcome.encryptedGroupSecrets, welcome.ciphersuite);
 	
 	_groups[groupId] = state;
 
@@ -797,9 +829,15 @@ std::optional<MLSCommit> MLSProtocol::commitGroupChanges(const MLSGroupId &group
 	auto [publicKey, privateKey] = generateKeyPair(state.ciphersuite());
 	commit.path = publicKey;
 	
-	// In a real implementation, we would set the actual sender
-	commit.sender = UserId(0); 
+	commit.sender = !state._members.isEmpty()
+		? state._members.first().userId
+		: UserId(0);
 	commit.timestamp = QDateTime::currentDateTime();
+
+	if (!processCommit(groupId, commit)) {
+		LOG(("MLS: Failed to apply local commit"));
+		return std::nullopt;
+	}
 
 	LOG(("MLS: Created commit for %1 proposals").arg(commit.proposals.size()));
 
@@ -814,10 +852,34 @@ bool MLSProtocol::processCommit(const MLSGroupId &groupId, const MLSCommit &comm
 	}
 
 	auto &state = it.value();
+	if (commit.sender.valueOf() == 0 || !state.isMember(commit.sender)) {
+		LOG(("MLS: Rejecting commit - unauthorized sender"));
+		return false;
+	}
+	const auto senderIt = state._members.find(commit.sender);
+	if (senderIt == state._members.end() || !senderIt->isActive) {
+		LOG(("MLS: Rejecting commit - inactive sender"));
+		return false;
+	}
+	if (commit.path.empty()) {
+		LOG(("MLS: Rejecting commit - missing update path"));
+		return false;
+	}
+	if (!commit.timestamp.isValid()) {
+		LOG(("MLS: Rejecting commit - invalid timestamp"));
+		return false;
+	}
 
 	// Process all proposals in the commit
 	for (const auto &proposal : commit.proposals) {
-		processProposal(groupId, proposal);
+		if (proposal.proposer.valueOf() == 0 || proposal.proposer != commit.sender) {
+			LOG(("MLS: Rejecting commit - proposal proposer mismatch"));
+			return false;
+		}
+		if (!processProposal(groupId, proposal)) {
+			LOG(("MLS: Rejecting commit - invalid proposal"));
+			return false;
+		}
 	}
 
 	// Advance epoch
@@ -838,29 +900,133 @@ bool MLSProtocol::processProposal(const MLSGroupId &groupId, const MLSProposal &
 	}
 
 	auto &state = it.value();
+	if (!proposal.timestamp.isValid()) {
+		LOG(("MLS: Rejecting proposal - invalid timestamp"));
+		return false;
+	}
+	const auto isActiveMember = [&](UserId user) {
+		const auto it = state._members.find(user);
+		return it != state._members.end() && it->isActive;
+	};
 
 	switch (proposal.type) {
 	case MLSProposalType::Add:
-		if (proposal.addKeyPackage.has_value()) {
-			// Add new member to tree
-			LOG(("MLS: Processing Add proposal"));
+		if (!proposal.addKeyPackage.has_value()) {
+			LOG(("MLS: Rejecting Add proposal - missing key package"));
+			return false;
 		}
+		if (proposal.proposer.valueOf() == 0 || !isActiveMember(proposal.proposer)) {
+			LOG(("MLS: Rejecting Add proposal - unauthorized proposer"));
+			return false;
+		}
+		if (!proposal.targetUser.has_value() || proposal.targetUser->valueOf() == 0) {
+			LOG(("MLS: Rejecting Add proposal - missing target"));
+			return false;
+		}
+		if (state.isMember(*proposal.targetUser)) {
+			LOG(("MLS: Rejecting Add proposal - target already member"));
+			return false;
+		}
+		const auto &kp = proposal.addKeyPackage.value();
+		if (!kp.isValid() || !verifyKeyPackage(kp)) {
+			LOG(("MLS: Rejecting Add proposal - invalid key package"));
+			return false;
+		}
+
+		auto nextLeaf = MLSLeafIndex(0);
+		for (const auto &[leaf, _] : state._leafToUser) {
+			nextLeaf = std::max(nextLeaf, MLSLeafIndex(leaf + 1));
+		}
+
+		MLSGroupMember member;
+		member.userId = *proposal.targetUser;
+		member.leafIndex = nextLeaf;
+		member.keyPackage = kp;
+		member.addedAt = QDateTime::currentDateTime();
+		member.isActive = true;
+
+		state._members[*proposal.targetUser] = member;
+		state._leafToUser[nextLeaf] = *proposal.targetUser;
+
+		LOG(("MLS: Processing Add proposal: proposer %1 added user %2 at leaf %3")
+			.arg(static_cast<qulonglong>(proposal.proposer.valueOf()))
+			.arg(static_cast<qulonglong>(proposal.targetUser->valueOf()))
+			.arg(nextLeaf));
 		break;
 
 	case MLSProposalType::Remove:
-		if (proposal.removeLeaf.has_value()) {
-			// Blank the leaf in the tree
-			LOG(("MLS: Processing Remove proposal"));
+		if (!proposal.removeLeaf.has_value()) {
+			LOG(("MLS: Rejecting Remove proposal - missing leaf"));
+			return false;
 		}
+		if (proposal.proposer.valueOf() == 0 || !isActiveMember(proposal.proposer)) {
+			LOG(("MLS: Rejecting Remove proposal - unauthorized proposer"));
+			return false;
+		}
+		if (!proposal.targetUser.has_value() || proposal.targetUser->valueOf() == 0) {
+			LOG(("MLS: Rejecting Remove proposal - missing target"));
+			return false;
+		}
+		const auto leaf = proposal.removeLeaf.value();
+		const auto userIt = state._leafToUser.find(leaf);
+		if (userIt == state._leafToUser.end()) {
+			LOG(("MLS: Rejecting Remove proposal - leaf not found"));
+			return false;
+		}
+		const auto user = userIt.value();
+		if (user != *proposal.targetUser) {
+			LOG(("MLS: Rejecting Remove proposal - target/leaf mismatch"));
+			return false;
+		}
+		auto memberIt = state._members.find(user);
+		if (memberIt == state._members.end() || !memberIt->isActive) {
+			LOG(("MLS: Rejecting Remove proposal - target already inactive"));
+			return false;
+		}
+		memberIt->isActive = false;
+		state._leafToUser.remove(leaf);
+		LOG(("MLS: Processing Remove proposal: proposer %1 removed leaf %2 user %3")
+			.arg(static_cast<qulonglong>(proposal.proposer.valueOf()))
+			.arg(leaf)
+			.arg(static_cast<qulonglong>(user.valueOf())));
 		break;
 
 	case MLSProposalType::Update:
-		// Update leaf key
-		LOG(("MLS: Processing Update proposal"));
+		if (proposal.proposer.valueOf() == 0 || proposal.updateKey.empty()) {
+			LOG(("MLS: Rejecting Update proposal - missing proposer/key"));
+			return false;
+		}
+		if (!isActiveMember(proposal.proposer)) {
+			LOG(("MLS: Rejecting Update proposal - unauthorized proposer"));
+			return false;
+		}
+		if (proposal.targetUser.has_value() && *proposal.targetUser != proposal.proposer) {
+			LOG(("MLS: Rejecting Update proposal - target/proposer mismatch"));
+			return false;
+		}
+		auto leaf = state.getLeafIndex(proposal.proposer);
+		if (!leaf.has_value()) {
+			LOG(("MLS: Rejecting Update proposal - missing leaf"));
+			return false;
+		}
+		auto memberIt = state._members.find(proposal.proposer);
+		if (memberIt != state._members.end()) {
+			memberIt->keyPackage.initKey = proposal.updateKey;
+		}
+		const auto nodeIndex = leafToNode(leaf.value());
+		if (nodeIndex < state._ratchetTree.size()
+			&& state._ratchetTree[nodeIndex].keyPackage.has_value()) {
+			auto kp = state._ratchetTree[nodeIndex].keyPackage.value();
+			kp.initKey = proposal.updateKey;
+			state._ratchetTree[nodeIndex].keyPackage = kp;
+		}
+		LOG(("MLS: Processing Update proposal: updated user %1")
+			.arg(static_cast<qulonglong>(proposal.proposer.valueOf())));
 		break;
 
 	default:
-		break;
+		LOG(("MLS: Rejecting unsupported proposal type"));
+		return false;
 	}
 
 	return true;
@@ -943,9 +1109,30 @@ void MLSProtocol::updateTreePath(MLSGroupState &state, MLSLeafIndex leafIndex, c
 }
 
 bytes::vector MLSProtocol::encryptPathSecret(const MLSTreeNode &node, const bytes::vector &secret) {
-	// HPKE encryption would be used here
-	// Current implementation passes the secret through until HPKE path encryption lands.
-	return secret;
+	if (secret.empty() || node.publicKey.empty()) {
+		return {};
+	}
+
+	auto keyMaterial = computeSHA512(node.publicKey);
+	auto key = normalizeAeadKey(keyMaterial);
+	auto iv = generateRandomBytes(kGcmIvSize);
+
+	bytes::vector aad(sizeof(node.index) + 1);
+	std::memcpy(aad.data(), &node.index, sizeof(node.index));
+	aad[sizeof(node.index)] = static_cast<uint8>(node.type);
+
+	auto encrypted = encryptAesGcm(
+		key,
+		secret.data(),
+		secret.size(),
+		aad.data(),
+		aad.size(),
+		iv);
+	if (!encrypted.has_value()) {
+		LOG(("MLS: Failed to encrypt path secret for node %1").arg(node.index));
+		return {};
+	}
+	return *encrypted;
 }
 
 bytes::vector MLSProtocol::deriveSecret(const bytes::vector &secret, const QString &label) {
@@ -956,22 +1143,76 @@ bytes::vector MLSProtocol::deriveSecret(const bytes::vector &secret, const QStri
 }
 
 bytes::vector MLSProtocol::hkdfExpand(const bytes::vector &prk, const QString &info, int length) {
+	if (length <= 0 || prk.empty()) {
+		return {};
+	}
+
 	bytes::vector result(length);
-
 	const auto infoBytes = info.toUtf8();
-	auto data = prk;
-	data.insert(data.end(), infoBytes.begin(), infoBytes.end());
+	const auto *md = selectHkdfDigestForLength(length);
+	EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr);
+	if (!ctx) {
+		return {};
+	}
 
-	const auto hash = (length <= kSHA384Size) ? computeSHA384(data) : computeSHA512(data);
-	std::memcpy(result.data(), hash.data(), std::min(length, (int)hash.size()));
-
+	bool ok =
+		EVP_PKEY_derive_init(ctx) > 0 &&
+		EVP_PKEY_CTX_set_hkdf_mode(ctx, EVP_PKEY_HKDEF_MODE_EXPAND_ONLY) > 0 &&
+		EVP_PKEY_CTX_set_hkdf_md(ctx, md) > 0 &&
+		EVP_PKEY_CTX_set1_hkdf_key(ctx, prk.data(), static_cast<int>(prk.size())) > 0;
+	if (ok && !infoBytes.isEmpty()) {
+		ok = EVP_PKEY_CTX_add1_hkdf_info(
+			ctx,
+			reinterpret_cast<const uint8_t*>(infoBytes.data()),
+			infoBytes.size()) > 0;
+	}
+	size_t outLen = static_cast<size_t>(length);
+	if (ok) {
+		ok = EVP_PKEY_derive(ctx, result.data(), &outLen) > 0;
+	}
+	EVP_PKEY_CTX_free(ctx);
+	if (!ok) {
+		return {};
+	}
+	result.resize(static_cast<int>(outLen));
 	return result;
 }
 
 bytes::vector MLSProtocol::hkdfExtract(const bytes::vector &salt, const bytes::vector &ikm) {
-	auto data = salt;
-	data.insert(data.end(), ikm.begin(), ikm.end());
-	return computeSHA512(data);
+	const auto *md = selectHkdfDigestForLength(
+		std::max<int>(static_cast<int>(salt.size()), static_cast<int>(ikm.size())));
+	const auto outputSize = digestSize(md);
+	if (outputSize <= 0 || ikm.empty()) {
+		return {};
+	}
+
+	bytes::vector prk(outputSize);
+	EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr);
+	if (!ctx) {
+		return {};
+	}
+
+	bool ok =
+		EVP_PKEY_derive_init(ctx) > 0 &&
+		EVP_PKEY_CTX_set_hkdf_mode(ctx, EVP_PKEY_HKDEF_MODE_EXTRACT_ONLY) > 0 &&
+		EVP_PKEY_CTX_set_hkdf_md(ctx, md) > 0 &&
+		EVP_PKEY_CTX_set1_hkdf_key(ctx, ikm.data(), static_cast<int>(ikm.size())) > 0;
+	if (ok && !salt.empty()) {
+		ok = EVP_PKEY_CTX_set1_hkdf_salt(
+			ctx,
+			salt.data(),
+			static_cast<int>(salt.size())) > 0;
+	}
+	size_t outLen = static_cast<size_t>(outputSize);
+	if (ok) {
+		ok = EVP_PKEY_derive(ctx, prk.data(), &outLen) > 0;
+	}
+	EVP_PKEY_CTX_free(ctx);
+	if (!ok) {
+		return {};
+	}
+	prk.resize(static_cast<int>(outLen));
+	return prk;
 }
 
 std::pair<bytes::vector, bytes::vector> MLSProtocol::generateKeyPair(MLSCiphersuite ciphersuite) {

@@ -6,18 +6,19 @@
 #include "cryptogram/data/data_signal_protocol.h"
 #include "cryptogram/data/data_mls_protocol.h"
 #include "cryptogram/data/data_enhanced_privacy.h"
-#include "cryptogram/data/data_tsm_interface.h"
 #include "desktop_shims.h"
 
 #include <jni.h>
 #include <android/log.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <openssl/sha.h>
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <iomanip>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -34,7 +35,6 @@ using namespace Data;
 namespace {
 
 JavaVM* gJavaVM = nullptr;
-jclass gTSMProviderClass = nullptr;
 jmethodID gGenerateIdentityKeyMethod = nullptr;
 jmethodID gGeneratePreKeyMethod = nullptr;
 jmethodID gGenerateOneTimeKeyMethod = nullptr;
@@ -73,6 +73,44 @@ bool ensureSignalProtocol() {
         gSignalProtocol->setEnabled(true);
     }
     return gSignalProtocol != nullptr;
+}
+
+not_null<PeerData*> peerForUserId(int64_t userId) {
+    return PeerData::from(
+        gDummySession.get(),
+        PeerId(static_cast<uint64>(userId)));
+}
+
+std::string buildSessionFingerprint(not_null<PeerData*> peer) {
+    auto state = gSignalProtocol->getSession(peer);
+    bytes::vector material;
+    material.insert(material.end(), state.rootKey.begin(), state.rootKey.end());
+    material.insert(material.end(), state.dhSendingPublicKey.begin(), state.dhSendingPublicKey.end());
+    material.insert(material.end(), state.dhRemotePublicKey.begin(), state.dhRemotePublicKey.end());
+
+    const auto append32 = [&](uint32_t value) {
+        material.push_back(static_cast<uint8_t>(value & 0xFF));
+        material.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+        material.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
+        material.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
+    };
+    append32(state.sendingMessageCounter);
+    append32(state.receivingMessageCounter);
+
+    uint8_t digest[SHA256_DIGEST_LENGTH] = {0};
+    if (!material.empty()) {
+        SHA256(material.data(), material.size(), digest);
+    } else {
+        SHA256(reinterpret_cast<const uint8_t*>("empty"), 5, digest);
+    }
+
+    std::ostringstream out;
+    for (int i = 0; i < 5; ++i) {
+        const uint16_t chunk = static_cast<uint16_t>((digest[i * 2] << 8) | digest[i * 2 + 1]);
+        if (i > 0) out << '-';
+        out << std::setw(4) << std::setfill('0') << (chunk % 10000);
+    }
+    return out.str();
 }
 
 bool ensureMlsProtocol() {
@@ -184,12 +222,12 @@ bool deserializeMetadata(const uint8_t *data, size_t size, SignalProtocol::Messa
 std::string buildSignalStateJson(int64_t userId) {
     if (!gSignalProtocol) return "{\"initialized\": false}";
 
-    PeerId peerId(static_cast<uint64>(userId));
+    const auto peer = peerForUserId(userId);
     std::ostringstream out;
     out << "{\"userId\": " << userId
         << ", \"initialized\": " << (gSignalProtocol->isEnabled() ? "true" : "false")
         << ", \"protocol\": \"SpyGram Signal Protocol (Double Ratchet)\""
-        << ", \"hasSession\": " << (gSignalProtocol->hasSession(nullptr) ? "true" : "false")
+        << ", \"hasSession\": " << (gSignalProtocol->hasSession(peer) ? "true" : "false")
         << "}";
     return out.str();
 }
@@ -316,8 +354,14 @@ bytes::vector serializeProposal(const MLSProposal &proposal) {
     bytes::vector result;
     result.push_back(static_cast<uint8>(proposal.type));
     
-    uint64 sender = proposal.sender.valueOf();
-    result.insert(result.end(), reinterpret_cast<uint8_t*>(&sender), reinterpret_cast<uint8_t*>(&sender) + 8);
+    uint64 proposer = proposal.proposer.valueOf();
+    result.insert(result.end(), reinterpret_cast<uint8_t*>(&proposer), reinterpret_cast<uint8_t*>(&proposer) + 8);
+    const uint8 targetPresent = proposal.targetUser.has_value() ? 1 : 0;
+    result.push_back(targetPresent);
+    if (targetPresent) {
+        uint64 target = proposal.targetUser->valueOf();
+        result.insert(result.end(), reinterpret_cast<uint8_t*>(&target), reinterpret_cast<uint8_t*>(&target) + 8);
+    }
 
     auto push_vec = [&](const bytes::vector &v) {
         uint32_t len = static_cast<uint32_t>(v.size());
@@ -473,8 +517,8 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeInitializeWithRemoteB
         std::lock_guard<std::mutex> lock(gSignalMutex);
         if (!ensureSignalProtocol()) return JNI_FALSE;
 
-        // PeerData shim needs to be initialized if we want real session tracking
-        gSignalProtocol->createSession(nullptr, bundle);
+        const auto peer = peerForUserId(static_cast<int64_t>(userId));
+        gSignalProtocol->createSession(peer, bundle);
         EnhancedPrivacy::RegisterCryptogramUser(UserId(static_cast<uint64>(userId)));
         return JNI_TRUE;
     } catch (const std::exception &e) {
@@ -501,8 +545,9 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeEncrypt(
         bytes::const_span plaintextBytes;
         plaintextBytes.insert(plaintextBytes.end(), messageText, messageText + std::strlen(messageText));
 
+        const auto peer = peerForUserId(static_cast<int64_t>(userId));
         SignalProtocol::MessageMetadata metadata;
-        auto ciphertext = gSignalProtocol->encryptMessage(plaintextBytes, nullptr, metadata);
+        auto ciphertext = gSignalProtocol->encryptMessage(plaintextBytes, peer, metadata);
         env->ReleaseStringUTFChars(plaintext, messageText);
 
         if (ciphertext.empty()) return nullptr;
@@ -572,7 +617,8 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeDecrypt(
         bytes::const_span ciphertextBytes;
         ciphertextBytes.insert(ciphertextBytes.end(), data + pos, data + pos + payloadLen);
 
-        auto plaintext = gSignalProtocol->decryptMessage(ciphertextBytes, nullptr, metadata);
+        const auto peer = peerForUserId(static_cast<int64_t>(userId));
+        auto plaintext = gSignalProtocol->decryptMessage(ciphertextBytes, peer, metadata);
         env->ReleaseByteArrayElements(ciphertext, bytes, JNI_ABORT);
 
         if (plaintext.empty()) return nullptr;
@@ -591,7 +637,9 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeRotateSession(
     try {
         std::lock_guard<std::mutex> lock(gSignalMutex);
         if (!ensureSignalProtocol()) return JNI_FALSE;
-        gSignalProtocol->rotateSession(nullptr, true);
+        const auto peer = peerForUserId(static_cast<int64_t>(userId));
+        if (!gSignalProtocol->hasSession(peer)) return JNI_FALSE;
+        gSignalProtocol->rotateSession(peer, true);
         return JNI_TRUE;
     } catch (const std::exception &e) {
         LOGE("Failed to rotate session: %s", e.what());
@@ -605,9 +653,12 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeGetFingerprint(
     try {
         std::lock_guard<std::mutex> lock(gSignalMutex);
         if (!ensureSignalProtocol()) return nullptr;
-        // In real Signal, fingerprint is derived from identity keys and registration IDs
-        // For the port, we'll return a placeholder or derive from session if available
-        return env->NewStringUTF("SN-4242-8888-1234-5678");
+        const auto peer = peerForUserId(static_cast<int64_t>(userId));
+        if (!gSignalProtocol->hasSession(peer)) {
+            return env->NewStringUTF("UNINITIALIZED");
+        }
+        const auto fingerprint = buildSessionFingerprint(peer);
+        return env->NewStringUTF(fingerprint.c_str());
     } catch (const std::exception &e) {
         LOGE("Failed to get fingerprint: %s", e.what());
         return nullptr;
@@ -843,64 +894,7 @@ JNI_OnLoad(JavaVM* vm, void* reserved) {
     if (vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK) {
         return JNI_ERR;
     }
-
-    jclass cls = env->FindClass("org/telegram/messenger/cryptogram/TSMProvider");
-    if (!cls) {
-        LOGE("Failed to find TSMProvider class");
-        return JNI_VERSION_1_6; // Continue loading even if TSM not found
-    }
-    gTSMProviderClass = (jclass)env->NewGlobalRef(cls);
-
-    gGenerateIdentityKeyMethod = env->GetStaticMethodID(gTSMProviderClass, "generateSignalIdentityKeyPair", "()[B");
-    gGeneratePreKeyMethod = env->GetStaticMethodID(gTSMProviderClass, "generateSignalPreKey", "()[B");
-    gGenerateOneTimeKeyMethod = env->GetStaticMethodID(gTSMProviderClass, "generateSignalOneTimeKey", "()[B");
-    gSignMessageMethod = env->GetStaticMethodID(gTSMProviderClass, "signSignalMessage", "(Ljava/lang/String;[B)[B");
-
     return JNI_VERSION_1_6;
 }
 
 } // extern "C"
-
-std::optional<bytes::vector> AndroidTSM_GenerateIdentityKey() {
-    JNIEnv* env = getJNIEnv();
-    if (!env || !gGenerateIdentityKeyMethod) return std::nullopt;
-    jbyteArray array = (jbyteArray)env->CallStaticObjectMethod(gTSMProviderClass, gGenerateIdentityKeyMethod);
-    if (!array) return std::nullopt;
-    return jbyteArrayToVector(env, array);
-}
-
-std::optional<bytes::vector> AndroidTSM_GeneratePreKey() {
-    JNIEnv* env = getJNIEnv();
-    if (!env || !gGeneratePreKeyMethod) return std::nullopt;
-    jbyteArray array = (jbyteArray)env->CallStaticObjectMethod(gTSMProviderClass, gGeneratePreKeyMethod);
-    if (!array) return std::nullopt;
-    return jbyteArrayToVector(env, array);
-}
-
-std::optional<bytes::vector> AndroidTSM_GenerateOneTimeKey() {
-    JNIEnv* env = getJNIEnv();
-    if (!env || !gGenerateOneTimeKeyMethod) return std::nullopt;
-    jbyteArray array = (jbyteArray)env->CallStaticObjectMethod(gTSMProviderClass, gGenerateOneTimeKeyMethod);
-    if (!array) return std::nullopt;
-    return jbyteArrayToVector(env, array);
-}
-
-std::optional<bytes::vector> AndroidTSM_SignMessage(const bytes::vector& key, const bytes::vector& data) {
-    JNIEnv* env = getJNIEnv();
-    if (!env || !gSignMessageMethod) return std::nullopt;
-
-    // Convert key vector to alias string (for KeyStore)
-    std::string alias = "signal_identity_key"; // Simplified for identity key. In real implementation, key identifier would be used.
-    jstring jalias = env->NewStringUTF(alias.c_str());
-
-    jbyteArray jdata = env->NewByteArray(static_cast<jsize>(data.size()));
-    env->SetByteArrayRegion(jdata, 0, static_cast<jsize>(data.size()), reinterpret_cast<const jbyte*>(data.data()));
-
-    jbyteArray result = (jbyteArray)env->CallStaticObjectMethod(gTSMProviderClass, gSignMessageMethod, jalias, jdata);
-    
-    env->DeleteLocalRef(jalias);
-    env->DeleteLocalRef(jdata);
-
-    if (!result) return std::nullopt;
-    return jbyteArrayToVector(env, result);
-}
