@@ -12,7 +12,6 @@ https://github.com/TDesktop-x64/tdesktop/blob/dev/LEGAL
 #include "settings/settings_enhanced.h"
 
 #include "settings/settings_common.h"
-#include "settings/settings_chat.h"
 #include <ui/vertical_list.h>
 #include "ui/wrap/vertical_layout.h"
 #include "ui/wrap/slide_wrap.h"
@@ -606,7 +605,7 @@ namespace Settings {
 	Enhanced::Enhanced(
 			QWidget *parent,
 			not_null<Window::SessionController *> controller)
-			: Section(parent) {
+			: Section(parent, controller) {
 		setupContent(controller);
 	}
 

@@ -76,9 +76,13 @@ struct LinkWithUrl {
 	QString text;
 	QString url;
 };
+[[nodiscard]] QString TopicLink(
+	not_null<Data::ForumTopic*> topic,
+	bool full);
 [[nodiscard]] rpl::producer<LinkWithUrl> LinkValue(
 	not_null<PeerData*> peer,
-	bool primary = false);
+	bool primary = false,
+	MsgId topicRootId = 0);
 
 [[nodiscard]] rpl::producer<const ChannelLocation*> LocationValue(
 	not_null<ChannelData*> channel);
@@ -140,6 +144,7 @@ enum class BadgeType : uchar;
 [[nodiscard]] rpl::producer<QString> BirthdayLabelText(
 	rpl::producer<Data::Birthday> birthday);
 [[nodiscard]] rpl::producer<QString> BirthdayValueText(
-	rpl::producer<Data::Birthday> birthday);
+	rpl::producer<Data::Birthday> birthday,
+	bool fullMonth = false);
 
 } // namespace Info::Profile

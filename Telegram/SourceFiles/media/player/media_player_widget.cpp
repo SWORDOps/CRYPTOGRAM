@@ -81,6 +81,10 @@ Widget::Widget(
 	_speedController->realtimeValue(
 	) | rpl::on_next([=](float64 speed) {
 		_speedToggle->setSpeed(speed);
+		_speedToggle->setAccessibleName(tr::lng_mediaview_playback_speed(
+			tr::now,
+			lt_speed,
+			QString::number(base::SafeRound(speed * 10) / 10.) + "x"));
 	}, _speedToggle->lifetime());
 	_speedToggle->finishAnimating();
 
@@ -89,6 +93,11 @@ Widget::Widget(
 	resize(width(), st::mediaPlayerHeight + st::lineWidth);
 
 	setupRightControls();
+
+	_volumeToggle->setAccessibleName(tr::lng_ringtones_box_volume(tr::now));
+	_repeatToggle->setAccessibleName(tr::lng_schedule_repeat_label(tr::now));
+	_orderToggle->setAccessibleName(tr::lng_sr_playback_order(tr::now));
+	_close->setAccessibleName(tr::lng_sr_player_close(tr::now));
 
 	_nameLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
 	_timeLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -389,7 +398,8 @@ void Widget::updateControlsWrapVisibility() {
 
 void Widget::paintEvent(QPaintEvent *e) {
 	auto p = QPainter(this);
-	auto fill = e->rect().intersected(QRect(0, 0, width(), st::mediaPlayerHeight));
+	auto fill = e->rect().intersected(
+		QRect(0, 0, width(), st::mediaPlayerHeight + st::lineWidth));
 	if (!fill.isEmpty()) {
 		p.fillRect(fill, st::mediaPlayerBg);
 	}
@@ -430,11 +440,19 @@ void Widget::saveOrder(OrderMode mode) {
 }
 
 float64 Widget::speedLookup(bool lastNonDefault) const {
-	return Core::App().settings().voicePlaybackSpeed(lastNonDefault);
+	const auto &settings = Core::App().settings();
+	return (_type == AudioMsgId::Type::Song)
+		? settings.audioPlaybackSpeed(lastNonDefault)
+		: settings.voicePlaybackSpeed(lastNonDefault);
 }
 
 void Widget::saveSpeed(float64 speed) {
-	Core::App().settings().setVoicePlaybackSpeed(speed);
+	auto &settings = Core::App().settings();
+	if (_type == AudioMsgId::Type::Song) {
+		settings.setAudioPlaybackSpeed(speed);
+	} else {
+		settings.setVoicePlaybackSpeed(speed);
+	}
 	Core::App().saveSettingsDelayed();
 }
 
@@ -630,6 +648,9 @@ void Widget::handleSongUpdate(const TrackState &state) {
 		: showPause
 		? &st::mediaPlayerPauseIcon
 		: nullptr);
+	_playPause->setAccessibleName(showPause
+		? tr::lng_shortcuts_media_pause(tr::now)
+		: tr::lng_shortcuts_media_play(tr::now));
 
 	updateTimeText(state);
 }
@@ -687,48 +708,13 @@ void Widget::handleSongChange() {
 		return;
 	}
 	_lastSongId = current;
+	_speedController->reloadFromLookup();
 
 	auto textWithEntities = TextWithEntities();
 	if (document->isVoiceMessage() || document->isVideoMessage()) {
-		if (const auto item = document->owner().message(current.contextId())) {
-			const auto name = (!item->out() || item->isPost())
-				? item->fromOriginal()->name()
-				: tr::lng_from_you(tr::now);
-			const auto date = [item] {
-				const auto parsed = ItemDateTime(item);
-				const auto date = parsed.date();
-				const auto time = QLocale().toString(parsed.time(), GetEnhancedBool("show_seconds") ? QLocale::system().timeFormat(QLocale::LongFormat).remove("t") : QLocale::system().timeFormat(QLocale::ShortFormat));
-				const auto today = QDateTime::currentDateTime().date();
-				if (date == today) {
-					return tr::lng_player_message_today(
-						tr::now,
-						lt_time,
-						time);
-				} else if (date.addDays(1) == today) {
-					return tr::lng_player_message_yesterday(
-						tr::now,
-						lt_time,
-						time);
-				}
-				return tr::lng_player_message_date(
-					tr::now,
-					lt_date,
-					langDayOfMonthFull(date),
-					lt_time,
-					time);
-			};
-
-			textWithEntities.text = name + ' ' + date();
-			textWithEntities.entities.append(EntityInText(
-				EntityType::Semibold,
-				0,
-				name.size(),
-				QString()));
-		} else if (document->isVideoMessage()) {
-			textWithEntities.text = tr::lng_media_round(tr::now);
-		} else {
-			textWithEntities.text = tr::lng_media_audio(tr::now);
-		}
+		textWithEntities = Ui::Text::FormatVoiceName(
+			document,
+			current.contextId()).textWithEntities(true);
 	} else {
 		textWithEntities = Ui::Text::FormatSongNameFor(document)
 			.textWithEntities(true);
@@ -761,11 +747,13 @@ void Widget::createPrevNextButtons() {
 		_previousTrack->setClickedCallback([=]() {
 			instance()->previous(_type);
 		});
+		_previousTrack->setAccessibleName(tr::lng_shortcuts_media_previous(tr::now));
 		_nextTrack.create(this, st::mediaPlayerNextButton);
 		_nextTrack->show();
 		_nextTrack->setClickedCallback([=]() {
 			instance()->next(_type);
 		});
+		_nextTrack->setAccessibleName(tr::lng_shortcuts_media_next(tr::now));
 		hidePlaylistOn(_previousTrack);
 		hidePlaylistOn(_nextTrack);
 		updatePlayPrevNextPositions();

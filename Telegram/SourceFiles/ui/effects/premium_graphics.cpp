@@ -756,7 +756,7 @@ void ShowListBox(
 		const auto title = content->add(
 			object_ptr<Ui::FlatLabel>(
 				content,
-				base::take(entry.title) | Ui::Text::ToBold(),
+				base::take(entry.title) | rpl::map(tr::bold),
 				stLabel),
 			entry.icon ? iconTitlePadding : titlePadding);
 		content->add(
@@ -934,31 +934,37 @@ void AddGiftOptions(
 			return s.replace(kStar, QChar());
 		};
 		const auto &costPerMonthFont = st::shareBoxListItem.nameStyle.font;
-		const auto &costTotalFont = st::normalFont;
+		const auto &costPerYearFont = st::normalFont;
 		const auto costPerMonthIcon = info.costPerMonth.startsWith(kStar)
 			? GenerateStars(costPerMonthFont->height, 1)
 			: QImage();
+		auto leftText = TextWithEntities();
+		if (!info.costNoDiscount.isEmpty()) {
+			leftText.append(Ui::Text::Wrapped(
+				TextWithEntities{ info.costNoDiscount },
+				EntityType::StrikeOut));
+			leftText.append(' ');
+		}
+		leftText.append(costPerMonthIcon.isNull()
+			? info.costPerMonth
+			: removedStar(info.costPerMonth));
 		const auto costPerMonthLabel
 			= row->lifetime().make_state<Ui::Text::String>();
 		costPerMonthLabel->setMarkedText(
 			st::shareBoxListItem.nameStyle,
-			TextWithEntities()
-				.append(Ui::Text::Wrapped(
-					TextWithEntities{ info.costNoDiscount },
-					EntityType::StrikeOut))
-				.append(' ')
-				.append(costPerMonthIcon.isNull()
-					? info.costPerMonth
-					: removedStar(info.costPerMonth)));
+			std::move(leftText));
+		const auto rightText = info.total.isEmpty()
+			? info.costPerYear
+			: info.total;
 
-		const auto costTotalEntry = [&] {
-			if (!info.costTotal.startsWith(kStar)) {
+		const auto costPerYearEntry = [&] {
+			if (!rightText.startsWith(kStar)) {
 				return QImage();
 			}
-			const auto text = removedStar(info.costTotal);
-			const auto icon = GenerateStars(costTotalFont->height, 1);
+			const auto text = removedStar(rightText);
+			const auto icon = GenerateStars(costPerYearFont->height, 1);
 			auto result = QImage(
-				QSize(costTotalFont->spacew + costTotalFont->width(text), 0)
+				QSize(costPerYearFont->spacew + costPerYearFont->width(text), 0)
 					* style::DevicePixelRatio()
 					+ icon.size(),
 				QImage::Format_ARGB32_Premultiplied);
@@ -968,8 +974,7 @@ void AddGiftOptions(
 				auto p = QPainter(&result);
 				p.drawImage(0, 0, icon);
 				p.setPen(st::windowSubTextFg);
-				p.setFont(costTotalFont);
-				auto copy = info.costTotal;
+				p.setFont(costPerYearFont);
 				p.drawText(
 					Rect(result.size() / style::DevicePixelRatio()),
 					text,
@@ -1077,12 +1082,12 @@ void AddGiftOptions(
 					: (costPerMonthFont->spacew
 						+ costPerMonthIcon.width()
 							/ style::DevicePixelRatio());
-				const auto costTotalWidth = costTotalFont->width(
-					info.costTotal);
+				const auto costPerYearWidth = costPerYearFont->width(
+					rightText);
 				const auto pos = perRect.translated(left, 0).topLeft();
 				const auto availableWidth = row->width()
 					- pos.x()
-					- costTotalWidth;
+					- costPerYearWidth;
 				costPerMonthLabel->draw(p, {
 					.position = pos,
 					.outerWidth = availableWidth,
@@ -1094,16 +1099,16 @@ void AddGiftOptions(
 
 			const auto totalRect = row->rect()
 				- QMargins(0, 0, st.rowMargins.right(), 0);
-			if (costTotalEntry.isNull()) {
-				p.setFont(costTotalFont);
-				p.drawText(totalRect, info.costTotal, style::al_right);
+			if (costPerYearEntry.isNull()) {
+				p.setFont(costPerYearFont);
+				p.drawText(totalRect, rightText, style::al_right);
 			} else {
-				const auto size = costTotalEntry.size()
+				const auto size = costPerYearEntry.size()
 					/ style::DevicePixelRatio();
 				p.drawImage(
 					totalRect.width() - size.width(),
 					(row->height() - size.height()) / 2,
-					costTotalEntry);
+					costPerYearEntry);
 			}
 		}, row->lifetime());
 

@@ -21,8 +21,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "info/peer_gifts/info_peer_gifts_widget.h"
 #include "info/profile/info_profile_actions.h"
 #include "info/profile/info_profile_icon.h"
+#include "info/profile/info_profile_top_bar.h"
 #include "info/profile/info_profile_values.h"
 #include "info/profile/info_profile_widget.h"
+#include "info/saved/info_saved_music_common.h"
 #include "info/stories/info_stories_albums.h"
 #include "info/stories/info_stories_widget.h"
 #include "info/info_controller.h"
@@ -43,6 +45,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/wrap/slide_wrap.h"
 #include "ui/wrap/vertical_layout.h"
 #include "ui/vertical_list.h"
+#include "ui/ui_utility.h"
 #include "styles/style_credits.h"
 #include "styles/style_dialogs.h"
 #include "styles/style_info.h"
@@ -165,7 +168,7 @@ void EditAlbumBox::prepare() {
 					| (remove.isEmpty()
 						? Flag()
 						: Flag::f_delete_stories)),
-				changes.peer->input,
+				changes.peer->input(),
 				MTP_int(changes.albumId),
 				MTPstring(),
 				MTP_vector<MTPint>(remove),
@@ -262,6 +265,10 @@ void InnerWidget::setupAlbums() {
 
 InnerWidget::~InnerWidget() = default;
 
+rpl::producer<> InnerWidget::backRequest() const {
+	return _backClicks.events();
+}
+
 void InnerWidget::setupTop() {
 	const auto albumId = _albumId.current();
 	if (_addingToAlbumId) {
@@ -284,6 +291,8 @@ void InnerWidget::setupTop() {
 }
 
 void InnerWidget::startTop() {
+	_albumsTabs = nullptr;
+	_albumsWrap = nullptr;
 	_top.create(this);
 	_top->show();
 	_topHeight = _top->heightValue();
@@ -292,9 +301,24 @@ void InnerWidget::startTop() {
 void InnerWidget::createProfileTop() {
 	startTop();
 
+	Info::Saved::SetupSavedMusic(
+		_top,
+		_controller,
+		_peer,
+		_topBarColor.value());
+
 	using namespace Profile;
-	AddCover(_top, _controller, _peer, nullptr, nullptr);
-	AddDetails(_top, _controller, _peer, nullptr, nullptr, { v::null });
+	auto mainTracker = Ui::MultiSlideTracker();
+	auto dividerOverridden = rpl::variable<bool>(false);
+	AddDetails(
+		_top,
+		_controller,
+		_peer,
+		nullptr,
+		nullptr,
+		{ v::null },
+		mainTracker,
+		dividerOverridden);
 
 	auto tracker = Ui::MultiSlideTracker();
 	const auto dividerWrap = _top->add(
@@ -481,6 +505,63 @@ void InnerWidget::addGiftsButton(Ui::MultiSlideTracker &tracker) {
 	tracker.track(giftsWrap);
 }
 
+bool InnerWidget::hasFlexibleTopBar() const {
+	return (_controller->key().storiesAlbumId() != Stories::ArchiveId()
+		&& _controller->key().storiesPeer()
+		&& _controller->key().storiesPeer()->isSelf());
+}
+
+base::weak_qptr<Ui::RpWidget> InnerWidget::createPinnedToTop(
+		not_null<Ui::RpWidget*> parent) {
+	if (!hasFlexibleTopBar()) {
+		return nullptr;
+	}
+
+	const auto content = Ui::CreateChild<Profile::TopBar>(
+		parent,
+		Profile::TopBar::Descriptor{
+			.controller = _controller->parentController(),
+			.key = _controller->key(),
+			.wrap = _controller->wrapValue(),
+			.source = Profile::TopBar::Source::Stories,
+			.peer = _peer,
+			.backToggles = _backToggles.value(),
+			.showFinished = _showFinished.events(),
+		});
+	content->backRequest(
+	) | rpl::start_to_stream(_backClicks, content->lifetime());
+	_topBarColor = content->edgeColor();
+	return base::make_weak(not_null<Ui::RpWidget*>{ content });
+}
+
+base::weak_qptr<Ui::RpWidget> InnerWidget::createPinnedToBottom(
+		not_null<Ui::RpWidget*> parent) {
+	return nullptr;
+}
+
+void InnerWidget::enableBackButton() {
+	_backToggles.force_assign(true);
+}
+
+void InnerWidget::showFinished() {
+	_showFinished.fire({});
+
+	const auto window = _controller->parentController();
+	window->checkHighlightControl(u"my-profile/posts"_q, _albumsWrap);
+	if (window->highlightControlId() == u"my-profile/posts/add-album"_q) {
+		window->setHighlightControlId(QString());
+		if (_albumsWrap) {
+			::Settings::HighlightWidget(_albumsWrap);
+		}
+		_controller->uiShow()->show(Box(
+			NewAlbumBox,
+			_controller,
+			_peer,
+			StoryId(),
+			[=](Data::StoryAlbum album) { albumAdded(album); }));
+	}
+}
+
 void InnerWidget::finalizeTop() {
 	const auto addPossibleAlbums = !_addingToAlbumId
 		&& (_albumId.current() != Data::kStoriesAlbumIdArchive);
@@ -514,6 +595,7 @@ void InnerWidget::createAboutArchive() {
 void InnerWidget::visibleTopBottomUpdated(
 		int visibleTop,
 		int visibleBottom) {
+	_visibleRange = { visibleTop, visibleBottom };
 	setChildVisibleTopBottom(_list, visibleTop, visibleBottom);
 }
 
@@ -532,6 +614,30 @@ void InnerWidget::setupList() {
 		this,
 		_controller);
 	const auto raw = _list.data();
+	const auto albumId = _albumId.current();
+	if (albumId && albumId != Data::kStoriesAlbumIdArchive) {
+		raw->setReorderDescriptor({
+			// .filter = [=](HistoryItem *item) {
+			// 	const auto stories = &_peer->owner().stories();
+			// 	const auto &albumIds = stories->albumIds(_peer->id, albumId);
+			// 	const auto storyId = StoryIdFromMsgId(item->id);
+			// 	return !ranges::contains(albumIds.pinnedToTop, storyId);
+			// },
+			.save = [=](
+					int oldPosition,
+					int newPosition,
+					Fn<void()> done,
+					Fn<void()> fail) {
+				_peer->owner().stories().albumReorderStories(
+					_peer,
+					albumId,
+					oldPosition,
+					newPosition,
+					done,
+					fail);
+			}
+		});
+	}
 
 	using namespace rpl::mappers;
 	raw->scrollToRequests(
@@ -545,6 +651,10 @@ void InnerWidget::setupList() {
 	_listTops.fire(raw->topValue());
 
 	raw->show();
+
+	Ui::PostponeCall(crl::guard(this, [=] {
+		visibleTopBottomUpdated(_visibleRange.top, _visibleRange.bottom);
+	}));
 }
 
 void InnerWidget::setupEmpty() {
@@ -625,10 +735,10 @@ void InnerWidget::refreshEmpty() {
 		_empty = object_ptr<Ui::FlatLabel>(
 			this,
 			(!knownEmpty
-				? tr::lng_contacts_loading(Ui::Text::WithEntities)
+				? tr::lng_contacts_loading(tr::marked)
 				: _peer->isSelf()
-				? tr::lng_stories_empty(Ui::Text::RichLangValue)
-				: tr::lng_stories_empty_channel(Ui::Text::RichLangValue)),
+				? tr::lng_stories_empty(tr::rich)
+				: tr::lng_stories_empty_channel(tr::rich)),
 			st::giftListAbout);
 		_empty->show();
 	}
@@ -657,7 +767,7 @@ void InnerWidget::refreshAlbumsTabs() {
 			.id = u"all"_q,
 			.text = tr::lng_stories_album_all(
 				tr::now,
-				Ui::Text::WithEntities),
+				tr::marked),
 		});
 		for (const auto &album : _albums) {
 			auto title = TextWithEntities();
@@ -1025,7 +1135,7 @@ void InnerWidget::flushAlbumReorder() {
 	}
 
 	_reorderRequestId = _api->request(MTPstories_ReorderAlbums(
-		_peer->input,
+		_peer->input(),
 		MTP_vector<MTPint>(order)
 	)).done([=] {
 		_reorderRequestId = 0;

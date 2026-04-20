@@ -40,7 +40,8 @@ struct PeerByLinkInfo {
 	QString phone;
 	QString chatLinkSlug;
 	MsgId messageId = ShowAtUnreadMsgId;
-	StoryId storyId = 0;
+	QByteArray pollOption;
+	QString storyParam;
 	int storyAlbumId = 0;
 	int giftCollectionId = 0;
 	std::optional<TimeId> videoTimestamp;

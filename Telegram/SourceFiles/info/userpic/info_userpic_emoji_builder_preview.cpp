@@ -171,7 +171,7 @@ EmojiUserpic::EmojiUserpic(
 
 void EmojiUserpic::setDocument(not_null<DocumentData*> document) {
 	if (!_playOnce.has_value()) {
-		const auto &c = document->owner().session().appConfig();
+		const auto &c = document->session().appConfig();
 		_playOnce = !c.get<bool>(u"upload_markup_video"_q, false);
 	}
 	_painter.setDocument(document, [=] { update(); });

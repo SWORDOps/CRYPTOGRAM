@@ -10,8 +10,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/call_delayed.h"
 #include "base/event_filter.h"
 #include "base/timer_rpl.h"
+#include "boxes/choose_filter_box.h"
 #include "chat_helpers/share_message_phrase_factory.h"
 #include "core/ui_integration.h"
+#include "data/data_chat_filters.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
 #include "data/stickers/data_custom_emoji.h"
@@ -19,7 +21,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_item.h"
 #include "history/view/reactions/history_view_reactions_selector.h"
 #include "lang/lang_keys.h"
-#include "lottie/lottie_icon.h"
 #include "main/main_session.h"
 #include "ui/rect.h"
 #include "ui/effects/show_animation.h"
@@ -27,10 +28,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/toast/toast_widget.h"
 #include "ui/toast/toast.h"
 #include "ui/widgets/buttons.h"
+#include "ui/widgets/popup_menu.h"
 #include "ui/widgets/tooltip.h"
 #include "window/window_session_controller.h"
 #include "styles/style_chat.h"
 #include "styles/style_chat_helpers.h"
+#include "styles/style_info.h"
 
 namespace HistoryView {
 namespace {
@@ -64,6 +67,20 @@ void SelfForwardsTagger::setup() {
 			return;
 		}
 		showSelectorForMessages(data.ids);
+	}, _lifetime);
+	_controller->session().data().recentJoinChat(
+	) | rpl::on_next([=](const Data::RecentJoinChat &data) {
+		if (!_controller->session().data().chatsFilters().has()) {
+			return;
+		}
+		const auto history = _history ? _history() : nullptr;
+		if (!history || history->peer->id != data.fromPeerId) {
+			return;
+		}
+		const auto peerId = data.joinedPeerId;
+		if (const auto peer = _controller->session().data().peer(peerId)) {
+			showChannelFilterToast(peer);
+		}
 	}, _lifetime);
 }
 
@@ -186,19 +203,7 @@ void SelfForwardsTagger::showSelectorForMessages(
 		state->expanded = true;
 	}, selector->lifetime());
 
-	base::install_event_filter(selector, [=](not_null<QEvent*> event) {
-		if (event->type() == QEvent::MouseButtonPress) {
-			state->timerLifetime.destroy();
-			return base::EventFilterResult::Continue;
-		} else if (!state->expanded && event->type() == QEvent::Enter) {
-			state->timerLifetime.destroy();
-			return base::EventFilterResult::Continue;
-		} else if (!state->expanded && event->type() == QEvent::Leave) {
-			restartTimer(kTimerOnLeave);
-			return base::EventFilterResult::Continue;
-		}
-		return base::EventFilterResult::Continue;
-	}, selector->lifetime());
+	setupToastTimer(selector, state, hideAndDestroy);
 
 	QObject::connect(
 		_toast->widget(),
@@ -219,7 +224,6 @@ void SelfForwardsTagger::showSelectorForMessages(
 			rect.x() + (rect.width() - selector->width()) / 2,
 			rect::bottom(rect) - st::selfForwardsTaggerStripSkip);
 	}, selector->lifetime());
-	restartTimer(kInitTimer);
 	selector->show();
 }
 
@@ -232,15 +236,15 @@ void SelfForwardsTagger::showToast(
 		.textContext = Core::TextContext({
 			.session = &_controller->session(),
 		}),
+		.iconLottie = u"toast/saved_messages"_q,
+		.iconPadding = st::selfForwardsTaggerIconPadding,
 		.st = &st::selfForwardsTaggerToast,
 		.attach = RectPart::Top,
 		.infinite = true,
 	});
 	if (const auto strong = _toast.get()) {
-		const auto widget = strong->widget();
-		createLottieIcon(widget, u"toast/saved_messages"_q);
 		if (callback) {
-			QObject::connect(widget, &QObject::destroyed, callback);
+			QObject::connect(strong->widget(), &QObject::destroyed, callback);
 		}
 	} else if (callback) {
 		callback();
@@ -279,7 +283,7 @@ void SelfForwardsTagger::showTaggedToast(DocumentId reaction) {
 		tr::now,
 		lt_emoji,
 		Data::SingleCustomEmoji(reaction),
-		Ui::Text::WithEntities);
+		tr::marked);
 	hideToast();
 
 	const auto &st = st::selfForwardsTaggerToast;
@@ -293,6 +297,8 @@ void SelfForwardsTagger::showTaggedToast(DocumentId reaction) {
 		.textContext = Core::TextContext({
 			.session = &_controller->session(),
 		}),
+		.iconLottie = u"toast/tagged"_q,
+		.iconPadding = st::selfForwardsTaggerIconPadding,
 		.padding = rpl::single(QMargins(0, 0, rightSkip, 0)),
 		.st = &st,
 		.attach = RectPart::Top,
@@ -301,7 +307,6 @@ void SelfForwardsTagger::showTaggedToast(DocumentId reaction) {
 	});
 	if (const auto strong = _toast.get()) {
 		const auto widget = strong->widget();
-		createLottieIcon(widget, u"toast/tagged"_q);
 
 		const auto button = Ui::CreateChild<Ui::AbstractButton>(widget.get());
 		button->setClickedCallback([=] {
@@ -334,6 +339,96 @@ void SelfForwardsTagger::showTaggedToast(DocumentId reaction) {
 
 		button->show();
 	}
+}
+
+void SelfForwardsTagger::showChannelFilterToast(not_null<PeerData*> peer) {
+	hideToast();
+	const auto toastText = peer->isChannel() && !peer->isMegagroup()
+		? tr::lng_add_channel_to_filter_selector(tr::now)
+		: tr::lng_add_group_to_filter_selector(tr::now);
+	_toast = Ui::Toast::Show(_scroll, Ui::Toast::Config{
+		.text = { .text = toastText },
+		.iconLottie = u"toast/chats_filter_in"_q,
+		.iconPadding = st::selfForwardsTaggerIconPadding,
+		.st = &st::joinChatAddToFilterToast,
+		.attach = RectPart::Top,
+		.acceptinput = true,
+		.infinite = true,
+	});
+	if (const auto strong = _toast.get()) {
+		const auto widget = strong->widget();
+		const auto rightButton = createRightButton(widget);
+		const auto history = peer->owner().history(peer);
+
+		const auto state = widget->lifetime().make_state<ToastTimerState>();
+
+		rightButton->setClickedCallback([=] {
+			state->expanded = true;
+			state->timerLifetime.destroy();
+			const auto menu = Ui::CreateChild<Ui::PopupMenu>(
+				rightButton,
+				st::foldersMenu);
+			menu->setForcedOrigin(Ui::PanelAnimation::Origin::TopRight);
+			FillChooseFilterMenu(_controller, menu, history);
+			if (!menu->empty()) {
+				menu->popup(
+					rightButton->mapToGlobal(
+						QPoint(
+							rightButton->width(),
+							rightButton->height() + rightButton->y())));
+				QObject::connect(menu, &QObject::destroyed, [=] {
+					hideToast();
+				});
+			} else {
+				hideToast();
+			}
+		});
+
+		setupToastTimer(widget, state, [=] { hideToast(); });
+	}
+}
+
+not_null<Ui::AbstractButton*> SelfForwardsTagger::createRightButton(
+		not_null<Ui::RpWidget*> widget) {
+	const auto button = Ui::CreateChild<Ui::IconButton>(
+		widget.get(),
+		st::joinChatAddToFilterToastButton);
+	widget->sizeValue() | rpl::on_next([=](const QSize &size) {
+		button->moveToRight(
+			st::lineWidth * 4,
+			(size.height() - button->height()) / 2);
+	}, button->lifetime());
+
+	button->show();
+	return button;
+}
+
+void SelfForwardsTagger::setupToastTimer(
+		not_null<Ui::RpWidget*> widget,
+		not_null<ToastTimerState*> state,
+		Fn<void()> hideCallback) {
+	const auto restartTimer = [=](crl::time ms) {
+		state->timerLifetime.destroy();
+		base::timer_once(ms) | rpl::on_next([=] {
+			hideCallback();
+		}, state->timerLifetime);
+	};
+
+	base::install_event_filter(widget, [=](not_null<QEvent*> event) {
+		if (event->type() == QEvent::MouseButtonPress) {
+			state->timerLifetime.destroy();
+			return base::EventFilterResult::Continue;
+		} else if (!state->expanded && event->type() == QEvent::Enter) {
+			state->timerLifetime.destroy();
+			return base::EventFilterResult::Continue;
+		} else if (!state->expanded && event->type() == QEvent::Leave) {
+			restartTimer(kTimerOnLeave);
+			return base::EventFilterResult::Continue;
+		}
+		return base::EventFilterResult::Continue;
+	}, widget->lifetime());
+
+	restartTimer(kInitTimer);
 }
 
 void SelfForwardsTagger::hideToast() {

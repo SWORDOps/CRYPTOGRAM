@@ -17,6 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "qr/qr_generate.h"
+#include "settings/settings_common.h"
 #include "ui/controls/userpic_button.h"
 #include "ui/dynamic_image.h"
 #include "ui/dynamic_thumbnails.h"
@@ -261,7 +262,7 @@ not_null<Ui::RpWidget*> PrepareQrWidget(
 		state->backgroundColors = backgroundColors;
 		state->text = username.toUpper();
 		state->textWidth = state->font->width(state->text);
-		{
+		if (!link.isEmpty()) {
 			const auto remainder = qrMaxSize % st::introQrPixel;
 			const auto downTo = remainder
 				? qrMaxSize - remainder
@@ -274,6 +275,13 @@ not_null<Ui::RpWidget*> PrepareQrWidget(
 					Size(qrMaxSize * style::DevicePixelRatio()),
 					Qt::IgnoreAspectRatio,
 					Qt::SmoothTransformation);
+		} else {
+			auto image = QImage(
+				Size(qrMaxSize * style::DevicePixelRatio()),
+				QImage::Format_ARGB32_Premultiplied);
+			image.fill(Qt::white);
+			image.setDevicePixelRatio(style::DevicePixelRatio());
+			state->qrImage = std::move(image);
 		}
 		const auto resultWidth = qrMaxSize
 			+ rect::m::sum::h(state->backgroundMargins);
@@ -474,6 +482,15 @@ void FillPeerQrBox(
 		auto p = QPainter(userpic);
 		p.drawImage(0, 0, userpicMedia->image(userpicSize));
 	}, userpic->lifetime());
+
+	linkValue() | rpl::on_next([=](const QString &link) {
+		if (link.isEmpty()) {
+			box->showFinishes() | rpl::on_next([=] {
+				box->closeBox();
+			}, box->lifetime());
+			box->closeBox();
+		}
+	}, box->lifetime());
 
 	userpic->setVisible(peer != nullptr);
 	PrepareQrWidget(
@@ -964,9 +981,32 @@ void FillPeerQrBox(
 			saveButton->height() / 2);
 		AddChildToWidgetCenter(saveButton, loadingAnimation);
 		loadingAnimation->showOn(state->saveButtonBusy.value());
+
+		box->showFinishes(
+		) | rpl::take(1) | rpl::on_next([=] {
+			if (const auto window = Core::App().findWindow(box)) {
+				window->checkHighlightControl(
+					u"self-qr-code/copy"_q,
+					saveButton,
+					{
+						.color = &st::activeButtonFg,
+						.opacity = 0.6,
+						.rippleShape = true,
+						.scroll = false,
+					});
+			}
+		}, box->lifetime());
 	}
 
 	box->addTopButton(st::boxTitleClose, [=] { box->closeBox(); });
+}
+
+void DefaultShowFillPeerQrBoxCallback(
+		std::shared_ptr<Ui::Show> show,
+		PeerData *peer) {
+	if (peer && !peer->username().isEmpty()) {
+		show->show(Box(Ui::FillPeerQrBox, peer, std::nullopt, nullptr));
+	}
 }
 
 } // namespace Ui

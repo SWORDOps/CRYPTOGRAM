@@ -14,6 +14,11 @@ namespace Ui {
 struct ColorIndicesCompressed;
 } // namespace Ui
 
+namespace Calls::Group::Ui {
+using namespace ::Ui;
+struct StarsColoring;
+} // namespace Calls::Group::Ui
+
 namespace Main {
 
 class Account;
@@ -42,6 +47,10 @@ public:
 			return getStringMap(key, std::move(fallback));
 		} else if constexpr (std::is_same_v<Type, std::vector<int>>) {
 			return getIntArray(key, std::move(fallback));
+		} else if constexpr (std::is_same_v<Type, std::vector<std::vector<int>>>) {
+			return getIntIntArray(key, std::move(fallback));
+		} else if constexpr (std::is_same_v<Type, std::vector<int64>>) {
+			return getInt64Array(key, std::move(fallback));
 		} else if constexpr (std::is_same_v<Type, bool>) {
 			return getBool(key, fallback);
 		}
@@ -62,6 +71,7 @@ public:
 
 	[[nodiscard]] int quoteLengthMax() const;
 	[[nodiscard]] int stargiftConvertPeriodMax() const;
+	[[nodiscard]] int noForwardsRequestExpirePeriod() const;
 
 	[[nodiscard]] const std::vector<QString> &startRefPrefixes();
 	[[nodiscard]] bool starrefSetupAllowed() const;
@@ -72,6 +82,8 @@ public:
 	[[nodiscard]] int starsWithdrawMax() const;
 	[[nodiscard]] float64 starsWithdrawRate() const;
 	[[nodiscard]] float64 currencyWithdrawRate() const;
+	[[nodiscard]] float64 starsSellRate() const;
+	[[nodiscard]] float64 currencySellRate() const;
 	[[nodiscard]] bool paidMessagesAvailable() const;
 	[[nodiscard]] int paidMessageStarsMax() const;
 	[[nodiscard]] int paidMessageCommission() const;
@@ -93,6 +105,7 @@ public:
 	[[nodiscard]] int giftResaleNanoTonThousandths() const;
 
 	[[nodiscard]] int pollOptionsLimit() const;
+	[[nodiscard]] int pollAnswerDeletePeriod() const;
 	[[nodiscard]] int todoListItemsLimit() const;
 	[[nodiscard]] int todoListTitleLimit() const;
 	[[nodiscard]] int todoListItemTextLimit() const;
@@ -117,6 +130,25 @@ public:
 
 	[[nodiscard]] int groupCallMessageLengthLimit() const;
 	[[nodiscard]] TimeId groupCallMessageTTL() const;
+
+	[[nodiscard]] int passkeysAccountPasskeysMax() const;
+	[[nodiscard]] bool settingsDisplayPasskeys() const;
+
+	[[nodiscard]] int64 stakeDiceNanoTonMin() const;
+	[[nodiscard]] int64 stakeDiceNanoTonMax() const;
+	[[nodiscard]] std::vector<int64> stakeDiceNanoTonSuggested() const;
+
+	struct AiComposeStyle {
+		QString type;
+		DocumentId emojiId = 0;
+		QString title;
+	};
+	[[nodiscard]] std::vector<AiComposeStyle> aiComposeStyles() const;
+
+	using StarsColoring = Calls::Group::Ui::StarsColoring;
+	[[nodiscard]] std::vector<StarsColoring> groupCallColorings() const;
+
+	[[nodiscard]] std::vector<std::vector<int>> craftAttributePermilles() const;
 
 	void refresh(bool force = false);
 
@@ -146,6 +178,12 @@ private:
 	[[nodiscard]] std::vector<int> getIntArray(
 		const QString &key,
 		std::vector<int> &&fallback) const;
+	[[nodiscard]] std::vector<std::vector<int>> getIntIntArray(
+		const QString &key,
+		std::vector<std::vector<int>> &&fallback) const;
+	[[nodiscard]] std::vector<int64> getInt64Array(
+		const QString &key,
+		std::vector<int64> &&fallback) const;
 
 	void updateIgnoredRestrictionReasons(std::vector<QString> was);
 
@@ -161,6 +199,9 @@ private:
 	rpl::event_stream<std::vector<QString>> _ignoreRestrictionChanges;
 
 	std::vector<QString> _startRefPrefixes;
+
+	mutable std::optional<std::vector<AiComposeStyle>> _aiComposeStyles;
+	mutable std::vector<StarsColoring> _groupCallColorings;
 
 	crl::time _lastFrozenRefresh = 0;
 	rpl::lifetime _frozenTrackLifetime;

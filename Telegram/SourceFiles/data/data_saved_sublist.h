@@ -52,8 +52,7 @@ public:
 	[[nodiscard]] bool isHiddenAuthor() const;
 	[[nodiscard]] rpl::producer<> destroyed() const;
 
-	void growLastKnownServerMessageId(MsgId id);
-	void applyMaybeLast(not_null<HistoryItem*> item, bool added = false);
+	void applyMaybeLast(not_null<HistoryItem*> item);
 	void applyItemAdded(not_null<HistoryItem*> item);
 	void applyItemRemoved(MsgId id);
 
@@ -73,6 +72,7 @@ public:
 		not_null<HistoryItem*> topItem);
 	void readTillEnd();
 	void requestChatListMessage();
+	void setRestorePinnedWhenNonEmpty(bool restore);
 
 	TimeId adjustedChatListTimeId() const override;
 
@@ -90,6 +90,7 @@ public:
 
 	void hasUnreadMentionChanged(bool has) override;
 	void hasUnreadReactionChanged(bool has) override;
+	void hasUnreadPollVoteChanged(bool has) override;
 
 	[[nodiscard]] HistoryItem *lastMessage() const;
 	[[nodiscard]] HistoryItem *lastServerMessage() const;
@@ -143,6 +144,7 @@ private:
 	void setChatListMessage(HistoryItem *item);
 	void allowChatListMessageResolve();
 	void resolveChatListMessageGroup();
+	void growLastKnownServerMessageId(MsgId id);
 
 	void changeUnreadCountByMessage(MsgId id, int delta);
 	void setUnreadCount(std::optional<int> count);
@@ -173,6 +175,7 @@ private:
 	rpl::event_stream<> _listChanges;
 	rpl::event_stream<> _instantChanges;
 	std::optional<MsgId> _loadingAround;
+	std::optional<MsgId> _loadingAroundRetry;
 	rpl::variable<std::optional<int>> _unreadCount;
 	MsgId _inboxReadTillId = 0;
 	MsgId _outboxReadTillId = 0;
@@ -189,7 +192,7 @@ private:
 	mtpRequestId _readRequestId = 0;
 	MsgId _sentReadTill = 0;
 
-	mtpRequestId _reloadUnreadCountRequestId = 0;
+	bool _restorePinnedWhenNonEmpty = false;
 
 	rpl::lifetime _lifetime;
 

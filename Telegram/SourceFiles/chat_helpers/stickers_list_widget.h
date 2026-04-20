@@ -56,6 +56,9 @@ struct FlatLabel;
 
 namespace ChatHelpers {
 
+extern const char kOptionUnlimitedRecentStickers[];
+[[nodiscard]] QVector<MTPstring> SearchStickersLangCodes();
+
 struct StickerIcon;
 enum class ValidateIconAnimations;
 class StickersListFooter;
@@ -287,7 +290,6 @@ private:
 		bool paused,
 		bool selected,
 		bool deleteSelected);
-	void paintEmptySearchResults(Painter &p);
 
 	void ensureLottiePlayer(Set &set);
 	void setupLottie(Set &set, int section, int index);
@@ -357,12 +359,27 @@ private:
 
 	void cancelSetsSearch();
 	void showSearchResults();
-	void searchResultsDone(const MTPmessages_FoundStickerSets &result);
+	void sendSearchSetsRequest(const QString &query);
+	void searchResultsDone(
+		const QString &query,
+		const MTPmessages_FoundStickerSets &result);
+	void requestSearchStickers(
+		const QString &query,
+		int offset,
+		bool requestSetsOnEmpty);
+	void searchStickersResultsDone(
+		const QString &query,
+		int requestedOffset,
+		bool requestSetsOnEmpty,
+		const MTPmessages_FoundStickers &result);
+	void loadMoreSearchStickers();
+	void checkPaginateSearchStickers(int visibleTop, int visibleBottom);
 	void refreshSearchRows();
 	void refreshSearchRows(const std::vector<uint64> *cloudSets);
 	void fillFilteredStickersRow();
 	void fillLocalSearchRows(const QString &query);
 	void fillCloudSearchRows(const std::vector<uint64> &cloudSets);
+	void fillFoundStickersRow(const std::vector<DocumentId> &stickerIds);
 	void addSearchRow(not_null<Data::StickersSet*> set);
 	void toggleSearchLoading(bool loading);
 
@@ -443,11 +460,15 @@ private:
 	std::vector<not_null<DocumentData*>> _filteredStickers;
 	std::vector<EmojiPtr> _filterStickersCornerEmoji;
 	rpl::variable<int> _recentShownCount;
-	std::map<QString, std::vector<uint64>> _searchCache;
+	std::map<QString, std::vector<uint64>> _searchSetsCache;
+	std::map<QString, std::vector<DocumentId>> _searchStickersCache;
+	std::map<QString, int> _searchStickersNextOffset;
 	std::vector<std::pair<uint64, QStringList>> _searchIndex;
 	base::Timer _searchRequestTimer;
 	QString _searchQuery, _searchNextQuery;
-	mtpRequestId _searchRequestId = 0;
+	mtpRequestId _searchSetsRequestId = 0;
+	mtpRequestId _searchStickersRequestId = 0;
+	bool _searchLoading = false;
 
 	rpl::event_stream<FileChosen> _chosen;
 	rpl::event_stream<> _scrollUpdated;

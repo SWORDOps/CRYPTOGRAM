@@ -7,13 +7,19 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "media/system_media_controls_manager.h"
 
-#include "media/audio/media_audio.h"
 #include "base/platform/base_platform_system_media_controls.h"
 #include "core/application.h"
 #include "core/core_settings.h"
-#include "data/data_document.h"
 #include "data/data_document_media.h"
+#include "data/data_document.h"
 #include "data/data_file_origin.h"
+#include "data/data_peer.h"
+#include "data/data_session.h"
+#include "history/history_item_components.h"
+#include "history/history_item_helpers.h"
+#include "history/history_item.h"
+#include "history/history.h"
+#include "lang/lang_keys.h"
 #include "main/main_account.h"
 #include "main/main_session.h"
 #include "media/audio/media_audio.h"
@@ -54,13 +60,13 @@ SystemMediaControlsManager::SystemMediaControlsManager()
 		LOG(("SystemMediaControlsManager failed to init."));
 		return;
 	}
-	const auto type = AudioMsgId::Type::Song;
-
 	using TrackState = Media::Player::TrackState;
 	const auto mediaPlayer = Media::Player::instance();
 
 	auto trackFilter = rpl::filter([=](const TrackState &state) {
-		return (state.id.type() == type);
+		const auto type = state.id.type();
+		return (type == AudioMsgId::Type::Song)
+			|| (type == AudioMsgId::Type::Voice);
 	});
 
 	mediaPlayer->updatedNotifier(
@@ -106,14 +112,18 @@ SystemMediaControlsManager::SystemMediaControlsManager()
 
 	auto trackChanged = mediaPlayer->trackChanged(
 	) | rpl::filter([=](AudioMsgId::Type audioType) {
-		return audioType == type;
+		return (audioType == AudioMsgId::Type::Song)
+			|| (audioType == AudioMsgId::Type::Voice);
 	});
 
 	auto unlocked = Core::App().passcodeLockChanges(
 	) | rpl::filter([=](bool locked) {
-		return !locked && (mediaPlayer->current(type));
-	}) | rpl::map([=] {
-		return type;
+		return !locked && (mediaPlayer->current(AudioMsgId::Type::Song)
+			|| mediaPlayer->current(AudioMsgId::Type::Voice));
+	}) | rpl::map([=]() -> AudioMsgId::Type {
+		return mediaPlayer->current(AudioMsgId::Type::Song)
+			? AudioMsgId::Type::Song
+			: AudioMsgId::Type::Voice;
 	}) | rpl::before_next([=] {
 		_controls->setEnabled(true);
 		_controls->updateDisplay();
@@ -136,9 +146,12 @@ SystemMediaControlsManager::SystemMediaControlsManager()
 		}
 		const auto document = current.audio();
 
-		const auto &[title, performer] = Ui::Text::FormatSongNameFor(document)
-			.composedName();
-
+		const auto &[title, performer] = (audioType
+				== AudioMsgId::Type::Voice)
+			? Ui::Text::FormatVoiceName(
+				document,
+				current.contextId()).composedName()
+			: Ui::Text::FormatSongNameFor(document).composedName();
 		_controls->setArtist(performer);
 		_controls->setTitle(title);
 
@@ -163,7 +176,42 @@ SystemMediaControlsManager::SystemMediaControlsManager()
 		// so we need to update the display before that.
 		_controls->updateDisplay();
 
-		if (document && document->isSongWithCover()) {
+		if (audioType == AudioMsgId::Type::Voice) {
+			if (const auto item = document->owner().message(
+					current.contextId())) {
+				constexpr auto kUserpicSize = 50;
+				const auto forwarded = item->Get<HistoryMessageForwarded>();
+				const auto peer = (forwarded && forwarded->originalSender)
+					? forwarded->originalSender
+					: (!item->out() || item->isPost())
+					? item->fromOriginal().get()
+					: item->history()->peer.get();
+				const auto userpic = PeerData::GenerateUserpicImage(
+					peer,
+					_cachedUserpicView,
+					kUserpicSize,
+					0);
+				if (!userpic.isNull()) {
+					_controls->setThumbnail(userpic);
+				} else {
+					peer->session().downloaderTaskFinished(
+					) | rpl::on_next([=] {
+						const auto userpic = PeerData::GenerateUserpicImage(
+							peer,
+							_cachedUserpicView,
+							kUserpicSize,
+							0);
+						if (!userpic.isNull()) {
+							_controls->setThumbnail(userpic);
+							_lifetimeDownload.destroy();
+						}
+					}, _lifetimeDownload);
+					_controls->clearThumbnail();
+				}
+			} else {
+				_controls->clearThumbnail();
+			}
+		} else if (document && document->isSongWithCover()) {
 			const auto view = document->createMediaView();
 			view->thumbnailWanted(current.contextId());
 			_cachedMediaView.push_back(view);
@@ -250,11 +298,15 @@ SystemMediaControlsManager::SystemMediaControlsManager()
 	}, _lifetime);
 
 	if (_controls->seekingSupported()) {
-		mediaPlayer->seekingChanges(
-			type
+		rpl::merge(
+			mediaPlayer->seekingChanges(AudioMsgId::Type::Song),
+			mediaPlayer->seekingChanges(AudioMsgId::Type::Voice)
 		) | rpl::filter([](Media::Player::Instance::Seeking seeking) {
 			return (seeking == Media::Player::Instance::Seeking::Finish);
 		}) | rpl::map([=] {
+			const auto type = mediaPlayer->current(AudioMsgId::Type::Song)
+				? AudioMsgId::Type::Song
+				: AudioMsgId::Type::Voice;
 			return mediaPlayer->getState(type).position;
 		}) | rpl::distinct_until_changed(
 		) | rpl::on_next([=](int position) {

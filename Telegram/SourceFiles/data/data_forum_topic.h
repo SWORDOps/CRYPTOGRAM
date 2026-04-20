@@ -141,6 +141,7 @@ public:
 
 	void hasUnreadMentionChanged(bool has) override;
 	void hasUnreadReactionChanged(bool has) override;
+	void hasUnreadPollVoteChanged(bool has) override;
 
 	[[nodiscard]] HistoryItem *lastMessage() const;
 	[[nodiscard]] HistoryItem *lastServerMessage() const;
@@ -160,6 +161,7 @@ public:
 	void applyCreator(PeerId creatorId);
 	void applyCreationDate(TimeId date);
 	void applyIsMy(bool my);
+	void applyMaybeLast(not_null<HistoryItem*> item);
 	void applyItemAdded(not_null<HistoryItem*> item);
 	void applyItemRemoved(MsgId id);
 	void maybeSetLastMessage(not_null<HistoryItem*> item);

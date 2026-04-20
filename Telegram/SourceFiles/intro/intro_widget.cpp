@@ -92,6 +92,7 @@ Widget::Widget(
 		this,
 		account,
 		rpl::single(true))) {
+	_settings->entity()->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
 	controller->setDefaultFloatPlayerDelegate(floatPlayerDelegate());
 
 	getData()->country = ComputeNewAccountCountry();
@@ -116,6 +117,7 @@ Widget::Widget(
 	default: Unexpected("Enter point in Intro::Widget::Widget.");
 	}
 
+	setupStep();
 	fixOrder();
 
 	if (_account->mtp().isTestMode()) {
@@ -141,7 +143,7 @@ Widget::Widget(
 	}, lifetime());
 
 	_back->entity()->setClickedCallback([=] { backRequested(); });
-	_back->entity()->accessibilitySetName(tr::lng_go_back(tr::now));
+	_back->entity()->setAccessibleName(tr::lng_go_back(tr::now));
 	_back->hide(anim::type::instant);
 
 	if (_changeLanguage) {
@@ -318,6 +320,7 @@ void Widget::checkUpdateStatus() {
 				this,
 				tr::lng_menu_update(),
 				st::defaultBoxButton));
+		_update->entity()->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
 		if (!_showAnimation) {
 			_update->setVisible(true);
 		}
@@ -340,6 +343,32 @@ void Widget::setInnerFocus() {
 	} else {
 		getStep()->setInnerFocus();
 	}
+}
+
+void Widget::setupStep() {
+	getStep()->nextButtonStyle(
+	) | rpl::on_next([=](const style::RoundButton *st) {
+		const auto nextStyle = st ? st : &st::introNextButton;
+		if (_nextStyle != nextStyle) {
+			_nextStyle = nextStyle;
+			const auto wasShown = _next->toggled();
+			_next.destroy();
+			_next.create(
+				this,
+				object_ptr<Ui::RoundButton>(this, nullptr, *nextStyle));
+			showControls();
+			updateControlsGeometry();
+			_next->toggle(wasShown, anim::type::instant);
+		}
+	}, getStep()->lifetime());
+
+	getStep()->nextButtonFocusRequests() | rpl::on_next([=] {
+		if (_next && !_next->isHidden()) {
+			_next->entity()->setFocus(Qt::OtherFocusReason);
+		}
+	}, getStep()->lifetime());
+
+	getStep()->finishInit();
 }
 
 void Widget::historyMove(StackAction action, Animate animate) {
@@ -381,7 +410,6 @@ void Widget::historyMove(StackAction action, Animate animate) {
 		}, _next->lifetime());
 	}
 
-	getStep()->finishInit();
 	getStep()->prepareShowAnimated(wasStep);
 	if (wasStep->hasCover() != getStep()->hasCover()) {
 		_nextTopFrom = wasStep->contentTop() + st::introNextTop;
@@ -483,6 +511,7 @@ void Widget::showResetButton() {
 			this,
 			tr::lng_signin_reset_account(),
 			st::introResetButton);
+		entity->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
 		_resetAccount.create(this, std::move(entity));
 		_resetAccount->hide(anim::type::instant);
 		_resetAccount->entity()->setClickedCallback([this] { resetAccount(); });
@@ -502,8 +531,8 @@ void Widget::showTerms() {
 			this,
 			tr::lng_terms_signup(
 				lt_link,
-				tr::lng_terms_signup_link() | Ui::Text::ToLink(),
-				Ui::Text::WithEntities),
+				tr::lng_terms_signup_link(tr::link),
+				tr::marked),
 			st::introTermsLabel);
 		_terms.create(this, std::move(entity));
 		_terms->entity()->overrideLinkClickHandler([=] {

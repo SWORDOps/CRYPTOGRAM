@@ -35,7 +35,7 @@ namespace {
 
 constexpr auto kDefaultNoActivityDays = 7;
 
-class Greeting : public BusinessSection<Greeting> {
+class Greeting : public Section<Greeting> {
 public:
 	Greeting(
 		QWidget *parent,
@@ -66,7 +66,7 @@ private:
 Greeting::Greeting(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
-: BusinessSection(parent, controller)
+: Section(parent, controller)
 , _bottomSkipRounding(st::boxRadius, st::boxDividerBg) {
 	setupContent(controller);
 }
@@ -135,7 +135,7 @@ void Greeting::setupContent(
 		.lottieSize = st::settingsCloudPasswordIconSize,
 		.lottieMargins = st::peerAppearanceIconPadding,
 		.showFinished = showFinishes(),
-		.about = tr::lng_greeting_about(Ui::Text::WithEntities),
+		.about = tr::lng_greeting_about(tr::marked),
 		.aboutMargins = st::peerAppearanceCoverLabelMargin,
 	});
 
@@ -252,6 +252,7 @@ void Greeting::setupContent(
 		inner,
 		tr::lng_greeting_period_about(),
 		st::settingsChatbotsBottomTextMargin,
+		st::defaultDividerLabel,
 		RectPart::Top);
 
 	wrap->toggleOn(enabled->toggledValue());

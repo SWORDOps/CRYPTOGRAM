@@ -312,9 +312,10 @@ QString UsernameEditor::getName() const {
 
 } // namespace
 
-void UsernamesBox(
+void FillUsernamesBox(
 		not_null<Ui::GenericBox*> box,
-		not_null<PeerData*> peer) {
+		not_null<PeerData*> peer,
+		Fn<void()> onSaved) {
 	const auto isBot = peer && peer->isUser() && peer->asUser()->isBot();
 	box->setTitle(isBot
 		? tr::lng_bot_username_title()
@@ -333,20 +334,20 @@ void UsernamesBox(
 	auto description = [&]() -> rpl::producer<TextWithEntities> {
 		if (!isBot) {
 			return rpl::combine(
-				tr::lng_username_description1(Ui::Text::RichLangValue),
-				tr::lng_username_description2(Ui::Text::RichLangValue)
+				tr::lng_username_description1(tr::rich),
+				tr::lng_username_description2(tr::rich)
 			) | rpl::map([](TextWithEntities d1, TextWithEntities d2) {
 				return d1.append("\n\n").append(std::move(d2));
 			});
 		}
 		if (const auto url = AppConfig::FragmentLink(&peer->session())) {
-			const auto link = Ui::Text::Link(
+			const auto link = tr::link(
 				tr::lng_bot_username_description1_link(tr::now),
 				*url);
 			return tr::lng_bot_username_description1(
 				lt_link,
 				rpl::single(link),
-				Ui::Text::RichLangValue);
+				tr::rich);
 		}
 		return rpl::single<TextWithEntities>({});
 	}();
@@ -386,6 +387,19 @@ void UsernamesBox(
 		box->addButton(tr::lng_settings_save(), finish);
 		box->addButton(tr::lng_cancel(), [=] { box->closeBox(); });
 	}
+}
+
+void UsernamesBox(
+		not_null<Ui::GenericBox*> box,
+		not_null<PeerData*> peer) {
+	FillUsernamesBox(box, peer, nullptr);
+}
+
+void UsernamesBoxWithCallback(
+		not_null<Ui::GenericBox*> box,
+		not_null<PeerData*> peer,
+		Fn<void()> onSaved) {
+	FillUsernamesBox(box, peer, std::move(onSaved));
 }
 
 void AddUsernameCheckLabel(
@@ -433,10 +447,10 @@ UsernameCheckInfo UsernameCheckInfo::PurchaseAvailable(
 			.text = tr::lng_username_purchase_available(
 				tr::now,
 				lt_link,
-				Ui::Text::Link(
+				tr::link(
 					tr::lng_username_purchase_available_link(tr::now),
 					(*fragmentLink) + u"/username/"_q + username),
-				Ui::Text::RichLangValue),
+				tr::rich),
 		};
 	} else {
 		return {

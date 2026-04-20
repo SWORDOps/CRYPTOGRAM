@@ -42,6 +42,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_todo_lists.h"
 #include "window/window_peer_menu.h"
 #include "styles/style_chat.h"
+#include "styles/style_polls.h"
 #include "styles/style_widgets.h"
 #include "styles/style_window.h"
 
@@ -317,6 +318,7 @@ void TodoList::updateTasks(bool skipAnimations) {
 		}
 		return;
 	}
+	const auto has = hasHeavyPart();
 	_tasks = ranges::views::all(
 		_todolist->items
 	) | ranges::views::transform([&](const TodoListItem &item) {
@@ -331,6 +333,10 @@ void TodoList::updateTasks(bool skipAnimations) {
 	}
 
 	updateCompletionStatus();
+
+	if (has && !hasHeavyPart()) {
+		_parent->checkHeavyPart();
+	}
 }
 
 ClickHandlerPtr TodoList::createTaskClickHandler(
@@ -357,7 +363,7 @@ void TodoList::toggleCompletion(int id) {
 		return;
 	} else if (_parent->data()->Has<HistoryMessageForwarded>()) {
 		_parent->delegate()->elementShowTooltip(
-			tr::lng_todo_mark_forwarded(tr::now, Ui::Text::RichLangValue),
+			tr::lng_todo_mark_forwarded(tr::now, tr::rich),
 			[] {});
 		return;
 	} else if (!canComplete()) {
@@ -365,8 +371,8 @@ void TodoList::toggleCompletion(int id) {
 			tr::lng_todo_mark_restricted(
 				tr::now,
 				lt_user,
-				Ui::Text::Bold(_parent->data()->from()->shortName()),
-				Ui::Text::RichLangValue), [] {});
+				tr::bold(_parent->data()->from()->shortName()),
+				tr::rich), [] {});
 		return;
 	} else if (!_parent->history()->session().premium()) {
 		Window::PeerMenuTodoWantsPremium(Window::TodoWantsPremium::Mark);
@@ -409,7 +415,8 @@ void TodoList::toggleCompletion(int id) {
 }
 
 void TodoList::maybeStartFireworks() {
-	if (!ranges::contains(_tasks, TimeId(), &Task::completionDate)) {
+	if (!ranges::contains(_tasks, TimeId(), &Task::completionDate)
+		&& !_fireworksAnimation) {
 		_fireworksAnimation = std::make_unique<Ui::FireworksAnimation>(
 			[=] { repaint(); });
 	}

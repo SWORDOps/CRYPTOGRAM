@@ -31,12 +31,14 @@ public:
 		not_null<PhotoData*> photo,
 		HistoryItem *item,
 		MsgId topicRootId,
-		PeerId monoforumPeerId)
+		PeerId monoforumPeerId,
+		bool showDrawButton = false)
 	: _controller(controller)
 	, _photo(photo)
 	, _item(item)
 	, _topicRootId(topicRootId)
-	, _monoforumPeerId(monoforumPeerId) {
+	, _monoforumPeerId(monoforumPeerId)
+	, _showDrawButton(showDrawButton) {
 	}
 	OpenRequest(
 		Window::SessionController *controller,
@@ -54,14 +56,16 @@ public:
 		MsgId topicRootId,
 		PeerId monoforumPeerId,
 		bool continueStreaming = false,
-		crl::time startTime = 0)
+		crl::time startTime = 0,
+		bool showDrawButton = false)
 	: _controller(controller)
 	, _document(document)
 	, _item(item)
 	, _topicRootId(topicRootId)
 	, _monoforumPeerId(monoforumPeerId)
 	, _continueStreaming(continueStreaming)
-	, _startTime(startTime) {
+	, _startTime(startTime)
+	, _showDrawButton(showDrawButton) {
 	}
 	OpenRequest(
 		Window::SessionController *controller,
@@ -79,6 +83,17 @@ public:
 	: _controller(controller)
 	, _story(story)
 	, _storiesContext(context) {
+	}
+
+	OpenRequest(
+		Window::SessionController *controller,
+		std::shared_ptr<Data::GroupCall> call,
+		QString linkSlug,
+		MsgId joinMessageId)
+	: _controller(controller)
+	, _call(std::move(call))
+	, _callLinkSlug(std::move(linkSlug))
+	, _callJoinMessageId(joinMessageId) {
 	}
 
 	[[nodiscard]] PeerData *peer() const {
@@ -111,6 +126,16 @@ public:
 		return _storiesContext;
 	}
 
+	[[nodiscard]] const std::shared_ptr<Data::GroupCall> &call() const {
+		return _call;
+	}
+	[[nodiscard]] const QString &callLinkSlug() const {
+		return _callLinkSlug;
+	}
+	[[nodiscard]] MsgId callJoinMessageId() const {
+		return _callJoinMessageId;
+	}
+
 	[[nodiscard]] std::optional<Data::CloudTheme> cloudTheme() const {
 		return _cloudTheme;
 	}
@@ -127,6 +152,10 @@ public:
 		return _startTime;
 	}
 
+	[[nodiscard]] bool showDrawButton() const {
+		return _showDrawButton;
+	}
+
 private:
 	Window::SessionController *_controller = nullptr;
 	DocumentData *_document = nullptr;
@@ -140,9 +169,16 @@ private:
 	std::optional<Data::CloudTheme> _cloudTheme = std::nullopt;
 	bool _continueStreaming = false;
 	crl::time _startTime = 0;
+	bool _showDrawButton = false;
+
+	std::shared_ptr<Data::GroupCall> _call;
+	QString _callLinkSlug;
+	MsgId _callJoinMessageId = 0;
 
 };
 
 [[nodiscard]] TimeId ExtractVideoTimestamp(not_null<HistoryItem*> item);
+
+[[nodiscard]] TextWithEntities StripQuoteEntities(TextWithEntities text);
 
 } // namespace Media::View

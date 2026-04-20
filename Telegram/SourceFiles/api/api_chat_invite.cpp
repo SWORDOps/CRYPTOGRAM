@@ -48,6 +48,69 @@ namespace Api {
 
 namespace {
 
+struct InviteParticipant {
+	not_null<UserData*> user;
+	Ui::PeerUserpicView userpic;
+};
+
+struct ChatInvite {
+	QString title;
+	QString about;
+	PhotoData *photo = nullptr;
+	int participantsCount = 0;
+	std::vector<InviteParticipant> participants;
+	bool isPublic = false;
+	bool isChannel = false;
+	bool isMegagroup = false;
+	bool isBroadcast = false;
+	bool isRequestNeeded = false;
+	bool isFake = false;
+	bool isScam = false;
+	bool isVerified = false;
+};
+
+[[nodiscard]] ChatInvite ParseInvite(
+		not_null<Main::Session*> session,
+		const MTPDchatInvite &data) {
+	auto participants = std::vector<InviteParticipant>();
+	if (const auto list = data.vparticipants()) {
+		participants.reserve(list->v.size());
+		for (const auto &participant : list->v) {
+			if (const auto user = session->data().processUser(participant)) {
+				participants.push_back(InviteParticipant{ user });
+			}
+		}
+	}
+	const auto photo = session->data().processPhoto(data.vphoto());
+	return {
+		.title = qs(data.vtitle()),
+		.about = data.vabout().value_or_empty(),
+		.photo = (photo->isNull() ? nullptr : photo.get()),
+		.participantsCount = data.vparticipants_count().v,
+		.participants = std::move(participants),
+		.isPublic = data.is_public(),
+		.isChannel = data.is_channel(),
+		.isMegagroup = data.is_megagroup(),
+		.isBroadcast = data.is_broadcast(),
+		.isRequestNeeded = data.is_request_needed(),
+		.isFake = data.is_fake(),
+		.isScam = data.is_scam(),
+		.isVerified = data.is_verified(),
+	};
+}
+
+[[nodiscard]] Info::Profile::BadgeType BadgeForInvite(
+		const ChatInvite &invite) {
+	using Type = Info::Profile::BadgeType;
+	return invite.isVerified
+		? Type::Verified
+		: invite.isScam
+		? Type::Scam
+		: invite.isFake
+		? Type::Fake
+		: Type::None;
+}
+
 void SubmitChatInvite(
 		base::weak_ptr<Window::SessionController> weak,
 		not_null<Main::Session*> session,
@@ -224,13 +287,13 @@ void ConfirmSubscriptionBox(
 			box,
 			tr::lng_channel_invite_subscription_about(
 				lt_channel,
-				rpl::single(Ui::Text::Bold(name)),
+				rpl::single(tr::bold(name)),
 				lt_price,
 				tr::lng_credits_summary_options_credits(
 					lt_count,
 					rpl::single(amount) | tr::to_count(),
-					Ui::Text::Bold),
-				Ui::Text::WithEntities),
+					tr::bold),
+				tr::marked),
 			st::inviteLinkSubscribeBoxAbout),
 		style::al_top);
 	Ui::AddSkip(content);
@@ -243,9 +306,9 @@ void ConfirmSubscriptionBox(
 					tr::lng_paid_react_agree_link(),
 					tr::lng_group_invite_subscription_about_url()
 				) | rpl::map([](const QString &text, const QString &url) {
-					return Ui::Text::Link(text, url);
+					return tr::link(text, url);
 				}),
-				Ui::Text::RichLangValue),
+				tr::rich),
 			st::inviteLinkSubscribeBoxTerms),
 		style::al_top);
 
@@ -356,6 +419,207 @@ void ConfirmSubscriptionBox(
 	box->addButton(tr::lng_cancel(), [=] { box->closeBox(); });
 }
 
+void ConfirmInviteBox(
+		not_null<Ui::GenericBox*> box,
+		not_null<Main::Session*> session,
+		const MTPDchatInvite *invitePtr,
+		ChannelData *invitePeekChannel,
+		Fn<void()> submit) {
+	auto invite = ParseInvite(session, *invitePtr);
+	const auto isChannel = invite.isChannel && !invite.isMegagroup;
+	const auto requestApprove = invite.isRequestNeeded;
+	const auto count = invite.participantsCount;
+
+	struct State {
+		std::shared_ptr<Data::PhotoMedia> photoMedia;
+		std::unique_ptr<Ui::EmptyUserpic> photoEmpty;
+		std::vector<InviteParticipant> participants;
+	};
+	const auto state = box->lifetime().make_state<State>();
+	state->participants = std::move(invite.participants);
+
+	const auto status = [&] {
+		return invitePeekChannel
+			? tr::lng_channel_invite_private(tr::now)
+			: (!state->participants.empty()
+				&& int(state->participants.size()) < count)
+			? tr::lng_group_invite_members(tr::now, lt_count, count)
+			: (count > 0 && isChannel)
+			? tr::lng_chat_status_subscribers(
+				tr::now,
+				lt_count_decimal,
+				count)
+			: (count > 0)
+			? tr::lng_chat_status_members(tr::now, lt_count_decimal, count)
+			: isChannel
+			? tr::lng_channel_status(tr::now)
+			: tr::lng_group_status(tr::now);
+	}();
+
+	box->setNoContentMargin(true);
+	box->setWidth(st::boxWideWidth);
+	const auto content = box->verticalLayout();
+
+	Ui::AddSkip(content, st::confirmInvitePhotoTop);
+	const auto userpic = content->add(
+		object_ptr<Ui::RpWidget>(content),
+		style::al_top);
+	const auto photoSize = st::confirmInvitePhotoSize;
+	userpic->resize(Size(photoSize));
+	userpic->setNaturalWidth(photoSize);
+	userpic->paintRequest(
+	) | rpl::on_next([=, small = Data::PhotoSize::Small] {
+		auto p = QPainter(userpic);
+		if (state->photoMedia) {
+			if (const auto image = state->photoMedia->image(small)) {
+				p.drawPixmap(
+					0,
+					0,
+					image->pix(
+						Size(photoSize),
+						{ .options = Images::Option::RoundCircle }));
+			}
+		} else if (state->photoEmpty) {
+			state->photoEmpty->paintCircle(
+				p,
+				0,
+				0,
+				userpic->width(),
+				photoSize);
+		}
+	}, userpic->lifetime());
+	userpic->setAttribute(Qt::WA_TransparentForMouseEvents);
+	if (const auto photo = invite.photo) {
+		state->photoMedia = photo->createMediaView();
+		state->photoMedia->wanted(
+			Data::PhotoSize::Small,
+			Data::FileOrigin());
+		if (!state->photoMedia->image(Data::PhotoSize::Small)) {
+			session->downloaderTaskFinished(
+			) | rpl::on_next([=] {
+				userpic->update();
+			}, userpic->lifetime());
+		}
+	} else {
+		state->photoEmpty = std::make_unique<Ui::EmptyUserpic>(
+			Ui::EmptyUserpic::UserpicColor(0),
+			invite.title);
+	}
+
+	Ui::AddSkip(content);
+	const auto title = box->addRow(
+		object_ptr<Ui::FlatLabel>(
+			box,
+			invite.title,
+			st::confirmInviteTitle),
+		style::al_top);
+
+	const auto badgeType = BadgeForInvite(invite);
+	if (badgeType != Info::Profile::BadgeType::None) {
+		const auto badgeParent = title->parentWidget();
+		const auto badge = box->lifetime().make_state<Info::Profile::Badge>(
+			badgeParent,
+			st::infoPeerBadge,
+			session,
+			rpl::single(Info::Profile::Badge::Content{ badgeType }),
+			nullptr,
+			[] { return false; });
+		title->geometryValue(
+		) | rpl::on_next([=](const QRect &r) {
+			badge->move(r.x() + r.width(), r.y(), r.y() + r.height());
+		}, title->lifetime());
+	}
+
+	box->addRow(
+		object_ptr<Ui::FlatLabel>(
+			box,
+			status,
+			st::confirmInviteStatus),
+		style::al_top);
+
+	if (!invite.about.isEmpty()) {
+		box->addRow(
+			object_ptr<Ui::FlatLabel>(
+				box,
+				invite.about,
+				st::confirmInviteAbout),
+			st::confirmInviteAboutPadding,
+			style::al_top);
+	}
+
+	if (requestApprove) {
+		box->addRow(
+			object_ptr<Ui::FlatLabel>(
+				box,
+				(isChannel
+					? tr::lng_group_request_about_channel(tr::now)
+					: tr::lng_group_request_about(tr::now)),
+				st::confirmInviteStatus),
+			st::confirmInviteAboutRequestsPadding,
+			style::al_top);
+	}
+
+	if (!state->participants.empty()) {
+		while (state->participants.size() > 4) {
+			state->participants.pop_back();
+		}
+		const auto padding = (st::confirmInviteUsersWidth
+			- 4 * st::confirmInviteUserPhotoSize) / 10;
+		const auto userWidth = st::confirmInviteUserPhotoSize + 2 * padding;
+
+		auto strip = object_ptr<Ui::RpWidget>(content);
+		const auto rawStrip = strip.data();
+		rawStrip->resize(st::boxWideWidth, st::confirmInviteUserHeight);
+		rawStrip->setNaturalWidth(st::boxWideWidth);
+
+		const auto shown = int(state->participants.size());
+		const auto sumWidth = shown * userWidth;
+		const auto baseLeft = (st::boxWideWidth - sumWidth) / 2;
+		for (auto i = 0; i != shown; ++i) {
+			const auto &participant = state->participants[i];
+			const auto name = Ui::CreateChild<Ui::FlatLabel>(
+				rawStrip,
+				st::confirmInviteUserName);
+			name->resizeToWidth(
+				st::confirmInviteUserPhotoSize + padding);
+			name->setText(participant.user->firstName.isEmpty()
+				? participant.user->name()
+				: participant.user->firstName);
+			name->moveToLeft(
+				baseLeft + i * userWidth + (padding / 2),
+				st::confirmInviteUserNameTop - st::confirmInviteUserPhotoTop);
+		}
+
+		rawStrip->paintRequest(
+		) | rpl::on_next([=] {
+			auto p = Painter(rawStrip);
+			const auto total = int(state->participants.size());
+			const auto totalWidth = total * userWidth;
+			auto left = (rawStrip->width() - totalWidth) / 2;
+			for (auto &participant : state->participants) {
+				participant.user->paintUserpicLeft(
+					p,
+					participant.userpic,
+					left + (userWidth - st::confirmInviteUserPhotoSize) / 2,
+					0,
+					rawStrip->width(),
+					st::confirmInviteUserPhotoSize);
+				left += userWidth;
+			}
+		}, rawStrip->lifetime());
+
+		Ui::AddSkip(content, st::boxPadding.bottom());
+		content->add(std::move(strip), style::margins());
+	}
+
+	box->addButton((requestApprove
+		? tr::lng_group_request_to_join()
+		: isChannel
+		? tr::lng_profile_join_channel()
+		: tr::lng_profile_join_group()), submit);
+	box->addButton(tr::lng_cancel(), [=] { box->closeBox(); });
+}
+
 } // namespace
 
 void CheckChatInvite(
@@ -399,9 +663,10 @@ void CheckChatInvite(
 					session,
 					hash,
 					&data))
-				: strong->show(Box<ConfirmInviteBox>(
+				: strong->show(Box(
+					ConfirmInviteBox,
 					session,
-					data,
+					&data,
 					invitePeekChannel,
 					[=] { SubmitChatInvite(weak, session, hash, isGroup); }));
 			if (invitePeekChannel) {

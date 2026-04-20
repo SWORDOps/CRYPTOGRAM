@@ -159,6 +159,23 @@ bool MaybeDisabledEmoji::readyInDefaultState() {
 	return { Data::ReactionId{ like }, Data::ReactionId{ dislike } };
 }
 
+[[nodiscard]] std::vector<Data::ReactionId> CollectAvailableReactions(
+		not_null<Main::Session*> session) {
+	const auto &all = session->data().reactions().list(
+		Data::Reactions::Type::Active);
+	if (all.empty()) {
+		return DefaultSelected();
+	}
+	auto result = std::vector<Data::ReactionId>();
+	result.reserve(all.size());
+	for (const auto &reaction : all) {
+		if (!reaction.id.paid()) {
+			result.push_back(reaction.id);
+		}
+	}
+	return result;
+}
+
 [[nodiscard]] bool RemoveNonCustomEmojiFragment(
 		not_null<QTextDocument*> document,
 		UniqueCustomEmojiContext &context) {
@@ -323,6 +340,7 @@ struct ReactionsSelectorArgs {
 	int customAllowed = 0;
 	int customHardLimit = 0;
 	bool all = false;
+	bool isGroup = false;
 };
 
 object_ptr<Ui::RpWidget> AddReactionsSelector(
@@ -447,7 +465,12 @@ object_ptr<Ui::RpWidget> AddReactionsSelector(
 			state->focusLifetime.destroy();
 			if (raw->empty()) {
 				raw->setTextWithTags(
-					ComposeEmojiList(reactions, DefaultSelected()));
+					ComposeEmojiList(
+						reactions,
+						all
+							? CollectAvailableReactions(
+								&args.controller->session())
+							: DefaultSelected()));
 			}
 			raw->setDisabled(false);
 			raw->setFocusFast();
@@ -572,9 +595,8 @@ void AddReactionsText(
 			inner,
 			tr::lng_manage_peer_reactions_own(
 				lt_link,
-				tr::lng_manage_peer_reactions_own_link(
-				) | Ui::Text::ToLink(),
-				Ui::Text::WithEntities),
+				tr::lng_manage_peer_reactions_own_link(tr::link),
+				tr::marked),
 			st::boxDividerLabel));
 	const auto weak = base::make_weak(navigation);
 	label->setClickHandlerFilter([=](const auto &...) {
@@ -595,11 +617,11 @@ void AddReactionsText(
 			count->value() | tr::to_count(),
 			lt_same_count,
 			std::move(countString),
-			Ui::Text::RichLangValue),
+			tr::rich),
 		tr::lng_manage_peer_reactions_boost(
 			lt_link,
-			tr::lng_manage_peer_reactions_boost_link() | Ui::Text::ToLink(),
-			Ui::Text::RichLangValue)
+			tr::lng_manage_peer_reactions_boost_link(tr::link),
+			tr::rich)
 	) | rpl::map([](TextWithEntities &&a, TextWithEntities &&b) {
 		a.append(' ').append(std::move(b));
 		return std::move(a);
@@ -737,9 +759,7 @@ void EditAllowedReactionsBox(
 
 	const auto all = args.list;
 	auto selected = (allowed.type != AllowedReactionsType::Some)
-		? (all
-			| ranges::views::transform(&Data::Reaction::id)
-			| ranges::to_vector)
+		? std::vector<Data::ReactionId>()
 		: allowed.some;
 	if (allowed.paidEnabled) {
 		selected.insert(begin(selected), Data::ReactionId::Paid());
@@ -759,7 +779,14 @@ void EditAllowedReactionsBox(
 				tr::lng_manage_peer_reactions_limit(tr::now));
 		}
 	};
-	changed(selected.empty() ? DefaultSelected() : std::move(selected), {});
+	changed(
+		!selected.empty()
+			? std::move(selected)
+			: !isGroup
+			? CollectAvailableReactions(
+				&args.navigation->parentController()->session())
+			: DefaultSelected(),
+		{});
 	Ui::AddSubsectionTitle(
 		reactions,
 		enabled
@@ -911,11 +938,11 @@ void EditAllowedReactionsBox(
 			tr::lng_manage_peer_reactions_paid_about(
 				lt_link,
 				tr::lng_manage_peer_reactions_paid_link([=](QString text) {
-					return Ui::Text::Link(
+					return tr::link(
 						text,
 						u"https://telegram.org/tos/stars"_q);
 				}),
-				Ui::Text::WithEntities));
+				tr::marked));
 	}
 	const auto collect = [=] {
 		auto result = AllowedReactions();
@@ -986,7 +1013,7 @@ void SaveAllowedReactions(
 		MTP_flags(Flag()
 			| (maxCount ? Flag::f_reactions_limit : Flag())
 			| (editPaidEnabled ? Flag::f_paid_enabled : Flag())),
-		peer->input,
+		peer->input(),
 		updated,
 		MTP_int(maxCount),
 		MTP_bool(paidEnabled)

@@ -42,9 +42,18 @@ class SessionController;
 [[nodiscard]] object_ptr<Ui::BoxContent> PrepareContactsBox(
 	not_null<Window::SessionController*> sessionController);
 [[nodiscard]] QBrush PeerListStoriesGradient(const style::PeerList &st);
+
+struct PeerListStoriesCounts {
+	int count = 0;
+	int unread = 0;
+	bool videoStream = false;
+
+	friend inline bool operator==(
+		const PeerListStoriesCounts &a,
+		const PeerListStoriesCounts &b) = default;
+};
 [[nodiscard]] std::vector<Ui::OutlineSegment> PeerListStoriesSegments(
-	int count,
-	int unread,
+	PeerListStoriesCounts counts,
 	const QBrush &unreadBrush);
 
 class PeerListRowWithLink : public PeerListRow {
@@ -211,17 +220,13 @@ public:
 	bool handleClick(not_null<PeerData*> peer);
 
 private:
-	struct Counts {
-		int count = 0;
-		int unread = 0;
-	};
+	using Counts = PeerListStoriesCounts;
 
 	void updateColors();
-	void updateFor(uint64 id, int count, int unread);
+	void updateFor(uint64 id, Counts counts);
 	void applyForRow(
 		not_null<PeerListRow*> row,
-		int count,
-		int unread,
+		Counts counts,
 		bool force = false);
 
 	const not_null<PeerListController*> _controller;
@@ -349,8 +354,8 @@ class ChooseTopicBoxController final
 public:
 	ChooseTopicBoxController(
 		not_null<Data::Forum*> forum,
-		FnMut<void(not_null<Data::ForumTopic*>)> callback,
-		Fn<bool(not_null<Data::ForumTopic*>)> filter = nullptr);
+		FnMut<void(not_null<Data::Thread*>)> callback,
+		Fn<bool(not_null<Data::Thread*>)> filter = nullptr);
 
 	Main::Session &session() const override;
 	void rowClicked(not_null<PeerListRow*> row) override;
@@ -386,13 +391,36 @@ private:
 
 	};
 
+	class AllMessagesRow final : public PeerListRow {
+	public:
+		explicit AllMessagesRow(bool userCreatesTopics);
+
+		QString generateName() override;
+		QString generateShortName() override;
+		PaintRoundImageCallback generatePaintUserpicCallback(
+			bool forceRound) override;
+
+		auto generateNameFirstLetters() const
+			-> const base::flat_set<QChar> & override;
+		auto generateNameWords() const
+			-> const base::flat_set<QString> & override;
+
+	private:
+		[[nodiscard]] QString name() const;
+
+		base::flat_set<QChar> _nameFirstLetters;
+		base::flat_set<QString> _nameWords;
+		bool _userCreatesTopics = false;
+
+	};
+
 	void refreshRows(bool initial = false);
 	[[nodiscard]] std::unique_ptr<Row> createRow(
 		not_null<Data::ForumTopic*> topic);
 
 	const not_null<Data::Forum*> _forum;
-	FnMut<void(not_null<Data::ForumTopic*>)> _callback;
-	Fn<bool(not_null<Data::ForumTopic*>)> _filter;
+	FnMut<void(not_null<Data::Thread*>)> _callback;
+	Fn<bool(not_null<Data::Thread*>)> _filter;
 
 };
 

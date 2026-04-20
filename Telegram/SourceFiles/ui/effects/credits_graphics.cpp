@@ -569,6 +569,10 @@ TextWithEntities GenerateEntryName(const Data::CreditsHistoryEntry &entry) {
 				Info::BotStarRef::FormatCommission(entry.starrefCommission)
 			},
 			TextWithEntities::Simple)
+		: entry.isLiveStoryReaction()
+		? tr::lng_credits_paid_messages_fee_live_reaction(
+			tr::now,
+			TextWithEntities::Simple)
 		: entry.paidMessagesCount
 		? tr::lng_credits_paid_messages_fee(
 			tr::now,
@@ -581,8 +585,6 @@ TextWithEntities GenerateEntryName(const Data::CreditsHistoryEntry &entry) {
 		? tr::lng_credits_box_history_entry_api
 		: entry.reaction
 		? tr::lng_credits_box_history_entry_reaction_name
-		: entry.giftUpgraded
-		? tr::lng_credits_box_history_entry_gift_upgrade
 		: entry.giftResale
 		? (entry.in
 			? tr::lng_credits_box_history_entry_gift_sold

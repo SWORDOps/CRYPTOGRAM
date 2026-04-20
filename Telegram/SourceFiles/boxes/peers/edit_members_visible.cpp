@@ -34,32 +34,15 @@ namespace {
 
 [[nodiscard]] object_ptr<Ui::RpWidget> CreateMembersVisibleButton(
 		not_null<ChannelData*> megagroup) {
-	auto result = object_ptr<Ui::VerticalLayout>((QWidget*)nullptr);
-	const auto container = result.data();
-
 	const auto min = EnableHideMembersMin(megagroup);
-	if (!megagroup->canBanMembers() || megagroup->membersCount() < min) {
+	const auto showHideMembers = megagroup->canBanMembers()
+		&& megagroup->membersCount() >= min;
+	if (!showHideMembers) {
 		return { nullptr };
 	}
 
-	struct State {
-		rpl::event_stream<bool> toggled;
-	};
-	Ui::AddSkip(container);
-	const auto state = container->lifetime().make_state<State>();
-	const auto button = container->add(
-		EditPeerInfoBox::CreateButton(
-			container,
-			tr::lng_profile_hide_participants(),
-			rpl::single(QString()),
-			[] {},
-			st::manageGroupNoIconButton,
-			{}
-	))->toggleOn(rpl::single(
-		(megagroup->flags() & ChannelDataFlag::ParticipantsHidden) != 0
-	) | rpl::then(state->toggled.events()));
-	Ui::AddSkip(container);
-	Ui::AddDividerText(container, tr::lng_profile_hide_participants_about());
+	auto result = object_ptr<Ui::VerticalLayout>((QWidget*)nullptr);
+	const auto container = result.data();
 
 	button->toggledValue(
 	) | rpl::on_next([=](bool toggled) {

@@ -27,6 +27,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_user.h"
 #include "info/info_memento.h"
 #include "info/profile/info_profile_badge.h"
+#include "settings/settings_common.h"
 #include "info/profile/info_profile_emoji_status_panel.h"
 #include "info/profile/info_profile_icon.h"
 #include "info/stories/info_stories_widget.h"
@@ -36,9 +37,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
 #include "mtproto/mtproto_config.h"
-#include "settings/settings_advanced.h"
-#include "settings/settings_calls.h"
-#include "settings/settings_information.h"
+#include "settings/sections/settings_advanced.h"
+#include "settings/sections/settings_calls.h"
+#include "settings/sections/settings_information.h"
 #include "storage/localstorage.h"
 #include "storage/storage_account.h"
 #include "support/support_templates.h"
@@ -109,7 +110,7 @@ constexpr auto kPlayStatusLimit = 2;
 		return !!self->emojiStatusId();
 	}) | rpl::distinct_until_changed() | rpl::map([](bool has) {
 		const auto makeLink = [](const QString &text) {
-			return Ui::Text::Link(text);
+			return tr::link(text);
 		};
 		return (has
 			? tr::lng_menu_change_status
@@ -383,12 +384,12 @@ MainMenu::MainMenu(
 
 	parentResized();
 
-	_telegram->setMarkedText(Ui::Text::Link(
+	_telegram->setMarkedText(tr::link(
 		u"64Gram Desktop"_q,
 		u"https://github.com/TDesktop-x64/tdesktop"_q));
 	_telegram->setLinksTrusted();
 	_version->setMarkedText(
-		Ui::Text::Link(
+		tr::link(
 			tr::lng_settings_current_version(
 				tr::now,
 				lt_version,
@@ -397,7 +398,7 @@ MainMenu::MainMenu(
 		.append(QChar(' '))
 		.append(QChar(8211))
 		.append(QChar(' '))
-		.append(Ui::Text::Link(tr::lng_menu_about(tr::now), 2))); // Link 2.
+		.append(tr::link(tr::lng_menu_about(tr::now), 2))); // Link 2.
 	_version->setLink(
 		1,
 		std::make_shared<UrlClickHandler>(Core::App().changelogLink()));
@@ -636,6 +637,14 @@ void MainMenu::parentResized() {
 
 void MainMenu::showFinished() {
 	_showFinished = true;
+
+	_controller->checkHighlightControl(
+		u"main-menu/emoji-status"_q,
+		_setEmojiStatus,
+		Settings::SubsectionTitleHighlight());
+	_controller->checkHighlightControl(
+		u"main-menu/night-mode"_q,
+		_nightThemeToggle);
 }
 
 void MainMenu::setupMenu() {
@@ -1033,6 +1042,9 @@ void MainMenu::setupSwipe() {
 
 	auto init = [=](int, Qt::LayoutDirection direction) {
 		if (direction != Qt::LeftToRight) {
+			return Ui::Controls::SwipeHandlerFinishData();
+		}
+		if (_emojiStatusPanel && _emojiStatusPanel->hasFocus()) {
 			return Ui::Controls::SwipeHandlerFinishData();
 		}
 		return Ui::Controls::DefaultSwipeBackHandlerFinishData([=] {

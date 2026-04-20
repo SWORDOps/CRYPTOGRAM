@@ -53,7 +53,7 @@ struct BotState {
 	return Data::ChatbotsPermission::ViewMessages;
 }
 
-class Chatbots final : public BusinessSection<Chatbots> {
+class Chatbots final : public Section<Chatbots> {
 public:
 	Chatbots(
 		QWidget *parent,
@@ -393,7 +393,7 @@ Main::Session &PreviewController::session() const {
 Chatbots::Chatbots(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
-: BusinessSection(parent, controller)
+: Section(parent, controller)
 , _bottomSkipRounding(st::boxRadius, st::boxDividerBg) {
 	setupContent();
 }
@@ -429,8 +429,8 @@ void Chatbots::setupContent() {
 		.about = tr::lng_chatbots_about(
 			lt_link,
 			tr::lng_chatbots_about_link(
-			) | Ui::Text::ToLink(tr::lng_chatbots_info_url(tr::now)),
-			Ui::Text::WithEntities),
+				tr::url(tr::lng_chatbots_info_url(tr::now))),
+			tr::marked),
 		.aboutMargins = st::peerAppearanceCoverLabelMargin,
 	});
 
@@ -468,6 +468,7 @@ void Chatbots::setupContent() {
 		content,
 		tr::lng_chatbots_add_about(),
 		st::peerAppearanceDividerTextMargin,
+		st::defaultDividerLabel,
 		RectPart::Top);
 
 	_detailsWrap = content->add(object_ptr<Ui::VerticalLayout>(content));
@@ -523,7 +524,7 @@ void Chatbots::refreshDetails() {
 	) | rpl::on_next([=](Data::ChatbotsPermissions now) {
 		const auto warn = [&](tr::phrase<lngtag_bot> text) {
 			controller()->show(Ui::MakeInformBox({
-				.text = text(tr::now, lt_bot, Ui::Text::Bold(bot->name()), Ui::Text::RichLangValue),
+				.text = text(tr::now, lt_bot, tr::bold(bot->name()), tr::rich),
 				.title = tr::lng_chatbots_warning_title(),
 			}));
 		};

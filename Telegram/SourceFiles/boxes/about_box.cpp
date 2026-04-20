@@ -36,35 +36,34 @@ namespace {
 rpl::producer<TextWithEntities> Text1() {
 	return tr::lng_about_text4(
 		lt_api_link,
-		tr::lng_about_text4_api(
-		) | Ui::Text::ToLink("https://core.telegram.org/api"),
-		Ui::Text::WithEntities);
+		tr::lng_about_text4_api(tr::url(u"https://core.telegram.org/api"_q)),
+		tr::marked);
 }
 
 rpl::producer<TextWithEntities> Text2() {
 	return tr::lng_about_text2(
 		lt_gpl_link,
-		rpl::single(Ui::Text::Link(
+		rpl::single(tr::link(
 			"GNU GPL",
 			"https://github.com/TDesktop-x64/tdesktop/blob/dev/LICENSE")),
 		lt_github_link,
-		rpl::single(Ui::Text::Link(
+		rpl::single(tr::link(
 			"GitHub",
 			"https://github.com/TDesktop-x64/tdesktop")),
-		Ui::Text::WithEntities);
+		tr::marked);
 }
 
 rpl::producer<TextWithEntities> Text3() {
 	return tr::lng_about_text3(
 		lt_faq_link,
-		tr::lng_about_text3_faq() | Ui::Text::ToLink(telegramFaqLink()),
-		Ui::Text::WithEntities);
+		tr::lng_about_text3_faq(tr::url(telegramFaqLink())),
+		tr::marked);
 }
 
 } // namespace
 
 void AboutBox(not_null<Ui::GenericBox*> box) {
-	box->setTitle(rpl::single(u"64Gram Desktop"_q));
+	box->setTitle(u"64Gram Desktop"_q);
 
 	auto layout = box->verticalLayout();
 
@@ -218,11 +217,11 @@ void ArchiveHintBox(
 						lt_emoji,
 						rpl::single(
 							Ui::Text::IconEmoji(&st::textMoreIconEmoji)),
-						Ui::Text::RichLangValue
+						tr::rich
 					) | rpl::map([](TextWithEntities text) {
-						return Ui::Text::Link(std::move(text), 1);
+						return tr::link(std::move(text), 1);
 					}),
-					Ui::Text::RichLangValue),
+					tr::rich),
 				st::channelEarnHistoryRecipientLabel));
 		label->resizeToWidth(box->width()
 			- rect::m::sum::h(st::boxRowPadding));

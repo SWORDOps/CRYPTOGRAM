@@ -38,7 +38,7 @@ constexpr auto kDay = Data::WorkingInterval::kDay;
 constexpr auto kWeek = Data::WorkingInterval::kWeek;
 constexpr auto kInNextDayMax = Data::WorkingInterval::kInNextDayMax;
 
-class WorkingHours : public BusinessSection<WorkingHours> {
+class WorkingHours : public Section<WorkingHours> {
 public:
 	WorkingHours(
 		QWidget *parent,
@@ -575,7 +575,7 @@ void AddWeekButton(
 WorkingHours::WorkingHours(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
-: BusinessSection(parent, controller) {
+: Section(parent, controller) {
 	setupContent(controller);
 }
 
@@ -614,7 +614,7 @@ void WorkingHours::setupContent(
 		.lottieSize = st::settingsCloudPasswordIconSize,
 		.lottieMargins = st::peerAppearanceIconPadding,
 		.showFinished = showFinishes(),
-		.about = tr::lng_hours_about(Ui::Text::WithEntities),
+		.about = tr::lng_hours_about(tr::marked),
 		.aboutMargins = st::peerAppearanceCoverLabelMargin,
 	});
 

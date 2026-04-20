@@ -20,6 +20,7 @@ set(style_files
     ui/effects/premium.style
     ui/color_indices.style
     boxes/boxes.style
+    boxes/polls.style
     dialogs/dialogs.style
     chat_helpers/chat_helpers.style
     calls/calls.style
@@ -32,6 +33,7 @@ set(style_files
     intro/intro.style
     iv/iv.style
     media/player/media_player.style
+    media/stories/media_stories.style
     passport/passport.style
     payments/ui/payments.style
     profile/profile.style
@@ -62,10 +64,17 @@ PRIVATE
     boxes/peers/toggle_topics_box.cpp
     boxes/peers/toggle_topics_box.h
 
+    boxes/url_auth_box_content.cpp
+    boxes/url_auth_box_content.h
+    boxes/translate_box_content.cpp
+    boxes/translate_box_content.h
+
     calls/group/ui/calls_group_recording_box.cpp
     calls/group/ui/calls_group_recording_box.h
     calls/group/ui/calls_group_scheduled_labels.cpp
     calls/group/ui/calls_group_scheduled_labels.h
+    calls/group/ui/calls_group_stars_coloring.cpp
+    calls/group/ui/calls_group_stars_coloring.h
     calls/group/ui/desktop_capture_choose_source.cpp
     calls/group/ui/desktop_capture_choose_source.h
     calls/ui/calls_device_menu.cpp
@@ -94,6 +103,9 @@ PRIVATE
     data/data_channel_earn.h
     data/data_credits.h
     data/data_credits_earn.h
+    data/data_passkey_deserialize.cpp
+    data/data_passkey_deserialize.h
+    data/data_peer_colors.h
     data/data_premium_subscription_option.h
     data/data_statistics_chart.cpp
     data/data_statistics_chart.h
@@ -136,6 +148,9 @@ PRIVATE
     editor/scene/scene_item_line.cpp
     editor/scene/scene_item_line.h
 
+    ui/boxes/about_cocoon_box.h
+    ui/boxes/about_cocoon_box.cpp
+
     history/admin_log/history_admin_log_filter_value.h
     history/history_view_top_toast.cpp
     history/history_view_top_toast.h
@@ -144,12 +159,17 @@ PRIVATE
     history/view/controls/history_view_voice_record_button.cpp
     history/view/controls/history_view_voice_record_button.h
 
+    info/info_flexible_scroll.cpp
+    info/info_flexible_scroll.h
+
     info/profile/info_profile_icon.cpp
     info/profile/info_profile_icon.h
     info/profile/info_profile_music_button.cpp
     info/profile/info_profile_music_button.h
     info/profile/info_profile_text.cpp
     info/profile/info_profile_text.h
+    info/profile/info_profile_top_bar_action_button.cpp
+    info/profile/info_profile_top_bar_action_button.h
     info/userpic/info_userpic_bubble_wrap.cpp
     info/userpic/info_userpic_bubble_wrap.h
     info/userpic/info_userpic_color_circle_button.cpp
@@ -199,10 +219,14 @@ PRIVATE
 
     menu/gift_resale_filter.cpp
     menu/gift_resale_filter.h
+    menu/menu_checked_action.cpp
+    menu/menu_checked_action.h
     menu/menu_check_item.cpp
     menu/menu_check_item.h
     menu/menu_item_rate_transcribe.cpp
     menu/menu_item_rate_transcribe.h
+    menu/menu_timecode_action.cpp
+    menu/menu_timecode_action.h
     menu/menu_ttl.cpp
     menu/menu_ttl.h
 
@@ -228,14 +252,22 @@ PRIVATE
 
     platform/linux/current_geo_location_linux.cpp
     platform/linux/current_geo_location_linux.h
+    platform/linux/text_recognition_linux.h
     platform/mac/file_bookmark_mac.h
     platform/mac/file_bookmark_mac.mm
     platform/mac/current_geo_location_mac.h
     platform/mac/current_geo_location_mac.mm
+    platform/mac/text_recognition_mac.h
+    platform/mac/text_recognition_mac.mm
     platform/win/current_geo_location_win.cpp
     platform/win/current_geo_location_win.h
+    platform/win/text_recognition_win.h
     platform/platform_file_bookmark.h
     platform/platform_current_geo_location.h
+    platform/platform_text_recognition.h
+
+    profile/profile_back_button.cpp
+    profile/profile_back_button.h
 
     settings/settings_common.cpp
     settings/settings_common.h
@@ -381,8 +413,12 @@ PRIVATE
     ui/controls/delete_message_context_action.h
     ui/controls/download_bar.cpp
     ui/controls/download_bar.h
+    ui/controls/dynamic_images_strip.cpp
+    ui/controls/dynamic_images_strip.h
     ui/controls/emoji_button.cpp
     ui/controls/emoji_button.h
+    ui/controls/feature_list.cpp
+    ui/controls/feature_list.h
     ui/controls/filter_link_header.cpp
     ui/controls/filter_link_header.h
     ui/controls/jump_down_button.cpp
@@ -391,8 +427,12 @@ PRIVATE
     ui/controls/invite_link_buttons.h
     ui/controls/invite_link_label.cpp
     ui/controls/invite_link_label.h
+    ui/controls/labeled_emoji_tabs.cpp
+    ui/controls/labeled_emoji_tabs.h
     ui/controls/peer_list_dummy.cpp
     ui/controls/peer_list_dummy.h
+    ui/controls/popup_selector.cpp
+    ui/controls/popup_selector.h
     ui/controls/round_video_recorder_data.h
     ui/controls/round_video_recorder.cpp
     ui/controls/round_video_recorder.h
@@ -420,12 +460,16 @@ PRIVATE
     ui/controls/window_outdated_bar.cpp
     ui/controls/window_outdated_bar_dummy.cpp
     ui/controls/window_outdated_bar.h
+    ui/controls/window_screen_reader_bar.cpp
+    ui/controls/window_screen_reader_bar.h
     ui/effects/fireworks_animation.cpp
     ui/effects/fireworks_animation.h
     ui/effects/glare.cpp
     ui/effects/glare.h
     ui/effects/loading_element.cpp
     ui/effects/loading_element.h
+    ui/effects/ministar_particles.cpp
+    ui/effects/ministar_particles.h
     ui/effects/outline_segments.cpp
     ui/effects/outline_segments.h
     ui/effects/premium_bubble.cpp
@@ -442,12 +486,18 @@ PRIVATE
     ui/effects/round_checkbox.h
     ui/effects/scroll_content_shadow.cpp
     ui/effects/scroll_content_shadow.h
+    ui/effects/skeleton_animation.cpp
+    ui/effects/skeleton_animation.h
     ui/effects/shake_animation.cpp
     ui/effects/shake_animation.h
     ui/effects/snowflakes.cpp
     ui/effects/snowflakes.h
     ui/effects/toggle_arrow.cpp
     ui/effects/toggle_arrow.h
+    ui/effects/upload_progress_overlay.cpp
+    ui/effects/upload_progress_overlay.h
+    ui/effects/ttl_icon.cpp
+    ui/effects/ttl_icon.h
     ui/search_field_controller.cpp
     ui/search_field_controller.h
     ui/text/format_song_name.cpp
@@ -468,6 +518,8 @@ PRIVATE
     ui/widgets/chat_filters_tabs_slider.h
     ui/widgets/chat_filters_tabs_slider_reorder.cpp
     ui/widgets/chat_filters_tabs_slider_reorder.h
+    ui/widgets/cross_fade_label.cpp
+    ui/widgets/cross_fade_label.h
     ui/widgets/color_editor.cpp
     ui/widgets/color_editor.h
     ui/widgets/continuous_sliders.cpp
@@ -476,8 +528,12 @@ PRIVATE
     ui/widgets/discrete_sliders.h
     ui/widgets/gradient_round_button.cpp
     ui/widgets/gradient_round_button.h
+    ui/widgets/horizontal_fit_container.cpp
+    ui/widgets/horizontal_fit_container.h
     ui/widgets/level_meter.cpp
     ui/widgets/level_meter.h
+    ui/widgets/middle_click_autoscroll.cpp
+    ui/widgets/middle_click_autoscroll.h
     ui/widgets/multi_select.cpp
     ui/widgets/multi_select.h
     ui/widgets/sent_code_field.cpp
@@ -500,6 +556,8 @@ PRIVATE
     ui/grouped_layout.h
     ui/new_badges.cpp
     ui/new_badges.h
+    ui/peer/color_sample.cpp
+    ui/peer/color_sample.h
     ui/power_saving.cpp
     ui/power_saving.h
     ui/vertical_list.cpp

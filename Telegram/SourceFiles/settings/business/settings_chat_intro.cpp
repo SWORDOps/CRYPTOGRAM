@@ -119,7 +119,7 @@ private:
 
 };
 
-class ChatIntro final : public BusinessSection<ChatIntro> {
+class ChatIntro final : public Section<ChatIntro> {
 public:
 	ChatIntro(
 		QWidget *parent,
@@ -175,7 +175,7 @@ rpl::producer<std::shared_ptr<StickerPlayer>> IconPlayerValue(
 	media->goodThumbnailWanted();
 
 	return rpl::single() | rpl::then(
-		sticker->owner().session().downloaderTaskFinished()
+		sticker->session().downloaderTaskFinished()
 	) | rpl::filter([=] {
 		return media->loaded();
 	}) | rpl::take(1) | rpl::map([=] {
@@ -416,6 +416,7 @@ void PreviewWrap::paintEvent(QPaintEvent *e) {
 	auto context = _theme->preparePaintContext(
 		_style.get(),
 		rect(),
+		rect(),
 		e->rect(),
 		!window()->isActiveWindow());
 	p.translate(_position);
@@ -496,7 +497,7 @@ void StickerPanel::create(const Descriptor &descriptor) {
 ChatIntro::ChatIntro(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
-: BusinessSection(parent, controller) {
+: Section(parent, controller) {
 	setupContent(controller);
 }
 

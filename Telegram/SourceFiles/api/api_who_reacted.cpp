@@ -252,7 +252,7 @@ struct State {
 		} else if (const auto user = item->history()->peer->asUser()) {
 			entry.requestId = session->api().request(
 				MTPmessages_GetOutboxReadDate(
-					user->input,
+					user->input(),
 					MTP_int(item->id)
 				)
 			).done([=](const MTPOutboxReadDate &result) {
@@ -282,7 +282,7 @@ struct State {
 		} else {
 			entry.requestId = session->api().request(
 				MTPmessages_GetMessageReadParticipants(
-					item->history()->peer->input,
+					item->history()->peer->input(),
 					MTP_int(item->id)
 				)
 			).done([=](const MTPVector<MTPReadParticipantDate> &result) {
@@ -340,7 +340,7 @@ struct State {
 					MTP_flags(reaction.empty()
 						? Flag(0)
 						: Flag::f_reaction),
-					item->history()->peer->input,
+					item->history()->peer->input(),
 					MTP_int(item->id),
 					ReactionToMTP(reaction),
 					MTPstring(), // offset
@@ -666,12 +666,7 @@ QString FormatReadDate(TimeId date, const QDateTime &now) {
 	return tr::lng_mediaview_date_time(
 		tr::now,
 		lt_date,
-		tr::lng_month_day(
-			tr::now,
-			lt_month,
-			Lang::MonthDay(readDate.month())(tr::now),
-			lt_day,
-			QString::number(readDate.day())),
+		langDayOfMonthShort(readDate),
 		lt_time,
 		QLocale().toString(parsed.time(), QLocale::ShortFormat));
 }

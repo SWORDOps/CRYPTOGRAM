@@ -30,8 +30,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/power_saving.h"
 #include "ui/ui_utility.h"
 #include "boxes/filters/edit_filter_box.h"
+#include "boxes/choose_filter_box.h"
 #include "boxes/premium_limits_box.h"
-#include "settings/settings_folders.h"
+#include "settings/sections/settings_folders.h"
 #include "storage/storage_media_prepare.h"
 #include "api/api_chat_filters.h"
 #include "apiwrap.h"
@@ -67,7 +68,10 @@ FiltersMenu::FiltersMenu(
 FiltersMenu::~FiltersMenu() = default;
 
 void FiltersMenu::setup() {
+	setupDragAndDrop();
 	setupMainMenuIcon();
+	_menu.setIsMenuButton(true);
+	_menu.setAccessibleName(tr::lng_main_menu(tr::now));
 
 	_outer.setAttribute(Qt::WA_OpaquePaintEvent);
 	_outer.show();
@@ -126,6 +130,30 @@ void FiltersMenu::setup() {
 	_menu.setClickedCallback([=] {
 		_session->widget()->showMainMenu();
 	});
+}
+
+void FiltersMenu::setupDragAndDrop() {
+	SetupFilterDragAndDrop(
+		&_outer,
+		&_session->session(),
+		[=](QPoint globalPos) -> std::optional<FilterId> {
+			if (!_list) {
+				return std::nullopt;
+			}
+			const auto localPos = _list->mapFromGlobal(globalPos);
+			for (const auto &[id, button] : _filters) {
+				if (button->geometry().contains(localPos)) {
+					return id;
+				}
+			}
+			return std::nullopt;
+		},
+		[=] { return _activeFilterId; },
+		[=](FilterId filterId) {
+			for (const auto &[id, button] : _filters) {
+				button->setForceRippled(id == filterId);
+			}
+		});
 }
 
 void FiltersMenu::setupMainMenuIcon() {
@@ -289,6 +317,9 @@ base::unique_qptr<Ui::SideBarButton> FiltersMenu::prepareButton(
 		: container->add(std::move(prepared));
 	auto button = base::unique_qptr<Ui::SideBarButton>(std::move(added));
 	const auto raw = button.get();
+	const auto nameText = id
+		? title.text.text
+		: tr::lng_filters_all(tr::now);
 	const auto &icons = Ui::LookupFilterIcon(id
 		? icon
 		: Ui::FilterIcon::All);
@@ -311,6 +342,14 @@ base::unique_qptr<Ui::SideBarButton> FiltersMenu::prepareButton(
 				? "99+"
 				: QString::number(count);
 			raw->setBadge(string, includeMuted && (count == muted));
+			raw->setAccessibleName(count
+				? tr::lng_filter_unread_chats(
+					tr::now,
+					lt_count,
+					count,
+					lt_text,
+					nameText)
+				: nameText);
 		}, raw->lifetime());
 	}
 	raw->setActive(_session->activeChatsFilterCurrent() == id);
@@ -447,7 +486,7 @@ base::unique_qptr<Ui::SideBarButton> FiltersMenu::prepareButton(
 void FiltersMenu::openFiltersSettings() {
 	const auto filters = &_session->session().data().chatsFilters();
 	if (filters->suggestedLoaded()) {
-		_session->showSettings(Settings::Folders::Id());
+		_session->showSettings(Settings::FoldersId());
 	} else if (!_waitingSuggested) {
 		_waitingSuggested = true;
 		filters->requestSuggested();

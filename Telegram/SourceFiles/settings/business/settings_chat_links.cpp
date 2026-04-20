@@ -56,7 +56,7 @@ constexpr auto kChangesDebounceTimeout = crl::time(1000);
 
 using ChatLinkData = Api::ChatLink;
 
-class ChatLinks final : public BusinessSection<ChatLinks> {
+class ChatLinks final : public Section<ChatLinks> {
 public:
 	ChatLinks(
 		QWidget *parent,
@@ -698,7 +698,7 @@ void LinksController::rowPaintIcon(
 ChatLinks::ChatLinks(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
-: BusinessSection(parent, controller)
+: Section(parent, controller)
 , _bottomSkipRounding(st::boxRadius, st::boxDividerBg) {
 	setupContent(controller);
 }
@@ -720,7 +720,7 @@ void ChatLinks::setupContent(
 		.lottieSize = st::settingsCloudPasswordIconSize,
 		.lottieMargins = st::peerAppearanceIconPadding,
 		.showFinished = showFinishes() | rpl::take(1),
-		.about = tr::lng_chat_links_about(Ui::Text::WithEntities),
+		.about = tr::lng_chat_links_about(tr::marked),
 		.aboutMargins = st::peerAppearanceCoverLabelMargin,
 	});
 
@@ -783,11 +783,11 @@ void ChatLinks::setupContent(
 			? tr::lng_chat_links_footer_both(
 				tr::now,
 				lt_username,
-				Ui::Text::Link(links[0], "https://" + links[0]),
+				tr::link(links[0], "https://" + links[0]),
 				lt_link,
-				Ui::Text::Link(links[1], "https://" + links[1]),
-				Ui::Text::WithEntities)
-			: Ui::Text::Link(links[0], "https://" + links[0]);
+				tr::link(links[1], "https://" + links[1]),
+				tr::marked)
+			: tr::link(links[0], "https://" + links[0]);
 	};
 	auto links = !username.isEmpty()
 		? make({ username, '+' + self->phone() })
@@ -797,7 +797,7 @@ void ChatLinks::setupContent(
 		tr::lng_chat_links_footer(
 			lt_links,
 			rpl::single(std::move(links)),
-			Ui::Text::WithEntities),
+			tr::marked),
 		st::boxDividerLabel);
 	label->setClickHandlerFilter([=](ClickHandlerPtr handler, auto) {
 		QGuiApplication::clipboard()->setText(handler->url());

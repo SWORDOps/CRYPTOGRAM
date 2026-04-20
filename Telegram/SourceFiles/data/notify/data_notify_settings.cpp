@@ -80,7 +80,7 @@ NotifySettings::NotifySettings(not_null<Session*> owner)
 void NotifySettings::request(not_null<PeerData*> peer) {
 	if (peer->notify().settingsUnknown()) {
 		peer->session().api().requestNotifySettings(
-			MTP_inputNotifyPeer(peer->input));
+			MTP_inputNotifyPeer(peer->input()));
 	}
 	if (defaultSettings(peer).settingsUnknown()) {
 		peer->session().api().requestNotifySettings(peer->isUser()
@@ -96,7 +96,7 @@ void NotifySettings::request(not_null<Thread*> thread) {
 		if (topic->notify().settingsUnknown()) {
 			topic->session().api().requestNotifySettings(
 				MTP_inputNotifyForumTopic(
-					topic->peer()->input,
+					topic->peer()->input(),
 					MTP_int(topic->rootId())));
 		}
 	}
@@ -132,9 +132,9 @@ void NotifySettings::apply(
 		}, [](const MTPDinputPeerChannel &data) {
 			return peerFromChannel(data.vchannel_id());
 		}, [](const MTPDinputPeerUserFromMessage &data) -> PeerId {
-			Unexpected("From message peer in NotifySettings::apply.");
+			return peerFromUser(data.vuser_id());
 		}, [](const MTPDinputPeerChannelFromMessage &data) -> PeerId {
-			Unexpected("From message peer in NotifySettings::apply.");
+			return peerFromChannel(data.vchannel_id());
 		}, [](const MTPDinputPeerEmpty &) -> PeerId {
 			Unexpected("Empty peer in NotifySettings::apply.");
 		});

@@ -7,12 +7,31 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "ui/controls/button_labels.h"
 
+#include "ui/widgets/buttons.h"
 #include "ui/widgets/labels.h"
 
 namespace Ui {
 
 void SetButtonTwoLabels(
+		not_null<Ui::RoundButton*> button,
+		rpl::producer<TextWithEntities> title,
+		rpl::producer<TextWithEntities> subtitle,
+		const style::FlatLabel &st,
+		const style::FlatLabel &subst,
+		const style::color *textFg) {
+	SetButtonTwoLabels(
+		button,
+		button->st().textTop,
+		std::move(title),
+		std::move(subtitle),
+		st,
+		subst,
+		textFg);
+}
+
+void SetButtonTwoLabels(
 		not_null<Ui::RpWidget*> button,
+		int singleLineTextTop,
 		rpl::producer<TextWithEntities> title,
 		rpl::producer<TextWithEntities> subtitle,
 		const style::FlatLabel &st,
@@ -25,9 +44,12 @@ void SetButtonTwoLabels(
 	buttonTitle->show();
 	const auto buttonSubtitle = Ui::CreateChild<Ui::FlatLabel>(
 		button,
-		std::move(subtitle),
+		rpl::duplicate(
+			subtitle
+		) | rpl::filter([](const TextWithEntities &text) {
+			return !text.empty();
+		}),
 		subst);
-	buttonSubtitle->show();
 	buttonSubtitle->setOpacity(0.6);
 	if (textFg) {
 		buttonTitle->setTextColorOverride((*textFg)->c);
@@ -43,7 +65,9 @@ void SetButtonTwoLabels(
 		buttonSubtitle->sizeValue()
 	) | rpl::on_next([=](QSize outer, QSize title, QSize subtitle) {
 		const auto two = title.height() + subtitle.height();
-		const auto titleTop = (outer.height() - two) / 2;
+		const auto titleTop = withSubtitle
+			? (outer.height() - two) / 2
+			: singleLineTextTop;
 		const auto subtitleTop = titleTop + title.height();
 		buttonTitle->moveToLeft(
 			(outer.width() - title.width()) / 2,

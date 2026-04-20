@@ -7,9 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/settings_intro.h"
 
-#include "settings/settings_advanced.h"
-#include "settings/settings_main.h"
-#include "settings/settings_chat.h"
+#include "settings/sections/settings_advanced.h"
+#include "settings/sections/settings_main.h"
+#include "settings/sections/settings_chat.h"
 #include "settings/settings_codes.h"
 #include "ui/basic_click_handlers.h"
 #include "ui/wrap/fade_wrap.h"
@@ -351,6 +351,14 @@ void IntroWidget::showContent(not_null<Window::Controller*> window) {
 }
 
 void IntroWidget::setInnerFocus() {
+	for (const auto childObject : _innerWrap->entity()->children()) {
+		const auto childWidget = static_cast<QWidget*>(childObject);
+		if (childObject->isWidgetType() && childWidget->focusPolicy() != Qt::NoFocus) {
+			childWidget->setFocus(Qt::OtherFocusReason);
+			return;
+		}
+	}
+
 	setFocus();
 }
 

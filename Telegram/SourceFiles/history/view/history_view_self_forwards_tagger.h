@@ -11,10 +11,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 class History;
 
-namespace Lottie {
-class Icon;
-} // namespace Lottie
-
 namespace Data {
 class Session;
 } // namespace Data
@@ -29,6 +25,7 @@ class SessionController;
 
 namespace Ui {
 class RpWidget;
+class AbstractButton;
 } // namespace Ui
 
 namespace Ui::Toast {
@@ -53,11 +50,22 @@ public:
 	~SelfForwardsTagger();
 
 private:
+	struct ToastTimerState {
+		rpl::lifetime timerLifetime;
+		bool expanded = false;
+	};
+
 	void setup();
 	void showSelectorForMessages(const MessageIdsList &ids);
 	void showToast(const TextWithEntities &text, Fn<void()> callback);
 	void showTaggedToast(DocumentId);
-	void createLottieIcon(not_null<QWidget*> widget, const QString &name);
+	void showChannelFilterToast(not_null<PeerData*> peer);
+	not_null<Ui::AbstractButton*> createRightButton(
+		not_null<Ui::RpWidget*> widget);
+	void setupToastTimer(
+		not_null<Ui::RpWidget*> widget,
+		not_null<ToastTimerState*> state,
+		Fn<void()> hideCallback);
 	void hideToast();
 	[[nodiscard]] QRect toastGeometry() const;
 

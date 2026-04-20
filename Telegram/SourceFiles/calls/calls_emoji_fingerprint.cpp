@@ -554,6 +554,7 @@ void SetupFingerprintTooltip(not_null<Ui::RpWidget*> widget) {
 		std::unique_ptr<Ui::ImportantTooltip> tooltip;
 		Fn<void()> updateGeometry;
 		Fn<void(bool)> toggleTooltip;
+		bool tooltipShown = false;
 	};
 	const auto state = widget->lifetime().make_state<State>();
 	state->updateGeometry = [=] {
@@ -591,7 +592,7 @@ void SetupFingerprintTooltip(not_null<Ui::RpWidget*> widget) {
 		}
 		const auto text = tr::lng_confcall_e2e_about(
 			tr::now,
-			Ui::Text::WithEntities);
+			tr::marked);
 		if (text.empty()) {
 			return;
 		}
@@ -617,9 +618,22 @@ void SetupFingerprintTooltip(not_null<Ui::RpWidget*> widget) {
 	widget->events() | rpl::on_next([=](not_null<QEvent*> e) {
 		const auto type = e->type();
 		if (type == QEvent::Enter) {
-			state->toggleTooltip(true);
+			// Enter events may come from widget destructors,
+			// in that case sync-showing tooltip (calling Grab)
+			// crashes the whole thing.
+			state->tooltipShown = true;
+			crl::on_main(widget, [=] {
+				if (state->tooltipShown) {
+					state->toggleTooltip(true);
+				}
+			});
 		} else if (type == QEvent::Leave) {
-			state->toggleTooltip(false);
+			state->tooltipShown = false;
+			crl::on_main(widget, [=] {
+				if (!state->tooltipShown) {
+					state->toggleTooltip(false);
+				}
+			});
 		}
 	}, widget->lifetime());
 }
