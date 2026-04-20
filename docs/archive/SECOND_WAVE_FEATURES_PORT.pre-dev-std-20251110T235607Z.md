@@ -112,7 +112,6 @@ bool isAuthentic = morphEngine.authenticateVoice(voiceSample, userId);
 - `Telegram/SourceFiles/data/data_quantumguard.h` (11,686 bytes)
 - `Telegram/SourceFiles/data/data_quantum_crypto_services.h` (16,564 bytes)
 - `Telegram/SourceFiles/data/data_signal_quantum.h` (15,118 bytes)
-- `Telegram/SourceFiles/data/data_tsm_quantum.h` (18,360 bytes)
 - `Telegram/SourceFiles/data/data_quantum_signal_impl.cpp` (21,089 bytes)
 
 **Total**: 1,093 lines + supporting files
@@ -138,7 +137,6 @@ Multi-tier quantum-resistant storage with NSA-grade security classifications and
     - Hardware key storage
     - Attestation support
 
-  - **Tier 3 (Standard)**: Software TSM encrypted storage
     - Software-based trusted security
     - Standard encryption
     - Wide compatibility

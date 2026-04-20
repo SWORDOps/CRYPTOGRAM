@@ -208,7 +208,6 @@ export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 - libxcb-* (XCB)
 - libfontconfig1-dev, libfreetype6-dev
 
-**Python (for TSM):**
 - python3-dev
 - python3-pip
 - grpcio, cryptography, pyyaml, requests, sqlalchemy
@@ -448,7 +447,6 @@ source ~/.bashrc
 ├── build.sh              # Build wrapper
 ├── Telegram/
 │   ├── CMakeLists.txt
-│   ├── lib_tsm/          # TSM submodule (added)
 │   ├── SourceFiles/
 │   └── ...
 ├── cmake/

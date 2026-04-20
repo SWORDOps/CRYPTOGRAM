@@ -88,7 +88,6 @@ struct List::Layout {
 	float64 single = 0.;
 	int smallSkip = 0;
 	int leftFull = 0;
-	int leftSmall = 0;
 	int singleFull = 0;
 	int singleSmall = 0;
 	int startIndexSmall = 0;
@@ -295,7 +294,6 @@ List::Layout List::computeLayout(float64 expanded) const {
 	const auto smallCount = std::min(
 		kSmallThumbsShown,
 		itemsCount - smallSkip);
-	const auto leftSmall = st.left - (smallSkip ? st.shift : 0);
 	const auto leftFull = full.left - _scrollLeft + skipSide;
 	const auto startIndexFull = std::max(-leftFull, 0) / singleFull;
 	const auto cellLeftFull = leftFull + (startIndexFull * singleFull);
@@ -304,10 +302,7 @@ List::Layout List::computeLayout(float64 expanded) const {
 		itemsCount);
 	const auto startIndexSmall = std::min(startIndexFull, smallSkip);
 	const auto endIndexSmall = smallSkip + smallCount;
-	const auto cellLeftSmall = leftSmall + (startIndexSmall * st.shift);
 	const auto thumbnailLeftFull = cellLeftFull + full.photoLeft;
-	const auto thumbnailLeftSmall = cellLeftSmall + st.photoLeft;
-	const auto thumbnailLeft = lerp(thumbnailLeftSmall, thumbnailLeftFull);
 	const auto photoLeft = lerp(st.photoLeft, full.photoLeft);
 	return Layout{
 		.itemsCount = itemsCount,
@@ -328,7 +323,6 @@ List::Layout List::computeLayout(float64 expanded) const {
 		.single = lerp(st.shift, singleFull),
 		.smallSkip = smallSkip,
 		.leftFull = leftFull,
-		.leftSmall = leftSmall,
 		.singleFull = singleFull,
 		.singleSmall = st.shift,
 		.startIndexSmall = startIndexSmall,
@@ -1022,7 +1016,6 @@ List::CollapsedGeometry List::collapsedGeometryCurrent() const {
 		return _lastCollapsedGeometry;
 	}
 	const auto layout = computeLayout(0.);
-	const auto small = countSmallGeometry();
 	const auto index = layout.smallSkip - layout.startIndexSmall;
 	const auto shift = x() + layout.geometryShift.x();
 	const auto left = int(base::SafeRound(
@@ -1051,9 +1044,7 @@ rpl::producer<> List::collapsedGeometryChanged() const {
 
 void List::updateGeometry() {
 	switch (_state) {
-	case State::Small: setGeometry(countSmallGeometry()); break;
 	case State::Changing: {
-		_changingGeometryFrom = countSmallGeometry();
 		setGeometry(_geometryFull.united(_changingGeometryFrom));
 	} break;
 	case State::Full: setGeometry(_geometryFull);
@@ -1062,7 +1053,6 @@ void List::updateGeometry() {
 	update();
 }
 
-QRect List::countSmallGeometry() const {
 	const auto &st = _st.small;
 	const auto layout = computeLayout(0.);
 	const auto count = layout.endIndexSmall
@@ -1148,19 +1138,13 @@ void List::updateSelected() {
 	const auto firstRightFull = layout.leftFull
 		+ (layout.startIndexFull + 1) * layout.singleFull;
 	const auto secondLeftFull = firstRightFull;
-	const auto firstRightSmall = layout.leftSmall
 		+ st.photoLeft
 		+ st.photo;
-	const auto secondLeftSmall = layout.smallSkip
-		? (layout.leftSmall + st.photoLeft + st.shift)
-		: firstRightSmall;
 	const auto lastRightAddFull = 0;
 	const auto lastRightAddSmall = st.photoLeft;
 	const auto lerp = [&](float64 a, float64 b) {
 		return a + (b - a) * layout.ratio;
 	};
-	const auto firstRight = lerp(firstRightSmall, firstRightFull);
-	const auto secondLeft = lerp(secondLeftSmall, secondLeftFull);
 	const auto lastRightAdd = lerp(lastRightAddSmall, lastRightAddFull);
 	const auto activateFull = (layout.ratio >= 0.5);
 	const auto startIndex = activateFull

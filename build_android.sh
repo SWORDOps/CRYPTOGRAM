@@ -2,7 +2,6 @@
 
 ################################################################################
 # CRYPTOGRAM Android - Production Build Script v1.0
-# Complete Android APK/AAB build with TSM integration
 # Zero shellcheck errors - production-grade quality
 ################################################################################
 
@@ -41,11 +40,11 @@ readonly BUILD_DATE="$(date +%Y%m%d_%H%M%S)"
 readonly BUILD_ID="${BUILD_DATE}_$$"
 # shellcheck disable=SC2155
 readonly BUILD_START_TIME="$(date +%s)"
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Paths
-readonly CRYPTOGRAM_ROOT="${CRYPTOGRAM_ROOT:-$HOME/CRYPTOGRAM}"
-readonly ANDROID_ROOT="${CRYPTOGRAM_ROOT}/android"
-readonly TSM_ROOT="${CRYPTOGRAM_ROOT}/tsm"
+readonly CRYPTOGRAM_ROOT="${CRYPTOGRAM_ROOT:-$SCRIPT_DIR}"
+readonly ANDROID_ROOT="${ANDROID_ROOT:-${CRYPTOGRAM_ROOT}/telegram-android}"
 
 # Logs
 LOG_USER="${USER:-$(whoami 2>/dev/null || echo "user${UID}")}"
@@ -71,7 +70,6 @@ BUILD_TYPE="${BUILD_TYPE:-$DEFAULT_BUILD_TYPE}"
 VERBOSE_MODE="${VERBOSE:-1}"
 DRY_RUN="${DRY_RUN:-0}"
 FORCE_REBUILD="${FORCE:-0}"
-TSM_ENABLED="${TSM_ENABLED:-1}"
 
 # Android SDK configuration
 ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}"
@@ -80,15 +78,9 @@ ANDROID_NDK_VERSION="${ANDROID_NDK_VERSION:-25.2.9519653}"
 # Signing configuration
 KEYSTORE_PATH="${KEYSTORE_PATH:-}"
 KEYSTORE_PASSWORD="${KEYSTORE_PASSWORD:-}"
-KEYSTORE_ALIAS="${KEYSTORE_ALIAS:-swordcomm}"
+KEYSTORE_ALIAS="${KEYSTORE_ALIAS:-cryptogram}"
 KEY_PASSWORD="${KEY_PASSWORD:-${KEYSTORE_PASSWORD}}"
 
-# TSM configuration
-TSM_HOST="${TSM_HOST:-}"  # Hardcoded IP or hostname
-TSM_PORT="${TSM_PORT:-8443}"
-TSM_SERVER="${TSM_SERVER:-https://tsm.swordops.com}"
-TSM_API_KEY="${TSM_API_KEY:-}"
-TSM_MDNS_SERVICE="${TSM_MDNS_SERVICE:-_tsm._tcp}"  # mDNS service name
 
 # Build state
 declare -A BUILD_STATE=(
@@ -96,7 +88,6 @@ declare -A BUILD_STATE=(
     ["sdk_validated"]=0
     ["ndk_validated"]=0
     ["dependencies_fetched"]=0
-    ["tsm_initialized"]=0
     ["app_built"]=0
 )
 
@@ -107,7 +98,6 @@ declare -A COMPONENT_TIMES=(
     ["sdk"]=0
     ["ndk"]=0
     ["dependencies"]=0
-    ["tsm"]=0
     ["build"]=0
 )
 
@@ -611,45 +601,28 @@ check_android_ndk() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TSM Integration
 # ──────────────────────────────────────────────────────────────────────────────
-initialize_tsm() {
-    print_step "5" "8" "TSM (Telegram Security Module) Integration"
 
     local start_time
     start_time=$(date +%s)
 
-    if [ "$TSM_ENABLED" -eq 0 ]; then
-        print_info "TSM integration disabled"
         print_step_complete "5/8"
         echo ""
         return 0
     fi
 
-    if [ "${BUILD_STATE["tsm_initialized"]}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ]; then
-        print_info "TSM already initialized, skipping..."
         print_step_complete "5/8"
         echo ""
         return 0
     fi
 
-    print_progress "Initializing TSM..."
-    log "TSM" "Starting TSM initialization"
 
     # ──────────────────────────────────────────────────────────────────────────
-    # TSM Network Discovery
     # ──────────────────────────────────────────────────────────────────────────
-    local tsm_endpoint=""
 
     # Option 1: Hardcoded IP/hostname
-    if [ -n "$TSM_HOST" ]; then
-        tsm_endpoint="https://$TSM_HOST:$TSM_PORT"
-        print_info "Using hardcoded TSM endpoint: $tsm_endpoint"
-        log "TSM" "Hardcoded TSM host: $TSM_HOST:$TSM_PORT"
     else
         # Option 2: mDNS auto-discovery
-        print_progress "Attempting TSM auto-discovery via mDNS..."
-        log "TSM" "Starting mDNS discovery for service: $TSM_MDNS_SERVICE"
 
         local discovered_host=""
         local discovered_port=""
@@ -658,16 +631,12 @@ initialize_tsm() {
         if command -v avahi-browse >/dev/null 2>&1; then
             print_debug "Using avahi-browse for mDNS discovery"
             local avahi_output
-            avahi_output=$(timeout 5 avahi-browse -t -p -r "$TSM_MDNS_SERVICE" 2>/dev/null | grep "^=" | head -n1)
 
             if [ -n "$avahi_output" ]; then
-                # Parse avahi output: =;eth0;IPv4;TSM Server;_tsm._tcp;local;hostname;192.168.1.100;8443;...
                 discovered_host=$(echo "$avahi_output" | cut -d';' -f8)
                 discovered_port=$(echo "$avahi_output" | cut -d';' -f9)
 
                 if [ -n "$discovered_host" ]; then
-                    print_info "Discovered TSM via mDNS: $discovered_host:$discovered_port"
-                    log "TSM" "mDNS discovered: $discovered_host:$discovered_port"
                 fi
             fi
         fi
@@ -677,7 +646,6 @@ initialize_tsm() {
             print_debug "Using dns-sd for mDNS discovery"
             # dns-sd requires background process, use timeout
             local dns_output
-            dns_output=$(timeout 5 dns-sd -L "TSM Server" "$TSM_MDNS_SERVICE" local 2>/dev/null | grep "can be reached at" | head -n1)
 
             if [ -n "$dns_output" ]; then
                 # Parse: hostname.local.:8443 can be reached at 192.168.1.100:8443
@@ -685,96 +653,46 @@ initialize_tsm() {
                 discovered_port=$(echo "$dns_output" | grep -oP ':\d+' | tr -d ':' | head -n1)
 
                 if [ -n "$discovered_host" ]; then
-                    print_info "Discovered TSM via mDNS: $discovered_host:$discovered_port"
-                    log "TSM" "mDNS discovered: $discovered_host:$discovered_port"
                 fi
             fi
         fi
 
         # Use discovered endpoint or fall back to default
         if [ -n "$discovered_host" ]; then
-            discovered_port="${discovered_port:-$TSM_PORT}"
-            tsm_endpoint="https://$discovered_host:$discovered_port"
-            print_info "Auto-discovered TSM: $tsm_endpoint"
         else
             print_warning "mDNS discovery failed or not available"
-            print_info "Using default TSM server: $TSM_SERVER"
-            tsm_endpoint="$TSM_SERVER"
         fi
     fi
 
     # ──────────────────────────────────────────────────────────────────────────
-    # TSM Directory Setup
     # ──────────────────────────────────────────────────────────────────────────
-    if [ ! -d "$TSM_ROOT" ]; then
-        print_warning "TSM directory not found: $TSM_ROOT"
-        print_info "Creating TSM directory structure..."
 
-        mkdir -p "$TSM_ROOT"/{lib,include,config}
 
-        if [ ! -d "$TSM_ROOT" ]; then
-            print_warning "Could not create TSM directory - TSM disabled"
-            TSM_ENABLED=0
             print_step_complete "5/8"
             echo ""
             return 0
         fi
     fi
 
-    print_info "TSM directory: $TSM_ROOT"
 
     # ──────────────────────────────────────────────────────────────────────────
-    # TSM Configuration
     # ──────────────────────────────────────────────────────────────────────────
-    local tsm_config="$TSM_ROOT/config/tsm.properties"
-    print_info "Creating TSM configuration..."
-    cat > "$tsm_config" << EOF
-# TSM Configuration
-tsm.version=1.0.0
-tsm.server=$tsm_endpoint
-tsm.enabled=true
-tsm.build_date=$(date +%Y%m%d)
-tsm.discovery.mdns=$TSM_MDNS_SERVICE
 EOF
-    print_info "TSM config created: $tsm_config"
-    log "TSM" "TSM endpoint configured: $tsm_endpoint"
 
-    # Test TSM connectivity (optional)
     if command -v curl >/dev/null 2>&1; then
-        print_progress "Testing TSM connectivity..."
-        if timeout 5 curl -k -s -o /dev/null -w "%{http_code}" "$tsm_endpoint/health" 2>/dev/null | grep -q "200\|204"; then
-            print_info "TSM server is reachable"
-            log "TSM" "TSM connectivity test passed"
         else
-            print_warning "TSM server not reachable (may be offline or firewalled)"
-            log "TSM" "TSM connectivity test failed (non-critical)"
         fi
     fi
 
-    # Verify TSM API key if provided
-    if [ -n "$TSM_API_KEY" ]; then
-        print_info "TSM API key configured"
-        log "TSM" "TSM API key present"
     else
-        print_warning "TSM API key not set (optional)"
     fi
 
-    # Set TSM environment variables for Gradle
-    export TSM_ENABLED=true
-    export TSM_ROOT="$TSM_ROOT"
-    export TSM_SERVER="$tsm_endpoint"
-    if [ -n "$TSM_API_KEY" ]; then
-        export TSM_API_KEY="$TSM_API_KEY"
     fi
 
-    BUILD_STATE["tsm_initialized"]=1
     save_state
 
-    print_info "TSM integration complete"
-    log "TSM" "TSM initialized successfully"
 
     local elapsed=$(($(date +%s) - start_time))
-    COMPONENT_TIMES["tsm"]=$elapsed
 
     print_step_complete "5/8"
     echo ""
@@ -883,10 +801,6 @@ build_android_app() {
         gradle_args="$gradle_args -Pandroid.injected.signing.key.password=$KEY_PASSWORD"
     fi
 
-    # Add TSM properties
-    if [ "$TSM_ENABLED" -eq 1 ]; then
-        gradle_args="$gradle_args -Ptsm.enabled=true"
-        gradle_args="$gradle_args -Ptsm.root=$TSM_ROOT"
     fi
 
     # Clean build directory if force rebuild
@@ -1014,12 +928,10 @@ show_summary() {
     echo "Script Version: $SCRIPT_VERSION"
     echo "Build ID: $BUILD_ID"
     echo "Build Type: $BUILD_TYPE"
-    echo "TSM Enabled: $([ "$TSM_ENABLED" -eq 1 ] && echo "Yes" || echo "No")"
     echo ""
     echo "Timings:"
     printf "  %-20s: %s\n" "Total Time" "$(format_time "$total_time")"
 
-    for component in system submodules sdk ndk tsm dependencies build; do
         if [ -n "${COMPONENT_TIMES[$component]:-}" ] && [ "${COMPONENT_TIMES[$component]}" -gt 0 ]; then
             printf "  %-20s: %s\n" "$component" "$(format_time "${COMPONENT_TIMES[$component]}")"
         fi
@@ -1093,8 +1005,6 @@ parse_args() {
             --dry-run)
                 DRY_RUN=1
                 ;;
-            --no-tsm)
-                TSM_ENABLED=0
                 ;;
             --keystore=*)
                 KEYSTORE_PATH="${1#*=}"
@@ -1128,7 +1038,6 @@ Options:
   --force, -f            Force rebuild (clean first)
   --verbose, -v          Enable verbose output
   --dry-run              Show what would be done
-  --no-tsm               Disable TSM integration
   --keystore=PATH        Path to keystore file
   --keystore-pass=PASS   Keystore password
   --help, -h             Show this help message
@@ -1136,28 +1045,15 @@ Options:
 Environment Variables:
   ANDROID_SDK_ROOT       Android SDK location
   ANDROID_NDK_VERSION    NDK version to use
-  TSM_ENABLED            Enable/disable TSM (1/0)
-  TSM_HOST               Hardcoded TSM IP/hostname (overrides auto-discovery)
-  TSM_PORT               TSM port (default: 8443)
-  TSM_SERVER             TSM server URL (fallback if discovery fails)
-  TSM_MDNS_SERVICE       mDNS service name (default: _tsm._tcp)
-  TSM_API_KEY            TSM API key
   KEYSTORE_PATH          Path to release keystore
   KEYSTORE_PASSWORD      Keystore password
-  KEYSTORE_ALIAS         Key alias (default: swordcomm)
+  KEYSTORE_ALIAS         Key alias (default: cryptogram)
 
-TSM Network Discovery:
-  The build script will discover TSM in the following order:
-  1. Hardcoded IP/hostname (TSM_HOST environment variable)
   2. mDNS auto-discovery on local network (avahi/dns-sd)
-  3. Fallback to TSM_SERVER URL
 
 Examples:
-  $0                                    # Build debug APK with TSM auto-discovery
   $0 --release                          # Build release (unsigned)
   $0 --release --keystore=release.jks --keystore-pass=secret
-  TSM_HOST=192.168.1.100 $0             # Use hardcoded TSM IP
-  TSM_MDNS_SERVICE=_cryptogram._tcp $0  # Custom mDNS service name
 
 EOF
 }
@@ -1184,9 +1080,7 @@ main() {
     echo "Configuration:"
     echo "  Project Root: $CRYPTOGRAM_ROOT"
     echo "  Android Root: $ANDROID_ROOT"
-    echo "  TSM Root: $TSM_ROOT"
     echo "  Build Type: $BUILD_TYPE"
-    echo "  TSM Enabled: $([ "$TSM_ENABLED" -eq 1 ] && echo "Yes" || echo "No")"
     echo "  Log File: $LOG_FILE"
     echo ""
 
@@ -1195,7 +1089,6 @@ main() {
     initialize_submodules
     check_android_sdk
     check_android_ndk
-    initialize_tsm
     fetch_dependencies
     build_android_app
     verify_artifacts

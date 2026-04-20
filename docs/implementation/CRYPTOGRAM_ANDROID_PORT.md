@@ -2,7 +2,7 @@
 
 **Status: Core Integration Complete** ✅
 
-This document describes the port of CRYPTOGRAM's military-grade encryption features to Telegram Android.
+This document describes the port of CRYPTOGRAM's high-assurance (requires validation) encryption features to Telegram Android.
 
 ---
 
@@ -21,7 +21,7 @@ This document describes the port of CRYPTOGRAM's military-grade encryption featu
    - `data_group_encryption.cpp/h` (279 lines) - Group encryption integration
    - `data_enhanced_privacy.cpp/h` (1,924 lines) - Privacy features
 
-   **Total: ~5,452 lines of battle-tested cryptographic code!**
+   **Total: ~5,452 lines of documented cryptographic code!**
 
 3. **✅ Build System Integrated**
    - Modified `CMakeLists.txt` to include cryptogram library
@@ -206,7 +206,7 @@ class SettingsCryptogramActivity : BaseFragment() {
 
         // Header
         rootLayout.addView(TextInfoPrivacyCell(context).apply {
-            text = "🔐 CRYPTOGRAM Military-Grade Encryption"
+            text = "🔐 CRYPTOGRAM high-assurance (requires validation) Encryption"
             setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite))
         })
 

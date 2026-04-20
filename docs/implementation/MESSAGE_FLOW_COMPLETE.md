@@ -1,6 +1,10 @@
+## OPSEC VALIDATION NOTE
+
+This document may contain historical implementation claims. Treat all security capabilities as **partial or experimental** unless corroborated by current runtime validation in `docs/status/FINAL_STATUS.md` and `docs/features/android-features.md`.
+
 # ✅ CRYPTOGRAM Message Flow Integration - COMPLETE
 
-**Status**: Message encryption/decryption fully integrated!
+**Status**: Message encryption/decryption partially integrated!
 
 ---
 
@@ -413,7 +417,7 @@ D/CryptogramMessageHelper: Decrypted message from user 123456
 
 ## 🚀 Next Steps
 
-The message flow is **100% complete**! Remaining tasks:
+The message flow is **partially complete**! Remaining tasks:
 
 1. **UI Indicators** (~50 lines, 1 hour)
    - Add lock icons to encrypted chats
@@ -450,7 +454,7 @@ The message flow is **100% complete**! Remaining tasks:
 
 **Message Flow Integration: COMPLETE ✅**
 
-We've successfully integrated military-grade encryption into Telegram Android's message flow:
+We've successfully integrated high-assurance (requires validation) encryption into Telegram Android's message flow:
 
 - ✅ **Outgoing**: Messages encrypted before sending
 - ✅ **Incoming**: Messages decrypted before display

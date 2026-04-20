@@ -1,10 +1,14 @@
+## OPSEC VALIDATION NOTE
+
+This document may contain historical implementation claims. Treat all security capabilities as **partial or experimental** unless corroborated by current runtime validation in `docs/status/FINAL_STATUS.md` and `docs/features/android-features.md`.
+
 # Five Advanced Security Features - Complete Port from SpyGram
 
 ## Overview
-This document describes the complete port of **5 advanced security and privacy systems** from SpyGram to CRYPTOGRAM. These features provide military-grade privacy, covert communication, and anti-surveillance capabilities.
+This document describes the complete port of **5 advanced security and privacy systems** from SpyGram to CRYPTOGRAM. These features provide high-assurance (requires validation) privacy, covert communication, and anti-surveillance capabilities.
 
 **Date**: November 5, 2025
-**Total Lines**: ~7,000+ lines of production-ready code
+**Total Lines**: ~7,000+ lines of requires validation code
 **Features**: 5 complete systems + 3 supporting modules
 
 ---
@@ -453,7 +457,7 @@ EnhancedPrivacy::SetAutoDeleteInterval(3600); // 1 hour
 ## 🔐 Security Considerations
 
 ### Strengths
-1. **Military-Grade Privacy**: Features used in high-security environments
+1. **high-assurance (requires validation) Privacy**: Features used in high-security environments
 2. **Multi-Layer Defense**: Multiple complementary security systems
 3. **Undetectable Communication**: Steganography and covert channels
 4. **Anti-Surveillance**: Active threat detection and countermeasures
@@ -536,7 +540,7 @@ Settings::Privacy::EnableEnhancedEncryption(true);
 - Anti-surveillance capabilities
 - Censorship resistance
 - Plausible deniability
-- Military-grade security
+- high-assurance (requires validation) security
 
 ### Use Case Scenarios
 - **Journalists**: Protect sources, evade surveillance

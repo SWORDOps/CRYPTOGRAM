@@ -893,7 +893,6 @@ peerListWithInviteViaLink: PeerList(peerListBox) {
 peerListSingleRow: PeerList(peerListBox) {
 	padding: margins(0px, 0px, 0px, 0px);
 }
-peerListSmallSkips: PeerList(peerListBox) {
 	padding: margins(
 		0px,
 		defaultVerticalListSkip,

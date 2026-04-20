@@ -26,7 +26,6 @@ enum class SecurityTier {
     Tier0_Quantum = 0,      // GNA + NPU + TPM 2.0
     Tier1_Premium = 1,      // NPU + TPM 2.0 + OpenVINO
     Tier2_Enhanced = 2,     // TPM 2.0 + OpenVINO + CPU
-    Tier3_Standard = 3,     // CPU + Software TSM
     Tier4_Universal = 4     // CPU + Basic storage
 };
 

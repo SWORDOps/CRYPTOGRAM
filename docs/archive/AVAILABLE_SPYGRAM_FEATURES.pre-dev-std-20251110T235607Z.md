@@ -8,7 +8,6 @@ SpyGram contains many complete, production-ready privacy and security features t
 ## ✅ Already Ported
 
 ### 1. **Double Ratchet Algorithm** ✓ COMPLETED
-- **Files**: `data_signal_protocol.h/cpp`, `data_tsm_interface.h`, `data_tsm_factory.cpp`
 - **Lines**: ~3,774 lines
 - **Status**: Successfully ported with full serialization support
 - **Documentation**: See `DOUBLE_RATCHET_PORT.md`
@@ -219,10 +218,8 @@ SpyGram contains many complete, production-ready privacy and security features t
 
 ---
 
-### 11. **Hardware Security (TSM) Extensions** ⭐⭐⭐⭐
 **Value**: High | **Complexity**: High
 
-**Location**: Multiple `data_tsm_*.h` files
 
 **Features**:
 - TPM 2.0 integration
@@ -231,7 +228,6 @@ SpyGram contains many complete, production-ready privacy and security features t
 - Hardware-backed cryptography
 - Secure key storage
 
-**Already Partially Ported**: TSM interface included with Double Ratchet
 
 ---
 
@@ -272,7 +268,6 @@ SpyGram contains many complete, production-ready privacy and security features t
 
 | Feature | Privacy Impact | Security Impact | Complexity | Dependencies | Lines of Code |
 |---------|---------------|-----------------|------------|--------------|---------------|
-| Double Ratchet ✓ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | High | OpenSSL, TSM | ~3,774 |
 | Audio Steganography | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | High | Qt Multimedia | ~1,317 |
 | Location Randomization | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | Medium | Qt Core | ~315+ |
 | Surveillance Detector | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Medium | Qt Core | ~766 |
@@ -319,7 +314,6 @@ To port any of these features:
 - All features are production-ready in SpyGram
 - Most features are standalone or have minimal dependencies
 - Features integrate well with existing Telegram Desktop architecture
-- TSM (hardware security) support is already available from Double Ratchet port
 - Most features include comprehensive error handling and logging
 
 ---

@@ -215,7 +215,6 @@ starConvertButtonLoading: InfiniteRadialAnimation(startGiveawayButtonLoading) {
 	thickness: 2px;
 }
 
-starGiftSmallButton: defaultTableSmallButton;
 darkGiftCodeBox: Box(giveawayGiftCodeBox) {
 	bg: groupCallMembersBg;
 	title: FlatLabel(boxTitle) {

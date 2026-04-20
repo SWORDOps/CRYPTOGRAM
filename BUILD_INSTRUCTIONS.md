@@ -19,7 +19,6 @@ git checkout claude/build-ada-protobuf-01Tpe3rvKAkdWnRVGPd3uLET
 After cloning, run `./apply-build-patches.sh` to apply build patches:
 
 - Makes `tde2e` and `tg_owt` libraries optional (cmake submodule)
-- Adds CMakeLists.txt for lib_tsm integration
 
 **Note:** Git will show uncommitted changes in submodules. This is intentional.
 See `patches/README.md` for details.

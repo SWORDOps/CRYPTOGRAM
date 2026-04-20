@@ -64,7 +64,6 @@ Multi-tier quantum-resistant storage with NSA-grade security classifications and
   - **Tier 0 (Quantum)**: GNA + NPU + TPM 2.0 quantum-secured
   - **Tier 1 (Premium)**: NPU + TPM 2.0 hardware-backed
   - **Tier 2 (Enhanced)**: TPM 2.0 hardware-secured
-  - **Tier 3 (Standard)**: Software TSM encrypted
   - **Tier 4 (Universal)**: AES-256 encrypted
 
 - **NSA Security Classifications**:
@@ -336,7 +335,6 @@ With these 5 features, CRYPTOGRAM would have:
 - OpenSSL 3.x (post-quantum support)
 - TPM 2.0 libraries
 - Kyber/Dilithium implementations
-- TSM interface (already ported)
 
 ### Network Security
 - Qt Network
@@ -362,7 +360,6 @@ With these 5 features, CRYPTOGRAM would have:
 
 ### Quick Wins (1-2 days each)
 - Voice Security System (most straightforward)
-- Quantum Storage (TSM already integrated)
 
 ### Medium Effort (3-5 days each)
 - Universal Threat Detector (need AI models)
@@ -403,7 +400,6 @@ With these 5 features, CRYPTOGRAM would have:
 - `data/data_quantumguard.h`
 - `data/data_quantum_crypto_services.h`
 - `data/data_signal_quantum.h`
-- `data/data_tsm_quantum.h`
 
 ### Network Security
 - `data/data_network_security.h`

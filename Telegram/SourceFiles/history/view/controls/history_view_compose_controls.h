@@ -283,7 +283,6 @@ private:
 	void updateSendButtonType();
 	void updateMessagesTTLShown();
 	bool updateSendAsButton();
-	void updateAttachBotsMenu();
 	void updateHeight();
 	void updateWrappingVisibility();
 	void updateControlsVisibility();
@@ -400,7 +399,6 @@ private:
 
 	std::unique_ptr<InlineBots::Layout::Widget> _inlineResults;
 	std::unique_ptr<ChatHelpers::TabbedPanel> _tabbedPanel;
-	std::unique_ptr<Ui::DropdownMenu> _attachBotsMenu;
 	std::unique_ptr<ChatHelpers::FieldAutocomplete> _autocomplete;
 	std::unique_ptr<Ui::Emoji::SuggestionsController> _emojiSuggestions;
 

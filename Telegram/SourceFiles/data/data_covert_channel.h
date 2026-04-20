@@ -102,7 +102,8 @@ private:
         std::vector<CovertPacket> receivedPackets;
         std::vector<crl::time> typingTimestamps;
         crl::time firstIndicator = 0;
-        bool assemblyComplete = false;
+        crl::time lastActivity = 0;
+        uint32 expectedPackets = 0;
     };
 
     // Encoding/Decoding
@@ -110,23 +111,27 @@ private:
     bytes::vector decodeTimingToData(const TimingPattern &pattern);
 
     CovertPacket createPacket(
-        uint32 sequence,
-        uint32 total,
-        const bytes::const_span &data);
+		uint32 sequence,
+		uint32 total,
+		const bytes::const_span &data,
+		not_null<PeerData*> peer);
 
     // Message assembly
-    QString assembleMessage(const std::vector<CovertPacket> &packets);
+    QString assembleMessage(
+        const std::vector<CovertPacket> &packets,
+        not_null<PeerData*> peer);
 
     // Transmission
     void sendNextPacket();
     void scheduleNextSend();
 
-    // Reception
-    void processTimingPattern(not_null<PeerData*> peer);
+	// Reception
+	void processTimingPattern(not_null<PeerData*> peer);
+    void injectReceivedMessage(not_null<PeerData*> peer, const QString &plaintext);
 
-    // Encryption
-    bytes::vector encryptForCovert(const QString &plaintext, not_null<PeerData*> peer);
-    QString decryptFromCovert(const bytes::const_span &ciphertext, not_null<PeerData*> peer);
+	// Encryption
+	bytes::vector encryptForCovert(const QString &plaintext, not_null<PeerData*> peer);
+	QString decryptFromCovert(const bytes::const_span &ciphertext, not_null<PeerData*> peer);
 
     // Timing constants
     static constexpr crl::time kShortInterval = 100;   // 100ms = bit 0
@@ -136,6 +141,7 @@ private:
     static constexpr crl::time kMaxPacketSize = 128;   // Max bytes per packet
     static constexpr crl::time kMaxTimingDrift = 50;   // Allow 50ms clock drift
     static constexpr crl::time kAssemblyTimeout = 30000; // 30s to assemble full message
+    static constexpr uint32 kMaxPacketsPerMessage = 128;
 
     // State
     bool _enabled = false;
@@ -148,11 +154,17 @@ private:
     base::flat_map<PeerId, TransmissionState> _transmissions;
     base::Timer _sendTimer;
 
-    // Reception state
-    base::flat_map<PeerId, ReceptionState> _receptions;
+	// Reception state
+	base::flat_map<PeerId, ReceptionState> _receptions;
+	struct ActiveBurst {
+		PeerId peerId;
+		std::vector<uint32> intervals;
+		size_t nextInterval = 0;
+	};
+	ActiveBurst _activeBurst;
 
-    // Received messages buffer
-    std::vector<CovertMessage> _receivedMessages;
+	// Received messages buffer
+	std::vector<CovertMessage> _receivedMessages;
 
     // Statistics
     int _messagesSent = 0;

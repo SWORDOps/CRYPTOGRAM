@@ -11,7 +11,6 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 
 #include "data/data_network_security.h"
 #include "data/data_signal_protocol.h"
-#include "data/data_tsm_interface.h"
 #include "mtproto/connection_abstract.h"
 
 #include <QtCore/QObject>
@@ -33,7 +32,6 @@ class Session;
  * - Anti-surveillance Mesh Networking
  * - VPN/Tor Integration with Auto-configuration
  * - Network Anomaly Detection & Response
- * - Signal Protocol & TSM Integration
  * - Universal Hardware Compatibility (5-tier architecture)
  * - MTPProto Connection Security
  *
@@ -168,10 +166,7 @@ public:
     void integrateSignalProtocol(not_null<SignalProtocol*> signalProtocol);
 
     /**
-     * Integrate with TSM for hardware-backed security
-     * @param tsm TSM interface instance to integrate with
      */
-    void integrateTSM(std::shared_ptr<TSMInterface> tsm);
 
     /**
      * Generate network-specific keys using integrated security systems
@@ -248,7 +243,6 @@ private:
 
     // Integration interfaces
     SignalProtocol* _signalProtocol = nullptr;
-    std::shared_ptr<TSMInterface> _tsmInterface;
 
     // MTPProto integration
     class NetworkSecuredMTPConnection;
@@ -327,7 +321,6 @@ QString getVersionInfo();
  * if (result == Data::NetworkSecurityResult::Success) {
  *     // Integration with existing systems
  *     phase5->integrateSignalProtocol(signalProtocol);
- *     phase5->integrateTSM(tsmInterface);
  *
  *     // Enable monitoring
  *     phase5->enableContinuousMonitoring(true);

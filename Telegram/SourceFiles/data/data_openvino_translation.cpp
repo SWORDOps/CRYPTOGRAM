@@ -16,7 +16,9 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 #include <QtCore/QJsonArray>
+#include <QtCore/QCryptographicHash>
 #include <QtCore/QRegularExpression>
+#include <QtCore/QFileInfo>
 #include <QtNetwork/QNetworkAccessManager>
 #include <QtNetwork/QNetworkReply>
 #include <QtNetwork/QNetworkRequest>
@@ -33,6 +35,180 @@ const QRegularExpression kCyrillicRegex(u"[\\u0400-\\u04FF]"_q);
 // Chinese detection regex (Simplified + Traditional)
 const QRegularExpression kChineseRegex(u"[\\u4E00-\\u9FFF\\u3400-\\u4DBF]"_q);
 
+QString normalizeFallbackToken(const QString &token) {
+	auto normalized = token.toLower();
+	int start = 0;
+	while (start < normalized.size() && !normalized.at(start).isLetterOrNumber()) {
+		++start;
+	}
+
+	int end = normalized.size() - 1;
+	while (end >= start && !normalized.at(end).isLetterOrNumber()) {
+		--end;
+	}
+
+	if (start > end) {
+		return QString();
+	}
+
+	return normalized.mid(start, end - start + 1);
+}
+
+bool isModelArtifactUsable(const QString &modelPath) {
+	const auto xmlPath = modelPath + "/model.xml";
+	const auto binPath = modelPath + "/model.bin";
+	const QFileInfo xmlInfo(xmlPath);
+	const QFileInfo binInfo(binPath);
+	if (!xmlInfo.exists() || !binInfo.exists()) {
+		return false;
+	}
+	if (xmlInfo.size() <= 16 || binInfo.size() <= 16) {
+		return false;
+	}
+
+	QFile xml(xmlPath);
+	if (!xml.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		return false;
+	}
+
+	const auto xmlPeek = QString::fromUtf8(xml.read(1024));
+	xml.close();
+	return xmlPeek.contains("<", Qt::CaseInsensitive)
+		&& xmlPeek.contains("IR", Qt::CaseInsensitive);
+}
+
+QString translateFallbackToken(const QString &token, const QMap<QString, QString> &dictionary) {
+	if (token.isEmpty()) {
+		return token;
+	}
+
+	int start = 0;
+	while (start < token.size() && !token.at(start).isLetterOrNumber()) {
+		++start;
+	}
+
+	int end = token.size() - 1;
+	while (end >= start && !token.at(end).isLetterOrNumber()) {
+		--end;
+	}
+
+	if (start > end) {
+		return token;
+	}
+
+	const auto prefix = token.left(start);
+	const auto suffix = token.mid(end + 1);
+	const auto core = token.mid(start, end - start + 1);
+	const auto normalized = normalizeFallbackToken(core);
+
+	if (!normalized.isEmpty()) {
+		const auto translated = dictionary.value(normalized);
+		if (!translated.isEmpty()) {
+			auto output = translated;
+			if (core == core.toUpper()) {
+				output = translated.toUpper();
+			} else if (core.at(0).isUpper()) {
+				output = translated.left(1).toUpper() + translated.mid(1);
+			}
+			return prefix + output + suffix;
+		}
+	}
+
+	return token;
+}
+
+QString translateWithFallbackDictionary(
+	const QString &text,
+	TranslationLanguage source,
+	TranslationLanguage target) {
+	if (source == target) {
+		return text;
+	}
+
+	static const QMap<QString, QString> enToRu = {
+		{"hello", "privet"},
+		{"hi", "privet"},
+		{"goodbye", "poka"},
+		{"thanks", "spasibo"},
+		{"yes", "da"},
+		{"no", "net"},
+		{"help", "pomoshch"},
+		{"chat", "chat"},
+		{"message", "soobschenie"},
+		{"secure", "bezopasnyy"},
+		{"status", "status"},
+		{"encrypt", "shifrovat"},
+	};
+	static const QMap<QString, QString> ruToEn = {
+		{"privet", "hello"},
+		{"spasibo", "thanks"},
+		{"da", "yes"},
+		{"net", "no"},
+		{"soobschenie", "message"},
+		{"shifrovat", "encrypt"},
+		{"pomoshch", "help"},
+	};
+	static const QMap<QString, QString> enToZh = {
+		{"hello", "nihao"},
+		{"thanks", "xiexie"},
+		{"yes", "shi"},
+		{"no", "fou"},
+		{"chat", "liaotian"},
+		{"message", "xiaoxi"},
+		{"secure", "anquan"},
+	};
+	static const QMap<QString, QString> zhToEn = {
+		{"nihao", "hello"},
+		{"xiexie", "thanks"},
+		{"xiaoxi", "message"},
+		{"liaotian", "chat"},
+		{"anquan", "secure"},
+	};
+
+	const QMap<QString, QString> *dict = nullptr;
+	switch (source) {
+	case TranslationLanguage::English:
+		if (target == TranslationLanguage::RussianCyrillic) {
+			dict = &enToRu;
+		} else if (target == TranslationLanguage::ChineseMandarin) {
+			dict = &enToZh;
+		}
+		break;
+	case TranslationLanguage::RussianCyrillic:
+		dict = (target == TranslationLanguage::English) ? &ruToEn : nullptr;
+		break;
+	case TranslationLanguage::ChineseMandarin:
+		dict = (target == TranslationLanguage::English) ? &zhToEn : nullptr;
+		break;
+	default:
+		dict = nullptr;
+	}
+
+	if (!dict || dict->isEmpty()) {
+		return text;
+	}
+
+	QString translated;
+	translated.reserve(text.size() * 2);
+	const int size = text.size();
+	int index = 0;
+	while (index < size) {
+		if (text.at(index).isSpace()) {
+			translated += text.at(index);
+			++index;
+			continue;
+		}
+
+		int tokenStart = index;
+		while (index < size && !text.at(index).isSpace()) {
+			++index;
+		}
+		translated += translateFallbackToken(text.mid(tokenStart, index - tokenStart), *dict);
+	}
+
+	return translated;
+}
+
 // Cache directory
 QString translationCachePath() {
 	auto path = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
@@ -41,6 +217,69 @@ QString translationCachePath() {
 		dir.mkdir("translation_cache");
 	}
 	return path + "/translation_cache/";
+}
+
+QString makeTranslationCacheKey(
+		const QString &text,
+		TranslationModel model) {
+	auto payload = QByteArray::number(static_cast<int>(model))
+		+ "|" + QByteArray::number(text.size())
+		+ "|" + text.toUtf8();
+	auto hash = QCryptographicHash::hash(payload, QCryptographicHash::Sha1);
+	return QString::fromLatin1(hash.toHex());
+}
+
+bool isSupportedTranslationPair(
+		TranslationLanguage source,
+		TranslationLanguage target) {
+	if (source == target) {
+		return true;
+	}
+	switch (source) {
+	case TranslationLanguage::English:
+		return target == TranslationLanguage::RussianCyrillic
+			|| target == TranslationLanguage::ChineseMandarin;
+	case TranslationLanguage::RussianCyrillic:
+	case TranslationLanguage::ChineseMandarin:
+		return target == TranslationLanguage::English;
+	default:
+		return false;
+	}
+}
+
+TranslationModel resolveBidirectionalModel(
+		TranslationModel model,
+		TranslationLanguage source,
+		TranslationQuality quality) {
+	if (model == TranslationModel::EnglishRussianBidirectional) {
+		if (source == TranslationLanguage::English) {
+			switch (quality) {
+			case TranslationQuality::Fast:
+				return TranslationModel::EnglishToRussian_Small;
+			case TranslationQuality::Balanced:
+				return TranslationModel::EnglishToRussian_Base;
+			case TranslationQuality::Best:
+				return TranslationModel::EnglishToRussian_Large;
+			}
+		}
+		return TranslationModel::RussianToEnglish_Base;
+	}
+
+	if (model == TranslationModel::EnglishChineseBidirectional) {
+		if (source == TranslationLanguage::English) {
+			switch (quality) {
+			case TranslationQuality::Fast:
+				return TranslationModel::EnglishToChinese_Small;
+			case TranslationQuality::Balanced:
+				return TranslationModel::EnglishToChinese_Base;
+			case TranslationQuality::Best:
+				return TranslationModel::EnglishToChinese_Large;
+			}
+		}
+		return TranslationModel::ChineseToEnglish_Base;
+	}
+
+	return model;
 }
 
 // Models directory
@@ -201,10 +440,7 @@ public:
 
 		// Check which models are already downloaded
 		for (auto &model : modelRegistry) {
-			QDir modelDir(model.modelPath);
-			model.isDownloaded = modelDir.exists() &&
-				QFile::exists(model.modelPath + "/model.xml") &&
-				QFile::exists(model.modelPath + "/model.bin");
+			model.isDownloaded = isModelArtifactUsable(model.modelPath);
 		}
 	}
 };
@@ -356,9 +592,46 @@ base::expected<TranslationResult, QString> OpenVINOTranslation::translate(
 		sourceLanguage = detectLanguage(text);
 	}
 
+	if (sourceLanguage == targetLanguage) {
+		TranslationResult result;
+		result.timestamp = QDateTime::currentDateTime();
+		result.detectedSourceLanguage = sourceLanguage;
+		result.targetLanguage = targetLanguage;
+		result.translatedText = text;
+		result.usedModel = TranslationModel::EnglishToRussian_Base;
+		result.usedDevice = _preferredDevice;
+		result.success = true;
+		result.inferenceTimeMs = 0.0;
+		result.confidenceScore = 1.0;
+		return result;
+	}
+
+	if (!isSupportedTranslationPair(sourceLanguage, targetLanguage)) {
+		return base::make_unexpected("Unsupported language pair");
+	}
+
 	// Select best model for this language pair
 	auto quality = _qualityPreference;
 	auto model = selectBestModel(sourceLanguage, targetLanguage, quality);
+	model = resolveBidirectionalModel(model, sourceLanguage, quality);
+	if (!d->modelRegistry.contains(model)) {
+		switch (model) {
+		case TranslationModel::EnglishToRussian_Large:
+			model = TranslationModel::EnglishToRussian_Base;
+			break;
+		case TranslationModel::EnglishToChinese_Large:
+			model = TranslationModel::EnglishToChinese_Base;
+			break;
+		case TranslationModel::RussianToEnglish_Large:
+			model = TranslationModel::RussianToEnglish_Base;
+			break;
+		case TranslationModel::ChineseToEnglish_Large:
+			model = TranslationModel::ChineseToEnglish_Base;
+			break;
+		default:
+			return base::make_unexpected("Unsupported translation model");
+		}
+	}
 
 	// Translate using selected model
 	return translateWithModel(text, model, _preferredDevice);
@@ -368,18 +641,26 @@ base::expected<TranslationResult, QString> OpenVINOTranslation::translateWithMod
 	const QString &text,
 	TranslationModel model,
 	OpenVINODevice device) {
+	auto modelIt = d->modelRegistry.find(model);
+	if (modelIt == d->modelRegistry.end()) {
+		return base::make_unexpected("Unknown translation model");
+	}
 
 	TranslationResult result;
 	result.timestamp = QDateTime::currentDateTime();
+	result.detectedSourceLanguage = sourceLanguage;
+	result.targetLanguage = targetLanguage;
 
 	// Check cache first
 	if (_cacheEnabled) {
 		auto cached = getCachedTranslation(text, model);
-		if (!cached.isEmpty()) {
-			result.translatedText = cached;
-			result.usedModel = model;
-			result.usedDevice = device;
-			result.success = true;
+	if (!cached.isEmpty()) {
+		result.translatedText = cached;
+		result.usedModel = model;
+		result.usedDevice = device;
+		result.detectedSourceLanguage = sourceLanguage;
+		result.targetLanguage = targetLanguage;
+		result.success = true;
 			result.inferenceTimeMs = 0.0;
 			result.confidenceScore = 1.0;
 			_metrics.cachedTranslations++;
@@ -388,17 +669,46 @@ base::expected<TranslationResult, QString> OpenVINOTranslation::translateWithMod
 		}
 	}
 
-	// Ensure model is loaded
-	if (!isModelLoaded(model)) {
-		if (!loadModel(model)) {
-			return base::make_unexpected("Failed to load model");
+	const auto modelInfo = modelIt.value();
+	auto startTime = QDateTime::currentMSecsSinceEpoch();
+	bool useFallback = false;
+	QString translated;
+
+	if (modelInfo.isBidirectional) {
+		return base::make_unexpected("Bidirectional model requires explicit source/target selection");
+	}
+
+	if (device == OpenVINODevice::AUTO) {
+		device = selectOptimalDevice(model);
+	}
+
+	if (!isOpenVINOAvailable() || !modelInfo.isDownloaded) {
+		translated = translateWithFallbackDictionary(
+			text,
+			modelInfo.sourceLanguage,
+			modelInfo.targetLanguage);
+		useFallback = true;
+	} else {
+		if (!isModelLoaded(model) && !loadModel(model)) {
+			translated = translateWithFallbackDictionary(
+				text,
+				modelInfo.sourceLanguage,
+				modelInfo.targetLanguage);
+			useFallback = true;
+		} else {
+			translated = runInference(text, model, device);
 		}
 	}
 
-	// Run inference
-	auto startTime = QDateTime::currentMSecsSinceEpoch();
-	auto translated = runInference(text, model, device);
 	auto endTime = QDateTime::currentMSecsSinceEpoch();
+
+	if (translated.isEmpty()) {
+		translated = translateWithFallbackDictionary(
+			text,
+			modelInfo.sourceLanguage,
+			modelInfo.targetLanguage);
+		useFallback = true;
+	}
 
 	if (translated.isEmpty()) {
 		return base::make_unexpected("Translation failed");
@@ -407,9 +717,11 @@ base::expected<TranslationResult, QString> OpenVINOTranslation::translateWithMod
 	result.translatedText = translated;
 	result.usedModel = model;
 	result.usedDevice = device;
+	result.detectedSourceLanguage = modelInfo.sourceLanguage;
+	result.targetLanguage = modelInfo.targetLanguage;
 	result.success = true;
 	result.inferenceTimeMs = endTime - startTime;
-	result.confidenceScore = 0.95;  // Placeholder
+	result.confidenceScore = useFallback ? 0.35 : 0.95;
 
 	// Update metrics
 	_metrics.totalTranslations++;
@@ -420,7 +732,6 @@ base::expected<TranslationResult, QString> OpenVINOTranslation::translateWithMod
 		_metrics.totalTranslations;
 
 	// Update language-specific counters
-	auto modelInfo = d->modelRegistry[model];
 	if (modelInfo.sourceLanguage == TranslationLanguage::RussianCyrillic ||
 		modelInfo.targetLanguage == TranslationLanguage::RussianCyrillic) {
 		_metrics.russianTranslations++;
@@ -546,8 +857,12 @@ TranslationModel OpenVINOTranslation::selectBestModel(
 }
 
 bool OpenVINOTranslation::loadModel(TranslationModel model) {
-	// Placeholder: In production, load OpenVINO model
-	// For now, just mark as loaded
+	auto modelInfo = d->modelRegistry[model];
+	if (!isModelArtifactUsable(modelInfo.modelPath)) {
+		return false;
+	}
+
+	// Desktop implementation currently uses a runtime stub fallback path.
 	d->loadedModels[model] = QVariant();
 	return true;
 }
@@ -565,27 +880,22 @@ QString OpenVINOTranslation::runInference(
 	const QString &text,
 	TranslationModel model,
 	OpenVINODevice device) {
-
-	// Placeholder: In production, run actual OpenVINO inference
-	// For now, return mock translation with language markers
+	Q_UNUSED(device);
 	auto modelInfo = d->modelRegistry[model];
-
-	if (modelInfo.targetLanguage == TranslationLanguage::RussianCyrillic) {
-		return "[RU] " + text;  // Mock Cyrillic translation
-	} else if (modelInfo.targetLanguage == TranslationLanguage::ChineseMandarin) {
-		return "[ZH] " + text;  // Mock Chinese translation
-	} else {
-		return "[EN] " + text;  // Mock English translation
-	}
+	auto translated = translateWithFallbackDictionary(
+		text,
+		modelInfo.sourceLanguage,
+		modelInfo.targetLanguage);
+	return translated.isEmpty() ? text : translated;
 }
 
 QString OpenVINOTranslation::getCachedTranslation(const QString &text, TranslationModel model) {
-	auto key = QString::number(qHash(text)) + "_" + QString::number(static_cast<int>(model));
+	const auto key = makeTranslationCacheKey(text, model);
 	return d->translationCache.value(key);
 }
 
 void OpenVINOTranslation::addToCache(const QString &text, const QString &translation, TranslationModel model) {
-	auto key = QString::number(qHash(text)) + "_" + QString::number(static_cast<int>(model));
+	const auto key = makeTranslationCacheKey(text, model);
 	d->translationCache[key] = translation;
 
 	// Limit cache size

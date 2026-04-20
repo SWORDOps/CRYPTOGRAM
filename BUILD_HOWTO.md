@@ -82,22 +82,15 @@ cd ~/CRYPTOGRAM
 ./build_android.sh --verbose
 ```
 
-### TSM Network Configuration
 
-The Android build includes TSM (Telegram Security Module) integration with automatic discovery:
 
 ```bash
 # Option 1: Hardcoded IP (highest priority)
-TSM_HOST=192.168.1.100 ./build_android.sh
 
 # Option 2: mDNS auto-discovery (default)
-./build_android.sh  # Automatically finds TSM on local network
 
 # Option 3: Custom mDNS service
-TSM_MDNS_SERVICE=_cryptogram._tcp ./build_android.sh
 
-# Disable TSM
-./build_android.sh --no-tsm
 ```
 
 ### What Gets Built
@@ -105,7 +98,6 @@ TSM_MDNS_SERVICE=_cryptogram._tcp ./build_android.sh
 2. ✓ Git submodules (recursive)
 3. ✓ Android SDK validation
 4. ✓ Android NDK validation
-5. ✓ TSM integration (mDNS auto-discovery)
 6. ✓ Gradle dependencies
 7. ✓ Android APK/AAB compilation
 8. ✓ Build artifact verification
@@ -129,8 +121,6 @@ export FORCE=1                          # Force rebuild
 ```bash
 export ANDROID_SDK_ROOT=~/Android/Sdk   # SDK location
 export ANDROID_NDK_VERSION=25.2.9519653 # NDK version
-export TSM_HOST=192.168.1.100          # TSM server IP
-export TSM_PORT=8443                   # TSM port
 export KEYSTORE_PATH=/path/to/key.jks  # Release keystore
 export KEYSTORE_PASSWORD=secret         # Keystore password
 ```
@@ -146,8 +136,6 @@ export KEYSTORE_PASSWORD=secret         # Keystore password
 # Then build Android
 ./build_android.sh
 
-# Or with TSM configured
-TSM_HOST=192.168.1.100 ./build_android.sh --release
 ```
 
 ---
@@ -195,13 +183,9 @@ cd android
 ./gradlew --refresh-dependencies
 ```
 
-**TSM connection failed**:
 ```bash
 # Use hardcoded IP instead of auto-discovery
-TSM_HOST=192.168.1.100 ./build_android.sh
 
-# Or disable TSM
-./build_android.sh --no-tsm
 ```
 
 ---
@@ -214,7 +198,6 @@ TSM_HOST=192.168.1.100 ./build_android.sh
 | **Desktop with verbose** | `./build_all.sh --verbose` |
 | **Android debug APK** | `./build_android.sh` |
 | **Android release AAB** | `./build_android.sh --release --keystore=key.jks --keystore-pass=pass` |
-| **Android with TSM IP** | `TSM_HOST=192.168.1.100 ./build_android.sh` |
 | **Force rebuild both** | `./build_all.sh --force && ./build_android.sh --force` |
 | **Check build logs** | `cat /tmp/cryptogram_*/build_*.log` |
 | **View help** | `./build_all.sh --help` or `./build_android.sh --help` |

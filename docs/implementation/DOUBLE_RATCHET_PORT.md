@@ -1,7 +1,11 @@
+## OPSEC VALIDATION NOTE
+
+This document may contain historical implementation claims. Treat all security capabilities as **partial or experimental** unless corroborated by current runtime validation in `docs/status/FINAL_STATUS.md` and `docs/features/android-features.md`.
+
 # Double Ratchet Implementation Port from SpyGram
 
 ## Overview
-This document describes the complete Double Ratchet encryption implementation that has been ported from SpyGram to CRYPTOGRAM.
+This document describes the Double Ratchet design intent (requires validation) encryption implementation that has been ported from SpyGram to CRYPTOGRAM.
 
 ## What is the Double Ratchet Algorithm?
 
@@ -19,8 +23,6 @@ The Double Ratchet algorithm is the core cryptographic protocol used by Signal a
 - **Telegram/SourceFiles/data/data_signal_protocol.cpp** - Full implementation of the Double Ratchet algorithm
 
 ### Supporting Files
-- **Telegram/SourceFiles/data/data_tsm_interface.h** - Trusted Security Module interface for hardware-backed crypto
-- **Telegram/SourceFiles/data/data_tsm_factory.cpp** - Factory for creating TSM instances
 
 ### Test Files
 - **tests/unit/test_double_ratchet.cpp** - Comprehensive unit tests for the Double Ratchet implementation
@@ -31,7 +33,7 @@ The Double Ratchet algorithm is the core cryptographic protocol used by Signal a
 - **X25519 (Curve25519)**: Diffie-Hellman key exchange
 - **Ed25519**: Digital signatures for identity keys
 - **HKDF**: Key derivation function
-- **AES-256-CBC**: Message encryption
+- **AES-256-GCM**: Authenticated message encryption
 - **HMAC-SHA256**: Message authentication and integrity
 
 ### 2. Double Ratchet Algorithm
@@ -52,7 +54,6 @@ The Double Ratchet algorithm is the core cryptographic protocol used by Signal a
 - **Replay Protection**: Prevents replay attacks using message counters
 - **Key Backup**: Encrypted backup/restore of keys using PBKDF2
 
-### 5. Hardware Security Integration (TSM)
 - **TPM 2.0**: Trusted Platform Module support on desktop
 - **Android KeyStore**: Hardware-backed keys on Android
 - **Apple Secure Enclave**: Hardware security on iOS/macOS
@@ -73,7 +74,7 @@ Each session maintains:
 ### Message Encryption Flow
 1. Derive message key from current chain key
 2. Advance chain key using HMAC
-3. Encrypt plaintext using AES-256-CBC
+3. Encrypt plaintext using AES-256-GCM
 4. Include metadata (counter, IV, sender's public key)
 5. Update session state
 
@@ -82,7 +83,7 @@ Each session maintains:
 2. If expected: use current chain key
 3. If future: skip ahead and store skipped keys
 4. If past: look up stored skipped key
-5. Decrypt using AES-256-CBC
+5. Decrypt using AES-256-GCM
 6. Update session state
 
 ### Key Rotation

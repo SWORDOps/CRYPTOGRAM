@@ -9,7 +9,6 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 
 #include "base/bytes.h"
 #include "base/expected.h"
-#include "data/data_tsm_interface.h"
 #include "mtproto/mtproto_proxy_data.h"
 
 #include <QtCore/QObject>
@@ -260,8 +259,6 @@ public:
     base::expected<bytes::vector, NetworkSecurityResult> secureNetworkKey(
         const bytes::const_span &networkKey);
 
-    // Integration with TSM
-    void integrateWithTSM(std::shared_ptr<TSMInterface> tsm);
     base::expected<bytes::vector, NetworkSecurityResult> generateNetworkKeys();
 
 
@@ -307,7 +304,6 @@ private:
 
     // Integration interfaces
     SignalProtocol* _signalProtocol = nullptr;
-    std::shared_ptr<TSMInterface> _tsmInterface;
 
     // Helper methods
     NetworkSecurityResult validateConfiguration(const NetworkSecurityConfig &config);

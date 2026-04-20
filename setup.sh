@@ -8,7 +8,6 @@
 # - Installs all required dependencies
 # - Configures the build environment
 # - Sets up CMake configuration
-# - Optionally compiles CRYPTOGRAM with TSM integration
 ################################################################################
 
 set -e
@@ -227,8 +226,6 @@ for pkg in "${PACKAGES[@]}"; do
     fi
 done
 
-# Install Python dependencies for TSM
-print_step "Installing Python dependencies for TSM..."
 PYTHON_PACKAGES=(
     "grpcio"
     "grpcio-tools"
@@ -384,7 +381,6 @@ chmod +x "$PROJECT_ROOT/.env.sh"
 print_info "Environment saved to: .env.sh"
 
 echo ""
-print_info "To use TSM features, ensure Python environment is activated:"
 echo "  python3 -m venv venv"
 echo "  source venv/bin/activate"
 echo "  pip install -r requirements.txt"

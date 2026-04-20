@@ -4,8 +4,6 @@
 
 You encountered this error:
 ```
-fatal: destination path '/home/john/Documents/CRYPTOGRAM/Telegram/lib_tsm' already exists and is not an empty directory.
-fatal: clone of 'https://github.com/SWORDIntel/TSM.git' into submodule path '/home/john/Documents/CRYPTOGRAM/Telegram/lib_tsm' failed
 ```
 
 This happens when a submodule directory exists but is either:
@@ -45,7 +43,6 @@ If you want to fix submodules before building:
 ```
 
 This standalone script:
-- Removes empty `Telegram/lib_tsm` directory
 - Initializes git submodules
 - Updates submodules recursively
 - Shows final submodule status
@@ -108,8 +105,6 @@ check_submodules() {
 ### Option 3: Force Clean
 ```bash
 # If you need to manually clean
-rm -rf Telegram/lib_tsm  # Remove broken directory
-git submodule deinit -f Telegram/lib_tsm  # Clean git state
 ./build_all.sh  # Build will reinitialize
 ```
 
@@ -139,13 +134,11 @@ The new build process is:
 
 ### Empty Directory Fixed
 ```
-⚠ Removing empty submodule directory: Telegram/lib_tsm
 ✓ Fixed 1 broken submodule director(ies)
 ```
 
 ### Manual Intervention Required
 ```
-✗ Submodule directory exists but is not a git repository: Telegram/lib_tsm
 ✗ Please manually remove or backup this directory
 ✗ Broken submodule state detected (line 494)
 ```
@@ -156,17 +149,14 @@ The new build process is:
 
 1. **Check directory contents**:
    ```bash
-   ls -la Telegram/lib_tsm/
    ```
 
 2. **Manually remove if empty**:
    ```bash
-   rmdir Telegram/lib_tsm
    ```
 
 3. **Backup if has content**:
    ```bash
-   mv Telegram/lib_tsm Telegram/lib_tsm.backup
    ```
 
 4. **Clean git state**:

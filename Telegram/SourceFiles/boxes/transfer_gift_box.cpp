@@ -375,7 +375,6 @@ Controller::Controller(
 , _giftId(giftId)
 , _choose(std::move(choose)) {
 	if (_gift->exportAt) {
-		setStyleOverrides(&st::peerListSmallSkips);
 	}
 }
 

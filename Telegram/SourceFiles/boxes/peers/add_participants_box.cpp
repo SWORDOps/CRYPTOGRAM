@@ -2002,7 +2002,6 @@ void AddSpecialBoxSearchController::addChatsContacts() {
 		}
 		return true;
 	};
-	const auto getSmallestIndex = [&](not_null<Dialogs::IndexedList*> list)
 	-> const Dialogs::List* {
 		if (list->empty()) {
 			return nullptr;
@@ -2021,7 +2020,6 @@ void AddSpecialBoxSearchController::addChatsContacts() {
 		return result;
 	};
 	const auto filterAndAppend = [&](not_null<Dialogs::IndexedList*> list) {
-		const auto index = getSmallestIndex(list);
 		if (!index) {
 			return;
 		}

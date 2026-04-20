@@ -35,8 +35,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_premium.h"
 #include "api/api_user_names.h"
 #include "api/api_websites.h"
+#include "data/data_enhanced_privacy.h"
 #include "data/business/data_shortcut_messages.h"
 #include "data/components/scheduled_messages.h"
+#include "data/data_group_encryption.h"
+#include "data/data_signal_protocol.h"
 #include "data/notify/data_notify_settings.h"
 #include "data/data_changes.h"
 #include "data/data_web_page.h"
@@ -88,8 +91,195 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "storage/download_manager_mtproto.h"
 #include "storage/file_upload.h"
 #include "storage/storage_account.h"
+#include "base/bytes.h"
+
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 
 namespace {
+
+constexpr auto kCryptogramSignalPrefix = u"\uE000CGS:"_q;
+constexpr auto kCryptogramGroupPrefix = u"\uE000CGG:"_q;
+constexpr auto kCryptogramTextSuffix = u":CGEND\uE001"_q;
+constexpr auto kCryptogramSecureChunkLimit = 1300;
+
+[[nodiscard]] QJsonArray SerializeEntitiesForSignal(
+		const TextWithEntities &text) {
+	auto entities = QJsonArray();
+	entities.reserve(text.entities.size());
+	for (const auto &entity : text.entities) {
+		auto entityObj = QJsonObject();
+		entityObj["type"] = static_cast<int>(entity.type());
+		entityObj["offset"] = entity.offset();
+		entityObj["length"] = entity.length();
+		entityObj["data"] = entity.data();
+		entities.append(entityObj);
+	}
+	return entities;
+}
+
+[[nodiscard]] QByteArray SerializePayloadForSecureTransport(
+		const TextWithEntities &message) {
+	QJsonObject payload;
+	payload["text"] = message.text;
+	payload["entities"] = SerializeEntitiesForSignal(message);
+	return QJsonDocument(payload).toJson(QJsonDocument::Compact);
+}
+
+[[nodiscard]] TextWithEntities DeserializePayloadForSecureTransport(
+		const QByteArray &payload) {
+	QJsonParseError parseError;
+	auto payloadDoc = QJsonDocument::fromJson(payload, &parseError);
+	if (parseError.error != QJsonParseError::NoError
+		|| !payloadDoc.isObject()) {
+		return {};
+	}
+
+	auto payloadObj = payloadDoc.object();
+	auto textValue = payloadObj.value("text");
+	auto entitiesValue = payloadObj.value("entities");
+	if (!textValue.isString() || !entitiesValue.isArray()) {
+		return {};
+	}
+
+	TextWithEntities result;
+	result.text = textValue.toString();
+	for (const auto &entryValue : entitiesValue.toArray()) {
+		const auto entityObj = entryValue.toObject();
+		result.entities.push_back(EntityInText(
+			static_cast<EntityType>(entityObj["type"].toInt()),
+			entityObj["offset"].toInt(),
+			entityObj["length"].toInt(),
+			entityObj["data"].toString()));
+	}
+	return result;
+}
+
+[[nodiscard]] QString WrapSignalTransportPayload(
+		const TextWithEntities &message,
+		const Data::SignalProtocol::MessageMetadata &metadata,
+		const bytes::vector &ciphertext) {
+	QJsonObject packet;
+	packet["scheme"] = "signal";
+	packet["version"] = 1;
+	packet["messageCounter"] = static_cast<qint64>(metadata.messageCounter);
+	packet["timestamp"] = static_cast<qint64>(metadata.timestamp);
+	packet["iv"] = QString::fromLatin1(
+		QByteArray(
+			reinterpret_cast<const char*>(metadata.iv.data()),
+			int(metadata.iv.size())).toBase64());
+	packet["senderPublicKey"] = QString::fromLatin1(
+		QByteArray(
+			reinterpret_cast<const char*>(metadata.senderPublicKey.data()),
+			int(metadata.senderPublicKey.size())).toBase64());
+	packet["payload"] = QString::fromLatin1(
+		QByteArray(
+			reinterpret_cast<const char*>(ciphertext.data()),
+			int(ciphertext.size())).toBase64());
+	const auto content = QJsonDocument::fromJson(SerializePayloadForSecureTransport(message));
+	if (content.isObject()) {
+		packet["content"] = content.object();
+	}
+
+	return kCryptogramSignalPrefix
+		+ QString::fromUtf8(QJsonDocument(packet).toJson(QJsonDocument::Compact))
+		+ kCryptogramTextSuffix;
+}
+
+[[nodiscard]] QString WrapGroupTransportPayload(
+		const TextWithEntities &message,
+		const bytes::vector &ciphertext) {
+	QJsonObject packet;
+	packet["scheme"] = "group";
+	packet["version"] = 1;
+	packet["payload"] = QString::fromLatin1(
+		QByteArray(
+			reinterpret_cast<const char*>(ciphertext.data()),
+			int(ciphertext.size())).toBase64());
+	const auto content = QJsonDocument::fromJson(SerializePayloadForSecureTransport(message));
+	if (content.isObject()) {
+		packet["content"] = content.object();
+	}
+
+	return kCryptogramGroupPrefix
+		+ QString::fromUtf8(QJsonDocument(packet).toJson(QJsonDocument::Compact))
+		+ kCryptogramTextSuffix;
+}
+
+[[nodiscard]] QByteArray Base64FromEnvelopeField(const QJsonObject &packet,
+		const QString &key) {
+	const auto field = packet.value(key);
+	if (!field.isString()) {
+		return {};
+	}
+	return QByteArray::fromBase64(field.toString().toUtf8());
+}
+
+[[nodiscard]] TextWithEntities ApplyCryptogramSecureTransport(
+		not_null<History*> history,
+		const TextWithEntities &input) {
+	const auto &session = history->session();
+	auto *signalProtocol = session.data().signalProtocol();
+	auto *groupEncryption = session.data().groupEncryption();
+	const auto peer = history->peer;
+
+	auto outgoingText = input.text;
+	auto outgoingEntities = input.entities;
+
+	if (signalProtocol
+		&& signalProtocol->isEnabled()
+		&& peer->isUser()) {
+		auto content = SerializePayloadForSecureTransport(input);
+		const auto plaintext = bytes::vector(content.begin(), content.end());
+		Data::SignalProtocol::MessageMetadata metadata;
+		const auto encrypted = signalProtocol->encryptMessage(
+			bytes::make_span(plaintext),
+			peer,
+			metadata);
+		if (!encrypted.empty()) {
+			return TextWithEntities{
+				WrapSignalTransportPayload(input, metadata, encrypted),
+				{}
+			};
+		}
+	}
+
+	if (groupEncryption
+		&& groupEncryption->isEncrypted(peer)
+		&& !peer->isUser()) {
+		auto content = SerializePayloadForSecureTransport(input);
+		const auto plaintext = bytes::vector(content.begin(), content.end());
+		const auto encrypted = groupEncryption->encryptGroupMessage(
+			peer,
+			QString::fromUtf8(
+				QByteArray(
+					reinterpret_cast<const char *>(plaintext.data()),
+					int(plaintext.size())));
+		if (!encrypted.empty()) {
+			return TextWithEntities{
+				WrapGroupTransportPayload(input, encrypted),
+				{}
+			};
+		}
+	}
+
+	if (Data::EnhancedPrivacy::IsEncryptionEnabled()) {
+		const auto encrypted = Data::EnhancedPrivacy::EncryptMessage(
+			input,
+			Data::EnhancedPrivacy::GetEncryptionPassphrase());
+		if (encrypted != input) {
+			return encrypted;
+		}
+	}
+
+	return {
+		outgoingText,
+		outgoingEntities,
+	};
+}
+
+} // namespace
 
 // Save draft to the cloud with 1 sec extra delay.
 constexpr auto kSaveCloudDraftTimeout = 1000;
@@ -208,6 +398,12 @@ ApiWrap::ApiWrap(not_null<Main::Session*> session)
 }
 
 ApiWrap::~ApiWrap() = default;
+
+TextWithEntities ApiWrap::ApplyCryptogramSecureTransportForHistory(
+		not_null<History*> history,
+		const TextWithEntities &input) const {
+	return ApplyCryptogramSecureTransport(history, input);
+}
 
 void ApiWrap::ProcessRecentSelfForwards(
 		not_null<Main::Session*> session,
@@ -3994,10 +4190,19 @@ void ApiWrap::sendMessage(
 	HistoryItem *lastMessage = nullptr;
 
 	auto &histories = history->owner().histories();
+	const auto textChunkLimit = (Data::EnhancedPrivacy::IsEncryptionEnabled()
+		|| (_session->data().signalProtocol()
+			&& _session->data().signalProtocol()->isEnabled()
+			&& peer->isUser())
+		|| (_session->data().groupEncryption()
+			&& _session->data().groupEncryption()->isEncrypted(peer)
+			&& !peer->isUser()))
+		? kCryptogramSecureChunkLimit
+		: MaxMessageSize;
 
 	const auto exactWebPage = !message.webPage.url.isEmpty();
 	auto isFirst = true;
-	while (TextUtilities::CutPart(sending, left, MaxMessageSize)
+	while (TextUtilities::CutPart(sending, left, textChunkLimit)
 		|| (isFirst && exactWebPage)) {
 		TextUtilities::Trim(left);
 		const auto isLast = left.empty();
@@ -4017,7 +4222,16 @@ void ApiWrap::sendMessage(
 			peer->id,
 			sending.text);
 
-		MTPstring msgText(MTP_string(sending.text));
+		const auto secured = ApplyCryptogramSecureTransport(history, sending);
+		auto outgoingText = secured.text;
+		auto outgoingEntities = secured.entities;
+
+		if (outgoingText.size() > MaxMessageSize) {
+			outgoingText = sending.text;
+			outgoingEntities = sending.entities;
+		}
+
+		MTPstring msgText(MTP_string(outgoingText));
 		auto flags = NewMessageFlags(peer);
 		auto sendFlags = MTPmessages_SendMessage::Flags(0);
 		auto mediaFlags = MTPmessages_SendMedia::Flags(0);
@@ -4066,9 +4280,9 @@ void ApiWrap::sendMessage(
 			sendFlags |= MTPmessages_SendMessage::Flag::f_silent;
 			mediaFlags |= MTPmessages_SendMedia::Flag::f_silent;
 		}
-		const auto sentEntities = Api::EntitiesToMTP(
+		auto sentEntities = Api::EntitiesToMTP(
 			_session,
-			sending.entities,
+			outgoingEntities,
 			Api::ConvertOption::SkipLocal);
 		if (!sentEntities.v.isEmpty()) {
 			sendFlags |= MTPmessages_SendMessage::Flag::f_entities;
@@ -4476,9 +4690,18 @@ void ApiWrap::sendMediaWithRandomId(
 
 	auto caption = item->originalText();
 	TextUtilities::Trim(caption);
+	const auto securedCaption = ApplyCryptogramSecureTransport(
+		history,
+		caption);
+	auto captionText = securedCaption.text;
+	auto captionEntities = securedCaption.entities;
+	if (captionText.size() > MaxMessageSize) {
+		captionText = caption.text;
+		captionEntities = caption.entities;
+	}
 	auto sentEntities = Api::EntitiesToMTP(
 		_session,
-		caption.entities,
+		captionEntities,
 		Api::ConvertOption::SkipLocal);
 
 	const auto updateRecentStickers = Api::HasAttachedStickers(media);
@@ -4520,8 +4743,8 @@ void ApiWrap::sendMediaWithRandomId(
 					MTP_long(options.price),
 					MTP_vector<MTPInputMedia>(1, media),
 					MTPstring()))
-				: media),
-			MTP_string(caption.text),
+					: media),
+				MTP_string(captionText),
 			MTP_long(randomId),
 			MTPReplyMarkup(),
 			sentEntities,
@@ -4563,9 +4786,18 @@ void ApiWrap::sendMultiPaidMedia(
 
 	auto caption = item->originalText();
 	TextUtilities::Trim(caption);
+	const auto securedCaption = ApplyCryptogramSecureTransport(
+		history,
+		caption);
+	auto captionText = securedCaption.text;
+	auto captionEntities = securedCaption.entities;
+	if (captionText.size() > MaxMessageSize) {
+		captionText = caption.text;
+		captionEntities = caption.entities;
+	}
 	auto sentEntities = Api::EntitiesToMTP(
 		_session,
-		caption.entities,
+		captionEntities,
 		Api::ConvertOption::SkipLocal);
 	const auto starsPaid = std::min(
 		peer->starsPerMessageChecked(),
@@ -4604,8 +4836,8 @@ void ApiWrap::sendMultiPaidMedia(
 				MTP_flags(0),
 				MTP_long(options.price),
 				MTP_vector<MTPInputMedia>(std::move(medias)),
-				MTPstring()),
-			MTP_string(caption.text),
+					MTPstring()),
+				MTP_string(captionText),
 			MTP_long(randomId),
 			MTPReplyMarkup(),
 			sentEntities,

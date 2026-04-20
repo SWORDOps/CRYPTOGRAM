@@ -9,8 +9,6 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include "data/data_quantumguard.h"
 #include "data/data_nsa_security.h"
 #include "data/data_quantum_storage.h"
-#include "data/data_tsm_factory.h"
-#include "data/data_tsm_quantum.h"
 
 #include <cstddef>
 #include <openssl/evp.h>
@@ -320,7 +318,6 @@ public:
     not_null<Session*> session;
     std::shared_ptr<QuantumGuard> quantumGuard;
     std::shared_ptr<NSASecurity> nsaSecurity;
-    std::shared_ptr<QuantumTSMInterface> quantumTSM;
 
     QTimer *threatAssessmentTimer;
     QuantumThreatLevel currentQuantumThreatLevel = QuantumThreatLevel::Moderate;

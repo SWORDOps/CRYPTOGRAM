@@ -232,7 +232,6 @@ bool UniversalSecurityValidator::validateSecurityGuarantees(SecurityTier tier) {
             return true;
 
         case SecurityTier::Tier3_Standard:
-            // Standard tier needs software TSM equivalent
             return _advanced_cpu_features;
 
         case SecurityTier::Tier4_Universal:
@@ -276,7 +275,6 @@ QStringList UniversalSecurityValidator::getSecurityGuarantees(SecurityTier tier)
             [[fallthrough]];
 
         case SecurityTier::Tier3_Standard:
-            guarantees << "Software TSM implementation";
             guarantees << "Advanced CPU-based heuristics";
             guarantees << "Multi-algorithm threat validation";
             [[fallthrough]];

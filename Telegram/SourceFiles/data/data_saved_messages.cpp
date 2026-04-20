@@ -31,7 +31,6 @@ constexpr auto kPerPage = 50;
 constexpr auto kFirstPerPage = 10;
 constexpr auto kListPerPage = 100;
 constexpr auto kListFirstPerPage = 20;
-constexpr auto kLoadedSublistsMinCount = 20;
 constexpr auto kShowSublistNamesCount = 5;
 constexpr auto kStalePerRequest = 100;
 
@@ -249,7 +248,6 @@ rpl::producer<> SavedMessages::chatsListLoadedEvents() const {
 
 void SavedMessages::preloadSublists() {
 	if (parentChat()
-		&& chatsList()->indexed()->size() < kLoadedSublistsMinCount) {
 		loadMore();
 	}
 }

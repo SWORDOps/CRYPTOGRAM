@@ -1,3 +1,7 @@
+## OPSEC VALIDATION NOTE
+
+This document may contain historical implementation claims. Treat all security capabilities as **partial or experimental** unless corroborated by current runtime validation in `docs/status/FINAL_STATUS.md` and `docs/features/android-features.md`.
+
 # 🧪 CRYPTOGRAM Android - Comprehensive Test Results
 
 **Date**: 2025-11-06
@@ -8,7 +12,7 @@
 
 ## 📊 Executive Summary
 
-**Result**: ✅ **READY FOR BUILD & DEPLOYMENT**
+**Result**: ✅ **requires validation**
 
 All automated tests passed successfully. The CRYPTOGRAM Android implementation is:
 - ✅ Structurally complete (100%)
@@ -147,7 +151,7 @@ String decryptedMessage = org.telegram.messenger.cryptogram.CryptogramMessageHel
 - Settings UI: 334 lines (Java)
 - UI Indicator: 112 lines (Java)
 
-**Verdict**: ✅ Substantial, production-quality codebase
+**Verdict**: ✅ Substantial, requires validation codebase
 
 ---
 
@@ -258,7 +262,7 @@ cryptogramDoubleRatchetEnabled = prefs.getBoolean("cryptogramDoubleRatchet", fal
 - ✅ Click handlers
 - ✅ Feature status dialog
 
-**Verdict**: ✅ UI fully integrated
+**Verdict**: ✅ UI partially integrated
 
 ---
 

@@ -7,7 +7,6 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LEGAL
 */
 #pragma once
 
-#include "data/data_tsm_interface.h"
 #include "base/bytes.h"
 #include <QtCore/QString>
 #include <QtCore/QStringList>

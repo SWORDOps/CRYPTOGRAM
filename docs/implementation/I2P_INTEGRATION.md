@@ -1,3 +1,7 @@
+## OPSEC VALIDATION NOTE
+
+This document may contain historical implementation claims. Treat all security capabilities as **partial or experimental** unless corroborated by current runtime validation in `docs/status/FINAL_STATUS.md` and `docs/features/android-features.md`.
+
 # I2P Integration - CRYPTOGRAM Network Anonymity
 
 ## Overview

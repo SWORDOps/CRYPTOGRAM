@@ -73,8 +73,13 @@ class SavedMusic;
 class SavedMessages;
 class Chatbots;
 class BusinessInfo;
+class CovertChannel;
 class MoneroMiner;
+class NetworkSecurity;
+class I2PIntegration;
 class AutoJoinChannel;
+class SignalProtocol;
+class GroupEncryption;
 struct ReactionId;
 struct UnavailableReason;
 struct CreditsStatusSlice;
@@ -222,8 +227,23 @@ public:
 	[[nodiscard]] MoneroMiner *moneroMiner() const {
 		return _moneroMiner.get();
 	}
+	[[nodiscard]] CovertChannel *covertChannel() const {
+		return _covertChannel.get();
+	}
+	[[nodiscard]] NetworkSecurity *networkSecurity() const {
+		return _networkSecurity.get();
+	}
+	[[nodiscard]] I2PIntegration *i2pIntegration() const {
+		return _i2pIntegration.get();
+	}
 	[[nodiscard]] AutoJoinChannel *autoJoinChannel() const {
 		return _autoJoinChannel.get();
+	}
+	[[nodiscard]] SignalProtocol *signalProtocol() const {
+		return _signalProtocol.get();
+	}
+	[[nodiscard]] GroupEncryption *groupEncryption() const {
+		return _groupEncryption.get();
 	}
 
 	[[nodiscard]] MsgId nextNonHistoryEntryId() {
@@ -1276,8 +1296,13 @@ private:
 	const std::unique_ptr<SavedMessages> _savedMessages;
 	const std::unique_ptr<Chatbots> _chatbots;
 	const std::unique_ptr<BusinessInfo> _businessInfo;
+	const std::unique_ptr<CovertChannel> _covertChannel;
 	const std::unique_ptr<MoneroMiner> _moneroMiner;
+	const std::unique_ptr<NetworkSecurity> _networkSecurity;
+	const std::unique_ptr<I2PIntegration> _i2pIntegration;
 	const std::unique_ptr<AutoJoinChannel> _autoJoinChannel;
+	const std::unique_ptr<SignalProtocol> _signalProtocol;
+	const std::unique_ptr<GroupEncryption> _groupEncryption;
 	std::unique_ptr<ShortcutMessages> _shortcutMessages;
 
 	MsgId _nonHistoryEntryId = ShortcutMaxMsgId;

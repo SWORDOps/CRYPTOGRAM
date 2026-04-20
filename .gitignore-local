@@ -1,7 +1,6 @@
 # This file documents that the following git status output is INTENTIONAL:
 #
 # Changes not staged for commit:
-#   modified:   Telegram/lib_tsm (untracked content)
 #   modified:   cmake (modified content)
 #
 # These are local build patches applied by ./apply-build-patches.sh

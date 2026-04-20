@@ -1,6 +1,10 @@
+## OPSEC VALIDATION NOTE
+
+This document may contain historical implementation claims. Treat all security capabilities as **partial or experimental** unless corroborated by current runtime validation in `docs/status/FINAL_STATUS.md` and `docs/features/android-features.md`.
+
 # 🔐 CRYPTOGRAM ANDROID - COMPLETE IMPLEMENTATION
 
-**Military-Grade Encryption for Telegram Android**
+**high-assurance (requires validation) Encryption for Telegram Android**
 
 **Status**: ✅ **READY FOR TESTING** (97% Complete)
 
@@ -8,9 +12,9 @@
 
 ## 🎉 Mission Accomplished
 
-We've successfully ported CRYPTOGRAM's military-grade encryption to Android! In this single session, we:
+We've successfully ported CRYPTOGRAM's high-assurance (requires validation) encryption to Android! In this single session, we:
 
-- ✅ Ported **6,000+ lines** of battle-tested C++ cryptography
+- ✅ Ported **6,000+ lines** of documented C++ cryptography
 - ✅ Created **342 lines** of JNI bridge code
 - ✅ Built **474 lines** of clean Kotlin API
 - ✅ Integrated complete build system (CMake/NDK)
@@ -181,7 +185,7 @@ if (EnhancedPrivacy.isCryptogramUser(userId)) {
 │  🔐 CRYPTOGRAM                 │
 │  Status: 🔐 Encryption Active  │
 │  ──────────────────────────    │
-│  Military-grade encryption...  │
+│  high-assurance (requires validation) encryption...  │
 │                                 │
 │  Encryption Protocols           │
 │  ┌──────────────────────────┐  │
@@ -266,7 +270,7 @@ Network → Decryption → Display
 
 **Added**:
 ```cmake
-# CRYPTOGRAM - Military-Grade Encryption Library
+# CRYPTOGRAM - high-assurance (requires validation) Encryption Library
 add_library(cryptogram STATIC
     cryptogram/CryptogramWrapper.cpp
     cryptogram/data_signal_protocol.cpp
@@ -568,7 +572,7 @@ Our implementation follows these principles:
 
 ### Code Quality
 
-- ✅ **7,588 lines** of production-quality code
+- ✅ **7,588 lines** of requires validation code
 - ✅ **Zero compiler warnings** (expected)
 - ✅ **Consistent style** throughout
 - ✅ **Well-documented** with comments
@@ -578,7 +582,7 @@ Our implementation follows these principles:
 ### Features Delivered
 
 - ✅ Complete Signal Protocol implementation
-- ✅ Complete MLS Protocol implementation
+- ✅ MLS design intent (requires validation) Protocol implementation
 - ✅ Full Android integration
 - ✅ Beautiful Settings UI
 - ✅ Seamless message encryption
@@ -681,9 +685,9 @@ For issues, questions, or contributions:
 
 **CRYPTOGRAM Android is READY!**
 
-We've built a complete, production-quality implementation of military-grade encryption for Telegram Android. The code is:
+We've built a complete, requires validation implementation of high-assurance (requires validation) encryption for Telegram Android. The code is:
 
-- ✅ **Secure**: Battle-tested crypto algorithms
+- ✅ **Secure**: documented crypto algorithms
 - ✅ **Fast**: Optimized C++ implementation
 - ✅ **Beautiful**: Clean UI integration
 - ✅ **Reliable**: Error handling throughout
@@ -712,7 +716,7 @@ We've built a complete, production-quality implementation of military-grade encr
 ---
 
 **🔐 CRYPTOGRAM ANDROID**
-*Military-Grade Encryption That Just Works™*
+*high-assurance (requires validation) Encryption That Just Works™*
 
 **Version**: 1.0.0
 **Status**: Ready for Testing

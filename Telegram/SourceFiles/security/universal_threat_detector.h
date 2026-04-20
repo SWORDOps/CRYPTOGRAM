@@ -307,7 +307,6 @@ private:
     bool _enabled = false;
     AIProcessingTier _currentTier = AIProcessingTier::Tier4_Pattern_Only;
     mutable QMutex _queueMutex;
-    mutable QMutex _statsMutex;
 
     // AI components
     struct AIEngine;

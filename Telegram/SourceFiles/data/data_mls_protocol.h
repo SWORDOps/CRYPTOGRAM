@@ -15,6 +15,7 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include <QtCore/QDateTime>
 #include <QtCore/QMap>
 #include <QtCore/QSet>
+#include <QtCore/QVector>
 #include <optional>
 
 namespace Data {
@@ -143,6 +144,7 @@ struct MLSGroupContext {
 struct MLSProposal {
 	MLSProposalType type;
 	UserId sender;
+	std::optional<UserId> newMember;
 
 	// Proposal-specific data
 	std::optional<MLSKeyPackage> addKeyPackage;  // For Add proposals
@@ -212,6 +214,8 @@ public:
 	[[nodiscard]] bytes::vector deriveEpochSecret() const;
 
 private:
+	friend class MLSProtocol;
+
 	MLSGroupId _groupId;
 	MLSEpoch _epoch = 0;
 	MLSCiphersuite _ciphersuite;
@@ -249,6 +253,7 @@ public:
 	bool addMember(const MLSGroupId &groupId, UserId newMember);
 	bool removeMember(const MLSGroupId &groupId, UserId memberToRemove);
 	bool updateOwnKey(const MLSGroupId &groupId);
+	bool removeGroup(const MLSGroupId &groupId);
 
 	// Message operations
 	bytes::vector encryptMessage(
@@ -293,6 +298,8 @@ private:
 	void initializeTree(MLSGroupState &state, const QVector<MLSKeyPackage> &keyPackages);
 	void updateTreePath(MLSGroupState &state, MLSLeafIndex leafIndex, const bytes::vector &newKey);
 	bytes::vector encryptPathSecret(const MLSTreeNode &node, const bytes::vector &secret);
+	bool processProposalInternal(MLSGroupState &state, const MLSProposal &proposal);
+	bool rebuildGroupTreeFromMembers(MLSGroupState &state);
 
 	// Cryptographic operations
 	bytes::vector deriveSecret(const bytes::vector &secret, const QString &label);

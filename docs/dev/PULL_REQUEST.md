@@ -1,8 +1,12 @@
-# Add CRYPTOGRAM Military-Grade Encryption to Telegram Android
+## OPSEC VALIDATION NOTE
+
+This document may contain historical implementation claims. Treat all security capabilities as **partial or experimental** unless corroborated by current runtime validation in `docs/status/FINAL_STATUS.md` and `docs/features/android-features.md`.
+
+# Add CRYPTOGRAM high-assurance (requires validation) Encryption to Telegram Android
 
 ## 🔐 Overview
 
-This PR implements complete end-to-end encryption for Telegram Android using Signal Protocol (Double Ratchet) and MLS Protocol (RFC 9420), providing military-grade encryption for both 1-on-1 and group conversations.
+This PR implements end-to-end encryption design intent (requires validation) for Telegram Android using Signal Protocol (Double Ratchet) and MLS Protocol (RFC 9420), providing high-assurance (requires validation) encryption for both 1-on-1 and group conversations.
 
 ## 🎯 What's New
 
@@ -434,7 +438,7 @@ This implementation follows best practices:
 ## 🔗 Related Issues
 
 This PR addresses:
-- Military-grade encryption for Telegram Android
+- high-assurance (requires validation) encryption for Telegram Android
 - Signal Protocol (Double Ratchet) implementation
 - MLS Protocol (RFC 9420) implementation
 - Complete UI integration
@@ -475,8 +479,8 @@ For questions or issues:
 
 **Confidence**: Very High (100% automated test pass rate)
 
-This PR represents **7,229 lines of production code** implementing military-grade encryption for Telegram Android, complete with UI, documentation, and automated builds.
+This PR represents **7,229 lines of production code** implementing high-assurance (requires validation) encryption for Telegram Android, complete with UI, documentation, and automated builds.
 
 ---
 
-**🔐 CRYPTOGRAM Android - Military-Grade Encryption That Just Works™**
+**🔐 CRYPTOGRAM Android - high-assurance (requires validation) Encryption That Just Works™**

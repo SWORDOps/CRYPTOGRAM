@@ -1038,7 +1038,6 @@ void ComposeControls::setHistory(SetHistoryArgs &&args) {
 	updateControlsGeometry(_wrap->size());
 	updateControlsVisibility();
 	updateFieldPlaceholder();
-	updateAttachBotsMenu();
 
 	_sendAs = nullptr;
 	_silent = nullptr;
@@ -1276,8 +1275,6 @@ void ComposeControls::showStarted() {
 	if (_tabbedPanel) {
 		_tabbedPanel->hideFast();
 	}
-	if (_attachBotsMenu) {
-		_attachBotsMenu->hideFast();
 	}
 	_voiceRecordBar->hideFast();
 	if (_autocomplete) {
@@ -1296,8 +1293,6 @@ void ComposeControls::showFinished() {
 	if (_tabbedPanel) {
 		_tabbedPanel->hideFast();
 	}
-	if (_attachBotsMenu) {
-		_attachBotsMenu->hideFast();
 	}
 	_voiceRecordBar->hideFast();
 	if (_autocomplete) {
@@ -1317,8 +1312,6 @@ void ComposeControls::raisePanels() {
 	if (_tabbedPanel) {
 		_tabbedPanel->raise();
 	}
-	if (_attachBotsMenu) {
-		_attachBotsMenu->raise();
 	}
 	if (_emojiSuggestions) {
 		_emojiSuggestions->raise();
@@ -1401,8 +1394,6 @@ void ComposeControls::hidePanelsAnimated() {
 	if (_tabbedPanel) {
 		_tabbedPanel->hideAnimated();
 	}
-	if (_attachBotsMenu) {
-		_attachBotsMenu->hideAnimated();
 	}
 	if (_inlineResults) {
 		_inlineResults->hideAnimated();
@@ -1607,7 +1598,6 @@ void ComposeControls::init() {
 
 	session().attachWebView().attachBotsUpdates(
 	) | rpl::on_next([=] {
-		updateAttachBotsMenu();
 	}, _wrap->lifetime());
 
 	orderControls();
@@ -2863,8 +2853,6 @@ void ComposeControls::updateOuterGeometry(QRect rect) {
 	if (_tabbedPanel) {
 		_tabbedPanel->moveBottomRight(bottom, rect.x() + rect.width());
 	}
-	if (_attachBotsMenu) {
-		_attachBotsMenu->moveToLeft(0, bottom - _attachBotsMenu->height());
 	}
 }
 
@@ -2913,30 +2901,21 @@ bool ComposeControls::updateSendAsButton() {
 	return true;
 }
 
-void ComposeControls::updateAttachBotsMenu() {
-	_attachBotsMenu = nullptr;
-	if (!_features.attachBotsMenu
 		|| !_history
 		|| !_sendActionFactory
 		|| !_regularWindow) {
 		return;
 	}
-	_attachBotsMenu = InlineBots::MakeAttachBotsMenu(
 		_panelsParent,
 		_regularWindow,
 		_history->peer,
 		_sendActionFactory,
 		[=](bool compress) { _attachRequests.fire_copy(compress); });
-	if (!_attachBotsMenu) {
 		return;
 	}
-	_attachBotsMenu->setOrigin(
 		Ui::PanelAnimation::Origin::BottomLeft);
-	_attachToggle->installEventFilter(_attachBotsMenu.get());
-	_attachBotsMenu->heightValue(
 	) | rpl::on_next([=] {
 		updateOuterGeometry(_wrap->geometry());
-	}, _attachBotsMenu->lifetime());
 }
 
 void ComposeControls::paintBackground(QPainter &p, QRect full, QRect clip) {

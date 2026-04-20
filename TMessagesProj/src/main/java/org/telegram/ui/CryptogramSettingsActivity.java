@@ -218,9 +218,9 @@ public class CryptogramSettingsActivity extends BaseFragment {
                         boolean mlsReady = Boolean.TRUE.equals(status.get("MLS Protocol"));
                         String value;
                         if (nativeReady && ratchetReady && mlsReady) {
-                            value = "🔐 Native crypto verified";
+                            value = "🔐 Local self-checks passed";
                         } else if (nativeReady) {
-                            value = "⚠️ Partially verified";
+                            value = "⚠️ Native loaded, partial checks";
                         } else {
                             value = "⚠️ Native library unavailable";
                         }

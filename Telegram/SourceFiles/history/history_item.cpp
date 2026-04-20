@@ -46,6 +46,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/components/sponsored_messages.h"
 #include "data/notify/data_notify_settings.h"
 #include "data/data_bot_app.h"
+#include "data/data_signal_protocol.h"
+#include "data/data_group_encryption.h"
+#include "data/data_enhanced_privacy.h"
 #include "data/data_saved_messages.h"
 #include "data/data_saved_sublist.h"
 #include "data/data_changes.h"
@@ -71,10 +74,25 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "platform/platform_notifications_manager.h"
 #include "spellcheck/spellcheck_highlight_syntax.h"
 
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
+#include <limits>
+
 namespace {
 
 constexpr auto kNotificationTextLimit = 255;
 constexpr auto kPinnedMessageTextLimit = 16;
+constexpr auto kCryptogramSignalPrefix = u"\uE000CGS:"_q;
+constexpr auto kCryptogramGroupPrefix = u"\uE000CGG:"_q;
+constexpr auto kCryptogramTextSuffix = u":CGEND\uE001"_q;
+constexpr auto kCryptogramCurrentTransportVersion = 1;
+constexpr auto kCryptogramFutureClockSkewSeconds = 300;
+constexpr auto kCryptogramMaxEnvelopePayloadBytes = 1024 * 64;
+constexpr auto kCryptogramMaxIvBytes = 1024;
+constexpr auto kCryptogramMaxSenderKeyBytes = 2048;
+constexpr auto kCryptogramMaxPayloadBytes = 1024 * 128;
 
 using ItemPreview = HistoryView::ItemPreview;
 
@@ -129,6 +147,248 @@ template <typename T>
 		}
 	}
 	return false;
+}
+
+[[nodiscard]] QByteArray Base64FromEnvelopeField(
+		const QJsonObject &packet,
+		const QString &key) {
+	const auto field = packet.value(key);
+	if (!field.isString()) {
+		return {};
+	}
+	return QByteArray::fromBase64(field.toString().toUtf8());
+}
+
+[[nodiscard]] bool PacketFieldToInt64(
+		const QJsonValue &value,
+		int64_t &out) {
+	if (value.isDouble()) {
+		const auto asDouble = value.toDouble();
+		const auto asInt = static_cast<int64_t>(asDouble);
+		if (asInt != asDouble) {
+			return false;
+		}
+		out = asInt;
+		return true;
+	}
+	if (!value.isString()) {
+		return false;
+	}
+
+	bool ok = false;
+	out = value.toString().toLongLong(&ok);
+	return ok;
+}
+
+[[nodiscard]] int PacketVersionFromJson(const QJsonObject &packet) {
+	const auto versionValue = packet.value("version");
+	if (!versionValue.isUndefined()) {
+		int64_t version = 0;
+		if (!PacketFieldToInt64(versionValue, version) || version < 1 || version > 0x7fffffff) {
+			return -1;
+		}
+		return static_cast<int>(version);
+	}
+	return kCryptogramCurrentTransportVersion;
+}
+
+[[nodiscard]] bool IsPacketTimestampAcceptable(int64_t timestamp) {
+	const auto now = base::unixtime::now();
+	const auto maxFuture = now + kCryptogramFutureClockSkewSeconds;
+	if (timestamp < 0 || timestamp > maxFuture) {
+		return false;
+	}
+	return timestamp <= std::numeric_limits<TimeId>::max();
+}
+
+[[nodiscard]] TextWithEntities DeserializePayloadForSecureTransport(
+		const QByteArray &payload) {
+	if (payload.isEmpty() || payload.size() > kCryptogramMaxEnvelopePayloadBytes) {
+		return {};
+	}
+
+	QJsonParseError parseError;
+	auto payloadDoc = QJsonDocument::fromJson(payload, &parseError);
+	if (parseError.error != QJsonParseError::NoError || !payloadDoc.isObject()) {
+		return {};
+	}
+
+	const auto payloadObj = payloadDoc.object();
+	const auto textValue = payloadObj.value("text");
+	const auto entitiesValue = payloadObj.value("entities");
+	if (!textValue.isString() || !entitiesValue.isArray()) {
+		return {};
+	}
+
+	auto result = TextWithEntities();
+	result.text = textValue.toString();
+	for (const auto &entryValue : entitiesValue.toArray()) {
+		const auto entityObj = entryValue.toObject();
+		result.entities.push_back(EntityInText(
+			static_cast<EntityType>(entityObj.value("type").toInt(-1)),
+			entityObj.value("offset").toInt(),
+			entityObj.value("length").toInt(),
+			entityObj.value("data").toString()));
+	}
+
+	return result;
+}
+
+[[nodiscard]] bool IsExpectedEnvelopeFieldSize(
+		const QByteArray &decoded,
+		int maxBytes) {
+	return !decoded.isEmpty() && decoded.size() <= maxBytes;
+}
+
+[[nodiscard]] TextWithEntities ResolveCryptogramIncomingMessage(
+		not_null<History*> history,
+		const TextWithEntities &textWithEntities) {
+	if (!textWithEntities.text.startsWith(kCryptogramSignalPrefix)
+		&& !textWithEntities.text.startsWith(kCryptogramGroupPrefix)) {
+		return Data::EnhancedPrivacy::IsEncrypted(textWithEntities)
+			? Data::EnhancedPrivacy::DecryptMessage(textWithEntities)
+			: textWithEntities;
+	}
+
+	const auto isSignal = textWithEntities.text.startsWith(kCryptogramSignalPrefix);
+	const auto prefix = isSignal ? kCryptogramSignalPrefix : kCryptogramGroupPrefix;
+	const auto packetSize = textWithEntities.text.size();
+	if (packetSize <= prefix.size() + kCryptogramTextSuffix.size()) {
+		return textWithEntities;
+	}
+	if (!textWithEntities.text.endsWith(kCryptogramTextSuffix)) {
+		return textWithEntities;
+	}
+
+	const auto envelopePayload = textWithEntities.text.mid(
+		prefix.size(),
+		packetSize
+			- prefix.size()
+			- kCryptogramTextSuffix.size());
+	if (envelopePayload.size() > kCryptogramMaxEnvelopePayloadBytes) {
+		return textWithEntities;
+	}
+
+	if (envelopePayload.isEmpty()) {
+		return textWithEntities;
+	}
+
+	QJsonParseError parseError;
+	const auto packetDoc = QJsonDocument::fromJson(
+		envelopePayload.toUtf8(),
+		&parseError);
+	if (parseError.error != QJsonParseError::NoError || !packetDoc.isObject()) {
+		return textWithEntities;
+	}
+
+	const auto packetObj = packetDoc.object();
+	const auto scheme = packetObj.value("scheme").toString();
+	const auto version = PacketVersionFromJson(packetObj);
+	if (version <= 0) {
+		return textWithEntities;
+	}
+	if (version > kCryptogramCurrentTransportVersion) {
+		// Unknown future version: attempt legacy secure decrypt only to avoid hard failures.
+		return Data::EnhancedPrivacy::IsEncrypted(textWithEntities)
+			? Data::EnhancedPrivacy::DecryptMessage(textWithEntities)
+			: textWithEntities;
+	}
+
+	const auto content = packetObj.value("content");
+	if (!content.isObject()) {
+		return textWithEntities;
+	}
+
+	const auto payload = DeserializePayloadForSecureTransport(
+		QJsonDocument(content.toObject()).toJson(QJsonDocument::Compact));
+	if (payload.text.isEmpty() && payload.entities.empty()) {
+		return textWithEntities;
+	}
+
+	auto *signalProtocol = history->session().data().signalProtocol();
+	auto *groupEncryption = history->session().data().groupEncryption();
+
+	if (isSignal) {
+		if (scheme != "signal") {
+			return Data::EnhancedPrivacy::IsEncrypted(textWithEntities)
+				? Data::EnhancedPrivacy::DecryptMessage(textWithEntities)
+				: textWithEntities;
+		}
+		if (!signalProtocol
+			|| !signalProtocol->isEnabled()
+			|| !history->peer->isUser()) {
+			return textWithEntities;
+		}
+
+		const auto iv = Base64FromEnvelopeField(packetObj, "iv");
+		const auto senderKey = Base64FromEnvelopeField(packetObj, "senderPublicKey");
+		const auto payloadBytes = Base64FromEnvelopeField(packetObj, "payload");
+		if (!IsExpectedEnvelopeFieldSize(iv, kCryptogramMaxIvBytes)
+			|| !IsExpectedEnvelopeFieldSize(senderKey, kCryptogramMaxSenderKeyBytes)
+			|| !IsExpectedEnvelopeFieldSize(payloadBytes, kCryptogramMaxPayloadBytes)) {
+			return textWithEntities;
+		}
+
+		const auto messageCounter = packetObj.value("messageCounter");
+		const auto timestamp = packetObj.value("timestamp");
+		int64_t messageCounterValue = 0;
+		int64_t timestampValue = 0;
+		if (!PacketFieldToInt64(messageCounter, messageCounterValue)
+			|| messageCounterValue < 0
+			|| messageCounterValue > 0xFFFFFFFFLL) {
+			return textWithEntities;
+		}
+		if (!PacketFieldToInt64(timestamp, timestampValue)
+			|| !IsPacketTimestampAcceptable(timestampValue)) {
+			return textWithEntities;
+		}
+
+		Data::SignalProtocol::MessageMetadata metadata;
+		metadata.messageCounter = static_cast<uint32>(messageCounterValue);
+		metadata.timestamp = static_cast<TimeId>(timestampValue);
+		metadata.iv = bytes::vector(iv.begin(), iv.end());
+		metadata.senderPublicKey = bytes::vector(senderKey.begin(), senderKey.end());
+
+		const auto plaintext = signalProtocol->decryptMessage(
+			bytes::make_span(payloadBytes),
+			history->peer,
+			metadata);
+		if (plaintext.empty()) {
+			return textWithEntities;
+		}
+
+		const auto decrypted = DeserializePayloadForSecureTransport(QByteArray(
+			reinterpret_cast<const char*>(plaintext.data()),
+			int(plaintext.size())));
+		return (!decrypted.text.isEmpty() || !decrypted.entities.empty())
+			? decrypted
+			: textWithEntities;
+	}
+
+	if (scheme != "group") {
+		return Data::EnhancedPrivacy::IsEncrypted(textWithEntities)
+			? Data::EnhancedPrivacy::DecryptMessage(textWithEntities)
+			: textWithEntities;
+	}
+	if (!groupEncryption || !groupEncryption->isEncrypted(history->peer)) {
+		return textWithEntities;
+	}
+
+	const auto ciphertext = Base64FromEnvelopeField(packetObj, "payload");
+	if (!IsExpectedEnvelopeFieldSize(ciphertext, kCryptogramMaxPayloadBytes)) {
+		return textWithEntities;
+	}
+	const auto plaintext = groupEncryption->decryptGroupMessage(
+		history->peer,
+		bytes::vector(ciphertext.begin(), ciphertext.end()));
+	if (!plaintext.has_value()) {
+		return textWithEntities;
+	}
+
+	const auto decrypted = DeserializePayloadForSecureTransport(plaintext->toUtf8());
+	return (!decrypted.text.isEmpty() || !decrypted.entities.empty())
+		? decrypted
+		: textWithEntities;
 }
 
 [[nodiscard]] HistoryItemCommonFields ForwardedFields(
@@ -455,37 +715,40 @@ HistoryItem::HistoryItem(
 
 		createComponents(data, isBlocked);
 
+		const auto rawTextWithEntities = TextWithEntities{
+			qs(data.vmessage()),
+			Api::EntitiesFromMTP(
+				&history->session(),
+				data.ventities().value_or_empty())
+		};
+		const auto decryptedTextWithEntities = ResolveCryptogramIncomingMessage(
+			history,
+			rawTextWithEntities);
 		auto textWithEntities = TextWithEntities();
-		
+
 		auto blkMsg = Lang::GetOriginalValue(tr::lng_blocked_user_hint.base);
-		auto msg = blkMsg + qs(data.vmessage());
 
 		if (GetEnhancedBool("blocked_user_spoiler_mode")) {
+			auto blockedEntities = decryptedTextWithEntities.entities;
+			for (auto &entity : blockedEntities) {
+				entity.shiftRight(blkMsg.length());
+			}
+
 			_blockMsg = TextWithEntities{
-					msg,
-					Api::EntitiesFromMTP(
-							&history->session(),
-							data.ventities().value_or_empty(),
-							blkMsg.length(), qs(data.vmessage()).length())
+				blkMsg + decryptedTextWithEntities.text,
+				std::move(blockedEntities)
 			};
 
 			_originalMsg = TextWithEntities{
-					qs(data.vmessage()),
-					Api::EntitiesFromMTP(
-							&history->session(),
-							data.ventities().value_or_empty())
+				decryptedTextWithEntities.text,
+				decryptedTextWithEntities.entities
 			};
 		}
 
 		if ((GetEnhancedBool("blocked_user_spoiler_mode") && blockExist(peerId.value)) || (GetEnhancedBool("blocked_user_spoiler_mode") && user && user->isBlocked())) {
 			textWithEntities = _blockMsg;
 		} else {
-			textWithEntities = TextWithEntities{
-					qs(data.vmessage()),
-					Api::EntitiesFromMTP(
-							&history->session(),
-							data.ventities().value_or_empty())
-			};
+			textWithEntities = decryptedTextWithEntities;
 		}
 
 		setText(_media ? textWithEntities : EnsureNonEmpty(textWithEntities));

@@ -268,7 +268,7 @@ public class SharedConfig {
     public static boolean cryptogramMLSEnabled = false;
     public static boolean cryptogramCuratedStickersEnabled = false;
     public static int cryptogramMaxStickerSets = 5;
-    public static boolean cryptogramPremiumOverride = true; // Enable all premium features by default for testing
+    public static boolean cryptogramPremiumOverride = false;
 
     // CRYPTOGRAM Privacy Settings
     public static boolean cryptogramHideOnlineStatus = false;
@@ -677,7 +677,7 @@ public class SharedConfig {
             cryptogramMLSEnabled = preferences.getBoolean("cryptogramMLS", false);
             cryptogramCuratedStickersEnabled = preferences.getBoolean("cryptogramCuratedStickers", false);
             cryptogramMaxStickerSets = preferences.getInt("cryptogramMaxStickerSets", 5);
-            cryptogramPremiumOverride = preferences.getBoolean("cryptogramPremiumOverride", true);
+            cryptogramPremiumOverride = preferences.getBoolean("cryptogramPremiumOverride", false);
 
             // CRYPTOGRAM Privacy Settings
             cryptogramHideOnlineStatus = preferences.getBoolean("cryptogramHideOnlineStatus", false);
@@ -1176,7 +1176,7 @@ public class SharedConfig {
     }
 
     public static void toggleCryptogramPremiumOverride() {
-        cryptogramPremiumOverride = !cryptogramPremiumOverride;
+        cryptogramPremiumOverride = false;
         SharedPreferences preferences = MessagesController.getGlobalMainSettings();
         SharedPreferences.Editor editor = preferences.edit();
         editor.putBoolean("cryptogramPremiumOverride", cryptogramPremiumOverride);

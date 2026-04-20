@@ -282,7 +282,6 @@ base::flat_set<QString> Account::collectGoodNames() const {
 		name[name.size() - 1] = 's';
 		result.emplace(name);
 	};
-	for (const auto &[key, value] : _draftsMap) {
 		push(value);
 	}
 	for (const auto &[key, value] : _draftCursorsMap) {
@@ -341,7 +340,6 @@ Account::ReadMapResult Account::readMapWith(
 	LOG(("App Info: reading encrypted map..."));
 
 	QByteArray selfSerialized;
-	base::flat_map<PeerId, FileKey> draftsMap;
 	base::flat_map<PeerId, FileKey> draftCursorsMap;
 	base::flat_map<PeerId, bool> draftsNotReadMap;
 	base::flat_map<PeerId, FileKey> botStoragesMap;
@@ -371,7 +369,6 @@ Account::ReadMapResult Account::readMapWith(
 				quint64 peerIdSerialized;
 				map.stream >> key >> peerIdSerialized;
 				const auto peerId = DeserializePeerId(peerIdSerialized);
-				draftsMap.emplace(peerId, key);
 				draftsNotReadMap.emplace(peerId, true);
 			}
 		} break;
@@ -504,7 +501,6 @@ Account::ReadMapResult Account::readMapWith(
 
 	_localKey = std::move(localKey);
 
-	_draftsMap = draftsMap;
 	_draftCursorsMap = draftCursorsMap;
 	_draftsNotReadMap = draftsNotReadMap;
 	_botStoragesMap = botStoragesMap;
@@ -622,7 +618,6 @@ void Account::writeMap() {
 		return result;
 	}();
 	if (!self.isEmpty()) mapSize += sizeof(quint32) + Serialize::bytearraySize(self);
-	if (!_draftsMap.empty()) mapSize += sizeof(quint32) * 2 + _draftsMap.size() * sizeof(quint64) * 2;
 	if (!_draftCursorsMap.empty()) mapSize += sizeof(quint32) * 2 + _draftCursorsMap.size() * sizeof(quint64) * 2;
 	if (_locationsKey) mapSize += sizeof(quint32) + sizeof(quint64);
 	if (_trustedPeersKey) mapSize += sizeof(quint32) + sizeof(quint64);
@@ -657,9 +652,6 @@ void Account::writeMap() {
 	if (!self.isEmpty()) {
 		mapData.stream << quint32(lskSelfSerialized) << self;
 	}
-	if (!_draftsMap.empty()) {
-		mapData.stream << quint32(lskDraft) << quint32(_draftsMap.size());
-		for (const auto &[key, value] : _draftsMap) {
 			mapData.stream << quint64(value) << SerializePeerId(key);
 		}
 	}
@@ -749,7 +741,6 @@ void Account::reset() {
 	_writeSearchSuggestionsTimer.cancel();
 
 	auto names = collectGoodNames();
-	_draftsMap.clear();
 	_draftCursorsMap.clear();
 	_draftsNotReadMap.clear();
 	_botStoragesMap.clear();
@@ -1265,7 +1256,6 @@ void Account::unregisterDraftSource(
 
 void Account::writeDrafts(not_null<History*> history) {
 	const auto peerId = history->peer->id;
-	const auto &map = history->draftsMap();
 	const auto supportMode = history->session().supportMode();
 	const auto sourcesIt = _draftSources.find(history);
 	const auto &sources = (sourcesIt != _draftSources.end())
@@ -1278,10 +1268,7 @@ void Account::writeDrafts(not_null<History*> history) {
 		sources,
 		[&](auto&&...) { ++count; });
 	if (!count) {
-		auto i = _draftsMap.find(peerId);
-		if (i != _draftsMap.cend()) {
 			ClearKey(i->second, _basePath);
-			_draftsMap.erase(i);
 			writeMapDelayed();
 		}
 
@@ -1289,9 +1276,6 @@ void Account::writeDrafts(not_null<History*> history) {
 		return;
 	}
 
-	auto i = _draftsMap.find(peerId);
-	if (i == _draftsMap.cend()) {
-		i = _draftsMap.emplace(peerId, GenerateKey(_basePath)).first;
 		writeMapQueued();
 	}
 
@@ -1364,7 +1348,6 @@ void Account::writeDrafts(not_null<History*> history) {
 
 void Account::writeDraftCursors(not_null<History*> history) {
 	const auto peerId = history->peer->id;
-	const auto &map = history->draftsMap();
 	const auto supportMode = history->session().supportMode();
 	const auto sourcesIt = _draftSources.find(history);
 	const auto &sources = (sourcesIt != _draftSources.end())
@@ -1527,15 +1510,12 @@ void Account::readDraftsWithCursors(not_null<History*> history) {
 		return;
 	}
 
-	const auto j = _draftsMap.find(peerId);
-	if (j == _draftsMap.cend()) {
 		clearDraftCursors(peerId);
 		return;
 	}
 	FileReadDescriptor draft;
 	if (!ReadEncryptedFile(draft, j->second, _basePath, _localKey)) {
 		ClearKey(j->second, _basePath);
-		_draftsMap.erase(j);
 		clearDraftCursors(peerId);
 		return;
 	}
@@ -1554,7 +1534,6 @@ void Account::readDraftsWithCursors(not_null<History*> history) {
 	const auto draftPeer = DeserializePeerId(draftPeerSerialized);
 	if (!count || count > 1000 || draftPeer != peerId) {
 		ClearKey(j->second, _basePath);
-		_draftsMap.erase(j);
 		clearDraftCursors(peerId);
 		return;
 	}
@@ -1644,12 +1623,10 @@ void Account::readDraftsWithCursors(not_null<History*> history) {
 	}
 	if (draft.stream.status() != QDataStream::Ok) {
 		ClearKey(j->second, _basePath);
-		_draftsMap.erase(j);
 		clearDraftCursors(peerId);
 		return;
 	}
 	readDraftCursors(peerId, map);
-	history->setDraftsMap(std::move(map));
 }
 
 void Account::readDraftsWithCursorsLegacy(
@@ -1679,10 +1656,7 @@ void Account::readDraftsWithCursorsLegacy(
 	const auto peerId = history->peer->id;
 	const auto draftPeer = DeserializePeerId(draftPeerSerialized);
 	if (draftPeer != peerId) {
-		const auto j = _draftsMap.find(peerId);
-		if (j != _draftsMap.cend()) {
 			ClearKey(j->second, _basePath);
-			_draftsMap.erase(j);
 		}
 		clearDraftCursors(peerId);
 		return;
@@ -1723,7 +1697,6 @@ void Account::readDraftsWithCursorsLegacy(
 				}));
 	}
 	readDraftCursors(peerId, map);
-	history->setDraftsMap(std::move(map));
 }
 
 bool Account::hasDraftCursors(PeerId peer) {
@@ -1731,7 +1704,6 @@ bool Account::hasDraftCursors(PeerId peer) {
 }
 
 bool Account::hasDraft(PeerId peer) {
-	return _draftsMap.contains(peer);
 }
 
 void Account::writeFileLocation(MediaKey location, const Core::FileLocation &local) {

@@ -60,7 +60,6 @@ Inner::Inner(
 , _updateInlineItems([=] { updateInlineItems(); })
 , _mosaic(st::emojiPanWidth - st::emojiScroll.width - st::inlineResultsLeft)
 , _previewTimer([=] { showPreview(); }) {
-	resize(st::emojiPanWidth - st::emojiScroll.width - st::roundRadiusSmall, st::inlineResultsMinHeight);
 
 	setMouseTracking(true);
 	setAttribute(Qt::WA_OpaquePaintEvent);

@@ -440,14 +440,9 @@ HistoryWidget::HistoryWidget(
 	initTabbedSelector();
 
 	_attachToggle->setClickedCallback([=] {
-		const auto toggle = _attachBotsMenu && _attachBotsMenu->isHidden();
 		base::call_delayed(st::historyAttach.ripple.hideDuration, this, [=] {
-			if (_attachBotsMenu && toggle) {
-				_attachBotsMenu->showAnimated();
 			} else {
 				chooseAttach();
-				if (_attachBotsMenu) {
-					_attachBotsMenu->hideAnimated();
 				}
 			}
 		});
@@ -568,7 +563,6 @@ HistoryWidget::HistoryWidget(
 			return update.peer == _peer;
 		}) | rpl::to_empty
 	) | rpl::on_next([=] {
-		refreshAttachBotsMenu();
 	}, lifetime());
 
 	_botKeyboardShow->addClickHandler([=] { toggleKeyboard(); });
@@ -1835,8 +1829,6 @@ void HistoryWidget::orderWidgets() {
 	if (_emojiSuggestions) {
 		_emojiSuggestions->raise();
 	}
-	if (_attachBotsMenu) {
-		_attachBotsMenu->raise();
 	}
 	_attachDragAreas.document->raise();
 	_attachDragAreas.photo->raise();
@@ -2889,13 +2881,8 @@ void HistoryWidget::setHistory(History *history) {
 		return;
 	}
 
-	const auto was = _attachBotsMenu && _history && _history->peer->isUser();
-	const auto now = _attachBotsMenu && history && history->peer->isUser();
 	if (was && !now) {
-		_attachToggle->removeEventFilter(_attachBotsMenu.get());
-		_attachBotsMenu->hideFast();
 	} else if (now && !was && !ChatHelpers::ShowPanelOnClick()) {
-		_attachToggle->installEventFilter(_attachBotsMenu.get());
 	}
 
 	const auto unloadHeavyViewParts = [](History *history) {
@@ -2931,7 +2918,6 @@ void HistoryWidget::setHistory(History *history) {
 			_preview = nullptr;
 		}
 	}
-	refreshAttachBotsMenu();
 }
 
 void HistoryWidget::setupPreview() {
@@ -2971,29 +2957,21 @@ void HistoryWidget::injectSponsoredMessages() const {
 		_scroll->width());
 }
 
-void HistoryWidget::refreshAttachBotsMenu() {
-	_attachBotsMenu = nullptr;
 	if (!_history) {
 		return;
 	}
-	_attachBotsMenu = InlineBots::MakeAttachBotsMenu(
 		this,
 		controller(),
 		_history->peer,
 		[=] { return prepareSendAction({}); },
 		[=](bool compress) { chooseAttach(compress); });
-	if (!_attachBotsMenu) {
 		return;
 	}
-	_attachBotsMenu->setOrigin(
 		Ui::PanelAnimation::Origin::BottomLeft);
 	if (!ChatHelpers::ShowPanelOnClick()) {
-		_attachToggle->installEventFilter(_attachBotsMenu.get());
 	}
-	_attachBotsMenu->heightValue(
 	) | rpl::on_next([=] {
 		moveFieldControls();
-	}, _attachBotsMenu->lifetime());
 }
 
 void HistoryWidget::unregisterDraftSources() {
@@ -5719,13 +5697,10 @@ bool HistoryWidget::updateCmdStartShown() {
 			}
 		}, _botMenu.button->lifetime());
 	}
-	const auto textSmall = _fieldCharsCountManager.count() > kSmallMenuAfter;
 	const auto textChanged = _botMenu.button
 		&& ((_botMenu.text != bot->botInfo->botMenuButtonText)
-			|| (_botMenu.small != textSmall));
 	if (textChanged) {
 		_botMenu.text = bot->botInfo->botMenuButtonText;
-		if ((_botMenu.small = textSmall)) {
 			if (const auto e = FirstEmoji(_botMenu.text); !e.isEmpty()) {
 				_botMenu.text = e;
 			}
@@ -6131,10 +6106,7 @@ void HistoryWidget::moveFieldControls() {
 	if (_tabbedPanel) {
 		_tabbedPanel->moveBottomRight(buttonsBottom, width());
 	}
-	if (_attachBotsMenu) {
-		_attachBotsMenu->moveToLeft(
 			0,
-			buttonsBottom - _attachBotsMenu->height());
 	}
 
 	const auto fullWidthButtonRect = myrtlrect(

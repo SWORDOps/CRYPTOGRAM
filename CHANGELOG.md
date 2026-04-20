@@ -145,14 +145,11 @@ This release transforms the messenger into CRYPTOGRAM, featuring military-grade 
 - **NEW**: Key backup/restore with PBKDF2 encryption
 - **NEW**: Automatic key rotation with configurable intervals
 - **NEW**: Multiple device support per peer
-- **NEW**: Hardware security module (TSM) integration
 - **NEW**: TPM 2.0 support for desktop
 - **NEW**: Android KeyStore integration
 - **NEW**: Apple Secure Enclave support
 - **NEW**: Software fallback when hardware unavailable
 - **Files**: `data/data_signal_protocol.h/cpp` (~3,774 lines)
-- **Files**: `data/data_tsm_interface.h`
-- **Files**: `data/data_tsm_factory.cpp`
 - **Files**: `tests/unit/test_double_ratchet.cpp`
 
 ### 🛡️ Added - Supporting Security Modules

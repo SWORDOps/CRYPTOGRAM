@@ -6,7 +6,6 @@ For license and copyright information please follow this link:
 https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 */
 #include "data/data_signal_protocol.h"
-#include "data/data_tsm_factory.cpp"
 
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -44,7 +43,8 @@ constexpr auto kSignalMsgDbPrefix = "signal_messages_";
 constexpr auto kSignalBackupName = "signal_keys_backup.enc";
 constexpr auto kDHKeySize = 32; // X25519 key size in bytes
 constexpr auto kAesKeySize = 32; // AES-256 key size
-constexpr auto kAesIvSize = 16;  // AES IV size
+constexpr auto kAesIvSize = 12;  // GCM nonce size
+constexpr auto kAesTagSize = 16; // GCM auth tag size
 constexpr auto kMaxSkippedKeys = 1000; // Maximum skipped message keys to store
 constexpr auto kInfoRootKey = "WhisperRatchet"; // Used in HKDF for root keys
 constexpr auto kInfoChainKey = "WhisperMessageKeys"; // Used in HKDF for chain keys
@@ -179,17 +179,6 @@ SignalProtocol::SignalProtocol(not_null<Session*> session)
     _localDevice.identifier = QString::number(session->userId().value) + "_" +
                              QString::number(Core::App().deviceId());
     _localDevice.registrationId = base::RandomValue<uint64>();
-
-    // Initialize TSM integration
-    _tsmIntegration = std::make_unique<SignalTSMIntegration>(session);
-    auto tsmResult = _tsmIntegration->initializeWithSignalProtocol();
-    if (tsmResult == TSMResult::Success) {
-        _tsmEnabled = true;
-        LOG(("Signal Protocol: TSM integration enabled successfully"));
-    } else {
-        LOG(("Signal Protocol: TSM integration failed, using software fallback"));
-        _tsmEnabled = false;
-    }
     
     // Generate identity keys if none exist
     auto keyPath = signalStoragePath(session) + kSignalKeyDbName;
@@ -380,29 +369,51 @@ bytes::vector SignalProtocol::encryptMessage(
     // Create random IV
     outMetadata.iv = generateRandomBytes(kAesIvSize);
     
-    // Encrypt plaintext using AES-256-CBC
-    bytes::vector ciphertext(plaintext.size() + 32); // Allocate space for padding
+    // Encrypt plaintext using AES-256-GCM
+    bytes::vector ciphertext(plaintext.size());
     
     // Prepare AES key and IV
-    MTPint256 aesKey, aesIV;
+    MTPint256 aesKey;
+    bytes::vector aesIV(kAesIvSize);
     memcpy(aesKey.data(), messageKey.data(), kAesKeySize);
     memcpy(aesIV.data(), outMetadata.iv.data(), kAesIvSize);
+    bytes::vector aad(sizeof(outMetadata.messageCounter) + sizeof(outMetadata.timestamp));
+    std::memcpy(aad.data(), &outMetadata.messageCounter, sizeof(outMetadata.messageCounter));
+    std::memcpy(
+        aad.data() + sizeof(outMetadata.messageCounter),
+        &outMetadata.timestamp,
+        sizeof(outMetadata.timestamp));
     
-    // Ensure plaintext length is a multiple of 16 (AES block size)
-    auto plainCopy = bytes::make_vector(plaintext);
-    int padding = 16 - (plainCopy.size() % 16);
-    plainCopy.resize(plainCopy.size() + padding, bytes::type(padding));
-    
-    // Encrypt
-    openssl::AesEncryptLocal(
-        reinterpret_cast<const void*>(plainCopy.data()),
-        reinterpret_cast<void*>(ciphertext.data()),
-        plainCopy.size(),
-        aesKey.data(),
-        aesIV.data());
-    
-    // Resize to actual ciphertext size
-    ciphertext.resize(plainCopy.size());
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        LOG(("Signal Protocol Error: Failed to create GCM context"));
+        return {};
+    }
+    int outLen = 0;
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1
+        || EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, kAesIvSize, nullptr) != 1
+        || EVP_EncryptInit_ex(ctx, nullptr, nullptr, aesKey.data(), aesIV.data()) != 1
+        || EVP_EncryptUpdate(ctx, nullptr, &outLen, aad.data(), aad.size()) != 1
+        || EVP_EncryptUpdate(ctx, ciphertext.data(), &outLen, plaintext.data(), plaintext.size()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        LOG(("Signal Protocol Error: AES-GCM encryption failed"));
+        return {};
+    }
+    int finalLen = 0;
+    if (EVP_EncryptFinal_ex(ctx, ciphertext.data() + outLen, &finalLen) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        LOG(("Signal Protocol Error: AES-GCM finalize failed"));
+        return {};
+    }
+    ciphertext.resize(outLen + finalLen);
+    bytes::vector tag(kAesTagSize);
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, kAesTagSize, tag.data()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        LOG(("Signal Protocol Error: AES-GCM tag generation failed"));
+        return {};
+    }
+    EVP_CIPHER_CTX_free(ctx);
+    ciphertext.insert(ciphertext.end(), tag.begin(), tag.end());
     
     // Update the session
     updateSession(peer, session);
@@ -427,7 +438,11 @@ bytes::vector SignalProtocol::decryptMessage(
     // Update last used timestamp
     session.lastUsedAt = base::unixtime::now();
     
-    bytes::vector plaintext(ciphertext.size());
+    if (ciphertext.size() < kAesTagSize) {
+        LOG(("Signal Protocol: Ciphertext too short for auth tag"));
+        return {};
+    }
+    bytes::vector plaintext(ciphertext.size() - kAesTagSize);
     bytes::vector messageKey;
     
     // Check if this is the expected message in sequence
@@ -500,25 +515,47 @@ bytes::vector SignalProtocol::decryptMessage(
         }
     }
     
-    // Decrypt using AES-256-CBC
-    MTPint256 aesKey, aesIV;
+    // Decrypt using AES-256-GCM
+    MTPint256 aesKey;
+    bytes::vector aesIV(kAesIvSize);
     memcpy(aesKey.data(), messageKey.data(), kAesKeySize);
     memcpy(aesIV.data(), metadata.iv.data(), kAesIvSize);
-    
-    openssl::AesDecryptLocal(
-        reinterpret_cast<const void*>(ciphertext.data()),
-        reinterpret_cast<void*>(plaintext.data()),
-        ciphertext.size(),
-        aesKey.data(),
-        aesIV.data());
-    
-    // Remove padding
-    if (!plaintext.empty()) {
-        auto paddingSize = static_cast<int>(plaintext.back());
-        if (paddingSize > 0 && paddingSize <= 16 && paddingSize <= plaintext.size()) {
-            plaintext.resize(plaintext.size() - paddingSize);
-        }
+    bytes::vector aad(sizeof(metadata.messageCounter) + sizeof(metadata.timestamp));
+    std::memcpy(aad.data(), &metadata.messageCounter, sizeof(metadata.messageCounter));
+    std::memcpy(
+        aad.data() + sizeof(metadata.messageCounter),
+        &metadata.timestamp,
+        sizeof(metadata.timestamp));
+    const auto cipherLen = ciphertext.size() - kAesTagSize;
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        LOG(("Signal Protocol Error: Failed to create GCM context"));
+        return {};
     }
+    int outLen = 0;
+    if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1
+        || EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, kAesIvSize, nullptr) != 1
+        || EVP_DecryptInit_ex(ctx, nullptr, nullptr, aesKey.data(), aesIV.data()) != 1
+        || EVP_DecryptUpdate(ctx, nullptr, &outLen, aad.data(), aad.size()) != 1
+        || EVP_DecryptUpdate(ctx, plaintext.data(), &outLen, ciphertext.data(), cipherLen) != 1
+        || EVP_CIPHER_CTX_ctrl(
+            ctx,
+            EVP_CTRL_AEAD_SET_TAG,
+            kAesTagSize,
+            const_cast<uint8_t*>(ciphertext.data() + cipherLen)) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        LOG(("Signal Protocol Error: AES-GCM decryption setup failed"));
+        return {};
+    }
+    int finalLen = 0;
+    if (EVP_DecryptFinal_ex(ctx, plaintext.data() + outLen, &finalLen) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        LOG(("Signal Protocol Error: AES-GCM authentication failed"));
+        return {};
+    }
+    EVP_CIPHER_CTX_free(ctx);
+    plaintext.resize(outLen + finalLen);
     
     // Update session
     updateSession(peer, session);
@@ -1855,23 +1892,11 @@ std::pair<bytes::vector, bytes::vector> SignalProtocol::generateEd25519KeyPair()
     return {privateKey, publicKey};
 }
 
-// TSM Integration Methods
-void SignalProtocol::enableTSMIntegration(bool enabled) {
-    if (!_tsmIntegration) {
-        LOG(("Signal Protocol Error: TSM integration not initialized"));
         return;
     }
 
-    if (enabled && !_tsmEnabled) {
-        // Enable TSM integration
-        auto result = _tsmIntegration->initializeWithSignalProtocol();
-        if (result == TSMResult::Success) {
-            _tsmEnabled = true;
-            LOG(("Signal Protocol: TSM integration enabled"));
 
             // Generate hardware-backed identity key if none exists
-            if (_tsmIntegration->isHardwareBackedSecurity()) {
-                auto identityResult = _tsmIntegration->generateSignalIdentityKeyPair();
                 if (identityResult.has_value()) {
                     // Update identity key with hardware-backed version
                     _identityKeyPublic = identityResult.value();
@@ -1880,45 +1905,27 @@ void SignalProtocol::enableTSMIntegration(bool enabled) {
                 }
             }
         } else {
-            LOG(("Signal Protocol Warning: Failed to enable TSM integration, error: %1").arg((int)result));
         }
-    } else if (!enabled && _tsmEnabled) {
-        // Disable TSM integration - fall back to software
-        _tsmEnabled = false;
-        LOG(("Signal Protocol: TSM integration disabled, using software fallback"));
     }
 }
 
-bool SignalProtocol::isTSMEnabled() const {
-    return _tsmEnabled && _tsmIntegration && _tsmIntegration->isHardwareBackedSecurity();
 }
 
-TSMPlatform SignalProtocol::getTSMPlatform() const {
-    if (!_tsmIntegration) {
-        return TSMPlatform::SoftwareFallback;
     }
 
-    auto capabilities = _tsmIntegration->getTSMCapabilities();
     return capabilities.platform;
 }
 
-TSMCapabilities SignalProtocol::getTSMCapabilities() const {
-    if (!_tsmIntegration) {
-        return TSMCapabilities{};
     }
 
-    return _tsmIntegration->getTSMCapabilities();
 }
 
-// Override key generation to use TSM when available
 SignalProtocol::KeyBundle SignalProtocol::generateLocalKeyBundle() {
     KeyBundle bundle;
     bundle.deviceId = _localDevice;
     bundle.identityKey = _identityKeyPublic;
 
-    if (_tsmEnabled && _tsmIntegration) {
         // Generate hardware-backed pre-keys
-        auto preKeyResult = _tsmIntegration->generateSignalPreKey();
         if (preKeyResult.has_value()) {
             bundle.signedPreKey = preKeyResult.value();
             LOG(("Signal Protocol: Generated hardware-backed signed pre-key"));
@@ -1926,10 +1933,8 @@ SignalProtocol::KeyBundle SignalProtocol::generateLocalKeyBundle() {
             // Fall back to software generation
             auto privateKey = x25519Generate();
             bundle.signedPreKey = x25519PublicFromPrivate(privateKey);
-            LOG(("Signal Protocol: TSM pre-key generation failed, using software fallback"));
         }
 
-        auto oneTimeKeyResult = _tsmIntegration->generateSignalOneTimeKey();
         if (oneTimeKeyResult.has_value()) {
             bundle.oneTimePreKey = oneTimeKeyResult.value();
             LOG(("Signal Protocol: Generated hardware-backed one-time pre-key"));
@@ -1937,22 +1942,18 @@ SignalProtocol::KeyBundle SignalProtocol::generateLocalKeyBundle() {
             // Fall back to software generation
             auto privateKey = x25519Generate();
             bundle.oneTimePreKey = x25519PublicFromPrivate(privateKey);
-            LOG(("Signal Protocol: TSM one-time key generation failed, using software fallback"));
         }
 
-        // Use TSM to sign the bundle
         bytes::vector signatureData;
         signatureData.insert(signatureData.end(), bundle.signedPreKey.begin(), bundle.signedPreKey.end());
         signatureData.insert(signatureData.end(), bundle.oneTimePreKey.begin(), bundle.oneTimePreKey.end());
 
-        auto signResult = _tsmIntegration->signSignalMessage(_tsmIntegration->getHardwareBackedKeys().first(), signatureData);
         if (signResult.has_value()) {
             bundle.signature = signResult.value();
             LOG(("Signal Protocol: Hardware-backed bundle signature generated"));
         } else {
             // Fall back to software signing
             bundle.signature = signWithIdentityKey(signatureData);
-            LOG(("Signal Protocol: TSM signing failed, using software fallback"));
         }
     } else {
         // Software-only key generation

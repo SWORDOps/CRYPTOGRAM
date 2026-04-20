@@ -111,7 +111,6 @@ Currently commented out:
 - `data/data_mls_protocol.cpp`
 - `data/data_monero_miner.cpp`
 - `data/data_quantum_storage.cpp`
-- `data/data_tsm_factory.cpp`
 
 At the same time, desktop docs still describe privacy, MLS, PQ, mining, and related modules as present features:
 
@@ -229,7 +228,6 @@ Impact:
 - Desktop MLS/group-encryption activation
 - Desktop covert channel settings path
 - Desktop Device Trust settings path
-- Desktop mining, quantum storage, and TSM build integration
 
 ### Not supportable as currently documented
 

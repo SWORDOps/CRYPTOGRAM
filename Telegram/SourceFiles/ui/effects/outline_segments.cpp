@@ -17,7 +17,6 @@ void PaintOutlineSegments(
 	Expects(!segments.empty());
 
 	p.setBrush(Qt::NoBrush);
-	const auto count = std::min(int(segments.size()), kOutlineSegmentsMax);
 	if (count == 1) {
 		p.setPen(QPen(segments.front().brush, segments.front().width));
 		p.drawEllipse(ellipse);
@@ -77,7 +76,6 @@ void PaintOutlineSegments(
 	Expects(!segments.empty());
 
 	p.setBrush(Qt::NoBrush);
-	const auto count = std::min(int(segments.size()), kOutlineSegmentsMax);
 	if (count == 1 || true) {
 		p.setPen(QPen(segments.back().brush, segments.back().width));
 		p.drawRoundedRect(rect, radius, radius);

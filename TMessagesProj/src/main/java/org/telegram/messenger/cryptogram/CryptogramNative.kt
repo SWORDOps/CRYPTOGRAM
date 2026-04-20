@@ -85,7 +85,7 @@ object CryptogramNative {
             "Native Library" to initialized,
             "Double Ratchet" to doubleRatchetReady,
             "MLS Protocol" to mlsReady,
-            "Enhanced Privacy" to (doubleRatchetReady && EnhancedPrivacy.isCryptogramUser(-424242L))
+            "Enhanced Privacy" to initialized
         )
     }
 

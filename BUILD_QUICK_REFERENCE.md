@@ -45,7 +45,6 @@ export LOG_DIR=$HOME/.cache/cryptogram_builds
 
 **Symptom:**
 ```
-fatal: destination path 'Telegram/lib_tsm' already exists and is not an empty directory.
 ```
 
 **Solution:**
@@ -54,7 +53,6 @@ fatal: destination path 'Telegram/lib_tsm' already exists and is not an empty di
 ./fix_submodules.sh
 
 # Option 2: Manual fix
-rm -rf Telegram/lib_tsm  # or: mv Telegram/lib_tsm Telegram/lib_tsm.backup
 ./build_all.sh
 ```
 
@@ -360,7 +358,6 @@ fi
 **Check version:**
 ```bash
 ./build_all.sh --version
-# Output: TSM + CRYPTOGRAM Build Script v3.1.0
 ```
 
 ---

@@ -1,14 +1,20 @@
+## OPSEC VALIDATION NOTE
+
+This document may contain historical implementation claims. Treat all security capabilities as **partial or experimental** unless corroborated by current runtime validation in `docs/status/FINAL_STATUS.md` and `docs/features/android-features.md`.
+
+Desktop Linux claim gate and build-state source of truth:
+`docs/status/DESKTOP_BUILD_ALIGNMENT.md`.
+
 # 🔐 CRYPTOGRAM: Advanced OPSEC Messaging
 
-CRYPTOGRAM is a high-security, privacy-hardened fork of Telegram designed for extreme threat environments. It integrates a Python-based **Trusted Security Module (TSM)** backend and an extensive suite of counterintelligence and post-quantum cryptographic tools.
 
-## 🟢 Project Status: Feature Complete (Desktop)
+## 🟡 Project Status: Partial/Experimental (Desktop)
 
-The CRYPTOGRAM Desktop implementation has transitioned from a prototype to a **hardened, functional system**. All major build blockers have been resolved, and the application now features a unified OPSEC command center.
+The CRYPTOGRAM desktop build contains a broad feature surface, but capability maturity varies by module.  
+Treat desktop capabilities as `included`, `partial`, or `experimental` based on `docs/status/DESKTOP_BUILD_ALIGNMENT.md`.
 
 ### Core Capabilities
 - **Post-Quantum Security**: Native support for NIST-standardized PQC (Kyber/Dilithium) via **QuantumGuard**.
-- **TSM Integration**: Fully wired gRPC and API backend for decentralized session management and lattice-based ZK Auth.
 - **Traffic & Linguistic Privacy**: Integrated **Pluggable Transports** (obfs4/meek) and **Stylometry Shield** (AI-rephrasing).
 - **Physical OPSEC**: Hardware-based **Kill Switch (Tether)** for USB/Smartcard devices and **Panic Password** for silent secure-erase.
 - **Surveillance Countermeasures**: **Universal Threat Detector (UTD)** for AI-powered phishing and signature analysis.
@@ -32,28 +38,23 @@ All advanced security features are configurable via the **CRYPTOGRAM Settings** 
 
 ## 🚀 Getting Started (Desktop)
 
-### 1. Initialize Backend (TSM)
 Ensure your environment is loaded and start the gRPC/API services:
 ```bash
-source .tsm_cryptogram_env.sh
-cd Telegram/lib_tsm
 # Start gRPC (50051) and API (8080)
 python -m mock_server.server &
-uvicorn api.tsm_api:app --port 8080 &
 ```
 
 ### 2. Build the Client
-The build system is optimized for Ninja:
+Use the canonical Linux entrypoint:
 ```bash
-mkdir build_release && cd build_release
-cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
-ninja -j$(nproc)
+./build_linux.sh
 ```
 
 ## 🧪 Documentation & Results
 
-- **[Feature Matrix](docs/features/desktop-features.md)**: Detailed breakdown of implemented OPSEC modules.
-- **[Integration Test Results](docs/status/DESKTOP_TEST_RESULTS.md)**: Verification status of build and security paths (✅ 100% Pass).
+- **[Desktop Build Alignment Matrix](docs/status/DESKTOP_BUILD_ALIGNMENT.md)**: Claim gate for Linux build inclusion/runtime wiring.
+- **[Feature Matrix](docs/features/desktop-features.md)**: User-facing desktop feature status aligned with current build state.
+- **[Integration Test Results](docs/status/DESKTOP_TEST_RESULTS.md)**: verification artifacts; do not treat as blanket production proof.
 - **[Final Handoff](HANDOFF.md)**: Architecture summary and active system state.
 
 ## ⚖️ License

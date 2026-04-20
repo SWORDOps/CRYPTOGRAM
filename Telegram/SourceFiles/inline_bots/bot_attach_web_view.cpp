@@ -2617,7 +2617,6 @@ void ChooseAndSendLocation(
 	session->locationPickers().emplace(action, picker);
 }
 
-std::unique_ptr<Ui::DropdownMenu> MakeAttachBotsMenu(
 		not_null<QWidget*> parent,
 		not_null<Window::SessionController*> controller,
 		not_null<PeerData*> peer,

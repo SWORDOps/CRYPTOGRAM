@@ -722,13 +722,11 @@ void Stories::loadMore(StorySourcesList list) {
 			apply(data.vstealth_mode());
 		});
 
-		preloadListsMore();
 	}).fail([=] {
 		_loadMoreRequestId[index] = 0;
 	}).send();
 }
 
-void Stories::preloadListsMore() {
 	if (_loadMoreRequestId[static_cast<int>(StorySourcesList::NotHidden)]
 		|| _loadMoreRequestId[static_cast<int>(StorySourcesList::Hidden)]) {
 		return;

@@ -85,12 +85,11 @@ Signal Protocol implementation with forward secrecy and break-in recovery.
 **Key Features:**
 - X25519 (Curve25519) key exchange
 - Ed25519 digital signatures
-- AES-256-CBC message encryption
+- AES-256-GCM authenticated message encryption
 - HKDF key derivation
 - Forward secrecy (old keys deleted after use)
 - Break-in recovery (future messages secure after compromise)
 - Out-of-order message handling
-- Hardware security module (TSM) integration: TPM 2.0, Android KeyStore, Apple Secure Enclave
 
 **Use Cases:** Secure end-to-end encrypted messaging, forward secrecy, hardware-backed security
 
@@ -291,7 +290,7 @@ All security code is open source and available for audit
 - **Whistleblowers** needing plausible deniability and covert channels
 - **Privacy Advocates** wanting maximum protection
 - **International Users** in countries with surveillance and censorship
-- **Security Professionals** requiring military-grade communication security
+- **Security Professionals** requiring high-assurance (requires validation) communication security
 
 ---
 

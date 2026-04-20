@@ -1020,7 +1020,6 @@ QSize Delegate::buttonSize() {
 	const auto minimal = (_mode != GiftButtonMode::Full);
 	_single = QSize(
 		singlew,
-		minimal ? st::giftBoxGiftSmall : st::giftBoxGiftHeight);
 	return _single;
 }
 

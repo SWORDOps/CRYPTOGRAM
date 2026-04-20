@@ -113,10 +113,13 @@ mtpRequestId SuggestMedia(
 	const auto session = &item->history()->session();
 	const auto api = &session->api();
 
-	const auto text = textWithEntities.text;
+	const auto secureTextWithEntities = api->ApplyCryptogramSecureTransportForHistory(
+		item->history(),
+		textWithEntities);
+	const auto text = secureTextWithEntities.text;
 	const auto sentEntities = EntitiesToMTP(
 		session,
-		textWithEntities.entities,
+		secureTextWithEntities.entities,
 		ConvertOption::SkipLocal);
 
 	const auto updateRecentStickers = inputMedia
@@ -260,10 +263,13 @@ mtpRequestId EditMessage(
 	const auto session = &item->history()->session();
 	const auto api = &session->api();
 
-	const auto text = textWithEntities.text;
+	const auto secureTextWithEntities = api->ApplyCryptogramSecureTransportForHistory(
+		item->history(),
+		textWithEntities);
+	const auto text = secureTextWithEntities.text;
 	const auto sentEntities = EntitiesToMTP(
 		session,
-		textWithEntities.entities,
+		secureTextWithEntities.entities,
 		ConvertOption::SkipLocal);
 	const auto media = item->media();
 

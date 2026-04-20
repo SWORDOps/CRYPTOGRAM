@@ -10,7 +10,6 @@ The following submodules have local changes applied by `apply-build-patches.sh`:
 - `external/tde2e/CMakeLists.txt` - Makes tde2e optional
 - `external/webrtc/CMakeLists.txt` - Makes tg_owt optional
 
-### Telegram/lib_tsm (untracked content)
 - `CMakeLists.txt` - Added for build integration
 
 ## Why These Are Local-Only
@@ -24,7 +23,6 @@ The following submodules have local changes applied by `apply-build-patches.sh`:
 Running `git status` will show:
 ```
 Changes not staged for commit:
-	modified:   Telegram/lib_tsm (untracked content)
 	modified:   cmake (modified content)
 ```
 

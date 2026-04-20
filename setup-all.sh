@@ -1,12 +1,11 @@
 #!/bin/bash
 
 ################################################################################
-# SWORD Projects Bootstrap Setup Script
-# Handles both CRYPTOGRAM (Desktop) and SWORDCOMM (Android)
+# CRYPTOGRAM Bootstrap Setup Script
+# Handles both CRYPTOGRAM Desktop and CRYPTOGRAM Android
 #
 # This script sets up the complete development environment for:
-# - CRYPTOGRAM: C++/Qt desktop application with TSM integration
-# - SWORDCOMM: Android application using Gradle/Kotlin
+# - CRYPTOGRAM Android application using Gradle/Kotlin
 ################################################################################
 
 set -e
@@ -20,8 +19,9 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 # Configuration
-DESKTOP_PROJECT="/home/user/CRYPTOGRAM"
-ANDROID_PROJECT="$HOME/Documents/SWORDCOMM"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DESKTOP_PROJECT="${DESKTOP_PROJECT:-$SCRIPT_DIR}"
+ANDROID_PROJECT="${ANDROID_PROJECT:-$SCRIPT_DIR/telegram-android}"
 GCC_VERSION=14
 SETUP_DESKTOP=0
 SETUP_ANDROID=0
@@ -59,15 +59,15 @@ print_step() {
 
 show_help() {
     cat << EOF
-SWORD Projects Bootstrap Setup
+CRYPTOGRAM Bootstrap Setup
 
-Unified setup for CRYPTOGRAM (Desktop) and SWORDCOMM (Android)
+Unified setup for CRYPTOGRAM Desktop and CRYPTOGRAM Android
 
 Usage: $0 [OPTIONS]
 
 Options:
   --desktop            Setup CRYPTOGRAM (C++/Qt desktop)
-  --android            Setup SWORDCOMM (Android/Gradle)
+  --android            Setup CRYPTOGRAM Android (Gradle)
   --all                Setup both projects (default)
   --gcc14              Use GCC 14 for desktop build
   --gcc15              Use GCC 15 for desktop build
@@ -139,7 +139,7 @@ if [ $SETUP_ALL -eq 1 ]; then
 fi
 
 # Main script
-print_header "SWORD Projects Bootstrap Setup"
+print_header "CRYPTOGRAM Bootstrap Setup"
 
 echo "System Information:"
 echo "  OS: $(lsb_release -d | cut -f2)"
@@ -163,7 +163,6 @@ print_info "Package cache updated"
 # ============================================================================
 
 if [ $SETUP_DESKTOP -eq 1 ]; then
-    print_section "CRYPTOGRAM Desktop Setup (C++/Qt with TSM)"
 
     # Check GCC
     print_step "Checking GCC $GCC_VERSION..."
@@ -209,8 +208,6 @@ if [ $SETUP_DESKTOP -eq 1 ]; then
     done
     print_info "Desktop dependencies installed"
 
-    # Install Python dependencies for TSM
-    print_step "Installing Python dependencies (TSM)..."
     PYTHON_PACKAGES=("grpcio" "grpcio-tools" "cryptography" "pyyaml" "requests" "sqlalchemy" "protobuf")
     for pkg in "${PYTHON_PACKAGES[@]}"; do
         python3 -m pip install --quiet --upgrade "$pkg" 2>/dev/null || true
@@ -244,11 +241,11 @@ if [ $SETUP_DESKTOP -eq 1 ]; then
 fi
 
 # ============================================================================
-# ANDROID SETUP (SWORDCOMM)
+# ANDROID SETUP (CRYPTOGRAM)
 # ============================================================================
 
 if [ $SETUP_ANDROID -eq 1 ]; then
-    print_section "SWORDCOMM Android Setup (Gradle/Kotlin)"
+    print_section "CRYPTOGRAM Android Setup (Gradle/Kotlin)"
 
     # Install Java 17 (required for Gradle 8.11+)
     print_step "Checking Java 17..."
@@ -293,14 +290,14 @@ if [ $SETUP_ANDROID -eq 1 ]; then
     done
     print_info "Android build tools installed"
 
-    # Setup SWORDCOMM
+    # Setup CRYPTOGRAM Android
     if [ -d "$ANDROID_PROJECT" ]; then
-        print_step "Verifying SWORDCOMM project..."
+        print_step "Verifying CRYPTOGRAM Android project..."
         cd "$ANDROID_PROJECT"
 
         # Check if it's a Gradle project
         if [ -f "build.gradle.kts" ] || [ -f "build.gradle" ]; then
-            print_info "SWORDCOMM Gradle project verified"
+            print_info "CRYPTOGRAM Android Gradle project verified"
 
             # Set up gradle wrapper
             if [ ! -f "gradlew" ]; then
@@ -308,10 +305,10 @@ if [ $SETUP_ANDROID -eq 1 ]; then
                 gradle wrapper --gradle-version 8.11.1 2>/dev/null || print_warning "Could not setup wrapper"
             fi
         else
-            print_warning "SWORDCOMM: Not a Gradle project or invalid structure"
+            print_warning "CRYPTOGRAM Android: Not a Gradle project or invalid structure"
         fi
     else
-        print_warning "SWORDCOMM directory not found at $ANDROID_PROJECT"
+        print_warning "CRYPTOGRAM Android directory not found at $ANDROID_PROJECT"
     fi
 
     echo ""
@@ -324,24 +321,24 @@ fi
 print_section "Environment Configuration"
 
 # Create unified environment script
-ENV_SCRIPT="/tmp/sword_build_env.sh"
-cat > "$ENV_SCRIPT" << 'EOF'
+ENV_SCRIPT="/tmp/cryptogram_build_env.sh"
+cat > "$ENV_SCRIPT" << EOF
 #!/bin/bash
-# SWORD Projects Build Environment
+# CRYPTOGRAM Build Environment
 
 # Desktop (CRYPTOGRAM)
 export CC=gcc-14
 export CXX=g++-14
 export CFLAGS="-march=native -O3"
 export CXXFLAGS="-march=native -O3"
-export CRYPTOGRAM_BUILD_DIR="/home/user/CRYPTOGRAM/build_release"
+export CRYPTOGRAM_BUILD_DIR="${DESKTOP_PROJECT}/build_release"
 
-# Android (SWORDCOMM)
+# Android (CRYPTOGRAM)
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-export ANDROID_HOME=${ANDROID_HOME:-$HOME/Android/Sdk}
-export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+export ANDROID_HOME=\${ANDROID_HOME:-$HOME/Android/Sdk}
+export PATH=\$PATH:\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools
 
-echo "SWORD Build Environment Loaded:"
+echo "CRYPTOGRAM Build Environment Loaded:"
 echo "  Desktop Compiler: $CC / $CXX"
 echo "  Java Home: $JAVA_HOME"
 echo "  Android SDK: $ANDROID_HOME"
@@ -363,7 +360,7 @@ echo "  Build:                 cd $DESKTOP_PROJECT && ./build.sh"
 echo "  Run:                   $DESKTOP_PROJECT/build_release/bin/Telegram"
 echo ""
 
-echo -e "${CYAN}SWORDCOMM (Android)${NC}"
+echo -e "${CYAN}CRYPTOGRAM Android${NC}"
 echo "  Setup environment:     source $ENV_SCRIPT"
 echo "  Build Debug APK:       cd $ANDROID_PROJECT && ./gradlew assembleDebug"
 echo "  Build Release APK:     cd $ANDROID_PROJECT && ./gradlew assembleRelease"
@@ -379,7 +376,7 @@ print_header "Setup Complete!"
 echo ""
 echo "Projects Setup:"
 [ $SETUP_DESKTOP -eq 1 ] && echo "  ✓ CRYPTOGRAM Desktop (C++/Qt)" || echo "  ○ CRYPTOGRAM Desktop"
-[ $SETUP_ANDROID -eq 1 ] && echo "  ✓ SWORDCOMM Android (Gradle)" || echo "  ○ SWORDCOMM Android"
+[ $SETUP_ANDROID -eq 1 ] && echo "  ✓ CRYPTOGRAM Android (Gradle)" || echo "  ○ CRYPTOGRAM Android"
 echo ""
 
 echo "Next Steps:"

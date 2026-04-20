@@ -6,8 +6,6 @@ For license and copyright information please follow this link:
 https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 */
 #include "data/data_signal_protocol.h"
-#include "data/data_tsm_factory.cpp"
-#include "core/peer_trust_encryption.h"
 
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -45,7 +43,8 @@ constexpr auto kSignalMsgDbPrefix = "signal_messages_";
 constexpr auto kSignalBackupName = "signal_keys_backup.enc";
 constexpr auto kDHKeySize = 32; // X25519 key size in bytes
 constexpr auto kAesKeySize = 32; // AES-256 key size
-constexpr auto kAesIvSize = 16;  // AES IV size
+constexpr auto kAesIvSize = 12;  // GCM nonce size
+constexpr auto kAesTagSize = 16; // GCM auth tag size
 constexpr auto kMaxSkippedKeys = 1000; // Maximum skipped message keys to store
 constexpr auto kInfoRootKey = "WhisperRatchet"; // Used in HKDF for root keys
 constexpr auto kInfoChainKey = "WhisperMessageKeys"; // Used in HKDF for chain keys
@@ -67,6 +66,31 @@ inline const unsigned char *asConstUChar(const bytes::vector &value) {
     return asConstUChar(bytes::make_span(value));
 }
 
+bool verifyFixedLength(const bytes::const_span &value, size_t expected) {
+    return value.size() == expected;
+}
+
+bool isValidSessionState(const SignalProtocol::SessionState &state) {
+	if (state.rootKey.size() != kAesKeySize) {
+		return false;
+	}
+	if (state.sendingChainKey.size() != kAesKeySize
+		|| state.receivingChainKey.size() != kAesKeySize) {
+		return false;
+	}
+	if (state.dhSendingPublicKey.size() != kDHKeySize
+		|| state.dhSendingPrivateKey.size() != kDHKeySize
+		|| state.dhRemotePublicKey.size() != kDHKeySize) {
+		return false;
+	}
+	for (const auto &skipped : state.skippedMessageKeys) {
+		if (skipped.key.size() != kAesKeySize) {
+			return false;
+		}
+	}
+	return true;
+}
+
 // Helper to create storage paths
 QString signalStoragePath(not_null<Session*> session) {
     const auto basePath = session->local().basePath();
@@ -81,17 +105,43 @@ bool aesEncryptLocal(
         const void *plaintext,
         void *ciphertext,
         int plaintextLen,
+        const void *aad,
+        int aadLen,
         const void *key,
-        const void *iv) {
+        const void *iv,
+        void *tagOut) {
+    if (!plaintext || !ciphertext || !key || !iv || plaintextLen < 0) {
+        return false;
+    }
+
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     if (!ctx) return false;
-    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr,
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return false;
+    }
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, kAesIvSize, nullptr) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return false;
+    }
+    if (EVP_EncryptInit_ex(ctx, nullptr, nullptr,
                            reinterpret_cast<const unsigned char *>(key),
                            reinterpret_cast<const unsigned char *>(iv)) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return false;
     }
     int outLen1 = 0;
+    if (aad && aadLen > 0) {
+        if (EVP_EncryptUpdate(
+                ctx,
+                nullptr,
+                &outLen1,
+                reinterpret_cast<const unsigned char *>(aad),
+                aadLen) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            return false;
+        }
+    }
     if (EVP_EncryptUpdate(ctx,
             reinterpret_cast<unsigned char *>(ciphertext),
             &outLen1,
@@ -107,6 +157,14 @@ bool aesEncryptLocal(
         EVP_CIPHER_CTX_free(ctx);
         return false;
     }
+    if (EVP_CIPHER_CTX_ctrl(
+            ctx,
+            EVP_CTRL_AEAD_GET_TAG,
+            kAesTagSize,
+            reinterpret_cast<unsigned char *>(tagOut)) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return false;
+    }
     EVP_CIPHER_CTX_free(ctx);
     return true;
 }
@@ -115,22 +173,52 @@ bool aesDecryptLocal(
         const void *ciphertext,
         void *plaintext,
         int ciphertextLen,
+        const void *aad,
+        int aadLen,
         const void *key,
-        const void *iv) {
+        const void *iv,
+        const void *tag) {
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     if (!ctx) return false;
-    if (EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr,
+    if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return false;
+    }
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, kAesIvSize, nullptr) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return false;
+    }
+    if (EVP_DecryptInit_ex(ctx, nullptr, nullptr,
                            reinterpret_cast<const unsigned char *>(key),
                            reinterpret_cast<const unsigned char *>(iv)) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return false;
     }
     int outLen1 = 0;
+    if (aad && aadLen > 0) {
+        if (EVP_DecryptUpdate(
+                ctx,
+                nullptr,
+                &outLen1,
+                reinterpret_cast<const unsigned char *>(aad),
+                aadLen) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            return false;
+        }
+    }
     if (EVP_DecryptUpdate(ctx,
             reinterpret_cast<unsigned char *>(plaintext),
             &outLen1,
             reinterpret_cast<const unsigned char *>(ciphertext),
             ciphertextLen) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return false;
+    }
+    if (EVP_CIPHER_CTX_ctrl(
+            ctx,
+            EVP_CTRL_AEAD_SET_TAG,
+            kAesTagSize,
+            const_cast<void *>(tag)) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return false;
     }
@@ -158,7 +246,11 @@ bytes::vector x25519Generate() {
     
     // Get raw private key bytes
     size_t len = kDHKeySize;
-    EVP_PKEY_get_raw_private_key(pkey, asUChar(privateKey), &len);
+    if (EVP_PKEY_get_raw_private_key(pkey, asUChar(privateKey), &len) != 1 || len != privateKey.size()) {
+        EVP_PKEY_free(pkey);
+        LOG(("Signal Protocol Error: Failed to export generated X25519 private key"));
+        return {};
+    }
     EVP_PKEY_free(pkey);
     
     return privateKey;
@@ -166,6 +258,11 @@ bytes::vector x25519Generate() {
 
 bytes::vector x25519PublicFromPrivate(const bytes::const_span &privateKey) {
     auto result = bytes::vector(kDHKeySize);
+
+    if (!verifyFixedLength(privateKey, kDHKeySize)) {
+        LOG(("Signal Protocol Error: X25519 public derivation expects 32-byte private key"));
+        return {};
+    }
     
     // Create private key object
     EVP_PKEY *pkey = EVP_PKEY_new_raw_private_key(
@@ -181,7 +278,11 @@ bytes::vector x25519PublicFromPrivate(const bytes::const_span &privateKey) {
     
     // Get public key
     size_t len = kDHKeySize;
-    EVP_PKEY_get_raw_public_key(pkey, asUChar(result), &len);
+    if (EVP_PKEY_get_raw_public_key(pkey, asUChar(result), &len) != 1 || len != result.size()) {
+        EVP_PKEY_free(pkey);
+        LOG(("Signal Protocol Error: Failed to export X25519 public key"));
+        return {};
+    }
     EVP_PKEY_free(pkey);
 
     return result;
@@ -189,6 +290,11 @@ bytes::vector x25519PublicFromPrivate(const bytes::const_span &privateKey) {
 
 bytes::vector x25519(const bytes::const_span &privateKey, const bytes::const_span &publicKey) {
     auto result = bytes::vector(kDHKeySize);
+
+    if (!verifyFixedLength(privateKey, kDHKeySize) || !verifyFixedLength(publicKey, kDHKeySize)) {
+        LOG(("Signal Protocol Error: X25519 DH expects 32-byte private/public keys"));
+        return {};
+    }
     
     // Create private key object
     EVP_PKEY *privKey = EVP_PKEY_new_raw_private_key(
@@ -244,8 +350,12 @@ bytes::vector x25519(const bytes::const_span &privateKey, const bytes::const_spa
     
     // Derive shared secret
     size_t sharedSecretLen = kDHKeySize;
-    if (EVP_PKEY_derive(ctx, asUChar(result), &sharedSecretLen) <= 0) {
+    if (EVP_PKEY_derive(ctx, asUChar(result), &sharedSecretLen) != 1 || sharedSecretLen != result.size()) {
+        EVP_PKEY_CTX_free(ctx);
+        EVP_PKEY_free(privKey);
+        EVP_PKEY_free(pubKey);
         LOG(("Signal Protocol Error: Failed to derive X25519 shared secret"));
+        return {};
     }
     
     // Cleanup
@@ -264,15 +374,7 @@ SignalProtocol::SignalProtocol(not_null<Session*> session)
     _localDevice.identifier = QString::number(session->userId().bare) + "_device";
     _localDevice.registrationId = base::RandomValue<uint64>();
 
-    // Initialize TSM integration
-    _tsmIntegration = std::make_unique<SignalTSMIntegration>(session);
-    auto tsmResult = _tsmIntegration->initializeWithSignalProtocol();
-    if (tsmResult == TSMResult::Success) {
-        _tsmEnabled = true;
-        LOG(("Signal Protocol: TSM integration enabled successfully"));
     } else {
-        LOG(("Signal Protocol: TSM integration failed, using software fallback"));
-        _tsmEnabled = false;
     }
     
     // Generate identity keys if none exist
@@ -436,25 +538,17 @@ bytes::vector SignalProtocol::encryptMessage(
     const bytes::const_span &plaintext,
     not_null<PeerData*> peer,
     MessageMetadata &outMetadata) {
-
     if (!hasSession(peer)) {
         LOG(("Signal Protocol: No session for peer %1").arg(peer->id.value));
         return {};
     }
-
-    // Check for CAC-verified peer trust encryption
-    const auto trustParams = Core::PeerTrustEncryption::GetEncryptionParams(peer->id.value);
-    if (trustParams.verified && trustParams.useTPM) {
-        LOG(("Signal Protocol: Using %1 with TPM backing for CAC-verified peer %2")
-            .arg(trustParams.cipher)
-            .arg(peer->id.value));
-        // TODO: Integrate TPM-backed encryption with specified cipher
-        // For now, fall through to standard encryption
-        // Future: Call TSM interface for hardware-backed key generation
-    }
-
-    // Get the current session
-    auto session = getSession(peer);
+    
+	// Get the current session
+	auto session = getSession(peer);
+	if (!isValidSessionState(session)) {
+		LOG(("Signal Protocol: Invalid session state for peer %1").arg(peer->id.value));
+		return {};
+	}
     
     // Update last used timestamp
     session.lastUsedAt = base::unixtime::now();
@@ -475,33 +569,37 @@ bytes::vector SignalProtocol::encryptMessage(
     // Create random IV
     outMetadata.iv = generateRandomBytes(kAesIvSize);
     
-    // Encrypt plaintext using AES-256-CBC
-    bytes::vector ciphertext(plaintext.size() + 32); // Allocate space for padding
+    // Encrypt plaintext using AES-256-GCM
+    bytes::vector ciphertext(plaintext.size() + kAesTagSize);
 
     // Prepare AES key and IV
     bytes::vector aesKey(kAesKeySize);
     bytes::vector aesIV(kAesIvSize);
     bytes::copy(bytes::make_span(aesKey), bytes::make_span(messageKey));
     bytes::copy(bytes::make_span(aesIV), bytes::make_span(outMetadata.iv));
+    bytes::vector aad(sizeof(outMetadata.messageCounter) + sizeof(outMetadata.timestamp));
+    std::memcpy(aad.data(), &outMetadata.messageCounter, sizeof(outMetadata.messageCounter));
+    std::memcpy(
+        aad.data() + sizeof(outMetadata.messageCounter),
+        &outMetadata.timestamp,
+        sizeof(outMetadata.timestamp));
 
-    // Ensure plaintext length is a multiple of 16 (AES block size)
-    auto plainCopy = bytes::make_vector(plaintext);
-    int padding = 16 - (plainCopy.size() % 16);
-    plainCopy.resize(plainCopy.size() + padding, bytes::type(padding));
-
-    // Encrypt
+    bytes::vector tag(kAesTagSize);
     if (!aesEncryptLocal(
-            reinterpret_cast<const void*>(plainCopy.data()),
+            reinterpret_cast<const void*>(plaintext.data()),
             reinterpret_cast<void*>(ciphertext.data()),
-            plainCopy.size(),
+            plaintext.size(),
+            reinterpret_cast<const void*>(aad.data()),
+            aad.size(),
             aesKey.data(),
-            aesIV.data())) {
+            aesIV.data(),
+            tag.data())) {
         LOG(("Signal Protocol Error: AES encryption failed"));
         return {};
     }
 
-    // Resize to actual ciphertext size
-    ciphertext.resize(plainCopy.size());
+    ciphertext.resize(plaintext.size());
+    ciphertext.insert(ciphertext.end(), tag.begin(), tag.end());
     
     // Update the session
     updateSession(peer, session);
@@ -520,13 +618,26 @@ bytes::vector SignalProtocol::decryptMessage(
         return {};
     }
     
-    // Get the current session
-    auto session = getSession(peer);
+	// Get the current session
+	auto session = getSession(peer);
+	if (!isValidSessionState(session)) {
+		LOG(("Signal Protocol: Invalid session state for peer %1").arg(peer->id.value));
+		return {};
+	}
     
-    // Update last used timestamp
-    session.lastUsedAt = base::unixtime::now();
+	// Update last used timestamp
+	session.lastUsedAt = base::unixtime::now();
+
+	if (metadata.iv.size() != kAesIvSize) {
+		LOG(("Signal Protocol: Invalid IV size in metadata"));
+		return {};
+	}
     
-    bytes::vector plaintext(ciphertext.size());
+    if (ciphertext.size() < kAesTagSize) {
+        LOG(("Signal Protocol: Ciphertext too short for auth tag"));
+        return {};
+    }
+    bytes::vector plaintext(ciphertext.size() - kAesTagSize);
     bytes::vector messageKey;
     
     // Check if this is the expected message in sequence
@@ -599,28 +710,30 @@ bytes::vector SignalProtocol::decryptMessage(
         }
     }
     
-    // Decrypt using AES-256-CBC
+    // Decrypt using AES-256-GCM
     bytes::vector aesKey(kAesKeySize);
     bytes::vector aesIV(kAesIvSize);
     bytes::copy(bytes::make_span(aesKey), bytes::make_span(messageKey));
     bytes::copy(bytes::make_span(aesIV), bytes::make_span(metadata.iv));
 
+    bytes::vector aad(sizeof(metadata.messageCounter) + sizeof(metadata.timestamp));
+    std::memcpy(aad.data(), &metadata.messageCounter, sizeof(metadata.messageCounter));
+    std::memcpy(
+        aad.data() + sizeof(metadata.messageCounter),
+        &metadata.timestamp,
+        sizeof(metadata.timestamp));
+    const auto cipherLen = ciphertext.size() - kAesTagSize;
     if (!aesDecryptLocal(
             reinterpret_cast<const void*>(ciphertext.data()),
             reinterpret_cast<void*>(plaintext.data()),
-            ciphertext.size(),
+            cipherLen,
+            reinterpret_cast<const void*>(aad.data()),
+            aad.size(),
             aesKey.data(),
-            aesIV.data())) {
+            aesIV.data(),
+            reinterpret_cast<const void*>(ciphertext.data() + cipherLen))) {
         LOG(("Signal Protocol Error: AES decryption failed"));
         return {};
-    }
-    
-    // Remove padding
-    if (!plaintext.empty()) {
-        auto paddingSize = static_cast<int>(plaintext.back());
-        if (paddingSize > 0 && paddingSize <= 16 && paddingSize <= plaintext.size()) {
-            plaintext.resize(plaintext.size() - paddingSize);
-        }
     }
     
     // Update session
@@ -653,7 +766,7 @@ bytes::vector SignalProtocol::deriveKey(
     }
     
     // Set HKDF mode to expand only (we're using the input directly as PRK)
-    if (EVP_PKEY_CTX_set_hkdf_mode(pctx, EVP_KDF_HKDF_MODE_EXPAND_ONLY) <= 0) {
+    if (EVP_PKEY_CTX_set_hkdf_mode(pctx, EVP_PKEY_HKDEF_MODE_EXPAND_ONLY) <= 0) {
         EVP_PKEY_CTX_free(pctx);
         LOG(("Signal Protocol Error: Failed to set HKDF mode"));
         return output;
@@ -842,7 +955,7 @@ HistoryItem* SignalProtocol::loadEncryptedHistoryLocal(
     // Reconstruct the message
     // Note: Direct History API access requires full definition in header
     // Using Session::addNewLocalMessage instead for encrypted content
-    return nullptr;  // Placeholder: encrypted message storage handled via session
+    return nullptr;  // Encrypted message storage is handled through the session path.
 }
 
 // Implementation for other methods would follow...
@@ -927,7 +1040,8 @@ void SignalProtocol::createSession(not_null<PeerData*> peer, const KeyBundle &re
 bool SignalProtocol::hasSession(not_null<PeerData*> peer) const {
     auto it = _peerKeyData.find(peer->id);
     if (it != _peerKeyData.end()) {
-        return !it->second.sessions.empty();
+        return !it->second.sessions.empty()
+			&& isValidSessionState(it->second.sessions.front());
     }
     
     // Try to load from storage
@@ -935,7 +1049,10 @@ bool SignalProtocol::hasSession(not_null<PeerData*> peer) const {
     auto storagePath = signalStoragePath(_session) + peerDir;
     auto sessionFile = storagePath + "/session.json";
     
-    return QFile::exists(sessionFile);
+    if (!QFile::exists(sessionFile)) {
+		return false;
+	}
+	return isValidSessionState(const_cast<SignalProtocol*>(this)->loadSession(peer));
 }
 
 void SignalProtocol::updateSession(not_null<PeerData*> peer, const SessionState &state) {
@@ -1527,10 +1644,14 @@ SignalProtocol::SessionState SignalProtocol::loadSession(not_null<PeerData*> pee
         return state; // Return empty state on integrity failure
     }
 
-    // Deserialize session data
-    state = deserializeSession(sessionData);
+	// Deserialize session data
+	state = deserializeSession(sessionData);
+	if (!isValidSessionState(state)) {
+		LOG(("Signal Protocol Error: Invalid session format for peer %1").arg(peer->id.value));
+		return {};
+	}
 
-    return state;
+	return state;
 }
 
 void SignalProtocol::registerRemoteKeyBundle(not_null<PeerData*> peer, const KeyBundle &bundle) {
@@ -1968,61 +2089,6 @@ std::pair<bytes::vector, bytes::vector> SignalProtocol::generateEd25519KeyPair()
     publicKey.resize(pubKeyLen);
 
     return {privateKey, publicKey};
-}
-
-// TSM Integration Methods
-void SignalProtocol::enableTSMIntegration(bool enabled) {
-    if (!_tsmIntegration) {
-        LOG(("Signal Protocol Error: TSM integration not initialized"));
-        return;
-    }
-
-    if (enabled && !_tsmEnabled) {
-        // Enable TSM integration
-        auto result = _tsmIntegration->initializeWithSignalProtocol();
-        if (result == TSMResult::Success) {
-            _tsmEnabled = true;
-            LOG(("Signal Protocol: TSM integration enabled"));
-
-            // Generate hardware-backed identity key if none exists
-            if (_tsmIntegration->isHardwareBackedSecurity()) {
-                auto identityResult = _tsmIntegration->generateSignalIdentityKeyPair();
-                if (identityResult.has_value()) {
-                    // Update identity key with hardware-backed version
-                    _identityKeyPublic = identityResult.value();
-                    LOG(("Signal Protocol: Hardware-backed identity key generated"));
-                    saveIdentityKeys();
-                }
-            }
-        } else {
-            LOG(("Signal Protocol Warning: Failed to enable TSM integration, error: %1").arg((int)result));
-        }
-    } else if (!enabled && _tsmEnabled) {
-        // Disable TSM integration - fall back to software
-        _tsmEnabled = false;
-        LOG(("Signal Protocol: TSM integration disabled, using software fallback"));
-    }
-}
-
-bool SignalProtocol::isTSMEnabled() const {
-    return _tsmEnabled && _tsmIntegration && _tsmIntegration->isHardwareBackedSecurity();
-}
-
-TSMPlatform SignalProtocol::getTSMPlatform() const {
-    if (!_tsmIntegration) {
-        return TSMPlatform::SoftwareFallback;
-    }
-
-    auto capabilities = _tsmIntegration->getTSMCapabilities();
-    return capabilities.platform;
-}
-
-TSMCapabilities SignalProtocol::getTSMCapabilities() const {
-    if (!_tsmIntegration) {
-        return TSMCapabilities{};
-    }
-
-    return _tsmIntegration->getTSMCapabilities();
 }
 
 // Session serialization implementation

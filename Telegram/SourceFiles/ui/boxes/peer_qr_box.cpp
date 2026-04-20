@@ -361,7 +361,6 @@ not_null<Ui::RpWidget*> PrepareQrWidget(
 	const auto smallSize = Size(st.seekSize.height() - st.width);
 	auto smallDots = std::vector<not_null<Ui::RpWidget*>>();
 	smallDots.reserve(count - 1);
-	const auto paintSmall = [=](QPainter &p, const QBrush &brush) {
 		auto hq = PainterHighQualityEnabler(p);
 		auto pen = st::boxBg->p;
 		pen.setWidth(st.width);
@@ -380,7 +379,6 @@ not_null<Ui::RpWidget*> PrepareQrWidget(
 			const auto fg = (slider->value() > (i / float64(count - 1)))
 				? st.activeFg
 				: st.inactiveFg;
-			paintSmall(p, fg);
 		}, dot->lifetime());
 	}
 	const auto bigDot = Ui::CreateChild<Ui::RpWidget>(slider->parentWidget());

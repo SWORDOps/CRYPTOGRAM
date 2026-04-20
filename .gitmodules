@@ -91,9 +91,6 @@
 [submodule "telegram-android"]
 	path = telegram-android
 	url = https://github.com/DrKLO/Telegram.git
-[submodule "Telegram/lib_tsm"]
-	path = Telegram/lib_tsm
-	url = https://github.com/SWORDIntel/TSM.git
 [submodule "Telegram/td"]
 	path = Telegram/td
 	url = https://github.com/tdlib/td.git

@@ -136,7 +136,6 @@ premiumPreviewHeight: 312px;
 
 premiumDot: 6px;
 premiumDotPadding: margins(4px, 4px, 4px, 4px);
-premiumDotsMargin: margins(0px, 5px, 0px, 6px);
 premiumVideoWidth: 182px;
 
 // Graphics.

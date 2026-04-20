@@ -557,11 +557,6 @@ public class UserConfig extends BaseController {
     }
 
     public boolean isPremium() {
-        // CRYPTOGRAM: Override premium status for testing
-        if (SharedConfig.cryptogramPremiumOverride) {
-            return true;
-        }
-
         TLRPC.User user = currentUser;
         if (user == null) {
             return false;

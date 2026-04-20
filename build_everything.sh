@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ################################################################################
-# CRYPTOGRAM + SWORDCOMM - Complete Build Orchestration
-# Builds CRYPTOGRAM Desktop (C++/Qt) and SWORDCOMM Android (Kotlin/Gradle)
+# CRYPTOGRAM Complete Build Orchestration
+# Builds CRYPTOGRAM Desktop (C++/Qt) and CRYPTOGRAM Android (Gradle/Kotlin)
 ################################################################################
 
 set -e
@@ -15,10 +15,11 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Logging
 BUILD_DATE=$(date +%Y%m%d_%H%M%S)
-MASTER_LOG="/tmp/cryptogram_swordcomm_build_$BUILD_DATE.log"
+MASTER_LOG="/tmp/cryptogram_build_$BUILD_DATE.log"
 
 # Functions
 print_header() {
@@ -63,8 +64,8 @@ show_menu() {
     echo "What would you like to build?"
     echo ""
     echo "  1) CRYPTOGRAM Desktop (C++/Qt) only"
-    echo "  2) SWORDCOMM Android (Kotlin/Gradle) only"
-    echo "  3) Both CRYPTOGRAM and SWORDCOMM"
+echo "  2) CRYPTOGRAM Android (Gradle/Kotlin) only"
+echo "  3) Both CRYPTOGRAM Desktop and Android"
     echo "  4) Skip builds (just verify setup)"
     echo ""
     read -p "Enter choice (1-4): " choice
@@ -76,15 +77,14 @@ show_menu() {
 ################################################################################
 
 clear
-print_header "TSM-Integrated Dual Build System"
-echo "CRYPTOGRAM Desktop + SWORDCOMM Android"
+echo "CRYPTOGRAM Desktop + CRYPTOGRAM Android"
 
 echo "Start time: $(get_time)"
 echo "Master log: $MASTER_LOG"
 echo ""
 echo "This script can build:"
 echo "  • CRYPTOGRAM Desktop (Linux/macOS)"
-echo "  • SWORDCOMM Android (requires Android SDK/Gradle)"
+echo "  • CRYPTOGRAM Android (requires Android SDK/Gradle)"
 echo "  • Both together"
 echo ""
 
@@ -96,10 +96,10 @@ case $choice in
         BUILDS=("CRYPTOGRAM")
         ;;
     2)
-        BUILDS=("SWORDCOMM")
+        BUILDS=("CRYPTOGRAM_ANDROID")
         ;;
     3)
-        BUILDS=("CRYPTOGRAM" "SWORDCOMM")
+        BUILDS=("CRYPTOGRAM" "CRYPTOGRAM_ANDROID")
         ;;
     4)
         BUILDS=()
@@ -121,7 +121,7 @@ echo "Master log: $MASTER_LOG"
 echo "════════════════════════════════════════════════════════════════"
 echo ""
 
-CRYPTOGRAM_ROOT="/home/user/CRYPTOGRAM"
+CRYPTOGRAM_ROOT="${CRYPTOGRAM_ROOT:-$SCRIPT_DIR}"
 
 ################################################################################
 # PRE-BUILD VERIFICATION
@@ -146,9 +146,9 @@ else
 fi
 
 if [ -f "$CRYPTOGRAM_ROOT/build_android.sh" ]; then
-    print_info "SWORDCOMM build script found"
+    print_info "CRYPTOGRAM Android build script found"
 else
-    print_warning "SWORDCOMM build script not found"
+    print_warning "CRYPTOGRAM Android build script not found"
 fi
 
 # Check system resources
@@ -197,45 +197,45 @@ for build in "${BUILDS[@]}"; do
             fi
             ;;
 
-        SWORDCOMM)
-            print_section "Building SWORDCOMM Android (Kotlin/Gradle)"
+        CRYPTOGRAM_ANDROID)
+            print_section "Building CRYPTOGRAM Android (Gradle/Kotlin)"
             echo ""
 
-            # Check for SWORDCOMM directory
+            # Check for Android project directory
             # Try common locations
-            SWORDCOMM_PATHS=(
-                "/home/user/SWORDCOMM"
-                "/home/user/Documents/SWORDCOMM"
-                "$(pwd)/SWORDCOMM"
-                "$HOME/molly"
-                "/molly"
+            ANDROID_PATHS=(
+                "$CRYPTOGRAM_ROOT/telegram-android"
+                "$(pwd)/telegram-android"
+                "$HOME/telegram-android"
+                "$HOME/Telegram-Android"
+                "$HOME/CRYPTOGRAM-android"
             )
 
-            SWORDCOMM_ROOT=""
-            for path in "${SWORDCOMM_PATHS[@]}"; do
+            ANDROID_ROOT=""
+            for path in "${ANDROID_PATHS[@]}"; do
                 if [ -d "$path" ] && ([ -f "$path/build.gradle.kts" ] || [ -f "$path/build.gradle" ]); then
-                    SWORDCOMM_ROOT="$path"
+                    ANDROID_ROOT="$path"
                     break
                 fi
             done
 
-            if [ -z "$SWORDCOMM_ROOT" ]; then
-                print_error "SWORDCOMM directory not found"
+            if [ -z "$ANDROID_ROOT" ]; then
+                print_error "CRYPTOGRAM Android directory not found"
                 echo ""
                 echo "Checked locations:"
-                for path in "${SWORDCOMM_PATHS[@]}"; do
+                for path in "${ANDROID_PATHS[@]}"; do
                     echo "  • $path"
                 done
                 echo ""
-                print_progress "Please specify SWORDCOMM path:"
-                read -p "Enter SWORDCOMM path: " SWORDCOMM_ROOT
+                print_progress "Please specify CRYPTOGRAM Android path:"
+                read -p "Enter Android project path: " ANDROID_ROOT
             fi
 
-            if [ ! -d "$SWORDCOMM_ROOT" ]; then
-                fail "SWORDCOMM not found at: $SWORDCOMM_ROOT"
+            if [ ! -d "$ANDROID_ROOT" ]; then
+                fail "CRYPTOGRAM Android project not found at: $ANDROID_ROOT"
             fi
 
-            print_info "SWORDCOMM found at: $SWORDCOMM_ROOT"
+            print_info "CRYPTOGRAM Android found at: $ANDROID_ROOT"
             echo ""
             print_progress "Configure signing (optional):"
             echo ""
@@ -270,14 +270,14 @@ for build in "${BUILDS[@]}"; do
 
             START_ANDROID=$(date +%s)
 
-            if bash "$CRYPTOGRAM_ROOT/build_android.sh" "$SWORDCOMM_ROOT" 2>&1; then
+            if bash "$CRYPTOGRAM_ROOT/build_android.sh" "$ANDROID_ROOT" 2>&1; then
                 END_ANDROID=$(date +%s)
                 ANDROID_TIME=$((END_ANDROID - START_ANDROID))
-                print_info "SWORDCOMM build successful!"
+                print_info "CRYPTOGRAM Android build successful!"
                 echo ""
                 echo "Build time: $((ANDROID_TIME / 60))m $((ANDROID_TIME % 60))s"
             else
-                print_error "SWORDCOMM build FAILED"
+                print_error "CRYPTOGRAM Android build FAILED"
                 fail "See log above for details"
             fi
             ;;
@@ -311,8 +311,8 @@ if [[ " ${BUILDS[@]} " =~ " CRYPTOGRAM " ]]; then
     echo ""
 fi
 
-if [[ " ${BUILDS[@]} " =~ " SWORDCOMM " ]]; then
-    echo "SWORDCOMM Android:"
+if [[ " ${BUILDS[@]} " =~ " CRYPTOGRAM_ANDROID " ]]; then
+    echo "CRYPTOGRAM Android:"
     echo "  Status: ✓ Complete"
     echo "  See individual log for artifact location"
     echo ""
@@ -329,17 +329,14 @@ if [[ " ${BUILDS[@]} " =~ " CRYPTOGRAM " ]]; then
     echo ""
 fi
 
-if [[ " ${BUILDS[@]} " =~ " SWORDCOMM " ]]; then
-    echo "SWORDCOMM Android:"
+if [[ " ${BUILDS[@]} " =~ " CRYPTOGRAM_ANDROID " ]]; then
+    echo "CRYPTOGRAM Android:"
     echo "  Install: adb install build/outputs/apk/debug/app-debug.apk"
     echo "  Or upload AAB to Play Store"
     echo ""
 fi
 
-echo "Combined with TSM:"
 echo "  1. cd $CRYPTOGRAM_ROOT"
-echo "  2. source .tsm_cryptogram_env.sh"
-echo "  3. python -m Telegram.lib_tsm.mock_server.server &"
 echo "  4. ./build_release/bin/Telegram"
 echo ""
 

@@ -473,7 +473,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private boolean canSearchMembers;
 
     private boolean loadingUsers;
-    private LongSparseArray<TLRPC.ChatParticipant> participantsMap = new LongSparseArray<>();
     private boolean usersEndReached;
 
     private long banFromGroup;
@@ -2111,7 +2110,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
             userInfo = getMessagesController().getUserFull(userId);
             getMessagesController().loadFullUser(getMessagesController().getUser(userId), classGuid, true);
-            participantsMap = null;
 
             if (UserObject.isUserSelf(user)) {
                 imageUpdater = new ImageUpdater(true, ImageUpdater.FOR_TYPE_USER, true);
@@ -2149,7 +2147,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (currentChat.megagroup) {
                 getChannelParticipants(true);
             } else {
-                participantsMap = null;
             }
             getNotificationCenter().addObserver(this, NotificationCenter.chatInfoDidLoad);
             getNotificationCenter().addObserver(this, NotificationCenter.chatOnlineCountDidLoad);
@@ -5209,7 +5206,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         };
         avatarImage.createBlurEffect(getActionsExtraHeight());
         avatarImage.getImageReceiver().setAllowDecodeSingleFrame(true);
-        avatarImage.setRoundRadiusForExpand(getSmallAvatarRoundRadius());
         avatarImage.setPivotX(0);
         avatarImage.setPivotY(0);
         avatarContainer.addView(avatarImage, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
@@ -5639,7 +5635,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     fwdRestrictedHint.hide();
                 }
                 checkListViewScroll();
-                if (participantsMap != null && !usersEndReached && layoutManager.findLastVisibleItemPosition() > membersEndRow - 8) {
                     getChannelParticipants(false);
                 }
                 sharedMediaLayout.setPinnedToTop(sharedMediaLayout.getY() <= 0);
@@ -5921,7 +5916,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void updateAvatarRoundRadius() {
-        avatarImage.setRoundRadiusForExpand((int) AndroidUtilities.lerp(getSmallAvatarRoundRadius(), 0f, currentExpandAnimatorValue));
     }
 
     private void createFloatingActionButton(Context context) {
@@ -6247,7 +6241,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         avatarContainer.setScaleX(avatarScale);
         avatarContainer.setScaleY(avatarScale);
         avatarContainer.setTranslationY(lerp((float) Math.ceil(avatarY), 0f, value));
-        avatarImage.setRoundRadiusForExpand((int) AndroidUtilities.lerp(getSmallAvatarRoundRadius(), 0f, value));
         avatarImage.setBlurRadiusProgressForExpand(value, avatarScale, isPulledDown);
         if (storyView != null) {
             storyView.setExpandProgress(value);
@@ -6407,7 +6400,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         avatarContainer.setTranslationX(avatarX);
     }
 
-    private int getSmallAvatarRoundRadius() {
         if (chatId != 0) {
             TLRPC.Chat chatLocal = getMessagesController().getChat(chatId);
             if (ChatObject.isForum(chatLocal)) {
@@ -7694,16 +7686,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void getChannelParticipants(boolean reload) {
-        if (loadingUsers || participantsMap == null || chatInfo == null) {
             return;
         }
         loadingUsers = true;
-        final int delay = participantsMap.size() != 0 && reload ? 300 : 0;
 
         final TLRPC.TL_channels_getParticipants req = new TLRPC.TL_channels_getParticipants();
         req.channel = getMessagesController().getInputChannel(chatId);
         req.filter = new TLRPC.TL_channelParticipantsRecent();
-        req.offset = reload ? 0 : participantsMap.size();
         req.limit = 200;
         int reqId = getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> getNotificationCenter().doOnIdle(() -> {
             if (error == null) {
@@ -7714,7 +7703,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     usersEndReached = true;
                 }
                 if (req.offset == 0) {
-                    participantsMap.clear();
                     chatInfo.participants = new TLRPC.TL_chatParticipants();
                     getMessagesStorage().putUsersAndChats(res.users, res.chats, true, true);
                     getMessagesStorage().updateChannelUsers(chatId, res.participants);
@@ -7725,12 +7713,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     participant.inviter_id = participant.channelParticipant.inviter_id;
                     participant.user_id = MessageObject.getPeerId(participant.channelParticipant.peer);
                     participant.date = participant.channelParticipant.date;
-                    if (participantsMap.indexOfKey(participant.user_id) < 0) {
                         if (chatInfo.participants == null) {
                             chatInfo.participants = new TLRPC.TL_chatParticipants();
                         }
                         chatInfo.participants.participants.add(participant);
-                        participantsMap.put(participant.user_id, participant);
                     }
                 }
             }
@@ -8678,7 +8664,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     giftsView.setExpandProgress(1f);
                 }
 
-                avatarImage.setRoundRadiusForExpand((int) AndroidUtilities.lerp(getSmallAvatarRoundRadius(), 0f, avatarAnimationProgress));
                 avatarContainer.setTranslationX(AndroidUtilities.lerp(avX, 0, avatarAnimationProgress));
                 avatarContainer.setTranslationY(AndroidUtilities.lerp((float) Math.ceil(avY), 0f, avatarAnimationProgress));
                 float extra = (avatarContainer.getMeasuredWidth() - dp(42)) * (avatarScale * 100 / 42);
@@ -10379,7 +10364,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (chatInfo instanceof TLRPC.TL_channelFull && chatInfo.participants != null) {
             for (int a = 0; a < chatInfo.participants.participants.size(); a++) {
                 TLRPC.ChatParticipant chatParticipant = chatInfo.participants.participants.get(a);
-                participantsMap.put(chatParticipant.user_id, chatParticipant);
             }
         }
     }
@@ -15284,7 +15268,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 LinearSmoothScrollerCustom linearSmoothScroller = new LinearSmoothScrollerCustom(getContext(), LinearSmoothScrollerCustom.POSITION_TOP, .6f);
                 linearSmoothScroller.setTargetPosition(sharedMediaRow);
                 linearSmoothScroller.setOffset(-listView.getPaddingTop());
-                layoutManager.startSmoothScroll(linearSmoothScroller);
             } else {
                 layoutManager.scrollToPositionWithOffset(sharedMediaRow, -listView.getPaddingTop());
             }

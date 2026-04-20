@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ################################################################################
-# SWORDCOMM/CRYPTOGRAM Android APK Build Script
+# CRYPTOGRAM Android APK Build Script
 # Focused build script for Android APK generation
 ################################################################################
 
@@ -119,12 +119,8 @@ find_android_project() {
         "$PWD/telegram-android"
         "$HOME/telegram-android"
         "$HOME/Telegram-Android"
-        "$HOME/SWORDCOMM"
-        "$HOME/Documents/SWORDCOMM"
         "$HOME/CRYPTOGRAM-android"
         "$HOME/AndroidProjects/telegram-android"
-        "$HOME/molly"
-        "/molly"
     )
 
     for path in "${search_paths[@]}"; do
@@ -148,7 +144,7 @@ START_TIME=$(date +%s)
 if [ -t 1 ] && [ -n "${TERM:-}" ] && command -v clear >/dev/null 2>&1; then
     clear || true
 fi
-print_header "CRYPTOGRAM/SWORDCOMM Android APK Build"
+print_header "CRYPTOGRAM Android APK Build"
 
 echo "Configuration:"
 echo "  Build variant: $BUILD_VARIANT"
@@ -188,12 +184,8 @@ else
     echo "  • $PWD/telegram-android"
     echo "  • $HOME/telegram-android"
     echo "  • $HOME/Telegram-Android"
-    echo "  • $HOME/SWORDCOMM"
-    echo "  • $HOME/Documents/SWORDCOMM"
     echo "  • $HOME/CRYPTOGRAM-android"
     echo "  • $HOME/AndroidProjects/telegram-android"
-    echo "  • $HOME/molly"
-    echo "  • /molly"
     echo ""
     usage
     fail "No external Android Gradle project was provided or discovered"

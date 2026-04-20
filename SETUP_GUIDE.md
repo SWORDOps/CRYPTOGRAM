@@ -1,6 +1,5 @@
 # CRYPTOGRAM Setup & Build Guide
 
-Complete guide for setting up and compiling CRYPTOGRAM with TSM integration on Debian/Linux.
 
 ## Quick Start (Automated)
 
@@ -75,7 +74,6 @@ Run the automated setup script:
    - Python 3 development headers
    - Build acceleration tools (ccache, ninja)
 
-3. **Installs Python Dependencies** (for TSM)
    - grpcio - gRPC framework
    - cryptography - Encryption libraries
    - pyyaml - Configuration files
@@ -367,9 +365,7 @@ make -j$(nproc)
 ./build.sh --debug --verbose
 ```
 
-## TSM Integration
 
-CRYPTOGRAM includes TSM (Telegram Session Manager) with:
 
 - **Hardware Security**: YubiKey 5 Series support
 - **Session Management**: Multi-account switching
@@ -377,15 +373,9 @@ CRYPTOGRAM includes TSM (Telegram Session Manager) with:
 - **Mobile Sync**: iOS/Android integration
 - **gRPC API**: Remote session control
 
-### Verify TSM Integration
 
 ```bash
-# Check TSM module in build
-grep -r "lib_tsm" build_release/CMakeFiles/
 
-# Test TSM Python modules
-python3 -c "import sys; sys.path.insert(0, './Telegram/lib_tsm'); \
-from transport import advanced_transport_core; print('✓ TSM loaded')"
 ```
 
 ## Docker Build (Alternative)
@@ -412,7 +402,6 @@ This handles all dependencies automatically.
 ## Additional Resources
 
 - **CRYPTOGRAM Documentation**: See `docs/` directory
-- **TSM Integration**: See `Telegram/lib_tsm/README.md`
 - **Build System**: See `CMakeLists.txt` and `Telegram/cmake/`
 - **GitHub Repository**: https://github.com/SWORDOps/CRYPTOGRAM
 
@@ -429,5 +418,4 @@ If you encounter issues:
 ---
 
 **Last Updated**: November 2024
-**For**: CRYPTOGRAM with TSM Integration
 **Tested on**: Debian 6.17, GCC 14, GCC 15

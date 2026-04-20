@@ -602,7 +602,6 @@ void Row::paintUserpic(
 		: (storiesPeer && storiesPeer->hasUnreadStories())
 		? 1
 		: 0;
-	const auto limit = Ui::kOutlineSegmentsMax;
 	const auto storiesCount = std::min(storiesCountReal, limit);
 	const auto storiesUnreadCount = std::min(storiesUnreadCountReal, limit);
 	if (_cornerBadgeUserpic->frame.size() != frameSize) {

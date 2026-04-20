@@ -1,6 +1,10 @@
+## OPSEC VALIDATION NOTE
+
+This document may contain historical implementation claims. Treat all security capabilities as **partial or experimental** unless corroborated by current runtime validation in `docs/status/FINAL_STATUS.md` and `docs/features/android-features.md`.
+
 # ✅ CRYPTOGRAM UI Indicators - COMPLETE
 
-**Status**: Visual indicators fully implemented!
+**Status**: Visual indicators partially implemented!
 
 ---
 

@@ -105,16 +105,13 @@ int Bubble::countMaxWidth(int maxPossibleCounter) const {
 	numbers.setDisabledMonospace(true);
 	numbers.setDuration(0);
 	const auto textsZero = _textFactory(0);
-	const auto textsMax = _textFactory(maxPossibleCounter);
 	numbers.setText(textsZero.counter, 0);
-	numbers.setText(textsMax.counter, maxPossibleCounter);
 	numbers.finishAnimating();
 	return filledWidth()
 		+ numbers.maxWidth()
 		+ (_additional.isEmpty()
 			? 0
 			: (_st.additionalSkip
-				+ _st.additionalStyle.font->width(textsMax.additional)));
 }
 
 int Bubble::countTargetWidth(int targetCounter) const {

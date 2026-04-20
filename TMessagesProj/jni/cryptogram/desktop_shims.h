@@ -3,6 +3,7 @@
 #include "qt_shims.h"
 #include <memory>
 #include <cstdint>
+#include <unordered_map>
 
 // Base types
 using uint32 = uint32_t;
@@ -68,7 +69,17 @@ namespace Data {
     class PeerData {
     public:
         PeerId id;
-        static PeerData* from(Session* s, PeerId id) { return nullptr; }
+        explicit PeerData(PeerId peerId) : id(peerId) {}
+
+        static PeerData* from(Session* s, PeerId peerId) {
+            (void)s;
+            static std::unordered_map<uint64, std::unique_ptr<PeerData>> peers;
+            auto &entry = peers[peerId.value];
+            if (!entry) {
+                entry = std::make_unique<PeerData>(peerId);
+            }
+            return entry.get();
+        }
     };
 
     struct EntityType {};

@@ -877,7 +877,6 @@ void AddBoostsUnrestrictLabels(not_null<Ui::VerticalLayout*> container) {
 		object_ptr<Ui::FixedHeightWidget>(container, st::normalFont->height),
 		st::slowmodeLabelsMargin);
 	const auto one = Ui::Text::IconEmoji(&st::boostMessageIcon);
-	const auto many = Ui::Text::IconEmoji(&st::boostsMessageIcon);
 	for (auto i = 0; i != kBoostsUnrestrictValues; ++i) {
 		const auto label = Ui::CreateChild<Ui::FlatLabel>(
 			labels,

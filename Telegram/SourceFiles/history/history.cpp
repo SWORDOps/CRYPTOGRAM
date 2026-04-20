@@ -90,8 +90,6 @@ using UpdateFlag = Data::HistoryUpdate::Flag;
 
 [[nodiscard]] Dialogs::UnreadState AdjustedForumUnreadState(
 		Dialogs::UnreadState state) {
-	const auto allMuted = (state.chats == state.chatsMuted);
-	state.chatsMuted = (state.chats && allMuted) ? 1 : 0;
 	state.chats = state.chats ? 1 : 0;
 	return state;
 }
@@ -300,11 +298,9 @@ void History::setDraft(
 	}
 }
 
-const Data::HistoryDrafts &History::draftsMap() const {
 	return _drafts;
 }
 
-void History::setDraftsMap(Data::HistoryDrafts &&map) {
 	for (auto &[key, draft] : _drafts) {
 		map[key] = std::move(draft);
 	}
@@ -2477,7 +2473,6 @@ Dialogs::UnreadState History::computeUnreadState() const {
 	result.mentions = unreadMentions().has() ? 1 : 0;
 	result.reactions = unreadReactions().has() ? 1 : 0;
 	result.messagesMuted = muted ? result.messages : 0;
-	result.chatsMuted = muted ? result.chats : 0;
 	result.marksMuted = muted ? result.marks : 0;
 	result.reactionsMuted = muted ? result.reactions : 0;
 	result.known = _unreadCount.has_value();
@@ -2486,7 +2481,6 @@ Dialogs::UnreadState History::computeUnreadState() const {
 
 Dialogs::UnreadState History::withMyMuted(Dialogs::UnreadState state) const {
 	if (muted()) {
-		state.chatsMuted = state.chats;
 		state.marksMuted = state.marks;
 		state.messagesMuted = state.messages;
 		state.reactionsMuted = state.reactions;

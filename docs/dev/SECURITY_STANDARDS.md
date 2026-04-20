@@ -8,7 +8,7 @@
 
 ## 🔒 Executive Summary
 
-CRYPTOGRAM implements **NIST-approved post-quantum cryptography** combined with battle-tested classical algorithms to provide **quantum-resistant security** for all communications.
+CRYPTOGRAM implements **NIST-approved post-quantum cryptography** combined with documented classical algorithms to provide **quantum-resistant security** for all communications.
 
 **Compliance Standard**: **ML-KEM-1024 + ML-DSA-87 + AES-256-GCM**
 
@@ -36,7 +36,7 @@ CRYPTOGRAM implements **NIST-approved post-quantum cryptography** combined with 
 
 **Why Hybrid?**
 - ✅ **Quantum-resistant**: ML-KEM-1024 protects against quantum attacks
-- ✅ **Battle-tested**: X25519 provides proven classical security
+- ✅ **documented**: X25519 provides proven classical security
 - ✅ **Defense-in-depth**: Breaking requires defeating BOTH algorithms
 - ✅ **Future-proof**: Safe even if one algorithm is broken
 
@@ -485,7 +485,6 @@ LOG(("ML-KEM-1024 usage: %1%").arg(metrics.quantumResistantRatio * 100));
 
 ### Mitigation Strategies
 
-- Use TSM (Trusted Security Module) integration for hardware-backed keys where available
 - Enable hardware acceleration (AES-NI) for constant-time AES operations
 - Memory zeroization after key use (explicit zeroing, not compiler-optimized away)
 - Random delays and noise injection (optional, for high-security environments)

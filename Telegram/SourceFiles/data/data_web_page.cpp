@@ -409,7 +409,6 @@ TimeId WebPageData::extractVideoTimestamp() const {
 	return 0;
 }
 
-bool WebPageData::computeDefaultSmallMedia() const {
 	if (!collage.items.empty()) {
 		return false;
 	} else if (siteName.isEmpty()

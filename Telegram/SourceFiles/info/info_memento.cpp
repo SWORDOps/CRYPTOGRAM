@@ -212,7 +212,6 @@ std::shared_ptr<ContentMemento> Memento::DefaultContent(
 	case Section::Type::RequestsList:
 		return std::make_shared<RequestsList::Memento>(peer);
 	case Section::Type::SavedSublists:
-		return std::make_shared<Saved::SublistsMemento>(&peer->session());
 	case Section::Type::Members:
 		return std::make_shared<Members::Memento>(
 			peer,

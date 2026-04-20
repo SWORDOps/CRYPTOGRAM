@@ -26,21 +26,10 @@ else
     # Patch was combined with tde2e in cmake-optional-libs.patch
 fi
 
-# Check if lib_tsm CMakeLists.txt exists
-if [ -f "Telegram/lib_tsm/CMakeLists.txt" ]; then
-    echo "✓ Telegram/lib_tsm/CMakeLists.txt already exists"
 else
-    echo "3. Creating Telegram/lib_tsm/CMakeLists.txt..."
-    cat > Telegram/lib_tsm/CMakeLists.txt << 'EOFCMAKE'
-# TSM (Telegram Security Module) - Python-based module
-# This is a minimal CMakeLists.txt as TSM is implemented in Python
 # and doesn't require C++ compilation
 
-add_library(lib_tsm INTERFACE)
-add_library(tdesktop::lib_tsm ALIAS lib_tsm)
-add_library(desktop-app::lib_tsm ALIAS lib_tsm)
 
-target_include_directories(lib_tsm
 INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )

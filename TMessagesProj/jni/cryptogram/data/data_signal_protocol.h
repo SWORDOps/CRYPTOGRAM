@@ -11,7 +11,6 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include "data/data_peer.h"
 #include "history/history_item.h"
 #include "storage/storage_account.h"
-#include "data/data_tsm_interface.h"
 #include <openssl/crypto.h>
 #include <utility>
 #include <memory>
@@ -83,11 +82,6 @@ public:
     SignalProtocol(not_null<Session*> session);
     ~SignalProtocol();
 
-    // TSM Integration
-    void enableTSMIntegration(bool enabled);
-    [[nodiscard]] bool isTSMEnabled() const;
-    [[nodiscard]] TSMPlatform getTSMPlatform() const;
-    [[nodiscard]] TSMCapabilities getTSMCapabilities() const;
 
     // Enable/disable Signal Protocol encryption
     void setEnabled(bool enabled);
@@ -172,9 +166,6 @@ private:
     TimeId _keyRotationInterval = 60 * 60 * 24 * 7; // 1 week by default
     not_null<Session*> _session;
 
-    // TSM Integration
-    std::unique_ptr<SignalTSMIntegration> _tsmIntegration;
-    bool _tsmEnabled = false;
     
     // Locally stored data
     struct PeerKeyData {

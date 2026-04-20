@@ -32,7 +32,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Data {
 namespace {
 
-constexpr auto kLoadedChatsMinCount = 20;
 constexpr auto kShowChatNamesCount = 8;
 
 [[nodiscard]] TextWithEntities ComposeFolderListEntryText(
@@ -357,7 +356,6 @@ void Folder::applyDialog(const MTPDdialogFolder &data) {
 		_chatsList.clear();
 		updateChatListExistence();
 	}
-	if (_chatsList.indexed()->size() < kLoadedChatsMinCount) {
 		session().api().requestDialogs(this);
 	}
 }

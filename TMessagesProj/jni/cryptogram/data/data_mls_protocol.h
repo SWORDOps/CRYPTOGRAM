@@ -142,7 +142,8 @@ struct MLSGroupContext {
 // MLS Proposal
 struct MLSProposal {
 	MLSProposalType type;
-	UserId sender;
+	UserId proposer;
+	std::optional<UserId> targetUser;
 
 	// Proposal-specific data
 	std::optional<MLSKeyPackage> addKeyPackage;  // For Add proposals
@@ -212,6 +213,8 @@ public:
 	[[nodiscard]] bytes::vector deriveEpochSecret() const;
 
 private:
+	friend class MLSProtocol;
+
 	MLSGroupId _groupId;
 	MLSEpoch _epoch = 0;
 	MLSCiphersuite _ciphersuite;

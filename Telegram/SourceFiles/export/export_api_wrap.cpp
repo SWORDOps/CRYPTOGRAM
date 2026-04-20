@@ -438,7 +438,6 @@ void ApiWrap::startExport(
 	if (_settings->types & Settings::Type::Stories) {
 		_startProcess->steps.push_back(Step::StoriesCount);
 	}
-	if (_settings->types & Settings::Type::AnyChatsMask) {
 		_startProcess->steps.push_back(Step::SplitRanges);
 		_startProcess->steps.push_back(Step::DialogsCount);
 	}
@@ -611,7 +610,6 @@ void ApiWrap::finishStartProcess() {
 }
 
 bool ApiWrap::useOnlyLastSplit() const {
-	return !(_settings->types & Settings::Type::NonChannelChatsMask);
 }
 
 void ApiWrap::requestLeftChannelsList(

@@ -1042,7 +1042,6 @@ chatGiveawayPrizesMargin: margins(11px, 0px, 11px, 0px);
 chatGiveawayPrizesWithPadding: margins(22px, 2px, 22px, 2px);
 chatGiveawayPrizesWithSkip: 8px;
 chatGiveawayPrizesWithLineTop: 9px;
-chatGiveawayParticipantsMargin: margins(11px, 0px, 11px, 6px);
 chatGiveawayNoCountriesTitleMargin: margins(11px, 6px, 11px, 4px);
 chatGiveawayEndDateMargin: margins(11px, 0px, 11px, 16px);
 chatGiveawayPeerSize: 32px;
@@ -1113,7 +1112,6 @@ boostMessageIcon: IconEmoji {
 	icon: icon {{ "stories/boost_mini", windowFg }};
 	padding: margins(0px, 2px, 0px, 0px);
 }
-boostsMessageIcon: IconEmoji {
 	icon: icon {{ "stories/boosts_mini", windowFg }};
 	padding: margins(0px, 2px, 0px, 0px);
 }

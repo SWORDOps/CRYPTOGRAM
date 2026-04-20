@@ -267,15 +267,10 @@ cc1plus: note: set ‘-fconcepts-diagnostics-depth=’ to at least 2 for more de
   132 |                 result.newRootKey = quantumKDF(
       |                                     ^~~~~~~~~~
 /home/john/Documents/CRYPTOGRAM/Telegram/SourceFiles/data/data_quantum_signal_impl.cpp: At global scope:
-/home/john/Documents/CRYPTOGRAM/Telegram/SourceFiles/data/data_quantum_signal_impl.cpp:320:21: error: ‘QuantumTSMInterface’ was not declared in this scope; did you mean ‘TSMInterface’?
-  320 |     std::shared_ptr<QuantumTSMInterface> quantumTSM;
       |                     ^~~~~~~~~~~~~~~~~~~
-      |                     TSMInterface
 /home/john/Documents/CRYPTOGRAM/Telegram/SourceFiles/data/data_quantum_signal_impl.cpp:320:40: error: template argument 1 is invalid
-  320 |     std::shared_ptr<QuantumTSMInterface> quantumTSM;
       |                                        ^
 /home/john/Documents/CRYPTOGRAM/Telegram/SourceFiles/data/data_quantum_signal_impl.cpp:320:10: error: ‘<expression error>’ in namespace ‘std’ does not name a type
-  320 |     std::shared_ptr<QuantumTSMInterface> quantumTSM;
       |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 /home/john/Documents/CRYPTOGRAM/Telegram/SourceFiles/data/data_quantum_signal_impl.cpp: In member function ‘Data::QuantumSignalProtocol::QuantumKeyBundle Data::QuantumSignalProtocol::generateQuantumKeyBundle()’:
 /home/john/Documents/CRYPTOGRAM/Telegram/SourceFiles/data/data_quantum_signal_impl.cpp:459:9: error: cannot convert ‘std::vector<std::byte>’ to ‘const QByteArray&’

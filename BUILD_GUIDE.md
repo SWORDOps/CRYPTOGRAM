@@ -2,18 +2,21 @@
 
 Quick reference for building CRYPTOGRAM on different platforms.
 
+Desktop/Linux claim gate and build-state source of truth:
+`docs/status/DESKTOP_BUILD_ALIGNMENT.md`.
+
 ## Build Scripts Overview
 
-| Script | Purpose | Platform | Output |
-|--------|---------|----------|--------|
-| `build_linux.sh` | Desktop build | Linux/macOS | Qt/C++ binary |
+| Script | Role | Platform | Output |
+|--------|------|----------|--------|
+| `build_linux.sh` | **Canonical desktop entrypoint** | Linux/macOS | Qt/C++ binary |
+| `build_all.sh` | Desktop orchestrator/wrapper used by `build_linux.sh` | Linux/macOS | Full desktop build flow |
 | `build_apk.sh` | Android build | Any (with Android SDK) | APK file |
-| `build_all.sh` | Comprehensive desktop | Linux/macOS | Full build with deps |
-| `build_everything.sh` | Interactive menu | Any | Multiple targets |
+| `build_everything.sh` | Interactive multi-target wrapper | Any | Multiple targets |
 
 ---
 
-## 🐧 Linux Desktop Build
+## 🐧 Linux Desktop Build (Canonical)
 
 Build CRYPTOGRAM desktop application for Linux.
 
@@ -54,7 +57,7 @@ JOBS=8 ./build_linux.sh
 
 ### Current Desktop Limitation
 
-If `build_linux.sh`, `build_all.sh`, or `build.sh` stops with a missing `cmake/version.cmake` or `cmake/validate_special_target.cmake` error, the checkout is missing the root helper submodule contents. The intended recovery command is:
+If `build_linux.sh` stops with a missing `cmake/version.cmake` or `cmake/validate_special_target.cmake` error, the checkout is missing the root helper submodule contents. The intended recovery command is:
 
 ```bash
 git submodule update --init --recursive cmake
@@ -66,7 +69,7 @@ If that command fails to fetch the pinned commit, the desktop tree cannot curren
 
 ## 📱 Android APK Build
 
-Build CRYPTOGRAM/SWORDCOMM Android APK.
+Build CRYPTOGRAM/CRYPTOGRAM Android Android APK.
 
 Important for this repo snapshot:
 - This repository does not currently contain a self-contained Android Gradle project.
@@ -129,21 +132,22 @@ The CRYPTOGRAM repository contains Android source modifications under `TMessages
 
 ---
 
-## 🔧 Full Build (Recommended for First Time)
+## 🔧 Full Build Wrapper
 
-Use the comprehensive build script for first-time setup:
+Use the comprehensive wrapper when you want the extended orchestration:
 
 ```bash
 ./build_all.sh
 ```
 
-Features:
+Notes:
 - ✅ Auto-installs all dependencies
 - ✅ Configures compilers
 - ✅ Builds third-party libraries
 - ✅ Handles git submodules
 - ✅ Resume support (`--resume`)
 - ✅ Force rebuild (`--force`)
+- It is not the canonical desktop entrypoint for docs. Use `./build_linux.sh` for standard Linux instructions.
 
 ---
 
@@ -172,13 +176,9 @@ adb install -r /path/to/android/gradle/project/app/build/outputs/apk/foss/debug/
 # Direct
 ./build_release/bin/Telegram
 
-# With TSM integration
-source /media/john/NVME_STORAGE10/CRYPTOGRAM/.tsm_cryptogram_env.sh
-python -m Telegram.lib_tsm.mock_server.server &
 ./build_release/bin/Telegram
 ```
 
-If you are not already in the repository root, use an absolute path when sourcing `.tsm_cryptogram_env.sh`.
 
 ---
 

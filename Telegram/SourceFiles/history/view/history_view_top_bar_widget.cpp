@@ -1212,7 +1212,6 @@ void TopBarWidget::updateControlsVisibility() {
 	const auto hasPollsMenu = (_activeChat.key.peer()
 		&& _activeChat.key.peer()->canCreatePolls())
 		|| (topic && Data::CanSend(topic, ChatRestriction::SendPolls));
-	const auto hasTodoListsMenu = (_activeChat.key.peer()
 		&& _activeChat.key.peer()->canCreateTodoLists())
 		|| (topic && Data::CanSend(topic, ChatRestriction::SendPolls));
 	const auto hasTopicMenu = [&] {
@@ -1234,9 +1233,7 @@ void TopBarWidget::updateControlsVisibility() {
 		&& (section == Section::History
 			? true
 			: (section == Section::Scheduled)
-			? (hasPollsMenu || hasTodoListsMenu)
 			: (section == Section::Replies)
-			? (hasPollsMenu || hasTodoListsMenu || hasTopicMenu)
 			: (section == Section::ChatsList)
 			? (_activeChat.key.peer() && _activeChat.key.peer()->isForum())
 			: (section == Section::SavedSublist)

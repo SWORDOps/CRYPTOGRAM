@@ -133,7 +133,6 @@ public class MessagesController extends BaseController implements NotificationCe
     private final ConcurrentHashMap<Long, Long> monoForumLinkedChannels = new ConcurrentHashMap<>(3, 1.0f, 2);
     public static int stableIdPointer = 100;
 
-    private final HashMap<Long, TLRPC.Chat> activeVoiceChatsMap = new HashMap<>();
 
     private final ArrayList<Long> joiningToChannels = new ArrayList<>();
 
@@ -597,7 +596,6 @@ public class MessagesController extends BaseController implements NotificationCe
     public int reactionsUserMaxDefault;
     public int reactionsUserMaxPremium;
     public int reactionsInChatMax;
-    public int forumUpgradeParticipantsMin;
     public int topicsPinnedLimit;
     public long telegramAntispamUserId;
     public int telegramAntispamGroupSizeMin;
@@ -711,7 +709,6 @@ public class MessagesController extends BaseController implements NotificationCe
     public int chatlistJoinedLimitPremium;
     public String storiesPosting;
     public String storiesEntities;
-    public int stargiftsMessageLengthMax;
     public int stargiftsConvertPeriodMax;
     public boolean videoIgnoreAltDocuments;
     public boolean disableBotFullscreenBlur;
@@ -870,11 +867,6 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public boolean isPremiumUser(TLRPC.User currentUser) {
-        // CRYPTOGRAM: Override premium status for testing
-        if (SharedConfig.cryptogramPremiumOverride) {
-            return true;
-        }
-
         return !premiumFeaturesBlocked() && currentUser.premium && !isSupportUser(currentUser);
     }
 
@@ -1577,7 +1569,6 @@ public class MessagesController extends BaseController implements NotificationCe
         premiumLocked = mainPreferences.getBoolean("premiumLocked", false);
         starsLocked = mainPreferences.getBoolean("starsLocked", true);
         transcribeButtonPressed = mainPreferences.getInt("transcribeButtonPressed", 0);
-        forumUpgradeParticipantsMin = mainPreferences.getInt("forumUpgradeParticipantsMin", 200);
         topicsPinnedLimit = mainPreferences.getInt("topicsPinnedLimit", 3);
         telegramAntispamUserId = mainPreferences.getLong("telegramAntispamUserId", -1);
         telegramAntispamGroupSizeMin = mainPreferences.getInt("telegramAntispamGroupSizeMin", 100);
@@ -1624,7 +1615,6 @@ public class MessagesController extends BaseController implements NotificationCe
         chatlistInvitesLimitPremium = mainPreferences.getInt("chatlistInvitesLimitPremium",  isTest ? 5 : 20);
         chatlistJoinedLimitDefault = mainPreferences.getInt("chatlistJoinedLimitDefault", 2);
         chatlistJoinedLimitPremium = mainPreferences.getInt("chatlistJoinedLimitPremium",  isTest ? 5 : 20);
-        stargiftsMessageLengthMax = mainPreferences.getInt("stargiftsMessageLengthMax", 255);
         stargiftsConvertPeriodMax = mainPreferences.getInt("stargiftsConvertPeriodMax", isTest ? 300 : 90 * 86400);
         videoIgnoreAltDocuments = mainPreferences.getBoolean("videoIgnoreAltDocuments", false);
         disableBotFullscreenBlur = mainPreferences.getBoolean("disableBotFullscreenBlur", false);
@@ -3673,9 +3663,6 @@ public class MessagesController extends BaseController implements NotificationCe
                 case "forum_upgrade_participants_min": {
                     if (value.value instanceof TLRPC.TL_jsonNumber) {
                         TLRPC.TL_jsonNumber number = (TLRPC.TL_jsonNumber) value.value;
-                        if (number.value != forumUpgradeParticipantsMin) {
-                            forumUpgradeParticipantsMin = (int) number.value;
-                            editor.putInt("forumUpgradeParticipantsMin", forumUpgradeParticipantsMin);
                             changed = true;
                         }
                     }
@@ -3898,9 +3885,6 @@ public class MessagesController extends BaseController implements NotificationCe
                 case "stargifts_message_length_max": {
                     if (value.value instanceof TLRPC.TL_jsonNumber) {
                         TLRPC.TL_jsonNumber num = (TLRPC.TL_jsonNumber) value.value;
-                        if (num.value != stargiftsMessageLengthMax) {
-                            stargiftsMessageLengthMax = (int) num.value;
-                            editor.putInt("stargiftsMessageLengthMax", stargiftsMessageLengthMax);
                             changed = true;
                         }
                     }
@@ -6326,7 +6310,6 @@ public class MessagesController extends BaseController implements NotificationCe
         exportedChats.clear();
         fullUsers.clear();
         fullChats.clear();
-        activeVoiceChatsMap.clear();
         loadingGroupCalls.clear();
         groupCallsByChatId.clear();
         dialogsByFolder.clear();
@@ -6931,24 +6914,20 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     private void addOrRemoveActiveVoiceChatInternal(TLRPC.Chat chat) {
-        TLRPC.Chat currentChat = activeVoiceChatsMap.get(chat.id);
         if (chat.call_active && chat.call_not_empty && chat.migrated_to == null && !ChatObject.isNotInChat(chat)) {
             if (currentChat != null) {
                 return;
             }
-            activeVoiceChatsMap.put(chat.id, chat);
             getNotificationCenter().postNotificationName(NotificationCenter.activeGroupCallsUpdated);
         } else {
             if (currentChat == null) {
                 return;
             }
-            activeVoiceChatsMap.remove(chat.id);
             getNotificationCenter().postNotificationName(NotificationCenter.activeGroupCallsUpdated);
         }
     }
 
     public ArrayList<Long> getActiveGroupCalls() {
-        return new ArrayList<>(activeVoiceChatsMap.keySet());
     }
 
     public void setReferer(String referer) {

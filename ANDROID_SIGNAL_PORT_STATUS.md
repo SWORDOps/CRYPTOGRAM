@@ -21,10 +21,7 @@ The port of SpyGram's military-grade cryptographic stack to the Android version 
 - **Internal Storage:** The native layer now receives the application's internal `filesDir` during initialization, complying with Android's scoped storage and protecting session state from other apps.
 - **Persistent State:** Ratchet and MLS session states are now correctly directed to the protected app-data sandbox.
 
-#### 3. TSM Realization (Hardware Security)
-- **Android KeyStore Wiring:** Wired the `SignalTSMIntegration` to the actual Android KeyStore API via a new JNI callback mechanism.
 - **Hardware-Backed Keys:** Identity keys and PreKeys are now generated using `KeyGenParameterSpec` with `EC` algorithms, ensuring they are stored in the device's Secure Element (StrongBox) where available.
-- **TSM Provider:** Implemented a Kotlin `TSMProvider` to handle low-level cryptographic operations (Signing/KeyGen) securely within the JVM.
 
 #### 4. System Integration
 - **Expanded JNI Bridge:** Updated `CryptogramWrapper.cpp` with 15+ new JNI methods covering the full Signal and MLS feature set.
@@ -41,7 +38,6 @@ The port of SpyGram's military-grade cryptographic stack to the Android version 
 | **Signal Logic** | `data_signal_protocol.cpp`, `data_signal_protocol.h` | ✅ Ported |
 | **MLS Logic** | `data_mls_protocol.cpp`, `data_mls_protocol.h` | ✅ Refined |
 | **JNI Bridge** | `CryptogramWrapper.cpp` | ✅ Expanded |
-| **TSM Provider** | `TSMProvider.java` | ✅ Wired |
 | **Kotlin APIs** | `DoubleRatchet.kt`, `MLSProtocol.kt`, `CryptogramNative.kt` | ✅ Aligned |
 | **Build System** | `CMakeLists.txt` (SHARED lib) | ✅ Updated |
 

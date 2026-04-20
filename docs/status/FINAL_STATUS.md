@@ -1,7 +1,7 @@
-# CRYPTOGRAM Android - Current Status Snapshot
+# CRYPTOGRAM Current Status Snapshot
 
 **Project**: CRYPTOGRAM Android/Desktop feature branch
-**Date**: 2025-11-06
+**Date**: 2026-04-20
 **Status**: Mixed implementation snapshot, not a completion claim
 
 ## Snapshot Summary
@@ -38,9 +38,15 @@ The repository contains a real Android CRYPTOGRAM feature surface, including set
 - Privacy helper classes for hide-status style features
 - Premium/test override hooks in settings-related code
 
-### Desktop-Adjacent Documentation
+### Desktop Documentation and Build-State Interpretation
 
-The repository also contains desktop security modules and settings documentation for steganography, covert channels, privacy controls, and hardware-aware behavior. Several core CRYPTOGRAM modules are now included in the desktop build, but those docs should still be read as feature surfaces rather than a blanket proof that all advertised behavior is production complete.
+The repository contains a broad desktop feature inventory and multiple security modules.  
+Desktop claims should be interpreted through:
+
+- `docs/status/DESKTOP_BUILD_ALIGNMENT.md` for `included` vs `excluded` vs `source-only`,
+- `docs/features/desktop-features.md` for the full feature inventory with `partial`/`experimental` labels.
+
+The inventory is intentionally preserved even for features that are not shipped by default, so scope visibility does not depend on deleting entries.
 
 ## Known Gaps
 

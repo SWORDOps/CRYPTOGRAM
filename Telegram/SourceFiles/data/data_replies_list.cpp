@@ -771,7 +771,6 @@ bool RepliesList::processMessagesIsEmpty(const MTPmessages_Messages &result) {
 	if (const auto item = lookupRoot()) {
 		if (const auto original = item->lookupDiscussionPostOriginal()) {
 			if (_skippedAfter == 0 && !_list.empty()) {
-				original->setCommentsMaxId(_list.front());
 			} else {
 				original->setCommentsPossibleMaxId(maxId);
 			}

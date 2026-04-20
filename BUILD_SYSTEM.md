@@ -1,6 +1,5 @@
-# TSM-Integrated Dual Build System
 
-**Build CRYPTOGRAM Desktop + SWORDCOMM Android with automated scripts**
+**Build CRYPTOGRAM Desktop + CRYPTOGRAM Android Android with automated scripts**
 
 ---
 
@@ -8,7 +7,7 @@
 
 ### Build Everything at Once
 ```bash
-cd /home/user/CRYPTOGRAM
+cd <CRYPTOGRAM_ROOT>
 ./build_everything.sh
 ```
 
@@ -17,7 +16,7 @@ cd /home/user/CRYPTOGRAM
 ./build_all.sh
 ```
 
-### Build Only SWORDCOMM Android
+### Build Only CRYPTOGRAM Android Android
 ```bash
 ./build_android.sh /path/to/swordcomm
 ```
@@ -27,7 +26,6 @@ cd /home/user/CRYPTOGRAM
 ## 🎯 Available Scripts
 
 ### 1. `build_all.sh` - CRYPTOGRAM Desktop Builder
-**Builds the C++/Qt desktop application with TSM integration**
 
 ```bash
 ./build_all.sh
@@ -55,7 +53,7 @@ cd /home/user/CRYPTOGRAM
 
 ---
 
-### 2. `build_android.sh` - SWORDCOMM Android Builder
+### 2. `build_android.sh` - CRYPTOGRAM Android Android Builder
 **Builds the Kotlin/Gradle Android application**
 
 ```bash
@@ -93,7 +91,7 @@ Or provide interactively when prompted.
 ---
 
 ### 3. `build_everything.sh` - Master Orchestrator
-**Build both CRYPTOGRAM and SWORDCOMM together**
+**Build both CRYPTOGRAM and CRYPTOGRAM Android together**
 
 ```bash
 ./build_everything.sh
@@ -102,7 +100,7 @@ Or provide interactively when prompted.
 **What it does:**
 - ✅ Interactive menu to select builds
 - ✅ Can build one project or both
-- ✅ Auto-detects SWORDCOMM location
+- ✅ Auto-detects CRYPTOGRAM Android location
 - ✅ Handles signing configuration
 - ✅ Generates master build log
 
@@ -111,8 +109,8 @@ Or provide interactively when prompted.
 **Menu Options:**
 ```
 1) CRYPTOGRAM Desktop (C++/Qt) only
-2) SWORDCOMM Android (Kotlin/Gradle) only
-3) Both CRYPTOGRAM and SWORDCOMM
+2) CRYPTOGRAM Android Android (Kotlin/Gradle) only
+3) Both CRYPTOGRAM and CRYPTOGRAM Android
 4) Skip builds (just verify setup)
 ```
 
@@ -132,7 +130,7 @@ CMake:       3.20+
 Git:         Any recent version
 ```
 
-### For SWORDCOMM Android
+### For CRYPTOGRAM Android Android
 ```
 OS:          Linux, macOS, Windows
 Java:        JDK 11+ (for Gradle)
@@ -165,7 +163,7 @@ Network:     Required (clones dependencies)
                                     Total:       ~50-80 min
 ```
 
-### SWORDCOMM Android Build
+### CRYPTOGRAM Android Android Build
 ```
 1. Clean previous builds                        (~1 min)
 2. Configure Gradle project                     (~2 min)
@@ -178,7 +176,7 @@ Network:     Required (clones dependencies)
 
 ### Combined Build (Both)
 ```
-CRYPTOGRAM (50-80 min) + SWORDCOMM (15-20 min) + overlap (~5 min)
+CRYPTOGRAM (50-80 min) + CRYPTOGRAM Android (15-20 min) + overlap (~5 min)
                                                  ─────────
                                     Total:       ~60-95 min
 ```
@@ -189,10 +187,10 @@ CRYPTOGRAM (50-80 min) + SWORDCOMM (15-20 min) + overlap (~5 min)
 
 ### CRYPTOGRAM Alone
 ```bash
-/home/user/CRYPTOGRAM/build_release/bin/Telegram
+<CRYPTOGRAM_ROOT>/build_release/bin/Telegram
 ```
 
-### SWORDCOMM on Device/Emulator
+### CRYPTOGRAM Android on Device/Emulator
 ```bash
 # Install debug APK
 adb install build/outputs/apk/debug/app-debug.apk
@@ -200,20 +198,15 @@ adb install build/outputs/apk/debug/app-debug.apk
 # Or launch from Android Studio
 ```
 
-### SWORDCOMM to Play Store
+### CRYPTOGRAM Android to Play Store
 ```bash
 # Upload the AAB from build_android.sh output to Google Play Console
 ```
 
-### Both with TSM Integration
 ```bash
-cd /home/user/CRYPTOGRAM
+cd <CRYPTOGRAM_ROOT>
 
-# Start TSM backend in background
-source .tsm_cryptogram_env.sh
-python -m Telegram.lib_tsm.mock_server.server &
 
-# Run CRYPTOGRAM with TSM available
 ./build_release/bin/Telegram
 ```
 
@@ -223,10 +216,10 @@ python -m Telegram.lib_tsm.mock_server.server &
 
 ### For CRYPTOGRAM Build
 ```bash
-CRYPTOGRAM_ROOT      # Override CRYPTOGRAM location (default: /home/user/CRYPTOGRAM)
+CRYPTOGRAM_ROOT      # Override CRYPTOGRAM location (default: <CRYPTOGRAM_ROOT>)
 ```
 
-### For SWORDCOMM Build
+### For CRYPTOGRAM Android Build
 ```bash
 CI_KEYSTORE_PATH     # Path to keystore.jks for signing
 CI_KEYSTORE_PASSWORD # Keystore password
@@ -253,7 +246,7 @@ export CI_MAPS_API_KEY="AIzaSyD..."
 # Follow CRYPTOGRAM build
 tail -f /tmp/cryptogram_build_*.log
 
-# Follow SWORDCOMM build
+# Follow CRYPTOGRAM Android build
 tail -f /tmp/swordcomm_build_*.log
 
 # Follow combined build
@@ -321,8 +314,8 @@ keytool -list -keystore /path/to/keystore.jks
 ### CMake Finds Wrong Ada/Protobuf
 ```bash
 # Clear CMake cache and try again
-rm -rf /home/user/CRYPTOGRAM/build_release/CMakeCache.txt
-rm -rf /home/user/CRYPTOGRAM/build_release/CMakeFiles
+rm -rf <CRYPTOGRAM_ROOT>/build_release/CMakeCache.txt
+rm -rf <CRYPTOGRAM_ROOT>/build_release/CMakeFiles
 ./build_all.sh
 ```
 
@@ -332,15 +325,14 @@ rm -rf /home/user/CRYPTOGRAM/build_release/CMakeFiles
 
 ### CRYPTOGRAM Desktop
 ```
-/home/user/CRYPTOGRAM/
+<CRYPTOGRAM_ROOT>/
 ├── build_release/
 │   ├── bin/Telegram           ← Main executable
 │   ├── CMakeCache.txt
 │   └── ... (intermediate build files)
-└── .tsm_cryptogram_env.sh     ← Integration setup
 ```
 
-### SWORDCOMM Android
+### CRYPTOGRAM Android Android
 ```
 /path/to/swordcomm/
 ├── build/
@@ -351,14 +343,10 @@ rm -rf /home/user/CRYPTOGRAM/build_release/CMakeFiles
 
 ---
 
-## 🎯 Integration with TSM
 
-The build system is fully integrated with TSM (Telegram Session Manager):
 
 ### Automatic Setup
 ```bash
-# The setup-tsm-cryptogram.sh handles:
-# 1. TSM Python environment creation
 # 2. gRPC server configuration
 # 3. Secure config with YubiKey support
 # 4. Integration scripts generation
@@ -367,10 +355,7 @@ The build system is fully integrated with TSM (Telegram Session Manager):
 ### Manual Setup
 ```bash
 # Source environment
-source /home/user/CRYPTOGRAM/.tsm_cryptogram_env.sh
 
-# Start TSM service
-python -m Telegram.lib_tsm.mock_server.server
 
 # In another terminal, run CRYPTOGRAM
 ./build_release/bin/Telegram
@@ -383,7 +368,7 @@ python -m Telegram.lib_tsm.mock_server.server
 | Feature | build_all.sh | build_android.sh | build_everything.sh |
 |---------|------------|-----------------|-------------------|
 | Builds CRYPTOGRAM | ✓ | - | ✓ |
-| Builds SWORDCOMM | - | ✓ | ✓ |
+| Builds CRYPTOGRAM Android | - | ✓ | ✓ |
 | Real-time output | ✓ | ✓ | ✓ |
 | Auto-detection | ✓ | ✓ | ✓ |
 | Signing support | - | ✓ | ✓ |
@@ -451,8 +436,7 @@ cd /path/to/swordcomm
 ## 🔗 Resources
 
 - **CRYPTOGRAM:** https://github.com/SWORDOps/CRYPTOGRAM
-- **SWORDCOMM:** https://github.com/SWORDOps/SWORDCOMM
-- **TSM:** https://github.com/SWORDIntel/TSM
+- **CRYPTOGRAM Android:** https://github.com/SWORDOps/CRYPTOGRAM Android
 - **Build Docs:** See `BUILD_INSTRUCTIONS.md` for detailed steps
 
 ---
@@ -466,9 +450,8 @@ After build completes:
 - [ ] File size > 50MB (typical: 100-200MB)
 - [ ] File is executable (`ls -lah` shows `x`)
 - [ ] Can run: `./build_release/bin/Telegram` (may need display)
-- [ ] TSM environment available: `. .tsm_cryptogram_env.sh`
 
-### SWORDCOMM
+### CRYPTOGRAM Android
 - [ ] APK/AAB exists in build/outputs/
 - [ ] File size > 10MB (typical: 30-80MB)
 - [ ] Can install on device: `adb install app-debug.apk`
@@ -529,7 +512,6 @@ jarsigner -verify -verbose app-debug.apk
 1. **Run a build:** `./build_everything.sh`
 2. **Check logs:** `tail -f /tmp/*build*.log`
 3. **Run results:** See "Running the Result" section above
-4. **Integrate TSM:** Source environment and start services
 5. **Deploy:** Follow platform-specific deployment guides
 
 ---

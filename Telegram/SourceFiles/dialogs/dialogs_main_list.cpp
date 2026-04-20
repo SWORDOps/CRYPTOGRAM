@@ -120,7 +120,6 @@ void MainList::unreadStateChanged(
 	const auto notify = !useClouded || wasState.known;
 	const auto notifier = unreadStateChangeNotifier(notify);
 	_unreadState += nowState - wasState;
-	if (_unreadState.chatsMuted > _unreadState.chats
 		|| _unreadState.messagesMuted > _unreadState.messages) {
 		[[maybe_unused]] int a = 0;
 	}
@@ -149,7 +148,6 @@ void MainList::unreadEntryChanged(
 	} else {
 		_unreadState -= state;
 	}
-	if (_unreadState.chatsMuted > _unreadState.chats
 		|| _unreadState.messagesMuted > _unreadState.messages) {
 		[[maybe_unused]] int a = 0;
 	}
@@ -182,7 +180,6 @@ bool MainList::cloudUnreadKnown() const {
 void MainList::finalizeCloudUnread() {
 	// Cloud state for archive folder always counts everything as muted.
 	_cloudUnreadState.messagesMuted = _cloudUnreadState.messages;
-	_cloudUnreadState.chatsMuted = _cloudUnreadState.chats;
 
 	// We don't know the real value of marked chats counts in cloud unread.
 	_cloudUnreadState.marksMuted = _cloudUnreadState.marks = 0;
@@ -199,14 +196,12 @@ UnreadState MainList::unreadState() const {
 	}
 	if (_allAreMuted) {
 		result.messagesMuted = result.messages;
-		result.chatsMuted = result.chats;
 		result.marksMuted = result.marks;
 	}
 #ifdef Q_OS_WIN
 	[[maybe_unused]] volatile auto touch = 0
 		+ _unreadState.marks + _unreadState.marksMuted
 		+ _unreadState.messages + _unreadState.messagesMuted
-		+ _unreadState.chats + _unreadState.chatsMuted
 		+ _unreadState.reactions + _unreadState.reactionsMuted
 		+ _unreadState.mentions;
 #endif // Q_OS_WIN

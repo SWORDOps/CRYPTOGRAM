@@ -156,7 +156,6 @@ auto GenerateGiveawayStart(
 					tr::now,
 					lt_count,
 					data->channels.size()),
-		}, st::chatGiveawayParticipantsMargin);
 
 		auto list = ranges::views::all(
 			data->channels

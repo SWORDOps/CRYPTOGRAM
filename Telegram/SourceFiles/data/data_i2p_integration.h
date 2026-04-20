@@ -15,7 +15,10 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include <QtCore/QString>
 #include <QtCore/QByteArray>
 #include <QtCore/QDateTime>
+#include <QtCore/QMap>
 #include <QtNetwork/QTcpSocket>
+#include <QtCore/QTimer>
+#include <QtCore/QVector>
 #include <memory>
 #include <vector>
 

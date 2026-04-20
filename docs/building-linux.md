@@ -1,60 +1,60 @@
-## Build instructions for Linux using Docker
+# Building CRYPTOGRAM on Linux
 
-### Prepare folder
+Canonical desktop build entrypoint:
 
-Choose a folder for the future build, for example **/home/user/TBuild**. It will be named ***BuildPath*** in the rest of this document. All commands will be launched from Terminal.
+```bash
+./build_linux.sh
+```
 
-### Obtain your API credentials
+This project does not use the old external `tdesktop` clone flow for primary builds in this repository snapshot.
 
-You will require **api_id** and **api_hash** to access the Telegram API servers. To learn how to obtain them [click here][api_credentials].
+## Prerequisites
 
-### Clone source code and prepare libraries
+- Linux environment with standard build tooling.
+- Top-level `cmake` submodule helper files present:
+  - `cmake/version.cmake`
+  - `cmake/validate_special_target.cmake`
 
-Install [poetry](https://python-poetry.org), go to ***BuildPath*** and run
+If these are missing:
 
-    git clone --recursive https://github.com/TDesktop-x64/tdesktop.git
-    ./tdesktop/Telegram/build/prepare/linux.sh
+```bash
+git submodule update --init --recursive cmake
+```
 
-### Building the project
+If the pinned submodule revision is unavailable upstream, desktop configure cannot proceed from this snapshot alone.
 
-Go to ***BuildPath*/tdesktop** and run (using [your **api_id** and **api_hash**](#obtain-your-api-credentials))
+## Common build variants
 
-    docker run --rm -it \
-        -u $(id -u) \
-        -v "$PWD:/usr/src/tdesktop" \
-        tdesktop:centos_env \
-        /usr/src/tdesktop/Telegram/build/docker/centos_env/build.sh \
-        -D TDESKTOP_API_ID=YOUR_API_ID \
-        -D TDESKTOP_API_HASH=YOUR_API_HASH
+```bash
+# Release (default)
+./build_linux.sh
 
-Or, to create a debug build, run (also using [your **api_id** and **api_hash**](#obtain-your-api-credentials))
+# Debug
+BUILD_TYPE=Debug ./build_linux.sh
 
-    docker run --rm -it \
-        -u $(id -u) \
-        -v "$PWD:/usr/src/tdesktop" \
-        -e CONFIG=Debug \
-        tdesktop:centos_env \
-        /usr/src/tdesktop/Telegram/build/docker/centos_env/build.sh \
-        -D TDESKTOP_API_ID=YOUR_API_ID \
-        -D TDESKTOP_API_HASH=YOUR_API_HASH
+# Custom build directory
+BUILD_DIR=/tmp/cryptogram_build ./build_linux.sh
 
-The built files will be in the `out` directory.
+# Explicit parallelism
+JOBS=8 ./build_linux.sh
+```
 
-### Visual Studio Code integration
+## Output
 
-Ensure you've followed the instruction up to the [**Clone source code and prepare libraries**](#clone-source-code-and-prepare-libraries) step at least.
+- Typical binary location:
+  - `build_release/bin/Telegram`
+  - or `build_<type>/bin/Telegram` if custom `BUILD_TYPE`/`BUILD_DIR` is used.
 
-Open the repository in Visual Studio Code, install the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension and add the following to `.vscode/settings.json` (using [your **api_id** and **api_hash**](#obtain-your-api-credentials)):
+## Wrapper scripts
 
-    {
-        "cmake.configureSettings": {
-            "TDESKTOP_API_ID": "YOUR_API_ID",
-            "TDESKTOP_API_HASH": "YOUR_API_HASH"
-        }
-    }
+- `build_all.sh`: extended desktop orchestrator/wrapper.
+- `build_everything.sh`: interactive multi-target wrapper.
 
-After that, choose **Reopen in Container** via the menu triggered by the green button in bottom left corner and you're done.
+Use `build_linux.sh` for canonical Linux desktop documentation and CI examples.
 
-![Quick actions Status bar item](https://code.visualstudio.com/assets/docs/devcontainers/containers/remote-dev-status-bar.png)
+## Status and claim gate
 
-[api_credentials]: api_credentials.md
+Before making feature-level claims, check:
+
+- `docs/status/DESKTOP_BUILD_ALIGNMENT.md`
+- `docs/features/desktop-features.md`

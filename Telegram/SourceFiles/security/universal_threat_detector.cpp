@@ -552,12 +552,10 @@ bool UniversalThreatDetector::detectSocialEngineering(const QString &text, QStri
 }
 
 ProcessingStatistics UniversalThreatDetector::getStatistics() const {
-    QMutexLocker locker(&_statsMutex);
     return _statistics;
 }
 
 void UniversalThreatDetector::resetStatistics() {
-    QMutexLocker locker(&_statsMutex);
     _statistics = ProcessingStatistics();
     _aiEngine->npuInferences = 0;
     _aiEngine->gpuInferences = 0;
@@ -819,7 +817,6 @@ void UniversalThreatDetector::optimizeForCPU() {
 }
 
 void UniversalThreatDetector::updateStatistics(const ThreatAnalysis &analysis) {
-    QMutexLocker locker(&_statsMutex);
 
     _statistics.totalAnalyses++;
     _statistics.lastAnalysis = analysis.analysisTime;

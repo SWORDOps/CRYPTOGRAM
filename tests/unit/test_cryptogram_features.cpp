@@ -1,6 +1,5 @@
 /*
 CRYPTOGRAM Feature Tests
-Tests for Enhanced Privacy, Monero Miner, Device Trust, Quantum Storage, and TSM.
 */
 
 #include <catch2/catch_test_macros.hpp>
@@ -9,8 +8,6 @@ Tests for Enhanced Privacy, Monero Miner, Device Trust, Quantum Storage, and TSM
 #include "data/data_enhanced_privacy.h"
 #include "data/data_monero_miner.h"
 #include "data/data_quantum_storage.h"
-#include "data/data_tsm_interface.h"
-#include "data/data_tsm_factory.h"
 #include "core/application.h"
 #include "core/core_settings.h"
 
@@ -87,23 +84,15 @@ TEST_CASE("Quantum Storage Tiers", "[storage][unit]") {
     // so we test basic interface compliance or mock behavior if possible.
 }
 
-TEST_CASE("TSM Key Generation", "[tsm][unit]") {
-    auto tsm = TSMFactory::createForPlatform();
     
-    // If no hardware TSM, it should return SoftwareTSM
-    REQUIRE(tsm != nullptr);
 
     SECTION("Generate Unique Key ID") {
-        auto keyId = tsm->generateUniqueKeyId();
         REQUIRE_FALSE(keyId.isEmpty());
-        REQUIRE(tsm->validateKeyId(keyId));
     }
 
     SECTION("Random Data Generation") {
-        auto randomData = tsm->generateRandomData(32);
         REQUIRE(randomData.size() == 32);
         
-        auto randomData2 = tsm->generateRandomData(32);
         REQUIRE(randomData != randomData2);
     }
 }

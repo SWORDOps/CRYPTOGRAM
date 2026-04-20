@@ -155,7 +155,6 @@ private:
 	bool checkForFullState();
 	void setState(State state);
 	void updateGeometry();
-	[[nodiscard]] QRect countSmallGeometry() const;
 	void updateExpanding();
 	void updateExpanding(int expandingHeight, int expandedHeight);
 	void validateSegments(

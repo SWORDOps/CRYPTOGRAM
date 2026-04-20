@@ -11,10 +11,13 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include "logs.h"
 
 #include <openssl/evp.h>
+#include <openssl/hmac.h>
 #include <openssl/kdf.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 #include <openssl/curve25519.h>
+#include <limits>
+#include <algorithm>
 
 namespace Data {
 namespace {
@@ -28,10 +31,13 @@ constexpr int kX448KeySize = 56;
 constexpr int kEd25519KeySize = 32;
 constexpr int kEd448KeySize = 57;
 constexpr int kSHA256Size = 32;
+constexpr int kSHA384Size = 48;
 constexpr int kSHA512Size = 64;
 constexpr int kAES128KeySize = 16;
 constexpr int kAES256KeySize = 32;
 constexpr int kChaCha20KeySize = 32;
+constexpr int kAeadNonceSize = 12;
+constexpr int kAeadTagSize = 16;
 
 // MLS Labels (from RFC 9420)
 const QString kLabelInit = "init";
@@ -71,10 +77,16 @@ int getHashSize(MLSCiphersuite ciphersuite) {
 	return kSHA256Size;
 }
 
-// Compute SHA-256 hash (Upgraded to use SHA-384 context where possible, or just used for compatibility)
-// For CNSA 2.0 we prefer SHA-384. This function name is kept but implementation uses SHA-384 if allowed or we replace usage.
-// Actually, let's just use SHA-384.
-	bytes::vector result(48); // SHA-384 size
+// Compute SHA-256 hash
+bytes::vector computeSHA256(const bytes::vector &data) {
+	bytes::vector result(kSHA256Size);
+	SHA256(data.data(), data.size(), result.data());
+	return result;
+}
+
+// Compute SHA-384 hash
+bytes::vector computeSHA384(const bytes::vector &data) {
+	bytes::vector result(kSHA384Size);
 	SHA384(data.data(), data.size(), result.data());
 	return result;
 }
@@ -105,6 +117,148 @@ bytes::vector generateRandomBytes(int size) {
 	return result;
 }
 
+const EVP_CIPHER* aeadCipherFor(MLSCiphersuite ciphersuite) {
+	switch (ciphersuite) {
+	case MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519:
+		return EVP_aes_128_gcm();
+	case MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519:
+	case MLSCiphersuite::MLS_256_DHKEMX448_CHACHA20POLY1305_SHA512_Ed448:
+		return EVP_chacha20_poly1305();
+	}
+	return EVP_chacha20_poly1305();
+}
+
+int aeadKeySizeFor(MLSCiphersuite ciphersuite) {
+	switch (ciphersuite) {
+	case MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519:
+		return kAES128KeySize;
+	case MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519:
+	case MLSCiphersuite::MLS_256_DHKEMX448_CHACHA20POLY1305_SHA512_Ed448:
+		return kChaCha20KeySize;
+	}
+	return kChaCha20KeySize;
+}
+
+std::optional<bytes::vector> aeadEncrypt(
+	MLSCiphersuite ciphersuite,
+	const bytes::vector &key,
+	const bytes::vector &nonce,
+	const bytes::vector &plaintext,
+	const bytes::vector &aad) {
+	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+	if (!ctx) return std::nullopt;
+
+	const auto *cipher = aeadCipherFor(ciphersuite);
+	if (EVP_EncryptInit_ex(ctx, cipher, nullptr, nullptr, nullptr) != 1) {
+		EVP_CIPHER_CTX_free(ctx);
+		return std::nullopt;
+	}
+	if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, nonce.size(), nullptr) != 1) {
+		EVP_CIPHER_CTX_free(ctx);
+		return std::nullopt;
+	}
+	if (EVP_EncryptInit_ex(ctx, nullptr, nullptr, key.data(), nonce.data()) != 1) {
+		EVP_CIPHER_CTX_free(ctx);
+		return std::nullopt;
+	}
+
+	int outLen = 0;
+	if (!aad.empty()) {
+		if (EVP_EncryptUpdate(ctx, nullptr, &outLen, aad.data(), aad.size()) != 1) {
+			EVP_CIPHER_CTX_free(ctx);
+			return std::nullopt;
+		}
+	}
+
+	bytes::vector ciphertext(plaintext.size());
+	if (EVP_EncryptUpdate(ctx, ciphertext.data(), &outLen, plaintext.data(), plaintext.size()) != 1) {
+		EVP_CIPHER_CTX_free(ctx);
+		return std::nullopt;
+	}
+	int finalLen = 0;
+	if (EVP_EncryptFinal_ex(ctx, ciphertext.data() + outLen, &finalLen) != 1) {
+		EVP_CIPHER_CTX_free(ctx);
+		return std::nullopt;
+	}
+	ciphertext.resize(outLen + finalLen);
+
+	bytes::vector tag(kAeadTagSize);
+	if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, tag.size(), tag.data()) != 1) {
+		EVP_CIPHER_CTX_free(ctx);
+		return std::nullopt;
+	}
+	EVP_CIPHER_CTX_free(ctx);
+
+	bytes::vector out;
+	out.reserve(ciphertext.size() + tag.size());
+	out.insert(out.end(), ciphertext.begin(), ciphertext.end());
+	out.insert(out.end(), tag.begin(), tag.end());
+	return out;
+}
+
+std::optional<bytes::vector> aeadDecrypt(
+	MLSCiphersuite ciphersuite,
+	const bytes::vector &key,
+	const bytes::vector &nonce,
+	const bytes::vector &ciphertextAndTag,
+	const bytes::vector &aad) {
+	if (ciphertextAndTag.size() < kAeadTagSize) return std::nullopt;
+	const auto cipherLen = ciphertextAndTag.size() - kAeadTagSize;
+
+	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+	if (!ctx) return std::nullopt;
+
+	const auto *cipher = aeadCipherFor(ciphersuite);
+	if (EVP_DecryptInit_ex(ctx, cipher, nullptr, nullptr, nullptr) != 1) {
+		EVP_CIPHER_CTX_free(ctx);
+		return std::nullopt;
+	}
+	if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, nonce.size(), nullptr) != 1) {
+		EVP_CIPHER_CTX_free(ctx);
+		return std::nullopt;
+	}
+	if (EVP_DecryptInit_ex(ctx, nullptr, nullptr, key.data(), nonce.data()) != 1) {
+		EVP_CIPHER_CTX_free(ctx);
+		return std::nullopt;
+	}
+
+	int outLen = 0;
+	if (!aad.empty()) {
+		if (EVP_DecryptUpdate(ctx, nullptr, &outLen, aad.data(), aad.size()) != 1) {
+			EVP_CIPHER_CTX_free(ctx);
+			return std::nullopt;
+		}
+	}
+
+	bytes::vector plaintext(cipherLen);
+	if (EVP_DecryptUpdate(
+			ctx,
+			plaintext.data(),
+			&outLen,
+			ciphertextAndTag.data(),
+			cipherLen) != 1) {
+		EVP_CIPHER_CTX_free(ctx);
+		return std::nullopt;
+	}
+	if (EVP_CIPHER_CTX_ctrl(
+			ctx,
+			EVP_CTRL_AEAD_SET_TAG,
+			kAeadTagSize,
+			const_cast<uint8_t*>(ciphertextAndTag.data() + cipherLen)) != 1) {
+		EVP_CIPHER_CTX_free(ctx);
+		return std::nullopt;
+	}
+
+	int finalLen = 0;
+	if (EVP_DecryptFinal_ex(ctx, plaintext.data() + outLen, &finalLen) != 1) {
+		EVP_CIPHER_CTX_free(ctx);
+		return std::nullopt;
+	}
+	EVP_CIPHER_CTX_free(ctx);
+	plaintext.resize(outLen + finalLen);
+	return plaintext;
+}
+
 // TreeKEM tree size calculation
 MLSNodeIndex treeSize(MLSLeafIndex leafCount) {
 	if (leafCount == 0) return 0;
@@ -113,22 +267,31 @@ MLSNodeIndex treeSize(MLSLeafIndex leafCount) {
 
 // Get parent node index
 std::optional<MLSNodeIndex> parentIndex(MLSNodeIndex index, MLSNodeIndex treeSize) {
-	if (index >= treeSize) return std::nullopt;
-	if (index == 0 && treeSize == 1) return std::nullopt;  // Root with single node
+	if (index >= treeSize || index == 0) {
+		return std::nullopt;
+	}
 
-	// Parent of node at index x is at (x | 1) >> 1
-	auto parent = ((index | 1) + 1) >> 1;
-	if (parent >= treeSize) return std::nullopt;
+	// Full binary tree, zero-based array indexing: parent(i) = (i - 1) / 2
+	auto parent = (index - 1) / 2;
+	if (parent >= treeSize) {
+		return std::nullopt;
+	}
 	return parent;
 }
 
 // Get left child index
 std::optional<MLSNodeIndex> leftChild(MLSNodeIndex index) {
+	if (index > (std::numeric_limits<MLSNodeIndex>::max() - 1) / 2) {
+		return std::nullopt;
+	}
 	return 2 * index;
 }
 
 // Get right child index
 std::optional<MLSNodeIndex> rightChild(MLSNodeIndex index) {
+	if (index > (std::numeric_limits<MLSNodeIndex>::max() - 2) / 2) {
+		return std::nullopt;
+	}
 	return 2 * index + 1;
 }
 
@@ -283,6 +446,21 @@ MLSProtocol::~MLSProtocol() {
 MLSGroupId MLSProtocol::createGroup(
 	const QVector<UserId> &initialMembers,
 	MLSCiphersuite ciphersuite) {
+	if (initialMembers.isEmpty()) {
+		LOG(("MLS: createGroup rejected - no initial members"));
+		return MLSGroupId();
+	}
+
+	QSet<UserId> seenMembers;
+	QVector<UserId> dedupedMembers;
+	dedupedMembers.reserve(initialMembers.size());
+	for (const auto memberId : initialMembers) {
+		if (seenMembers.contains(memberId)) {
+			continue;
+		}
+		seenMembers.insert(memberId);
+		dedupedMembers.append(memberId);
+	}
 
 	// Generate unique group ID
 	auto groupId = generateRandomBytes(32);
@@ -292,9 +470,9 @@ MLSGroupId MLSProtocol::createGroup(
 
 	// Generate key packages for all initial members
 	QVector<MLSKeyPackage> keyPackages;
-	for (const auto userId : initialMembers) {
-		// In a real implementation, we'd fetch key packages from members
-		// For now, generate placeholder packages
+	for (const auto userId : dedupedMembers) {
+		// Generate local key packages for bootstrap. Production deploys can
+		// replace this with distribution/fetch of remote member key packages.
 		auto keyPackage = generateKeyPackage(ciphersuite);
 		keyPackages.append(keyPackage);
 	}
@@ -303,16 +481,16 @@ MLSGroupId MLSProtocol::createGroup(
 	initializeTree(state, keyPackages);
 
 	// Add members to state
-	for (int i = 0; i < initialMembers.size(); ++i) {
+	for (int i = 0; i < dedupedMembers.size(); ++i) {
 		MLSGroupMember member;
-		member.userId = initialMembers[i];
+		member.userId = dedupedMembers[i];
 		member.leafIndex = i;
 		member.keyPackage = keyPackages[i];
 		member.addedAt = QDateTime::currentDateTime();
 		member.isActive = true;
 
-		state._members[initialMembers[i]] = member;
-		state._leafToUser[i] = initialMembers[i];
+		state._members[dedupedMembers[i]] = member;
+		state._leafToUser[i] = dedupedMembers[i];
 	}
 
 	// Initialize cryptographic state
@@ -322,7 +500,7 @@ MLSGroupId MLSProtocol::createGroup(
 	// Store group state
 	_groups[groupId] = state;
 
-	LOG(("MLS: Created group with %1 members, epoch 0").arg(initialMembers.size()));
+	LOG(("MLS: Created group with %1 members, epoch 0").arg(dedupedMembers.size()));
 
 	return groupId;
 }
@@ -348,18 +526,22 @@ bool MLSProtocol::addMember(const MLSGroupId &groupId, UserId newMember) {
 	// Create Add proposal
 	MLSProposal proposal;
 	proposal.type = MLSProposalType::Add;
+	proposal.newMember = newMember;
 	proposal.addKeyPackage = keyPackage;
 	proposal.timestamp = QDateTime::currentDateTime();
+	proposal.sender = newMember;
 
 	// Add to pending proposals
 	_pendingProposals[groupId].append(proposal);
-
-	// In a real implementation, this proposal would be sent to the group
-	// and committed by any member (usually the sender)
-
-	LOG(("MLS: Added proposal to add member"));
-
-	return true;
+	MLSCommit commit;
+	commit.proposals = _pendingProposals[groupId];
+	commit.sender = newMember;
+	commit.timestamp = QDateTime::currentDateTime();
+	const auto result = processCommit(groupId, commit);
+	if (!result) {
+		_pendingProposals[groupId].clear();
+	}
+	return result;
 }
 
 bool MLSProtocol::removeMember(const MLSGroupId &groupId, UserId memberToRemove) {
@@ -382,14 +564,20 @@ bool MLSProtocol::removeMember(const MLSGroupId &groupId, UserId memberToRemove)
 	MLSProposal proposal;
 	proposal.type = MLSProposalType::Remove;
 	proposal.removeLeaf = leafIndex.value();
+	proposal.sender = memberToRemove;
 	proposal.timestamp = QDateTime::currentDateTime();
 
 	// Add to pending proposals
 	_pendingProposals[groupId].append(proposal);
-
-	LOG(("MLS: Added proposal to remove member"));
-
-	return true;
+	MLSCommit commit;
+	commit.proposals = _pendingProposals[groupId];
+	commit.sender = memberToRemove;
+	commit.timestamp = QDateTime::currentDateTime();
+	const auto result = processCommit(groupId, commit);
+	if (!result) {
+		_pendingProposals[groupId].clear();
+	}
+	return result;
 }
 
 bool MLSProtocol::updateOwnKey(const MLSGroupId &groupId) {
@@ -406,13 +594,35 @@ bool MLSProtocol::updateOwnKey(const MLSGroupId &groupId) {
 	MLSProposal proposal;
 	proposal.type = MLSProposalType::Update;
 	proposal.updateKey = publicKey;
+	proposal.sender = it.value().members().empty()
+		? UserId()
+		: it.value().members().front().userId;
 	proposal.timestamp = QDateTime::currentDateTime();
 
-	// Add to pending proposals
+	if (proposal.sender == UserId()) {
+		LOG(("MLS: Cannot update key - no members in group"));
+		return false;
+	}
+
+	// Add to pending proposals and commit immediately.
 	_pendingProposals[groupId].append(proposal);
+	MLSCommit commit;
+	commit.proposals = _pendingProposals[groupId];
+	commit.sender = proposal.sender;
+	commit.timestamp = QDateTime::currentDateTime();
+	const auto result = processCommit(groupId, commit);
+	if (!result) {
+		_pendingProposals[groupId].clear();
+	}
+	return result;
+}
 
-	LOG(("MLS: Added proposal to update own key"));
-
+bool MLSProtocol::removeGroup(const MLSGroupId &groupId) {
+	if (groupId.empty() || !_groups.contains(groupId)) {
+		return false;
+	}
+	_groups.remove(groupId);
+	_pendingProposals.remove(groupId);
 	return true;
 }
 
@@ -428,19 +638,27 @@ bytes::vector MLSProtocol::encryptMessage(
 
 	const auto &state = it.value();
 
-	// Derive application secret for this epoch
+	// Derive per-epoch application key and nonce
 	auto appSecret = state.deriveApplicationSecret(kLabelApplication);
-
-	// Simple XOR encryption for now (in production, use AEAD)
-	bytes::vector ciphertext = plaintext;
-	for (size_t i = 0; i < ciphertext.size(); ++i) {
-		ciphertext[i] ^= appSecret[i % appSecret.size()];
+	auto key = hkdfExpand(appSecret, "mls-msg-key", aeadKeySizeFor(state.ciphersuite()));
+	auto nonce = generateRandomBytes(kAeadNonceSize);
+	bytes::vector aad;
+	aad.resize(sizeof(state._epoch) + groupId.size());
+	std::memcpy(aad.data(), &state._epoch, sizeof(state._epoch));
+	if (!groupId.empty()) {
+		std::memcpy(aad.data() + sizeof(state._epoch), groupId.data(), groupId.size());
+	}
+	const auto sealed = aeadEncrypt(state.ciphersuite(), key, nonce, plaintext, aad);
+	if (!sealed.has_value()) {
+		LOG(("MLS: AEAD encryption failed"));
+		return {};
 	}
 
-	// Prepend epoch number (8 bytes)
-	bytes::vector result(8);
+	// Message format: [epoch(8)][nonce(12)][ciphertext|tag]
+	bytes::vector result(8 + kAeadNonceSize);
 	std::memcpy(result.data(), &state._epoch, sizeof(state._epoch));
-	result.insert(result.end(), ciphertext.begin(), ciphertext.end());
+	std::memcpy(result.data() + 8, nonce.data(), kAeadNonceSize);
+	result.insert(result.end(), sealed->begin(), sealed->end());
 
 	LOG(("MLS: Encrypted message for epoch %1").arg(state._epoch));
 
@@ -451,7 +669,7 @@ std::optional<bytes::vector> MLSProtocol::decryptMessage(
 	const MLSGroupId &groupId,
 	const bytes::vector &ciphertext) {
 
-	if (ciphertext.size() < 8) {
+	if (ciphertext.size() < (8 + kAeadNonceSize + kAeadTagSize)) {
 		LOG(("MLS: Ciphertext too short"));
 		return std::nullopt;
 	}
@@ -475,18 +693,26 @@ std::optional<bytes::vector> MLSProtocol::decryptMessage(
 		return std::nullopt;
 	}
 
-	// Derive application secret
+	// Derive per-epoch application key and decrypt
 	auto appSecret = state.deriveApplicationSecret(kLabelApplication);
-
-	// Decrypt (simple XOR for now)
-	bytes::vector plaintext(ciphertext.begin() + 8, ciphertext.end());
-	for (size_t i = 0; i < plaintext.size(); ++i) {
-		plaintext[i] ^= appSecret[i % appSecret.size()];
+	auto key = hkdfExpand(appSecret, "mls-msg-key", aeadKeySizeFor(state.ciphersuite()));
+	bytes::vector nonce(ciphertext.begin() + 8, ciphertext.begin() + 8 + kAeadNonceSize);
+	bytes::vector payload(ciphertext.begin() + 8 + kAeadNonceSize, ciphertext.end());
+	bytes::vector aad;
+	aad.resize(sizeof(messageEpoch) + groupId.size());
+	std::memcpy(aad.data(), &messageEpoch, sizeof(messageEpoch));
+	if (!groupId.empty()) {
+		std::memcpy(aad.data() + sizeof(messageEpoch), groupId.data(), groupId.size());
+	}
+	const auto plaintext = aeadDecrypt(state.ciphersuite(), key, nonce, payload, aad);
+	if (!plaintext.has_value()) {
+		LOG(("MLS: AEAD decryption failed"));
+		return std::nullopt;
 	}
 
 	LOG(("MLS: Decrypted message from epoch %1").arg(messageEpoch));
 
-	return plaintext;
+	return plaintext.value();
 }
 
 std::optional<MLSGroupState> MLSProtocol::getGroupState(const MLSGroupId &groupId) const {
@@ -511,8 +737,37 @@ MLSKeyPackage MLSProtocol::generateKeyPackage(MLSCiphersuite ciphersuite) {
 	package.initKey = publicKey;
 	_privateKeys[publicKey] = privateKey;
 
-	// Generate credential key (signature key)
-	auto [credPublicKey, credPrivateKey] = generateKeyPair(ciphersuite);
+	// Generate credential key (signature key) using Ed25519/Ed448.
+	const bool useEd448 =
+		(ciphersuite == MLSCiphersuite::MLS_256_DHKEMX448_CHACHA20POLY1305_SHA512_Ed448);
+	const int sigType = useEd448 ? EVP_PKEY_ED448 : EVP_PKEY_ED25519;
+	const size_t sigPubLen = useEd448 ? kEd448KeySize : kEd25519KeySize;
+	const size_t sigPrivLen = useEd448 ? kEd448KeySize : kEd25519KeySize;
+
+	EVP_PKEY_CTX *sigKeygen = EVP_PKEY_CTX_new_id(sigType, nullptr);
+	if (!sigKeygen || EVP_PKEY_keygen_init(sigKeygen) != 1) {
+		if (sigKeygen) EVP_PKEY_CTX_free(sigKeygen);
+		return package;
+	}
+	EVP_PKEY *sigPkey = nullptr;
+	if (EVP_PKEY_keygen(sigKeygen, &sigPkey) != 1 || !sigPkey) {
+		EVP_PKEY_CTX_free(sigKeygen);
+		return package;
+	}
+	EVP_PKEY_CTX_free(sigKeygen);
+
+	bytes::vector credPublicKey(sigPubLen);
+	bytes::vector credPrivateKey(sigPrivLen);
+	size_t credPublicLenOut = credPublicKey.size();
+	size_t credPrivateLenOut = credPrivateKey.size();
+	if (EVP_PKEY_get_raw_public_key(sigPkey, credPublicKey.data(), &credPublicLenOut) != 1
+		|| EVP_PKEY_get_raw_private_key(sigPkey, credPrivateKey.data(), &credPrivateLenOut) != 1) {
+		EVP_PKEY_free(sigPkey);
+		return package;
+	}
+	EVP_PKEY_free(sigPkey);
+	credPublicKey.resize(credPublicLenOut);
+	credPrivateKey.resize(credPrivateLenOut);
 	package.credentialPublicKey = credPublicKey;
 	_privateKeys[credPublicKey] = credPrivateKey;
 
@@ -546,11 +801,21 @@ bool MLSProtocol::verifyKeyPackage(const MLSKeyPackage &keyPackage) {
 }
 
 MLSGroupId MLSProtocol::processWelcome(const MLSWelcome &welcome) {
-	// Decrypt group secrets and initialize group state
-	// This is called when added to a new group
+	// Derive deterministic group ID from welcome payload to avoid random state.
+	bytes::vector seed = welcome.encryptedGroupInfo;
+	seed.insert(seed.end(),
+		welcome.encryptedGroupSecrets.begin(),
+		welcome.encryptedGroupSecrets.end());
+	const auto digest = hashData(seed, welcome.ciphersuite);
+	MLSGroupId groupId(digest.begin(), digest.begin() + std::min<size_t>(32, digest.size()));
+	if (_groups.contains(groupId)) {
+		return groupId;
+	}
 
-	// For now, generate placeholder group ID
-	auto groupId = generateRandomBytes(32);
+	MLSGroupState state(groupId, welcome.ciphersuite);
+	state._initSecret = hkdfExtract({}, welcome.encryptedGroupSecrets);
+	state._epochSecret = state.deriveEpochSecret();
+	_groups[groupId] = state;
 
 	LOG(("MLS: Processed Welcome message for new group"));
 
@@ -568,7 +833,10 @@ bool MLSProtocol::processCommit(const MLSGroupId &groupId, const MLSCommit &comm
 
 	// Process all proposals in the commit
 	for (const auto &proposal : commit.proposals) {
-		processProposal(groupId, proposal);
+		if (!processProposal(groupId, proposal)) {
+			LOG(("MLS: Failed to process commit proposal"));
+			return false;
+		}
 	}
 
 	// Advance epoch
@@ -589,31 +857,120 @@ bool MLSProtocol::processProposal(const MLSGroupId &groupId, const MLSProposal &
 	}
 
 	auto &state = it.value();
+	return processProposalInternal(state, proposal);
+}
 
+bool MLSProtocol::processProposalInternal(MLSGroupState &state, const MLSProposal &proposal) {
 	switch (proposal.type) {
-	case MLSProposalType::Add:
-		if (proposal.addKeyPackage.has_value()) {
-			// Add new member to tree
-			LOG(("MLS: Processing Add proposal"));
+	case MLSProposalType::Add: {
+		if (!proposal.newMember.has_value() || !proposal.addKeyPackage.has_value()) {
+			LOG(("MLS: Rejecting invalid Add proposal"));
+			return false;
 		}
-		break;
-
-	case MLSProposalType::Remove:
-		if (proposal.removeLeaf.has_value()) {
-			// Blank the leaf in the tree
-			LOG(("MLS: Processing Remove proposal"));
+		if (!verifyKeyPackage(*proposal.addKeyPackage)) {
+			LOG(("MLS: Rejecting invalid key package in Add proposal"));
+			return false;
 		}
-		break;
+		if (state.isMember(*proposal.newMember)) {
+			LOG(("MLS: Add proposal for existing member"));
+			return false;
+		}
 
-	case MLSProposalType::Update:
-		// Update leaf key
-		LOG(("MLS: Processing Update proposal"));
-		break;
+		auto member = MLSGroupMember();
+		member.userId = *proposal.newMember;
+		member.leafIndex = state.memberCount();
+		member.keyPackage = *proposal.addKeyPackage;
+		member.addedAt = proposal.timestamp.isValid()
+			? proposal.timestamp
+			: QDateTime::currentDateTime();
+		member.isActive = true;
+		state._members[member.userId] = member;
 
+		rebuildGroupTreeFromMembers(state);
+		LOG(("MLS: Processed Add proposal"));
+		return true;
+	}
+	case MLSProposalType::Remove: {
+		std::optional<MLSLeafIndex> targetLeaf = proposal.removeLeaf;
+		if (!targetLeaf.has_value() && proposal.sender != UserId() && state.isMember(proposal.sender)) {
+			targetLeaf = state.getLeafIndex(proposal.sender);
+		}
+		if (!targetLeaf.has_value()) {
+			LOG(("MLS: Rejecting Remove proposal without leaf or known sender"));
+			return false;
+		}
+		auto userIt = state._leafToUser.find(targetLeaf.value());
+		if (userIt == state._leafToUser.end()) {
+			LOG(("MLS: Remove proposal for unknown leaf"));
+			return false;
+		}
+		const auto userId = userIt.value();
+		if (!state._members.contains(userId)) {
+			LOG(("MLS: Remove proposal for unknown member"));
+			return false;
+		}
+		state._members[userId].isActive = false;
+		rebuildGroupTreeFromMembers(state);
+		LOG(("MLS: Processed Remove proposal"));
+		return true;
+	}
+	case MLSProposalType::Update: {
+		if (!state.isMember(proposal.sender) || proposal.updateKey.empty()) {
+			LOG(("MLS: Rejecting Update proposal"));
+			return false;
+		}
+		auto member = state._members[proposal.sender];
+		if (!member.isActive) {
+			LOG(("MLS: Rejecting Update proposal for inactive member"));
+			return false;
+		}
+		member.keyPackage.initKey = proposal.updateKey;
+		state._members[proposal.sender] = member;
+		rebuildGroupTreeFromMembers(state);
+		LOG(("MLS: Processed Update proposal"));
+		return true;
+	}
 	default:
-		break;
+		LOG(("MLS: Unsupported proposal type"));
+		return false;
+	}
+}
+
+bool MLSProtocol::rebuildGroupTreeFromMembers(MLSGroupState &state) {
+	QVector<MLSGroupMember> activeMembers;
+	for (auto it = state._members.begin(); it != state._members.end(); ++it) {
+		if (it->isActive) {
+			activeMembers.append(it.value());
+		}
 	}
 
+	std::sort(
+		activeMembers.begin(),
+		activeMembers.end(),
+		[](const MLSGroupMember &left, const MLSGroupMember &right) {
+			return left.userId < right.userId;
+		});
+	state._members.clear();
+	state._leafToUser.clear();
+
+	QVector<MLSKeyPackage> keyPackages;
+	keyPackages.reserve(activeMembers.size());
+	for (const auto &member : activeMembers) {
+		keyPackages.append(member.keyPackage);
+	}
+
+	if (keyPackages.isEmpty()) {
+		state._ratchetTree.clear();
+		return true;
+	}
+
+	initializeTree(state, keyPackages);
+	for (int i = 0; i < activeMembers.size(); ++i) {
+		auto member = activeMembers[i];
+		member.leafIndex = static_cast<MLSLeafIndex>(i);
+		state._members[member.userId] = member;
+		state._leafToUser[member.leafIndex] = member.userId;
+	}
 	return true;
 }
 
@@ -694,9 +1051,24 @@ void MLSProtocol::updateTreePath(MLSGroupState &state, MLSLeafIndex leafIndex, c
 }
 
 bytes::vector MLSProtocol::encryptPathSecret(const MLSTreeNode &node, const bytes::vector &secret) {
-	// HPKE encryption would be used here
-	// For now, return the secret (placeholder)
-	return secret;
+	if (node.publicKey.empty() || secret.empty()) {
+		return {};
+	}
+	const auto nonce = generateRandomBytes(kAeadNonceSize);
+	bytes::vector keySeed = node.publicKey;
+	keySeed.insert(keySeed.end(), kLabelPath.toUtf8().begin(), kLabelPath.toUtf8().end());
+	const auto keyMaterial = computeSHA256(keySeed);
+	bytes::vector key(keyMaterial.begin(), keyMaterial.begin() + kChaCha20KeySize);
+	const auto sealed = aeadEncrypt(
+		MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519,
+		key,
+		nonce,
+		secret,
+		{});
+	if (!sealed.has_value()) return {};
+	bytes::vector out = nonce;
+	out.insert(out.end(), sealed->begin(), sealed->end());
+	return out;
 }
 
 bytes::vector MLSProtocol::deriveSecret(const bytes::vector &secret, const QString &label) {
@@ -707,22 +1079,49 @@ bytes::vector MLSProtocol::deriveSecret(const bytes::vector &secret, const QStri
 }
 
 bytes::vector MLSProtocol::hkdfExpand(const bytes::vector &prk, const QString &info, int length) {
-	bytes::vector result(length);
-
+	if (length <= 0) return {};
 	const auto infoBytes = info.toUtf8();
-	auto data = prk;
-	data.insert(data.end(), infoBytes.begin(), infoBytes.end());
+	bytes::vector result;
+	result.reserve(length);
 
-	const auto hash = (length <= kSHA384Size) ? computeSHA384(data) : computeSHA512(data);
-	std::memcpy(result.data(), hash.data(), std::min(length, (int)hash.size()));
-
+	bytes::vector t;
+	uint8_t counter = 1;
+	while (static_cast<int>(result.size()) < length) {
+		HMAC_CTX *ctx = HMAC_CTX_new();
+		if (!ctx) break;
+		HMAC_Init_ex(ctx, prk.data(), prk.size(), EVP_sha512(), nullptr);
+		if (!t.empty()) {
+			HMAC_Update(ctx, t.data(), t.size());
+		}
+		if (!infoBytes.empty()) {
+			HMAC_Update(ctx, reinterpret_cast<const uint8_t*>(infoBytes.data()), infoBytes.size());
+		}
+		HMAC_Update(ctx, &counter, 1);
+		t.resize(kSHA512Size);
+		unsigned int outLen = 0;
+		HMAC_Final(ctx, t.data(), &outLen);
+		HMAC_CTX_free(ctx);
+		t.resize(outLen);
+		result.insert(result.end(), t.begin(), t.end());
+		++counter;
+	}
+	result.resize(length);
 	return result;
 }
 
 bytes::vector MLSProtocol::hkdfExtract(const bytes::vector &salt, const bytes::vector &ikm) {
-	auto data = salt;
-	data.insert(data.end(), ikm.begin(), ikm.end());
-	return computeSHA512(data);
+	unsigned int outLen = kSHA512Size;
+	bytes::vector out(kSHA512Size);
+	HMAC(
+		EVP_sha512(),
+		salt.empty() ? nullptr : salt.data(),
+		salt.size(),
+		ikm.data(),
+		ikm.size(),
+		out.data(),
+		&outLen);
+	out.resize(outLen);
+	return out;
 }
 
 std::pair<bytes::vector, bytes::vector> MLSProtocol::generateKeyPair(MLSCiphersuite ciphersuite) {
@@ -739,9 +1138,30 @@ std::pair<bytes::vector, bytes::vector> MLSProtocol::generateKeyPair(MLSCiphersu
 		break;
 
 	case MLSCiphersuite::MLS_256_DHKEMX448_CHACHA20POLY1305_SHA512_Ed448:
-		// X448 generation (placeholder - would use proper X448 function)
-		RAND_bytes(privateKey.data(), keySize);
-		RAND_bytes(publicKey.data(), keySize);
+		// Generate X448 key pair through EVP APIs.
+		{
+			EVP_PKEY_CTX *kctx = EVP_PKEY_CTX_new_id(EVP_PKEY_X448, nullptr);
+			if (!kctx || EVP_PKEY_keygen_init(kctx) != 1) {
+				if (kctx) EVP_PKEY_CTX_free(kctx);
+				return {publicKey, privateKey};
+			}
+			EVP_PKEY *pkey = nullptr;
+			if (EVP_PKEY_keygen(kctx, &pkey) != 1 || !pkey) {
+				EVP_PKEY_CTX_free(kctx);
+				return {publicKey, privateKey};
+			}
+			EVP_PKEY_CTX_free(kctx);
+			size_t publen = publicKey.size();
+			size_t privlen = privateKey.size();
+			if (EVP_PKEY_get_raw_public_key(pkey, publicKey.data(), &publen) != 1
+				|| EVP_PKEY_get_raw_private_key(pkey, privateKey.data(), &privlen) != 1) {
+				EVP_PKEY_free(pkey);
+				return {publicKey, privateKey};
+			}
+			EVP_PKEY_free(pkey);
+			publicKey.resize(publen);
+			privateKey.resize(privlen);
+		}
 		break;
 	}
 
@@ -753,15 +1173,85 @@ bytes::vector MLSProtocol::generateEpochSecret() {
 }
 
 bytes::vector MLSProtocol::sign(const bytes::vector &data, const bytes::vector &privateKey) {
-	// Ed25519 signature (placeholder implementation)
-	bytes::vector signature(64);
-	RAND_bytes(signature.data(), signature.size());
+	int pkeyType = 0;
+	size_t signatureSize = 0;
+	if (privateKey.size() == kEd25519KeySize) {
+		pkeyType = EVP_PKEY_ED25519;
+		signatureSize = 64;
+	} else if (privateKey.size() == kEd448KeySize) {
+		pkeyType = EVP_PKEY_ED448;
+		signatureSize = 114;
+	} else {
+		return {};
+	}
+
+	EVP_PKEY *pkey = EVP_PKEY_new_raw_private_key(
+		pkeyType,
+		nullptr,
+		privateKey.data(),
+		privateKey.size());
+	if (!pkey) return {};
+
+	EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+	if (!ctx) {
+		EVP_PKEY_free(pkey);
+		return {};
+	}
+	if (EVP_DigestSignInit(ctx, nullptr, nullptr, nullptr, pkey) != 1) {
+		EVP_MD_CTX_free(ctx);
+		EVP_PKEY_free(pkey);
+		return {};
+	}
+
+	bytes::vector signature(signatureSize);
+	size_t outLen = signature.size();
+	if (EVP_DigestSign(ctx, signature.data(), &outLen, data.data(), data.size()) != 1) {
+		EVP_MD_CTX_free(ctx);
+		EVP_PKEY_free(pkey);
+		return {};
+	}
+	signature.resize(outLen);
+	EVP_MD_CTX_free(ctx);
+	EVP_PKEY_free(pkey);
 	return signature;
 }
 
 bool MLSProtocol::verify(const bytes::vector &data, const bytes::vector &signature, const bytes::vector &publicKey) {
-	// Ed25519 verification (placeholder implementation)
-	return signature.size() == 64 && !publicKey.empty();
+	int pkeyType = 0;
+	if (publicKey.size() == kEd25519KeySize) {
+		pkeyType = EVP_PKEY_ED25519;
+	} else if (publicKey.size() == kEd448KeySize) {
+		pkeyType = EVP_PKEY_ED448;
+	} else {
+		return false;
+	}
+
+	EVP_PKEY *pkey = EVP_PKEY_new_raw_public_key(
+		pkeyType,
+		nullptr,
+		publicKey.data(),
+		publicKey.size());
+	if (!pkey) return false;
+
+	EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+	if (!ctx) {
+		EVP_PKEY_free(pkey);
+		return false;
+	}
+	if (EVP_DigestVerifyInit(ctx, nullptr, nullptr, nullptr, pkey) != 1) {
+		EVP_MD_CTX_free(ctx);
+		EVP_PKEY_free(pkey);
+		return false;
+	}
+	const auto ok = EVP_DigestVerify(
+		ctx,
+		signature.data(),
+		signature.size(),
+		data.data(),
+		data.size()) == 1;
+	EVP_MD_CTX_free(ctx);
+	EVP_PKEY_free(pkey);
+	return ok;
 }
 
 // ========== Global Functions ==========

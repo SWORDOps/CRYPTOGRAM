@@ -23,9 +23,7 @@ class VerticalLayout;
 
 namespace Info::Saved {
 
-class SublistsMemento final : public ContentMemento {
 public:
-	explicit SublistsMemento(not_null<Main::Session*> session);
 
 	object_ptr<ContentWidget> createWidget(
 		QWidget *parent,
@@ -34,7 +32,6 @@ public:
 
 	Section section() const override;
 
-	~SublistsMemento();
 
 private:
 
@@ -51,14 +48,11 @@ public:
 
 	void setInternalState(
 		const QRect &geometry,
-		not_null<SublistsMemento*> memento);
 
 	rpl::producer<QString> title() override;
 	rpl::producer<QString> subtitle() override;
 
 private:
-	void saveState(not_null<SublistsMemento*> memento);
-	void restoreState(not_null<SublistsMemento*> memento);
 
 	std::shared_ptr<ContentMemento> doCreateMemento() override;
 

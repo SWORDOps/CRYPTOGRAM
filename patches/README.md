@@ -4,7 +4,6 @@ These patches contain local modifications required for building CRYPTOGRAM that 
 
 ## Why Local-Only?
 
-- `cmake` and `lib_tsm` are external submodules from different repositories
 - We don't have write access to push commits to those upstream repos
 - The modifications are specific to CRYPTOGRAM's build requirements
 
@@ -14,9 +13,6 @@ These patches contain local modifications required for building CRYPTOGRAM that 
    - Modifies: `cmake/external/tde2e/CMakeLists.txt`
    - Modifies: `cmake/external/webrtc/CMakeLists.txt`
 
-2. **lib_tsm-cmakelists.patch**: Adds CMake integration for lib_tsm
-   - Creates: `Telegram/lib_tsm/CMakeLists.txt`
-   - TSM is Python-based, needs minimal CMake glue
 
 ## How to Apply
 
@@ -29,8 +25,6 @@ Or apply manually:
 ```bash
 cd cmake
 git apply ../patches/cmake-optional-libs.patch
-cd ../Telegram/lib_tsm
-cp ../../patches/lib_tsm-cmakelists.patch CMakeLists.txt
 ```
 
 ## Note

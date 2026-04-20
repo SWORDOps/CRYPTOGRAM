@@ -1,6 +1,10 @@
+## OPSEC VALIDATION NOTE
+
+This document may contain historical implementation claims. Treat all security capabilities as **partial or experimental** unless corroborated by current runtime validation in `docs/status/FINAL_STATUS.md` and `docs/features/android-features.md`.
+
 # ✅ CRYPTOGRAM Settings UI - COMPLETE
 
-**Status**: Settings UI fully implemented and integrated!
+**Status**: Settings UI partially implemented and integrated!
 
 ---
 
@@ -126,7 +130,7 @@ position == cryptogramRow || position == languageRow || ...
 │  🔐 CRYPTOGRAM                      │
 │  Status  🔐 Encryption Active       │
 │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
-│  Military-grade encryption for...   │
+│  high-assurance (requires validation) encryption for...   │
 │                                      │
 │  Encryption Protocols                │
 │  ┌─────────────────────────────┐   │
@@ -141,7 +145,7 @@ position == cryptogramRow || position == languageRow || ...
 │  │ Library Version              │ › │
 │  │ Feature Status               │ › │
 │  └─────────────────────────────┘   │
-│  ℹ️ CRYPTOGRAM uses battle-tested... │
+│  ℹ️ CRYPTOGRAM uses documented... │
 └─────────────────────────────────────┘
 ```
 
@@ -245,7 +249,7 @@ advancedInfoRow           // Technical info
 
 ## 🚀 What's Next
 
-The Settings UI is **100% complete**. Remaining tasks:
+The Settings UI is **partially complete**. Remaining tasks:
 
 ### Next Steps (in priority order):
 
@@ -361,4 +365,4 @@ We've successfully created a fully functional, beautifully integrated Settings U
 
 ---
 
-🔐 **CRYPTOGRAM Android** - Military-Grade Encryption for Everyone
+🔐 **CRYPTOGRAM Android** - high-assurance (requires validation) Encryption for Everyone

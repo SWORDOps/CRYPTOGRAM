@@ -242,7 +242,10 @@ QByteArray Settings::serialize() const {
 		+ Serialize::bytearraySize(_tonsiteStorageToken)
 		+ sizeof(qint32) * 8
 		+ sizeof(ushort)
-		+ sizeof(qint32); // _notificationsDisplayChecksum
+		+ sizeof(qint32) // _notificationsDisplayChecksum
+		+ sizeof(qint32) // _torBridgeEnabled
+		+ Serialize::stringSize(_torBridgeType)
+		+ Serialize::stringSize(_torBridgeAddress);
 
 	auto result = QByteArray();
 	result.reserve(size);
@@ -406,7 +409,10 @@ QByteArray Settings::serialize() const {
 			<< qint32(_systemDarkModeEnabled.current() ? 1 : 0)
 			<< qint32(_quickDialogAction)
 			<< _notificationsVolume
-			<< _notificationsDisplayChecksum;
+			<< _notificationsDisplayChecksum
+			<< qint32(_torBridgeEnabled ? 1 : 0)
+			<< _torBridgeType
+			<< _torBridgeAddress;
 	}
 
 	Ensures(result.size() == size);
@@ -538,6 +544,9 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 	quint32 chatFiltersHorizontal = _chatFiltersHorizontal.current() ? 1 : 0;
 	quint32 quickDialogAction = quint32(_quickDialogAction);
 	ushort notificationsVolume = _notificationsVolume;
+	qint32 torBridgeEnabled = _torBridgeEnabled ? 1 : 0;
+	QString torBridgeType = _torBridgeType;
+	QString torBridgeAddress = _torBridgeAddress;
 
 	stream >> themesAccentColors;
 	if (!stream.atEnd()) {
@@ -875,6 +884,12 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 	if (!stream.atEnd()) {
 		stream >> notificationsDisplayChecksum;
 	}
+	if (!stream.atEnd()) {
+		stream
+			>> torBridgeEnabled
+			>> torBridgeType
+			>> torBridgeAddress;
+	}
 	if (stream.status() != QDataStream::Ok) {
 		LOG(("App Error: "
 			"Bad data for Core::Settings::constructFromSerialized()"));
@@ -915,6 +930,11 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 	case ScreenCorner::BottomLeft: _notificationsCorner = uncheckedNotificationsCorner; break;
 	}
 	_notificationsDisplayChecksum = notificationsDisplayChecksum;
+	_torBridgeEnabled = (torBridgeEnabled == 1);
+	_torBridgeType = torBridgeType.trimmed().isEmpty()
+		? QString("obfs4")
+		: torBridgeType.trimmed();
+	_torBridgeAddress = torBridgeAddress.trimmed();
 	_includeMutedCounter = (includeMutedCounter == 1);
 	_includeMutedCounterFolders = (includeMutedCounterFolders == 1);
 	_countUnreadMessages = (countUnreadMessages == 1);

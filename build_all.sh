@@ -1,7 +1,6 @@
 #!/bin/bash
 
 ################################################################################
-# TSM + CRYPTOGRAM - Ultimate Build Script v3.3 (AUTO-BOOTSTRAP ALL DEPS)
 # Enhanced with comprehensive error handling, logging, and validation
 # FULL LOGGING + REAL-TIME OUTPUT + STATE MANAGEMENT + ROBUST ERROR HANDLING
 #
@@ -772,7 +771,6 @@ initialize() {
     # Log header with comprehensive information
     {
         echo "════════════════════════════════════════════════════════════════"
-        echo "BUILD LOG - TSM + CRYPTOGRAM v${SCRIPT_VERSION}"
         echo "════════════════════════════════════════════════════════════════"
         echo ""
         echo "Build Information:"
@@ -2095,7 +2093,6 @@ main() {
                 exit 0
                 ;;
             --version|-v)
-                echo "TSM + CRYPTOGRAM Build Script v$SCRIPT_VERSION"
                 exit 0
                 ;;
             --prefix=*)
@@ -2141,7 +2138,6 @@ main() {
     [ "$INTERACTIVE_MODE" -eq 1 ] && [ -t 1 ] && clear || true
 
     # Header
-    print_header "TSM + CRYPTOGRAM Build Script v$SCRIPT_VERSION"
 
     echo "Configuration:"
     echo "  Root: $CRYPTOGRAM_ROOT"
@@ -2205,7 +2201,6 @@ main() {
             echo ""
             echo "Next steps:"
             echo "1. Run CRYPTOGRAM: $EXEC_PATH"
-            echo "2. With TSM: cd $CRYPTOGRAM_ROOT && source .tsm_cryptogram_env.sh && $EXEC_PATH"
             echo ""
         fi
     fi
@@ -2219,7 +2214,6 @@ main() {
 # ──────────────────────────────────────────────────────────────────────────────
 show_help() {
     cat <<EOF
-TSM + CRYPTOGRAM Build Script v$SCRIPT_VERSION
 
 USAGE:
     $0 [OPTIONS]

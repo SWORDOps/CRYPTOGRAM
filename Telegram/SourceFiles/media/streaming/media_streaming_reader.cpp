@@ -27,11 +27,8 @@ constexpr auto kSlicesInMemory = 2;
 constexpr auto kPreloadPartsAhead = 8;
 constexpr auto kDownloaderRequestsLimit = 8;
 
-using PartsMap = base::flat_map<uint32, QByteArray>;
 
 struct ParsedCacheEntry {
-	PartsMap parts;
-	std::optional<PartsMap> included;
 };
 
 bool IsContiguousSerialization(int serializedSize, int maxSliceSize) {
@@ -42,7 +39,6 @@ bool IsFullInHeader(int64 size) {
 	return (size <= kMaxOnlyInHeader);
 }
 
-bool ComputeIsGoodHeader(int64 size, const PartsMap &header) {
 	if (IsFullInHeader(size)) {
 		return false;
 	}
@@ -50,7 +46,6 @@ bool ComputeIsGoodHeader(int64 size, const PartsMap &header) {
 		header,
 		kInSlice,
 		ranges::less(),
-		&PartsMap::value_type::first);
 	const auto outsideFirstSlice = end(header) - outsideFirstSliceIt;
 	return (outsideFirstSlice <= kPartsOutsideFirstSliceGood);
 }
@@ -71,7 +66,6 @@ int MaxSliceSize(int sliceNumber, uint32 size) {
 }
 
 bytes::const_span ParseComplexCachedMap(
-		PartsMap &result,
 		bytes::const_span data,
 		int maxSize) {
 	const auto takeInt = [&]() -> std::optional<uint32> {
@@ -119,7 +113,6 @@ bytes::const_span ParseComplexCachedMap(
 }
 
 bytes::const_span ParseCachedMap(
-		PartsMap &result,
 		bytes::const_span data,
 		int maxSize) {
 	const auto size = int(data.size());
@@ -151,7 +144,6 @@ ParsedCacheEntry ParseCacheEntry(
 		data,
 		MaxSliceSize(sliceNumber, size));
 	if (!sliceNumber && ComputeIsGoodHeader(size, result.parts)) {
-		result.included = PartsMap();
 		ParseCachedMap(*result.included, remaining, MaxSliceSize(1, size));
 	}
 	return result;
@@ -229,7 +221,6 @@ struct Reader::CacheHelper {
 	const Storage::Cache::Key baseKey;
 
 	QMutex mutex;
-	base::flat_map<uint32, PartsMap> results;
 	std::vector<int> sizes;
 	std::atomic<crl::semaphore*> waiting = nullptr;
 };
@@ -242,7 +233,6 @@ Storage::Cache::Key Reader::CacheHelper::key(int sliceNumber) const {
 	return Storage::Cache::Key{ baseKey.high, baseKey.low + sliceNumber };
 }
 
-void Reader::Slice::processCacheData(PartsMap &&data) {
 	Expects((flags & Flag::LoadingFromCache) != 0);
 	Expects(!(flags & Flag::LoadedFromCache));
 
@@ -283,7 +273,6 @@ auto Reader::Slice::prepareFill(
 		parts,
 		from,
 		ranges::less(),
-		&PartsMap::value_type::first);
 	if (after == begin(parts)) {
 		result.offsetsFromLoader = offsetsFromLoader(
 			fromOffset,
@@ -297,7 +286,6 @@ auto Reader::Slice::prepareFill(
 		end(parts),
 		till,
 		ranges::less(),
-		&PartsMap::value_type::first);
 	const auto haveTill = FindNotLoadedStart(
 		ranges::make_subrange(start, finish),
 		fromOffset);
@@ -324,7 +312,6 @@ auto Reader::Slice::offsetsFromLoader(uint32 from, uint32 till) const
 		parts,
 		from,
 		ranges::less(),
-		&PartsMap::value_type::first);
 	auto check = (after == begin(parts)) ? after : (after - 1);
 	const auto end = parts.end();
 	for (auto offset = from; offset != till; offset += kPartSize) {
@@ -438,7 +425,6 @@ void Reader::Slices::applyHeaderCacheData() {
 	}
 }
 
-void Reader::Slices::processCacheResult(int sliceNumber, PartsMap &&result) {
 	Expects(sliceNumber >= 0 && sliceNumber <= _data.size());
 
 	auto &slice = (sliceNumber ? _data[sliceNumber - 1] : _header);
@@ -818,7 +804,6 @@ void Reader::Slices::unloadSlice(Slice &slice) const {
 }
 
 QByteArray Reader::Slices::serializeComplexSlice(const Slice &slice) const {
-	return SerializeComplexPartsMap(slice.parts);
 }
 
 QByteArray Reader::Slices::serializeAndUnloadFirstSliceNoHeader() {
@@ -1050,7 +1035,6 @@ void Reader::pruneDownloaderCache(uint32 minimalOffset) {
 		_downloaderReadCache,
 		minimalSliceNumber,
 		ranges::less(),
-		&base::flat_map<uint32, std::optional<PartsMap>>::value_type::first);
 	_downloaderReadCache.erase(_downloaderReadCache.begin(), removeTill);
 }
 
@@ -1093,7 +1077,6 @@ bool Reader::downloaderWaitForCachedSlice(uint32 offset) {
 			sliceNumber,
 			(readFromCacheForDownloader(sliceNumber)
 				? std::nullopt
-				: std::make_optional(PartsMap()))).first;
 	}
 	return !i->second;
 }
@@ -1410,7 +1393,6 @@ Reader::~Reader() {
 	finalizeCache();
 }
 
-QByteArray SerializeComplexPartsMap(
 		const base::flat_map<uint32, QByteArray> &parts) {
 	auto result = QByteArray();
 	const auto count = parts.size();

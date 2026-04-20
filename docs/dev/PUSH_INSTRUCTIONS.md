@@ -1,3 +1,7 @@
+## OPSEC VALIDATION NOTE
+
+This document may contain historical implementation claims. Treat all security capabilities as **partial or experimental** unless corroborated by current runtime validation in `docs/status/FINAL_STATUS.md` and `docs/features/android-features.md`.
+
 # 🚀 CRYPTOGRAM Android - Push Instructions
 
 **Status**: Code committed locally, ready to push to remote
@@ -16,9 +20,9 @@
 
 **Commit Message**:
 ```
-Add CRYPTOGRAM military-grade encryption to Telegram Android
+Add CRYPTOGRAM high-assurance (requires validation) encryption to Telegram Android
 
-Implement complete end-to-end encryption system with Signal Protocol
+Implement end-to-end encryption design intent (requires validation) system with Signal Protocol
 (Double Ratchet) and MLS Protocol (RFC 9420) for Telegram Android.
 ```
 
@@ -270,7 +274,7 @@ Once pushed successfully:
 
 2. **Create Pull Request** (optional):
    ```
-   Title: Add CRYPTOGRAM military-grade encryption to Telegram Android
+   Title: Add CRYPTOGRAM high-assurance (requires validation) encryption to Telegram Android
 
    Description:
    Implements complete Signal Protocol (Double Ratchet) and MLS Protocol
@@ -334,7 +338,7 @@ The CRYPTOGRAM Android implementation is:
 
 **🔐 CRYPTOGRAM ANDROID v1.0.0**
 
-Ready for deployment! 🚀
+requires validation! 🚀
 
 ---
 

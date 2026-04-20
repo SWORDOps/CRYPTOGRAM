@@ -6,7 +6,6 @@ When working on this repository, `git status` will **always** show:
 
 ```
 Changes not staged for commit:
-	modified:   Telegram/lib_tsm (untracked content)
 	modified:   cmake (modified content)
 ```
 
@@ -16,7 +15,6 @@ Changes not staged for commit:
 
 **DO NOT commit or push:**
 - Changes to the `cmake` submodule
-- Changes to the `Telegram/lib_tsm` submodule
 
 These modifications must remain local-only because:
 1. They are external repositories we don't control
@@ -40,4 +38,3 @@ These submodule modifications are documented and intentional:
 
 Automated checks should ignore uncommitted changes in:
 - `cmake` submodule
-- `Telegram/lib_tsm` submodule

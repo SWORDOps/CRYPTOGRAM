@@ -293,7 +293,6 @@ private:
 
 	MTP::AuthKeyPtr _localKey;
 
-	base::flat_map<PeerId, FileKey> _draftsMap;
 	base::flat_map<PeerId, FileKey> _draftCursorsMap;
 	base::flat_map<PeerId, bool> _draftsNotReadMap;
 	base::flat_map<

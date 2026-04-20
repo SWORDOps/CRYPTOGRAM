@@ -88,10 +88,8 @@ struct HistoryMessageViews
 	Part views;
 	Part replies;
 	Part repliesSmall;
-	ChannelId commentsMegagroupId = 0;
 	MsgId commentsRootId = 0;
 	MsgId commentsInboxReadTillId = 0;
-	MsgId commentsMaxId = 0;
 	int forwardsCount = 0;
 };
 

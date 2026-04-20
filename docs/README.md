@@ -23,6 +23,7 @@ Current feature documentation is split by platform:
 - [Security Overview](features/security-overview.md)
 
 These pages describe the feature surfaces that are present in the repo today. Some sections refer to partial implementations, helper code, or placeholder paths, so do not treat every bullet as a finished product guarantee.
+The desktop feature page keeps a full inventory view, including features that are currently `excluded` from default builds or `source-only`, to avoid losing scope visibility.
 
 Current status notes live under `docs/status/`. For the most conservative summary, start with:
 

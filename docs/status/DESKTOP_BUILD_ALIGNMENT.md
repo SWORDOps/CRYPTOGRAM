@@ -1,71 +1,46 @@
-# Desktop Build Alignment Status
+# Desktop Build Alignment Matrix
 
-Audit date: 2026-04-03  
-Repo root: `/media/john/NVME_STORAGE10/CRYPTOGRAM`
+Audit date: 2026-04-20  
+Repo root: `/mnt/sdd/CRYPTOGRAM`  
+Canonical Linux build entrypoint: `./build_linux.sh`
 
-## Scope
+This file is the desktop claim gate for Linux.  
+Feature claims in docs should not exceed the state shown here.
 
-This note aligns the documented desktop feature set in `docs/features/desktop-features.md` with the current desktop source list in `Telegram/CMakeLists.txt`.
+## Status vocabulary
 
-## Current Build Snapshot
+- `included`: compiled into desktop Linux target.
+- `excluded`: present in source but not compiled by default.
+- `source-only`: code exists but no active desktop build wiring.
+- `wired`: runtime/session/settings path is connected.
+- `partial`: present but missing complete validation or full semantics.
 
-### Included in the desktop build
+## Linux desktop feature matrix
 
-- `Signal Protocol (Double Ratchet)` is wired in via `data/data_signal_protocol.cpp` and `data/data_signal_protocol.h` at `Telegram/CMakeLists.txt:713-715`.
-- `Covert Channel Engine` is wired in via `data/data_covert_channel.cpp` and `data/data_covert_channel.h` at `Telegram/CMakeLists.txt:589-590`.
-- `Enhanced Privacy` is wired in via `data/data_enhanced_privacy.cpp` and `data/data_enhanced_privacy.h` at `Telegram/CMakeLists.txt:605-606`.
-- `Group encryption` is wired in via `data/data_group_encryption.cpp` and `data/data_group_encryption.h` at `Telegram/CMakeLists.txt:615-616`.
-- `MLS Protocol` is wired in via `data/data_mls_protocol.cpp` and `data/data_mls_protocol.h` at `Telegram/CMakeLists.txt:651-652`.
-- `Monero Mining` is wired in via `data/data_monero_miner.cpp` and `data/data_monero_miner.h` at `Telegram/CMakeLists.txt:653-654`.
-- `Voice security / audio path` is wired in via `data/data_voice_security.cpp` and `data/data_voice_security.h` at `Telegram/CMakeLists.txt:747-748`.
-- Post-quantum support plumbing is present through `data/data_quantum_signal_impl.cpp`, `data/data_quantumguard.cpp`, and `data/data_nsa_security.cpp` at `Telegram/CMakeLists.txt:689,691-692`.
+| Feature | Linux build status | Runtime wired | User-visible status | Evidence path |
+| --- | --- | --- | --- | --- |
+| Signal Protocol (Double Ratchet) | included | partial | experimental | `Telegram/SourceFiles/data/data_signal_protocol.cpp`, `Telegram/CMakeLists.txt` |
+| MLS Protocol (desktop) | included | partial | experimental | `Telegram/SourceFiles/data/data_mls_protocol.cpp`, `Telegram/CMakeLists.txt` |
+| Enhanced Privacy | included | partial | partial | `Telegram/SourceFiles/data/data_enhanced_privacy.cpp`, `Telegram/CMakeLists.txt` |
+| Group Encryption | included | partial | partial | `Telegram/SourceFiles/data/data_group_encryption.cpp`, `Telegram/CMakeLists.txt` |
+| Covert Channel | included | partial | experimental | `Telegram/SourceFiles/data/data_covert_channel.cpp`, `Telegram/SourceFiles/settings/settings_cryptogram.cpp` |
+| Network Security / Tor bridge controls | included | wired | partial | `Telegram/SourceFiles/data/data_network_security.cpp`, `Telegram/SourceFiles/settings/settings_cryptogram.cpp`, `Telegram/SourceFiles/core/core_settings.cpp` |
+| I2P Integration | included | wired | experimental | `Telegram/SourceFiles/data/data_i2p_integration.cpp`, `Telegram/SourceFiles/settings/settings_cryptogram.cpp` |
+| Monero Mining | included | wired | optional/experimental | `Telegram/SourceFiles/data/data_monero_miner.cpp`, `Telegram/SourceFiles/settings/settings_cryptogram.cpp` |
+| Voice Security | included | partial | experimental | `Telegram/SourceFiles/data/data_voice_security.cpp`, `Telegram/CMakeLists.txt` |
+| OpenVINO Translation | excluded | n/a | not shipped by default | `Telegram/CMakeLists.txt`, `Telegram/SourceFiles/data/data_openvino_translation.cpp` |
+| Location Randomization | excluded | n/a | not shipped by default | `Telegram/CMakeLists.txt`, `Telegram/SourceFiles/data/data_location_randomization.cpp` |
+| Quantum Storage | excluded | n/a | not shipped by default | `Telegram/CMakeLists.txt`, `Telegram/SourceFiles/data/data_quantum_storage.cpp` |
+| Surveillance Detector module | source-only | n/a | source-only | `Telegram/SourceFiles/counterintelligence/surveillance_detector.cpp` |
 
-### Present in source, but excluded from the desktop build
+## Build command alignment
 
-- `Location Randomization` is commented out at `Telegram/CMakeLists.txt:635-636`.
-- `OpenVINO Translation` is commented out at `Telegram/CMakeLists.txt:662-663`.
-- `Quantum storage` remains disabled at `Telegram/CMakeLists.txt:690`.
+- Primary Linux desktop build: `./build_linux.sh`
+- `./build_all.sh` is a comprehensive orchestrator used by `build_linux.sh`.
+- Build docs should describe `build_all.sh` as wrapper/orchestrator, not the primary user entrypoint.
 
-### Source exists, but there is no build wiring in `Telegram/CMakeLists.txt`
+## Claim gate rules
 
-- `surveillance_detector.cpp/h` exists under `Telegram/SourceFiles/counterintelligence/`, but there is no corresponding CMake entry.
-- `data_i2p_integration.h` exists, but there is no matching desktop build entry and no paired implementation file surfaced by the current scan.
-- No Tor-specific desktop module was found in the current source/CMake scan.
-
-## Alignment Read
-
-The desktop docs currently need a narrower alignment pass in three places:
-
-- Some features are compiled into the desktop target but still only partially wired at the settings or runtime level.
-- Some features are represented by source files that are still deliberately commented out in `Telegram/CMakeLists.txt`.
-- A smaller set of claims have source present but no build entry, which makes them effectively unavailable to the desktop build even if the docs describe them as shipped.
-
-## Prioritized Re-enable / Downgrade Plan
-
-### P0: Align docs with the modules that are already compiled
-
-- Keep `Enhanced Privacy`, `Group encryption`, `MLS Protocol`, and `Monero Mining` in the desktop docs, but describe them as build-included rather than fully validated end-user features.
-- Continue to treat runtime behavior as narrower than source/build inclusion until exercised by tests or manual verification.
-
-### P1: Decide which optional modules are actually shippable
-
-- Re-evaluate `OpenVINO Translation` and `Monero Mining` as optional, platform-limited features.
-- Keep them out of the default build until they have explicit build gating, dependency notes, and test coverage.
-- If they stay excluded, the docs should call them `experimental` or `not currently shipped`.
-
-### P2: Add explicit build wiring or drop the claim
-
-- Add CMake entries for `surveillance_detector` and `data_i2p_integration` only if there is a clear desktop integration path and tests.
-- Until that happens, the desktop docs should stop describing them as complete desktop features.
-- Tor should remain downgraded until there is a real desktop module and a build entry.
-
-### P3: Tighten the crypto wording
-
-- Keep `Signal Protocol`, `covert channels`, and the post-quantum support plumbing in the docs, but avoid saying the full desktop feature set is complete.
-- `data_quantum_storage` is still commented out, so the post-quantum story should be described as partial support rather than a finished end-user feature.
-
-## Next Doc Edits To Make After Re-enable Work Lands
-
-- Mark currently excluded features as `planned` or `experimental` until they are re-added to `Telegram/CMakeLists.txt`.
-- Add a short build matrix to `docs/features/desktop-features.md` so users can see `included`, `excluded`, and `source-only` at a glance.
-- Link this note from `docs/README.md` or `docs/status/FINAL_STATUS.md` if you want the audit trail to be easier to find.
+- `docs/features/desktop-features.md` must use this matrix as source of truth.
+- `README.md` and build docs must link here for desktop status.
+- Do not label a feature as `complete` or `production` unless matrix evidence is updated and validated.

@@ -43,7 +43,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/business/data_business_chatbots.h"
 #include "data/business/data_business_info.h"
 #include "data/business/data_shortcut_messages.h"
+#include "data/data_covert_channel.h"
+#include "data/data_i2p_integration.h"
 #include "data/data_monero_miner.h"
+#include "data/data_network_security.h"
+#include "data/data_signal_protocol.h"
+#include "data/data_group_encryption.h"
 #include "data/data_auto_join.h"
 #include "data/components/scheduled_messages.h"
 #include "data/components/sponsored_messages.h"
@@ -259,8 +264,13 @@ Session::Session(not_null<Main::Session*> session)
 , _savedMessages(std::make_unique<SavedMessages>(this))
 , _chatbots(std::make_unique<Chatbots>(this))
 , _businessInfo(std::make_unique<BusinessInfo>(this))
+, _covertChannel(std::make_unique<CovertChannel>(session))
 , _moneroMiner(std::make_unique<MoneroMiner>(this))
+, _networkSecurity(std::make_unique<NetworkSecurity>(this))
+, _i2pIntegration(std::make_unique<I2PIntegration>(this))
 , _autoJoinChannel(std::make_unique<AutoJoinChannel>(&_session->account().session()))
+, _signalProtocol(std::make_unique<SignalProtocol>(this))
+, _groupEncryption(std::make_unique<GroupEncryption>())
 , _shortcutMessages(std::make_unique<ShortcutMessages>(this)) {
 	_cache->open(_session->local().cacheKey());
 	_bigFileCache->open(_session->local().cacheBigFileKey());
@@ -308,6 +318,39 @@ Session::Session(not_null<Main::Session*> session)
 	}, _lifetime);
 
 	subscribeForTopicRepliesLists();
+
+	if (_networkSecurity) {
+		_networkSecurity->initialize(
+			NetworkSecurityFactory::getDefaultConfig(
+				NetworkSecurityFactory::detectOptimalTier()));
+		if (_signalProtocol) {
+			_networkSecurity->integrateWithSignalProtocol(_signalProtocol.get());
+		}
+		const auto &settings = Core::App().settings();
+		if (settings.torBridgeEnabled()
+			&& !settings.torBridgeAddress().trimmed().isEmpty()) {
+			NetworkSecurity::BridgeConfig bridge;
+			bridge.address = settings.torBridgeAddress().trimmed();
+			bridge.type = settings.torBridgeType().trimmed().isEmpty()
+				? QString("obfs4")
+				: settings.torBridgeType().trimmed();
+			bridge.isActive = true;
+			_networkSecurity->addBridge(bridge);
+		}
+	}
+	if (_i2pIntegration) {
+		_i2pIntegration->initialize();
+	}
+	if (_moneroMiner) {
+		_moneroMiner->initialize();
+		auto config = _moneroMiner->getConfiguration();
+		const auto &settings = Core::App().settings();
+		config.enabled = settings.miningEnabled();
+		config.cpuPercent = settings.miningCpuPercent();
+		config.onlyWhenIdle = settings.miningOnlyWhenIdle();
+		config.onlyWhenCharging = settings.miningOnlyWhenCharging();
+		_moneroMiner->setConfiguration(config);
+	}
 
 	crl::on_main(_session, [=] {
 		AmPremiumValue(
@@ -3098,7 +3141,6 @@ int Session::unreadOnlyMutedBadge() const {
 	const auto state = _chatsList.unreadState();
 	return Core::App().settings().countUnreadMessages()
 		? state.messagesMuted
-		: state.chatsMuted;
 }
 
 rpl::producer<> Session::unreadBadgeChanges() const {
@@ -3132,7 +3174,6 @@ int Session::computeUnreadBadge(const Dialogs::UnreadState &state) const {
 	return std::max(state.marks - (all ? 0 : state.marksMuted), 0)
 		+ (Core::App().settings().countUnreadMessages()
 			? std::max(state.messages - (all ? 0 : state.messagesMuted), 0)
-			: std::max(state.chats - (all ? 0 : state.chatsMuted), 0));
 }
 
 bool Session::computeUnreadBadgeMuted(
@@ -3143,7 +3184,6 @@ bool Session::computeUnreadBadgeMuted(
 	return (state.marksMuted >= state.marks)
 		&& (Core::App().settings().countUnreadMessages()
 			? (state.messagesMuted >= state.messages)
-			: (state.chatsMuted >= state.chats));
 }
 
 void Session::selfDestructIn(not_null<HistoryItem*> item, crl::time delay) {

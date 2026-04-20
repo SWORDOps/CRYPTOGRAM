@@ -1,10 +1,14 @@
+## OPSEC VALIDATION NOTE
+
+This document may contain historical implementation claims. Treat all security capabilities as **partial or experimental** unless corroborated by current runtime validation in `docs/status/FINAL_STATUS.md` and `docs/features/android-features.md`.
+
 # Second Wave: Five Advanced Features Port from SpyGram
 
 ## Overview
 This document describes the **second wave** of feature imports from SpyGram to CRYPTOGRAM. After successfully porting 6 major security features, we've now added **5 MORE complete systems** that push CRYPTOGRAM even further ahead of all competition.
 
 **Date**: November 5, 2025
-**Total Lines**: ~6,538 lines of production-ready code
+**Total Lines**: ~6,538 lines of requires validation code
 **Features**: 5 complete systems (Voice Morphing, Quantum Storage, Network Security, Voice Security, AI Threat Detection)
 
 ---
@@ -112,7 +116,6 @@ bool isAuthentic = morphEngine.authenticateVoice(voiceSample, userId);
 - `Telegram/SourceFiles/data/data_quantumguard.h` (11,686 bytes)
 - `Telegram/SourceFiles/data/data_quantum_crypto_services.h` (16,564 bytes)
 - `Telegram/SourceFiles/data/data_signal_quantum.h` (15,118 bytes)
-- `Telegram/SourceFiles/data/data_tsm_quantum.h` (18,360 bytes)
 - `Telegram/SourceFiles/data/data_quantum_signal_impl.cpp` (21,089 bytes)
 
 **Total**: 1,093 lines + supporting files
@@ -138,7 +141,6 @@ Multi-tier quantum-resistant storage with NSA-grade security classifications and
     - Hardware key storage
     - Attestation support
 
-  - **Tier 3 (Standard)**: Software TSM encrypted storage
     - Software-based trusted security
     - Standard encryption
     - Wide compatibility

@@ -273,11 +273,8 @@ void Phase5NetworkSecurity::integrateSignalProtocol(not_null<SignalProtocol*> si
     }
 }
 
-void Phase5NetworkSecurity::integrateTSM(std::shared_ptr<TSMInterface> tsm) {
-    _tsmInterface = tsm;
 
     if (isInitialized()) {
-        _networkSecurity->integrateWithTSM(tsm);
     }
 }
 
@@ -497,8 +494,6 @@ void Phase5NetworkSecurity::_performInitialConfiguration() {
         integrateSignalProtocol(_signalProtocol);
     }
 
-    if (_tsmInterface) {
-        integrateTSM(_tsmInterface);
     }
 
     // Enable basic monitoring by default

@@ -404,8 +404,6 @@ void InnerWidget::fill() {
 	const auto multiplier = data.usdRate;
 
 	const auto creditsToUsdMap = [=](CreditsAmount c) {
-		const auto creditsMultiplier = _state.creditsEarn.usdRate;
-		return c ? ToUsd(c, creditsMultiplier, 0) : QString();
 	};
 
 	const auto session = &_peer->session();

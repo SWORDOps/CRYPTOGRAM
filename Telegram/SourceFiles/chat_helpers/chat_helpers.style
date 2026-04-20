@@ -476,8 +476,6 @@ defaultTabbedSearch: TabbedSearch {
 	height: 33px;
 }
 
-inlineResultsMinHeight: 278px;
-inlineResultsMaxHeight: 640px;
 
 emojiPanHeaderFont: semiboldFont;
 emojiPanRemoveSkip: 10px;
@@ -771,7 +769,6 @@ inlineRowBorder: 1px;
 inlineRowBorderFg: shadowFg;
 inlineRowFileNameTop: 2px;
 inlineRowFileDescriptionTop: 23px;
-inlineResultsMinWidth: 48px;
 inlineDurationMargin: 3px;
 
 stickersPremiumLock: icon{{ "emoji/premium_lock", premiumButtonFg }};

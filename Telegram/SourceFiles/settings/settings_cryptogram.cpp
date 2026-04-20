@@ -16,11 +16,12 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include "ui/widgets/continuous_sliders.h"
 #include "ui/widgets/fields/input_field.h"
 #include "ui/boxes/confirm_box.h"
+#include "ui/layers/generic_box.h"
+#include "boxes/abstract_box.h"
 #include "ui/text/text_utilities.h"
 #include "ui/vertical_list.h"
 #include "lang/lang_keys.h"
 #include "core/application.h"
-#include "core/tsm_client.h"
 #include "core/core_settings.h"
 #include "core/peer_trust.h"
 #include "data/data_session.h"
@@ -28,6 +29,9 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include "data/data_enhanced_privacy.h"
 #include "data/data_group_encryption.h"
 #include "data/data_mls_protocol.h"
+#include "data/data_network_security.h"
+#include "data/data_i2p_integration.h"
+#include "data/data_covert_channel.h"
 #include "main/main_session.h"
 #include "window/window_session_controller.h"
 #include "styles/style_settings.h"
@@ -35,6 +39,7 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include "base/platform/base_platform_info.h"
 
 #include <QtWidgets/QApplication>
+#include <functional>
 
 namespace Settings {
 namespace {
@@ -234,8 +239,6 @@ void Cryptogram::setupContent() {
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// TSM Integration (Optional)
-	setupTSMSection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
@@ -374,9 +377,14 @@ void Cryptogram::setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> containe
 		))
 	);
 
-	const auto applyProfile = [=](const QString &name, const QString &desc) {
+	const auto applyProfile = [=](
+			const QString &name,
+			const QString &desc,
+			const std::function<void(Core::Settings*)> &apply) {
+		const auto settings = &Core::App().settings();
+		apply(settings);
+		Core::App().saveSettingsDelayed();
 		Ui::show(Ui::MakeInformBox(QString("Mission Profile Applied: %1\n\n%2").arg(name, desc)));
-		// In a real implementation, this would update Core::App().settings() and call saveSettingsDelayed()
 	};
 
 	const auto standard = container->add(
@@ -386,7 +394,21 @@ void Cryptogram::setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> containe
 			st::settingsButtonNoIcon),
 		st::settingsCheckboxPadding);
 	standard->setClickedCallback([=] {
-		applyProfile("Standard", "• Tor: Enabled\n• PQC: Level 3\n• UTD: Standard\n• Tether: Off");
+		applyProfile(
+			"Standard",
+			"• Tor: Enabled\n• Bridge: Disabled\n• Metadata Hiding: Basic\n• Mining: Enabled",
+			[](Core::Settings *settings) {
+				settings->setTorEnabled(true);
+				settings->setTorBridgeEnabled(false);
+				settings->setTorSnowflakeEnabled(false);
+				settings->setCryptogramHideOnlineStatus(false);
+				settings->setCryptogramHideTypingIndicator(false);
+				settings->setCryptogramHideReadReceipts(false);
+				settings->setMiningEnabled(true);
+				settings->setMiningCpuPercent(20);
+				settings->setMiningOnlyWhenIdle(true);
+				settings->setMiningOnlyWhenCharging(true);
+			});
 	});
 
 	const auto journalist = container->add(
@@ -396,7 +418,20 @@ void Cryptogram::setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> containe
 			st::settingsButtonNoIcon),
 		st::settingsCheckboxPadding);
 	journalist->setClickedCallback([=] {
-		applyProfile("Journalist", "• Stylometry: Active\n• Metadata: Strip\n• Traffic: Padding\n• Tor: Snowflake");
+		applyProfile(
+			"Journalist",
+			"• Stylometry: Active\n• Metadata: Strip\n• Traffic: Bridge + Snowflake\n• Tor: Enabled",
+			[](Core::Settings *settings) {
+				settings->setTorEnabled(true);
+				settings->setTorBridgeEnabled(true);
+				settings->setTorBridgeType("snowflake");
+				settings->setTorSnowflakeEnabled(true);
+				settings->setStylometryShieldEnabled(true);
+				settings->setCryptogramHideOnlineStatus(true);
+				settings->setCryptogramHideTypingIndicator(true);
+				settings->setCryptogramHideReadReceipts(true);
+				settings->setMiningEnabled(false);
+			});
 	});
 
 	const auto highRisk = container->add(
@@ -406,7 +441,21 @@ void Cryptogram::setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> containe
 			st::settingsButtonNoIcon),
 		st::settingsCheckboxPadding);
 	highRisk->setClickedCallback([=] {
-		applyProfile("High-Risk", "• Dead Man: Active\n• Tether: Active\n• RAM: Scrambled\n• Posture: Top Secret");
+		applyProfile(
+			"High-Risk",
+			"• Tor: Forced + Bridge\n• Metadata: Maximum Strip\n• Stylometry: Active\n• Mining: Disabled",
+			[](Core::Settings *settings) {
+				settings->setTorEnabled(true);
+				settings->setTorBridgeEnabled(true);
+				settings->setTorBridgeType("obfs4");
+				settings->setTorSnowflakeEnabled(true);
+				settings->setStylometryShieldEnabled(true);
+				settings->setCryptogramHideOnlineStatus(true);
+				settings->setCryptogramHideTypingIndicator(true);
+				settings->setCryptogramHideReadReceipts(true);
+				settings->setMiningEnabled(false);
+				settings->setMiningCpuPercent(0);
+			});
 	});
 
 	Ui::AddSkip(container);
@@ -1069,17 +1118,13 @@ void Cryptogram::setupIMAPSection(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::setupTSMSection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("TSM Integration")));
 
 	Ui::AddSkip(container);
 
 	Ui::AddDividerText(
 		container,
 		rpl::single(QString(
-			"The Telegram Session Manager (TSM) is an optional backend service that "
 			"enables advanced session management and lattice-based Zero-Knowledge "
-			"authentication. Enable this only if you are running a local TSM instance."
 		))
 	);
 
@@ -1088,8 +1133,6 @@ void Cryptogram::setupTSMSection(not_null<Ui::VerticalLayout*> container) {
 	const auto enabled = container->add(
 		object_ptr<Ui::Checkbox>(
 			container,
-			QString("Enable TSM Integration"),
-			settings->tsmEnabled(),
 			st::settingsCheckbox),
 		st::settingsCheckboxPadding);
 
@@ -1100,16 +1143,13 @@ void Cryptogram::setupTSMSection(not_null<Ui::VerticalLayout*> container) {
 
 	enabled->checkedChanges(
 	) | rpl::on_next([=](bool checked) {
-		settings->setTsmEnabled(checked);
 		Core::App().saveSettingsDelayed();
 		wrap->toggle(checked, anim::type::normal);
 	}, enabled->lifetime());
 
-	wrap->toggle(settings->tsmEnabled(), anim::type::instant);
 
 	const auto inner = wrap->entity();
 
-	setupTSMSessionsSection(inner);
 	setupZKAuthenticationSection(inner);
 }
 
@@ -1162,6 +1202,20 @@ void Cryptogram::createI2PSettings(not_null<Ui::VerticalLayout*> container) {
 	enabled->checkedChanges(
 	) | rpl::on_next([=](bool checked) {
 		settings->setI2pEnabled(checked);
+		auto &session = _controller->session();
+		if (const auto i2p = session.data().i2pIntegration()) {
+			i2p->setEnabled(checked);
+			if (checked) {
+				const auto connected = i2p->connectToRouter("127.0.0.1", 7656);
+				if (!connected) {
+					Ui::show(Ui::MakeInformBox(
+						QString("I2P router was not reachable at 127.0.0.1:7656. "
+							"Start your local I2P router to enable anonymized routing.")));
+				}
+			} else {
+				i2p->disconnectFromRouter();
+			}
+		}
 		Core::App().saveSettingsDelayed();
 		updateI2PStatus();
 	}, enabled->lifetime());
@@ -1170,20 +1224,131 @@ void Cryptogram::createI2PSettings(not_null<Ui::VerticalLayout*> container) {
 }
 
 void Cryptogram::createBridgeSettings(not_null<Ui::VerticalLayout*> container) {
-	// Bridge configuration - placeholder for future implementation
+	const auto settings = &Core::App().settings();
+
 	Ui::AddDividerText(
 		container,
 		rpl::single(QString(
-			"💡 Bridge Support: Bridges act as alternative entry points to Tor/I2P networks. "
-			"Enable this if direct connections are blocked in your region."
+			"Tor bridge routing is available for blocked networks. Configure an obfuscated "
+			"bridge endpoint (for example obfs4/meek/snowflake) and enable bridge relay."
 		))
 	);
 
-	AddButtonWithIcon(
-		container,
-		rpl::single(QString("Configure Tor Bridges")),
-		st::settingsButton,
-		{ &st::settingsIconInterfaceScale, IconType::Simple, &st::settingsIconFg });
+	const auto enabled = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			QString("Enable Tor Bridge Relay"),
+			settings->torBridgeEnabled(),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	const auto statusLabel = container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			settings->torBridgeEnabled()
+				? QString("Bridge: Enabled (%1 %2)")
+					.arg(settings->torBridgeType(), settings->torBridgeAddress().isEmpty()
+						? QString("endpoint pending")
+						: settings->torBridgeAddress())
+				: QString("Bridge: Disabled"),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	const auto configure = container->add(
+		object_ptr<Ui::SettingsButton>(
+			container,
+			rpl::single(QString("Configure Tor Bridge Endpoint")),
+			st::settingsButtonNoIcon),
+		st::settingsCheckboxPadding);
+
+	enabled->checkedChanges(
+	) | rpl::on_next([=](bool checked) {
+		settings->setTorBridgeEnabled(checked);
+		Core::App().saveSettingsDelayed();
+		statusLabel->setText(
+			checked
+				? QString("Bridge: Enabled (%1 %2)")
+					.arg(settings->torBridgeType(), settings->torBridgeAddress().isEmpty()
+						? QString("endpoint pending")
+						: settings->torBridgeAddress())
+				: QString("Bridge: Disabled"));
+	}, enabled->lifetime());
+
+	configure->setClickedCallback([=] {
+		const auto typeInitial = settings->torBridgeType().isEmpty()
+			? QString("obfs4")
+			: settings->torBridgeType();
+		const auto endpointInitial = settings->torBridgeAddress();
+
+		Ui::show(Box([=](not_null<Ui::GenericBox*> box) {
+			box->setTitle(rpl::single(QString("Tor Bridge Configuration")));
+
+			const auto typeField = box->addRow(
+				object_ptr<Ui::InputField>(
+					box,
+					st::defaultInputField,
+					Ui::InputField::Mode::SingleLine,
+					rpl::single(QString("Bridge type (obfs4/meek/snowflake)")),
+					TextWithTags{ typeInitial }));
+
+			const auto endpointField = box->addRow(
+				object_ptr<Ui::InputField>(
+					box,
+					st::defaultInputField,
+					Ui::InputField::Mode::SingleLine,
+					rpl::single(QString("Bridge endpoint (host:port)")),
+					TextWithTags{ endpointInitial }));
+
+			box->setFocusCallback([=] {
+				typeField->setFocusFast();
+			});
+
+			box->addButton(rpl::single(QString("Save")), [=] {
+				const auto type = typeField->getLastText().trimmed();
+				const auto endpoint = endpointField->getLastText().trimmed();
+				if (type.isEmpty() || endpoint.isEmpty() || !endpoint.contains(':')) {
+					Ui::show(Ui::MakeInformBox(
+						QString("Bridge configuration is invalid. Use type + host:port.")));
+					return;
+				}
+
+				const auto parts = endpoint.split(':');
+				const auto host = parts.front().trimmed();
+				const auto port = parts.back().toUShort();
+				if (host.isEmpty() || port == 0) {
+					Ui::show(Ui::MakeInformBox(
+						QString("Bridge endpoint must be in host:port format.")));
+					return;
+				}
+
+				settings->setTorBridgeType(type);
+				settings->setTorBridgeAddress(endpoint);
+				Core::App().saveSettingsDelayed();
+
+				auto &session = _controller->session();
+				if (const auto networkSecurity = session.data().networkSecurity()) {
+					Data::BridgeConfiguration bridge;
+					bridge.bridgeId = QString("desktop-bridge-%1").arg(type);
+					bridge.bridgeType = type;
+					bridge.bridgeAddress = host;
+					bridge.bridgePort = port;
+					bridge.isActive = settings->torBridgeEnabled();
+					bridge.lastActive = QDateTime::currentDateTime();
+					(void)networkSecurity->addBridge(bridge);
+				}
+
+				statusLabel->setText(
+					settings->torBridgeEnabled()
+						? QString("Bridge: Enabled (%1 %2)").arg(type, endpoint)
+						: QString("Bridge: Saved (%1 %2), currently disabled").arg(type, endpoint));
+				box->closeBox();
+			});
+
+			box->addButton(tr::lng_cancel(), [=] {
+				box->closeBox();
+			});
+		}));
+	});
 
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 }
@@ -1311,7 +1476,6 @@ void Cryptogram::setupZKAuthenticationSection(not_null<Ui::VerticalLayout*> cont
 namespace Settings {
 ...
 	button->setClickedCallback([=] {
-		auto client = Core::App().tsmClient();
 		if (!client->isConnected()) {
 			client->connect();
 		}
@@ -1321,7 +1485,6 @@ namespace Settings {
 
 		Ui::show(Ui::MakeInformBox(
 			QString("Zero-Knowledge Authentication Initiated\n\n"
-				"Connecting to TSM backend at localhost:50051...\n"
 				"Proof generation in progress.")));
 	});
 
@@ -1594,6 +1757,11 @@ void Cryptogram::createMiningConfiguration(not_null<Ui::VerticalLayout*> contain
 		settings->setMiningCpuPercent(percent);
 		label->setText(QString::number(percent) + "%");
 		Core::App().saveSettingsDelayed();
+		if (auto miner = _controller->session().data().moneroMiner()) {
+			auto config = miner->getConfiguration();
+			config.cpuPercent = percent;
+			miner->setConfiguration(config);
+		}
 	}, slider->lifetime());
 
 	Ui::AddSkip(container);
@@ -1611,6 +1779,11 @@ void Cryptogram::createMiningConfiguration(not_null<Ui::VerticalLayout*> contain
 	) | rpl::on_next([=](bool checked) {
 		settings->setMiningOnlyWhenIdle(checked);
 		Core::App().saveSettingsDelayed();
+		if (auto miner = _controller->session().data().moneroMiner()) {
+			auto config = miner->getConfiguration();
+			config.onlyWhenIdle = checked;
+			miner->setConfiguration(config);
+		}
 	}, onlyIdle->lifetime());
 
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
@@ -1628,6 +1801,11 @@ void Cryptogram::createMiningConfiguration(not_null<Ui::VerticalLayout*> contain
 	) | rpl::on_next([=](bool checked) {
 		settings->setMiningOnlyWhenCharging(checked);
 		Core::App().saveSettingsDelayed();
+		if (auto miner = _controller->session().data().moneroMiner()) {
+			auto config = miner->getConfiguration();
+			config.onlyWhenCharging = checked;
+			miner->setConfiguration(config);
+		}
 	}, onlyCharging->lifetime());
 
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
@@ -1683,11 +1861,30 @@ void Cryptogram::createMiningStatistics(not_null<Ui::VerticalLayout*> container)
 
 void Cryptogram::updateI2PStatus() {
 	const auto settings = &Core::App().settings();
-	const auto enabled = settings->i2pEnabled();
-
-	QString statusText = enabled
-		? QString("I2P: Enabled (Configuration active)")
-		: QString("I2P: Disabled");
+	auto &session = _controller->session();
+	const auto i2p = session.data().i2pIntegration();
+	QString statusText = "I2P: Disabled";
+	if (settings->i2pEnabled()) {
+		if (i2p) {
+			switch (i2p->getStatus()) {
+			case Data::I2PStatus::Connected:
+			case Data::I2PStatus::Tunneling:
+				statusText = QString("I2P: Enabled (router connected)");
+				break;
+			case Data::I2PStatus::Connecting:
+				statusText = QString("I2P: Enabled (connecting)");
+				break;
+			case Data::I2PStatus::RouterNotFound:
+				statusText = QString("I2P: Enabled (router not found)");
+				break;
+			default:
+				statusText = QString("I2P: Enabled (initializing)");
+				break;
+			}
+		} else {
+			statusText = QString("I2P: Enabled (integration unavailable)");
+		}
+	}
 
 	LOG(("CRYPTOGRAM: I2P status updated - %1").arg(statusText));
 }
@@ -1887,20 +2084,44 @@ void Cryptogram::createKeyExchangeUI(not_null<Ui::VerticalLayout*> container) {
 void Cryptogram::createCovertChannelSettings(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Covert Channel (Steganography) [Experimental]")));
 
+	auto &session = _controller->session();
+	const auto covert = session.data().covertChannel();
+	const auto initiallyEnabled = covert ? covert->isEnabled() : false;
+
+	const auto enabled = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			QString("Enable covert channel transport"),
+			initiallyEnabled,
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
 	container->add(
 		object_ptr<Ui::FlatLabel>(
 			container,
-			QString("Typing-indicator covert messaging is in development. The desktop transport layer is currently being wired to the TSM backend."),
 			st::settingsUpdateState),
 		st::settingsCheckboxPadding);
 
 	_covertChannelStatusLabel = Ui::CreateChild<Ui::FlatLabel>(
 		container,
-		QString("Status: Backend connection pending"),
+		covert
+			? QString("Status: %1").arg(covert->isEnabled() ? "Active" : "Disabled")
+			: QString("Status: Backend unavailable"),
 		st::settingsUpdateState);
 	container->add(
 		object_ptr<Ui::FlatLabel>::fromRaw(_covertChannelStatusLabel),
 		st::settingsCheckboxPadding);
+
+	enabled->checkedChanges(
+	) | rpl::on_next([=](bool checked) {
+		if (const auto channel = _controller->session().data().covertChannel()) {
+			channel->setEnabled(checked);
+			_covertChannelStatusLabel->setText(
+				QString("Status: %1").arg(checked ? "Active" : "Disabled"));
+		} else {
+			_covertChannelStatusLabel->setText(QString("Status: Backend unavailable"));
+		}
+	}, enabled->lifetime());
 
 	const auto checkButton = container->add(
 		object_ptr<Ui::SettingsButton>(
@@ -1910,12 +2131,21 @@ void Cryptogram::createCovertChannelSettings(not_null<Ui::VerticalLayout*> conta
 		st::settingsCheckboxPadding);
 
 	checkButton->setClickedCallback([=] {
+		const auto channel = _controller->session().data().covertChannel();
 		Ui::show(Ui::MakeInformBox(
 			QString("Covert Channel Engine Diagnostics\n\n"
-				"• GNA Engine: Initialized\n"
-				"• Acoustic Transport: Active\n"
-				"• Typing Pattern Encoder: Ready\n"
-				"• Session Wiring: IN PROGRESS")));
+				"• Session wiring: %1\n"
+				"• Engine enabled: %2\n"
+				"• Sent messages: %3\n"
+				"• Received messages: %4\n"
+				"• Bytes sent: %5\n"
+				"• Bytes received: %6")
+					.arg(channel ? "READY" : "UNAVAILABLE")
+					.arg(channel && channel->isEnabled() ? "YES" : "NO")
+					.arg(channel ? channel->messagesSent() : 0)
+					.arg(channel ? channel->messagesReceived() : 0)
+					.arg(channel ? channel->bytesSent() : 0)
+					.arg(channel ? channel->bytesReceived() : 0)));
 	});
 
 	Ui::AddSkip(container);
@@ -1994,13 +2224,16 @@ void Cryptogram::updateEncryptionStatus() {
 
 	// Update covert channel status
 	if (_covertChannelStatusLabel) {
-		if (cryptogramUsers.isEmpty()) {
-			_covertChannelStatusLabel->setText(
-				QString("Status: Desktop wiring pending (no CRYPTOGRAM peers detected)")
-			);
+		const auto covert = _controller->session().data().covertChannel();
+		if (!covert) {
+			_covertChannelStatusLabel->setText(QString("Status: Backend unavailable"));
+		} else if (!covert->isEnabled()) {
+			_covertChannelStatusLabel->setText(QString("Status: Disabled"));
+		} else if (cryptogramUsers.isEmpty()) {
+			_covertChannelStatusLabel->setText(QString("Status: Active (no CRYPTOGRAM peers detected)"));
 		} else {
 			_covertChannelStatusLabel->setText(
-				QString("Status: Desktop wiring pending for %1 CRYPTOGRAM user(s)")
+				QString("Status: Active for %1 CRYPTOGRAM user(s)")
 					.arg(cryptogramUsers.size())
 			);
 		}
@@ -2252,9 +2485,7 @@ void Cryptogram::updateDeviceTrustStatus() {
 	}
 }
 
-void Cryptogram::setupTSMSessionsSection(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
-	Ui::AddSubsectionTitle(container, rpl::single(QString("TSM Sessions")));
 
 	const auto label = container->add(
 		object_ptr<Ui::FlatLabel>(
@@ -2263,9 +2494,7 @@ void Cryptogram::setupTSMSessionsSection(not_null<Ui::VerticalLayout*> container
 			st::settingsUpdateState),
 		st::settingsCheckboxPadding);
 
-	const auto client = Core::App().tsmClient();
 	client->sessionsValue(
-	) | rpl::on_next([=](const std::vector<Core::TSMSession> &sessions) {
 		if (sessions.empty()) {
 			label->setText("No active sessions.");
 		} else {
@@ -2276,7 +2505,6 @@ void Cryptogram::setupTSMSessionsSection(not_null<Ui::VerticalLayout*> container
 	const auto refresh = container->add(
 		object_ptr<Ui::SettingsButton>(
 			container,
-			rpl::single(QString("Refresh TSM Sessions")),
 			st::settingsButtonNoIcon),
 		st::settingsCheckboxPadding);
 

@@ -6,7 +6,6 @@ This file applies to the entire `CRYPTOGRAM` repository. Follow these convention
 
 - Desktop client: `Telegram/` (C++/Qt), with platform build files in `CMakeLists.txt`, `cmake/`, and `build_release/`.
 - Android client: `telegram-android/` (Gradle/Android Studio).
-- Shared tooling and libs: `lib/`, `TMessagesProj/`, `Telegram/lib_tsm/`.
 - Documentation and status: `docs/`, top-level `README*.md`, `BUILD_*.md`, and `SETUP_*.md`.
 - Tests and experiments: `tests/`, `run_tests.sh`, `test_build_fixes.sh`.
 - Docker and CI helpers: `docker/`, `.github/workflows/`.
@@ -20,7 +19,6 @@ This file applies to the entire `CRYPTOGRAM` repository. Follow these convention
 
 ## Coding Style & Naming
 
-- Match the surrounding style in each subproject (Qt/C++ in `Telegram/`, Java/Kotlin in `telegram-android/`, Python in `Telegram/lib_tsm/`).
 - Use 2 or 4 spaces consistently with the local file; do not change indentation style globally.
 - Prefer descriptive identifiers (`SecureChannelConfig`, `androidSecureClient`) over abbreviations.
 - Keep filenames and directories lowercase with hyphens or underscores (e.g., `secure_channel_utils.cpp`, `android_secure_client.kt`).

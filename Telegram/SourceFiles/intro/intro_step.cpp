@@ -359,7 +359,6 @@ void Step::fillSentCodeData(const MTPDauth_sentCode &data) {
 		getData()->codeLength = data.vlength().v;
 	}, [&](const MTPDauth_sentCodeTypeSms &data) {
 		getData()->codeLength = data.vlength().v;
-	}, [&](const MTPDauth_sentCodeTypeFragmentSms &data) {
 		getData()->codeByFragmentUrl = qs(data.vurl());
 		getData()->codeLength = data.vlength().v;
 	}, [&](const MTPDauth_sentCodeTypeCall &data) {
