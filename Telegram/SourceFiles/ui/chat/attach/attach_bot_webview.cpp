@@ -79,6 +79,7 @@ enum class NativeMessageSource {
 
 struct NativeMessage {
 	NativeMessageSource source = NativeMessageSource::LegacyWebApp;
+	QString origin;
 	QString command;
 	QJsonObject arguments;
 };
@@ -115,6 +116,48 @@ struct NativeMessage {
 		&& url.fragment().isEmpty();
 }
 
+[[nodiscard]] int EffectivePort(const QUrl &url) {
+	const auto explicitPort = url.port(-1);
+	if (explicitPort >= 0) {
+		return explicitPort;
+	}
+	const auto scheme = url.scheme().toLower();
+	if (scheme == u"http"_q) {
+		return 80;
+	} else if (scheme == u"https"_q) {
+		return 443;
+	}
+	return -1;
+}
+
+[[nodiscard]] QString OriginFromUrl(const QString &url) {
+	const auto parsed = QUrl(url);
+	if (!parsed.isValid()) {
+		return {};
+	}
+	const auto scheme = parsed.scheme().toLower();
+	auto host = parsed.host().toLower();
+	const auto port = EffectivePort(parsed);
+	if (scheme.isEmpty() || host.isEmpty() || port < 0) {
+		return {};
+	}
+	if (host.contains(':') && !host.startsWith('[')) {
+		host = u"["_q + host + u"]"_q;
+	}
+	return u"%1://%2:%3"_q.arg(scheme, host, QString::number(port));
+}
+
+[[nodiscard]] bool OriginsMatch(const QString &a, const QString &b) {
+	if (a.isEmpty() || b.isEmpty()) {
+		return false;
+	}
+	const auto normalizedA = OriginFromUrl(a);
+	const auto normalizedB = OriginFromUrl(b);
+	return !normalizedA.isEmpty()
+		&& !normalizedB.isEmpty()
+		&& normalizedA == normalizedB;
+}
+
 [[nodiscard]] RectPart ParsePosition(const QString &position) {
 	if (position == u"left"_q) {
 		return RectPart::Left;
@@ -128,11 +171,17 @@ struct NativeMessage {
 	return RectPart::Left;
 }
 
+[[nodiscard]] bool IsNoArgumentsSentinel(const QString &string) {
+	return string.isEmpty() || string == u"\"\""_q;
+}
+
 [[nodiscard]] bool CanParseArguments(QJsonValue value) {
 	if (value.isObject()) {
 		return true;
 	} else if (!value.isString()) {
 		return false;
+	} else if (IsNoArgumentsSentinel(value.toString())) {
+		return true;
 	}
 	auto error = QJsonParseError();
 	const auto document = QJsonDocument::fromJson(
@@ -197,6 +246,7 @@ void LogNativeMessageRejected(
 
 [[nodiscard]] std::optional<NativeMessage> ParseNativeMessage(
 		const QByteArray &bytes,
+		const QString &sourceUrl,
 		bool externalShell,
 		const QString &shellToken) {
 	const auto byteCount = quint64(bytes.size());
@@ -242,8 +292,8 @@ void LogNativeMessageRejected(
 			|| token.toString() != shellToken) {
 			return reject(u"bad external token"_q);
 		}
+		const auto origin = object.value(u"origin"_q);
 		if (source == NativeMessageSource::ExternalShell) {
-			const auto origin = object.value(u"origin"_q);
 			if (!origin.isString()
 				|| !IsExternalShellOrigin(origin.toString())) {
 				return reject(u"bad shell origin"_q);
@@ -267,6 +317,9 @@ void LogNativeMessageRejected(
 		}
 		return NativeMessage{
 			.source = source,
+			.origin = (source == NativeMessageSource::ExternalWebApp)
+				? origin.toString()
+				: QString(),
 			.command = command,
 			.arguments = arguments,
 		};
@@ -300,6 +353,7 @@ void LogNativeMessageRejected(
 	}
 	return NativeMessage{
 		.source = NativeMessageSource::LegacyWebApp,
+		.origin = OriginFromUrl(sourceUrl),
 		.command = command,
 		.arguments = arguments,
 	};
@@ -1131,7 +1185,8 @@ Panel::Panel(Args &&args)
 	? std::make_unique<StandaloneLayerStack>()
 	: nullptr)
 , _fullscreen(args.fullscreen)
-, _allowClipboardRead(args.allowClipboardRead) {
+, _allowClipboardRead(args.allowClipboardRead)
+, _sameOrigin(args.sameOrigin) {
 	if (_externalShell) {
 		_widget->setAttribute(Qt::WA_DontShowOnScreen);
 		_externalLayer->boxAdded(
@@ -1226,7 +1281,7 @@ Panel::Panel(Args &&args)
 			return;
 		}
 	}, _widget->lifetime());
-	_externalTitleBadgeVisible = (args.titleBadge != nullptr);
+	_externalTitleBadgeVisible = (args.titleBadge.paint != nullptr);
 	_widget->setTitleBadge(std::move(args.titleBadge));
 
 	if (!showWebview(std::move(args), params)) {
@@ -1319,9 +1374,7 @@ void Panel::setupDownloadsProgress(
 				state->animation.start(0.);
 			}
 			toggle(true);
-		} else if ((state->progress.total && !progress.total)
-			|| (state->progress.ready < state->progress.total
-				&& progress.ready == progress.total)) {
+		} else if (state->shown && !progress.loading) {
 			state->animation.update(1., false, crl::now());
 			toggle(false);
 		}
@@ -1497,6 +1550,9 @@ void Panel::hideWebviewProgress() {
 bool Panel::showWebview(Args &&args, const Webview::ThemeParams &params) {
 	_bottomText = std::move(args.bottom);
 	_externalUrl = args.url;
+	_sameOrigin = args.sameOrigin;
+	_initialOrigin = OriginFromUrl(args.url);
+	_currentOrigin = _initialOrigin;
 	if (_externalShell && !_webview) {
 		resetExternalShellIdentity();
 	}
@@ -1657,6 +1713,8 @@ void Panel::sendExternalShellBootstrap() {
 	const auto params = _delegate->botThemeParams();
 	sendExternalShellMethod("bootstrap", {
 		{ u"url"_q, _externalUrl },
+		{ u"sameOrigin"_q, bool(_sameOrigin) },
+		{ u"initialOrigin"_q, _initialOrigin },
 		{ u"title"_q, _externalTitle },
 		{ u"metrics"_q, LinuxShell::Metrics() },
 		{ u"colors"_q, LinuxShell::ColorPayload(externalShellColors(params)) },
@@ -2185,21 +2243,31 @@ bool Panel::createWebview(const Webview::ThemeParams &params) {
 		}, _webview->lifetime);
 	}
 
-	raw->setMessageHandler([=](std::string text) {
-		if (text.size() > size_t(kMaxNativeMessageBytes)) {
+	raw->setMessageHandler([=](Webview::Message message) {
+		if (message.text.size() > size_t(kMaxNativeMessageBytes)) {
 			LogNativeMessageRejected(
 				u"payload too large"_q,
-				quint64(text.size()));
+				quint64(message.text.size()));
 			return;
 		}
 		const auto bytes = QByteArray::fromRawData(
-			text.data(),
-			int(text.size()));
+			message.text.data(),
+			int(message.text.size()));
 		const auto parsed = ParseNativeMessage(
 			bytes,
+			QString::fromStdString(message.sourceUrl),
 			_externalShell,
 			_externalShellToken);
 		if (!parsed) {
+			return;
+		}
+		if (_sameOrigin
+			&& parsed->source != NativeMessageSource::ExternalShell
+			&& !OriginsMatch(parsed->origin, _initialOrigin)) {
+			LogNativeMessageRejected(
+				u"bad webapp origin"_q,
+				quint64(message.text.size()),
+				parsed->command);
 			return;
 		}
 		const auto &command = parsed->command;
@@ -2368,6 +2436,7 @@ bool Panel::createWebview(const Webview::ThemeParams &params) {
 		} else if (newWindow) {
 			return true;
 		}
+		_currentOrigin = OriginFromUrl(uri);
 		showWebviewProgress();
 		return true;
 	});
@@ -3638,6 +3707,9 @@ void Panel::postEvent(const QString &event, EventData data) {
 			LOG(("BotWebView Error: Drop raw external event \"%1\"."
 				).arg(event));
 		}
+		return;
+	}
+	if (_sameOrigin && !OriginsMatch(_currentOrigin, _initialOrigin)) {
 		return;
 	}
 	auto written = v::is<QString>(data)

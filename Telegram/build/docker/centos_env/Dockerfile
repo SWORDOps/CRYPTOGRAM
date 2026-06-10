@@ -23,7 +23,7 @@ RUN dnf -y install epel-release \
 	&& dnf clean all
 
 RUN alternatives --set python3 /usr/bin/python3.11
-RUN python3 -m pip install cmake==3.31.10 meson ninja
+RUN python3 -m pip install cmake meson ninja
 RUN cat <<EOF > /usr/local/bin/pkg-config && chmod +x /usr/local/bin/pkg-config
 #!/bin/sh
 for i in "\$@"; do
@@ -95,18 +95,26 @@ FROM builder AS patches
 RUN git init patches \
 	&& cd patches \
 	&& git remote add origin https://github.com/desktop-app/patches.git \
-	&& git fetch --depth=1 origin 3128a5b5879c450f686f240cc9602ad7f4a054b4 \
+	&& git fetch --depth=1 origin 99e4345c14fb57164139654d62ae483ceba49e2c \
 	&& git reset --hard FETCH_HEAD \
 	&& rm -rf .git
 
 FROM builder AS zlib
-RUN git clone -b v1.3.1 --depth=1 https://github.com/madler/zlib.git \
+RUN git init zlib \
 	&& cd zlib \
-	&& cmake -B build . -DZLIB_BUILD_EXAMPLES=OFF \
+	&& git remote add origin https://github.com/madler/zlib.git \
+	&& git fetch --depth=1 origin e3dc0a85b7032e98380dec011bc8f2c2ee0d8fca \
+	&& git reset --hard FETCH_HEAD \
+	&& sed -i 's/Bool/BOOL/;s/ZLIB::ZLIBSTATIC/MINIZIP::minizipstatic/;s/ZLIB::ZLIB/MINIZIP::minizip/' contrib/minizip/minizipConfig.cmake.in \
+	&& sed -i '/DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"/s@}@}/minizip@' contrib/minizip/CMakeLists.txt \
+	&& cmake -B build . \
+		-DZLIB_BUILD_SHARED=OFF \
+		-DZLIB_BUILD_TESTING=OFF \
+		-DZLIB_BUILD_MINIZIP=ON \
+		-DZLIB_MINIZIP_BUILD_SHARED=OFF \
+		-DZLIB_MINIZIP_BUILD_TESTING=OFF \
 	&& cmake --build build \
-	&& export DESTDIR=/usr/src/zlib-cache \
-	&& cmake --install build \
-	&& rm $DESTDIR/usr/local/lib/libz.so* \
+	&& DESTDIR=/usr/src/zlib-cache cmake --install build \
 	&& cd .. \
 	&& rm -rf zlib
 
@@ -171,6 +179,7 @@ RUN git clone -b v4.1.5 --depth=1 https://github.com/mozilla/mozjpeg.git \
 	&& cd mozjpeg \
 	&& cmake -B build . \
 		-DCMAKE_INSTALL_PREFIX=/usr/local \
+		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 		-DENABLE_SHARED=OFF \
 		-DWITH_JPEG8=ON \
 		-DPNG_SUPPORTED=OFF \

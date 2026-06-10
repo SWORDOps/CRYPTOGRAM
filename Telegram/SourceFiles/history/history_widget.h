@@ -543,6 +543,7 @@ private:
 	void updateAiButtonVisibility();
 	void updateAiButtonGeometry();
 	void showAiComposeBox();
+	void triggerAiApplyInPlace();
 	void initSendAsFileButton();
 	void sendTextAsFile(
 		const QString &fileText,
@@ -680,6 +681,7 @@ private:
 	void setHistory(History *history);
 	void setEditMsgId(MsgId msgId);
 
+	friend class HistoryInner;
 	HistoryItem *getItemFromHistoryOrMigrated(MsgId genericMsgId) const;
 	void animatedScrollToItem(MsgId msgId);
 	void animatedScrollToY(int scrollTo, HistoryItem *attachTo = nullptr);

@@ -61,6 +61,58 @@ void PaintTopFade(QPainter &p, int outerWidth, int fadeHeight) {
 	p.fillRect(QRect(0, 0, outerWidth, fadeHeight), grad);
 }
 
+[[nodiscard]] QString FormatUnconfirmedAuthMessage(
+		const std::vector<Data::UnreviewedAuth> &list) {
+	if (list.empty()) {
+		return QString();
+	} else if (list.size() == 1) {
+		const auto &auth = list.at(0);
+		return tr::lng_unconfirmed_auth_single(
+			tr::now,
+			lt_from,
+			auth.device,
+			lt_country,
+			auth.location);
+	}
+	auto commonLocation = list.at(0).location;
+	for (auto i = 1; i < list.size(); ++i) {
+		if (commonLocation != list.at(i).location) {
+			commonLocation.clear();
+			break;
+		}
+	}
+	if (commonLocation.isEmpty()) {
+		return tr::lng_unconfirmed_auth_multiple(
+			tr::now,
+			lt_count,
+			list.size());
+	}
+	return tr::lng_unconfirmed_auth_multiple_from(
+		tr::now,
+		lt_count,
+		list.size(),
+		lt_country,
+		commonLocation);
+}
+
+void PaintPillTopSheen(QPainter &p, const QRect &pill, int radius) {
+	if (pill.isEmpty() || st::dialogsBg->c.lightness() >= 128) {
+		return;
+	}
+	auto top = QColor(255, 255, 255, 40);
+	auto mid = QColor(255, 255, 255, 0);
+	auto bottom = QColor(255, 255, 255, 20);
+	auto grad = QLinearGradient(0, pill.top(), 0, pill.bottom());
+	grad.setColorAt(0., top);
+	grad.setColorAt(0.5, mid);
+	grad.setColorAt(1., bottom);
+	p.setPen(QPen(QBrush(grad), st::lineWidth));
+	p.setBrush(Qt::NoBrush);
+	const auto half = 0.5 * st::lineWidth;
+	const auto stroke = QRectF(pill).adjusted(half, half, -half, -half);
+	p.drawRoundedRect(stroke, radius - half, radius - half);
+}
+
 } // namespace
 
 UnconfirmedAuthWrap::UnconfirmedAuthWrap(
@@ -128,7 +180,7 @@ int UnconfirmedAuthWrap::resizeGetHeight(int newWidth) {
 
 not_null<UnconfirmedAuthWrap*> CreateUnconfirmedAuthContent(
 		not_null<Ui::RpWidget*> parent,
-		const std::vector<Data::UnreviewedAuth> &list,
+		rpl::producer<std::vector<Data::UnreviewedAuth>> list,
 		Fn<void(bool)> callback,
 		rpl::producer<float64> collapseProgress) {
 	const auto wrap = Ui::CreateChild<UnconfirmedAuthWrap>(
@@ -154,6 +206,7 @@ not_null<UnconfirmedAuthWrap*> CreateUnconfirmedAuthContent(
 		p.setBrush(st::dialogsBg);
 		p.setPen(Qt::NoPen);
 		p.drawRoundedRect(pill, radius, radius);
+		PaintPillTopSheen(p, pill, radius);
 	});
 
 	const auto &basePadding = st::dialogsUnconfirmedAuthPadding;
@@ -176,42 +229,10 @@ not_null<UnconfirmedAuthWrap*> CreateUnconfirmedAuthContent(
 
 	Ui::AddSkip(content);
 
-	auto messageText = QString();
-	if (list.size() == 1) {
-		const auto &auth = list.at(0);
-		messageText = tr::lng_unconfirmed_auth_single(
-			tr::now,
-			lt_from,
-			auth.device,
-			lt_country,
-			auth.location);
-	} else {
-		auto commonLocation = list.at(0).location;
-		for (auto i = 1; i < list.size(); ++i) {
-			if (commonLocation != list.at(i).location) {
-				commonLocation.clear();
-				break;
-			}
-		}
-		if (commonLocation.isEmpty()) {
-			messageText = tr::lng_unconfirmed_auth_multiple(
-				tr::now,
-				lt_count,
-				list.size());
-		} else {
-			messageText = tr::lng_unconfirmed_auth_multiple_from(
-				tr::now,
-				lt_count,
-				list.size(),
-				lt_country,
-				commonLocation);
-		}
-	}
-
 	content->add(
 		object_ptr<Ui::FlatLabel>(
 			content,
-			rpl::single(messageText),
+			std::move(list) | rpl::map(FormatUnconfirmedAuthMessage),
 			st::dialogsUnconfirmedAuthAbout),
 		padding,
 		style::al_top)->setTryMakeSimilarLines(true);
@@ -377,6 +398,7 @@ void TopBarSuggestionContent::draw(QPainter &p) {
 	p.setBrush(st::dialogsBg);
 	p.setPen(Qt::NoPen);
 	p.drawRoundedRect(pill, radius, radius);
+	PaintPillTopSheen(p, pill, radius);
 
 	auto clipPath = QPainterPath();
 	clipPath.addRoundedRect(pill, radius, radius);
@@ -598,16 +620,17 @@ void TopBarSuggestionContent::setLeadingWidget(Ui::RpWidget *widget) {
 	widget->setParent(this);
 	widget->setAttribute(Qt::WA_TransparentForMouseEvents);
 	const auto &margins = st::dialogsTopBarSuggestionMargins;
+	const auto &row = st::defaultDialogRow;
 	sizeValue() | rpl::filter_size(
 	) | rpl::on_next([=](const QSize &s) {
 		widget->raise();
 		widget->show();
 		const auto pillHeight = s.height() - rect::m::sum::v(margins);
 		widget->moveToLeft(
-			margins.left() + basePadding,
+			row.padding.left() + (row.photoSize - widget->width()) / 2,
 			margins.top() + (pillHeight - widget->height()) / 2);
 	}, _leadingWidgetLifetime);
-	const auto padding = widget->width() + basePadding * 2;
+	const auto padding = row.nameLeft - margins.left();
 	if (_leftPadding != padding) {
 		_leftPadding = padding;
 		resizeToWidth(width());

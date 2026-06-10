@@ -1414,7 +1414,9 @@ Window::Controller *Application::ensureSeparateWindowFor(
 		return window;
 	};
 	if (const auto existing = separateWindowFor(id)) {
-		if (id.thread && id.type == Window::SeparateType::Chat) {
+		if (id.thread
+			&& id.type == Window::SeparateType::Chat
+			&& !passcodeLocked()) {
 			existing->sessionController()->showThread(
 				id.thread,
 				showAtMsgId,
@@ -1428,6 +1430,9 @@ Window::Controller *Application::ensureSeparateWindowFor(
 		std::make_unique<Window::Controller>(id, showAtMsgId)
 	).first->second.get();
 	processCreatedWindow(result);
+	if (passcodeLocked()) {
+		result->setupPasscodeLock();
+	}
 	result->firstShow();
 	result->finishFirstShow();
 	return activate(result);

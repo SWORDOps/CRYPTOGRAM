@@ -21,6 +21,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "core/click_handler_types.h" // kDocumentFilenameTooltipProperty.
 #include "history/view/history_view_element.h"
+#include "history/view/history_view_message.h"
 #include "history/view/history_view_cursor_state.h"
 #include "history/view/history_view_transcribe_button.h"
 #include "history/view/media/history_view_media_common.h"
@@ -29,6 +30,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/text/text_lottie_custom_emoji.h"
 #include "ui/text/text_utilities.h"
 #include "ui/chat/chat_style.h"
+#include "ui/effects/voice_once_particles.h"
 #include "ui/painter.h"
 #include "ui/power_saving.h"
 #include "ui/rect.h"
@@ -46,6 +48,10 @@ namespace HistoryView {
 namespace {
 
 constexpr auto kAudioVoiceMsgUpdateView = crl::time(100);
+
+[[nodiscard]] bool IsHostedInstantViewMedia(not_null<const Element*> parent) {
+	return parent->Get<InstantViewMediaRuntime>() != nullptr;
+}
 
 [[nodiscard]] QRect TTLRectFromInner(const QRect &inner) {
 	return QRect(
@@ -195,7 +201,8 @@ void PaintWaveform(
 		int availableWidth,
 		float64 progress,
 		bool ttl,
-		float64 hoverProgress = -1) {
+		float64 hoverProgress = -1,
+		Ui::WaveformParticles *ttlParticles = nullptr) {
 	const auto wf = [&]() -> const VoiceWaveform* {
 		if (!voiceData) {
 			return nullptr;
@@ -231,6 +238,9 @@ void PaintWaveform(
 	const auto maxDelta = st::msgWaveformMax - st::msgWaveformMin;
 	p.setPen(Qt::NoPen);
 	auto hq = PainterHighQualityEnabler(p);
+	auto edgeTop = 0.;
+	auto edgeHeight = 0.;
+	auto edgeFound = false;
 	for (auto i = 0, barLeft = 0, sum = 0, maxValue = 0; i < wfSize; ++i) {
 		const auto value = wf ? wf->at(i) : 0;
 		if (sum + barCount < wfSize) {
@@ -248,6 +258,11 @@ void PaintWaveform(
 		const auto barHeight = st::msgWaveformMin + barValue;
 		const auto barTop = st::lineWidth + (st::msgWaveformMax - barValue) / 2.;
 
+		if (barLeft < activeWidth) {
+			edgeTop = barTop;
+			edgeHeight = barHeight;
+			edgeFound = true;
+		}
 		if ((barLeft < activeWidth) && (barLeft + barWidth > activeWidth)) {
 			const auto leftWidth = activeWidth - barLeft;
 			const auto rightWidth = barWidth - leftWidth;
@@ -279,6 +294,16 @@ void PaintWaveform(
 		barLeft += barWidth + st::msgWaveformSkip;
 
 		maxValue = (sum < (barCount + 1) / 2) ? 0 : value;
+	}
+	if (ttl && ttlParticles) {
+		const auto emitArea = (edgeFound && activeWidth < availableWidth)
+			? QRectF(
+				activeWidth - barWidth,
+				edgeTop,
+				barWidth * 2.,
+				edgeHeight)
+			: QRectF();
+		ttlParticles->paint(p, emitArea, active->c, 1.);
 	}
 }
 
@@ -591,8 +616,13 @@ QSize Document::countCurrentSize(int newWidth) {
 	const auto hasTranscribe = voice && !voice->transcribeText.isEmpty();
 	const auto thumbed = Get<HistoryDocumentThumbed>();
 	const auto &st = thumbed ? st::msgFileThumbLayout : st::msgFileLayout;
+	const auto hostedInstantViewAudio = IsHostedInstantViewMedia(_parent)
+		&& (_data->isAudioFile() || _data->isVoiceMessage());
 	if (!captioned && !hasTranscribe) {
 		auto result = File::countCurrentSize(newWidth);
+		if (hostedInstantViewAudio) {
+			result.setWidth(std::max(newWidth, result.width()));
+		}
 		if (isBubbleBottom()) {
 			const auto thumbedWidth = thumbedLinkMaxWidth();
 			const auto statusWidth = thumbedWidth
@@ -621,7 +651,9 @@ QSize Document::countCurrentSize(int newWidth) {
 		return result;
 	}
 
-	accumulate_min(newWidth, maxWidth());
+	if (!hostedInstantViewAudio) {
+		accumulate_min(newWidth, maxWidth());
+	}
 	auto newHeight = st.padding.top() + st.thumbSize + st.padding.bottom();
 	if (!isBubbleTop()) {
 		newHeight -= st::msgFileTopMinus;
@@ -879,6 +911,35 @@ void Document::draw(
 				_iconCache);
 		}
 
+		if (_drawTtl) {
+			const auto voice = Get<HistoryDocumentVoice>();
+			const auto progress = (voice && voice->playback)
+				? voice->playback->progress.current()
+				: 0.;
+			if (voice && progress > 0.) {
+				if (!voice->once) {
+					voice->once
+						= std::make_unique<Ui::VoiceOnceParticles>();
+				}
+				const auto stepInside = style::ConvertScaleExact(1.5) * 2;
+				const auto arcRect = QRectF(inner - Margins(stepInside));
+				const auto center = arcRect.center();
+				const auto radius = arcRect.width() / 2.;
+				const auto degrees = 90. + 360. * (1. - progress);
+				const auto angle = degrees * M_PI / 180.;
+				const auto cosa = std::cos(angle);
+				const auto sina = std::sin(angle);
+				voice->once->radial.paint(
+					p,
+					QPointF(
+						center.x() + radius * cosa,
+						center.y() - radius * sina),
+					QPointF(-sina, -cosa),
+					stm->msgBg->c,
+					1.);
+			}
+		}
+
 		drawCornerDownload(p, context, mode);
 	}
 	auto namewidth = width - nameleft - nameright;
@@ -933,13 +994,17 @@ void Document::draw(
 		}
 		const auto inTTLViewer = _parent->delegate()->elementContext()
 			== Context::TTLViewer;
+		if (inTTLViewer && !voice->once) {
+			voice->once = std::make_unique<Ui::VoiceOnceParticles>();
+		}
 		PaintWaveform(p,
 			context,
 			_transcribedRound ? _data->round() : _data->voice(),
 			namewidth + st::msgWaveformSkip,
 			progress,
 			inTTLViewer,
-			_voiceHoverProgress);
+			_voiceHoverProgress,
+			inTTLViewer ? &voice->once->waveform : nullptr);
 		p.restore();
 	} else if (const auto named = Get<HistoryDocumentNamed>()) {
 		p.setPen(stm->historyFileNameFg);
@@ -1699,7 +1764,16 @@ void Document::drawGrouped(
 		not_null<QPixmap*> cache) const {
 	const auto maybeMediaHighlight = context.highlightPathCache
 		&& context.highlightPathCache->isEmpty();
-	p.translate(geometry.topLeft());
+	const auto origin = geometry.topLeft();
+#if defined(Q_OS_WIN) && defined(_M_ARM64)
+	// Workaround MSVC ARM64 /O2 codegen bug: QPointF(QPoint(0, -3))
+	// produces yp == ~4.29e9 instead of -3.0 here. Touching the ints
+	// through a volatile load first forces correct sign-extension on
+	// the path that feeds QPointF's int->double conversion.
+	[[maybe_unused]] volatile auto touch = 0 + origin.x() + origin.y();
+#endif // defined(Q_OS_WIN) && defined(_M_ARM64)
+	const auto forigin = QPointF(origin);
+	p.translate(forigin);
 	draw(
 		p,
 		context.translated(-geometry.topLeft()),
@@ -1777,6 +1851,11 @@ void Document::refreshParentId(not_null<HistoryItem*> realParent) {
 	if (auto thumbed = Get<HistoryDocumentThumbed>()) {
 		if (thumbed->linksavel) {
 			thumbed->linksavel->setMessageId(fullId);
+		}
+		if (thumbed->linkopenwithl) {
+			thumbed->linkopenwithl->setMessageId(fullId);
+		}
+		if (thumbed->linkcancell) {
 			thumbed->linkcancell->setMessageId(fullId);
 		}
 	}

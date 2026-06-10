@@ -24,7 +24,6 @@ namespace HistoryView {
 class Element;
 } // namespace HistoryView
 
-class History;
 class HistoryItem;
 
 namespace Ui {
@@ -79,27 +78,25 @@ private:
 
 	void captureItemsBatch(
 		const std::vector<not_null<HistoryItem*>> &items);
-	void captureView(
+	[[nodiscard]] bool captureView(
 		not_null<const HistoryView::Element*> view,
 		int viewHeight,
 		int viewTop);
 	void startCollapseAnimation(int height, int itemTop);
 	void collapseAnimationCallback();
 	void syncCollapseGapsToHost();
+	void ensureScrollBaseline();
 
 	const not_null<Main::Session*> _session;
 	const Delegate _delegate;
 
 	std::unique_ptr<ThanosEffect> _thanosEffect;
-	base::flat_map<
-		not_null<const HistoryView::Element*>,
-		PreCapturedView> _preCaptured;
+	base::flat_map<FullMsgId, PreCapturedView> _preCaptured;
 	std::vector<CollapseGap> _renderGaps;
 
 	std::vector<CollapseGapState> _collapseGaps;
 	Animations::Simple _collapseAnimation;
 
-	History *_capturedHistory = nullptr;
 	int _savedScrollTop = 0;
 	bool _restoreScrollPending = false;
 };

@@ -455,9 +455,11 @@ if customRunCommand:
 stage('patches', """
     git clone https://github.com/desktop-app/patches.git
     cd patches
-    git checkout 667174b0ac0e062ee13379d585c675df50a5f837
+    git checkout e481284d692dbd556ff1f40006ae774d10a16b9e
 mac:
     git clone https://github.com/desktop-app/qt6_highsierra_patches.git qt6_highsierra
+    cd qt6_highsierra
+    git checkout abb2aefeadfc608d9695418f53ed55a86176ab91
 """)
 
 stage('msys64', """
@@ -519,9 +521,13 @@ stage('lzma', """
 win:
     git clone https://github.com/desktop-app/lzma.git
     cd lzma\\C\\Util\\LzmaLib
-    msbuild -m LzmaLib.sln /property:Configuration=Debug /property:Platform="$X8664"
+    SET "ToolsetProp="
+winarm:
+    SET "ToolsetProp=/property:PlatformToolset=v145"
+win:
+    msbuild -m LzmaLib.sln /property:Configuration=Debug /property:Platform="$X8664" %ToolsetProp%
 release:
-    msbuild -m LzmaLib.sln /property:Configuration=Release /property:Platform="$X8664"
+    msbuild -m LzmaLib.sln /property:Configuration=Release /property:Platform="$X8664" %ToolsetProp%
 """)
 
 stage('xz', """
@@ -537,14 +543,18 @@ stage('xz', """
 """)
 
 stage('zlib', """
-    git clone -b v1.3.1 https://github.com/madler/zlib.git
+    git clone https://github.com/madler/zlib.git
     cd zlib
+    git checkout e3dc0a85b7032e98380dec011bc8f2c2ee0d8fca
 win:
     cmake . ^
         -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded$<$<CONFIG:Debug>:Debug>" ^
-        -DCMAKE_POLICY_DEFAULT_CMP0091=NEW ^
         -DCMAKE_C_FLAGS="/DZLIB_WINAPI" ^
-        -DZLIB_BUILD_EXAMPLES=OFF
+        -DZLIB_BUILD_SHARED=OFF ^
+        -DZLIB_BUILD_TESTING=OFF ^
+        -DZLIB_BUILD_MINIZIP=ON ^
+        -DZLIB_MINIZIP_BUILD_SHARED=OFF ^
+        -DZLIB_MINIZIP_BUILD_TESTING=OFF
     cmake --build . --config Debug
 release:
     cmake --build . --config Release
@@ -554,6 +564,19 @@ mac:
         --prefix=$USED_PREFIX \\
         --archs="-arch x86_64 -arch arm64"
     make $MAKE_THREADS_CNT
+    make install
+    cd contrib/minizip
+    autoreconf -fi
+    CFLAGS="$MIN_VER $UNGUARDED -arch arm64" CPPFLAGS="$MIN_VER $UNGUARDED -arch arm64" LDFLAGS="$MIN_VER" ./configure --enable-static --disable-shared --host=arm --prefix=$USED_PREFIX
+    make $MAKE_THREADS_CNT
+    mkdir out.arm64
+    mv .libs/libminizip.a out.arm64
+    make clean
+    CFLAGS="$MIN_VER $UNGUARDED -arch x86_64" CPPFLAGS="$MIN_VER $UNGUARDED -arch x86_64" LDFLAGS="$MIN_VER" ./configure --enable-static --disable-shared --host=x86_64 --prefix=$USED_PREFIX
+    make $MAKE_THREADS_CNT
+    mkdir out.x86_64
+    mv .libs/libminizip.a out.x86_64
+    lipo -create out.arm64/libminizip.a out.x86_64/libminizip.a -output .libs/libminizip.a
     make install
 """)
 
@@ -1063,7 +1086,7 @@ win32:
 win64:
     SET "TOOLCHAIN=x86_64-win64-vs17"
 winarm:
-    SET "TOOLCHAIN=arm64-win64-vs17"
+    SET "TOOLCHAIN=arm64-win64-vs17-v145"
 win:
 depends:patches/build_libvpx_win.sh
     %THIRDPARTY_DIR%\\msys64\\usr\\bin\\sed.exe -i 's/-j8/-j%NUMBER_OF_PROCESSORS%/g' ../patches/build_libvpx_win.sh
@@ -1389,10 +1412,12 @@ depends:patches/breakpad.diff
 win:
     SET "PYTHONUTF8=1"
     SET "FolderPostfix="
+    SET "ToolsetProp="
 win64:
     SET "FolderPostfix=_x64"
 winarm:
     SET "FolderPostfix=_ARM64"
+    SET "ToolsetProp=/property:PlatformToolset=v145"
 win:
 depends:python/Scripts/activate.bat
     %THIRDPARTY_DIR%\\python\\Scripts\\activate.bat
@@ -1404,7 +1429,7 @@ release:
     ninja -C out/Release%FolderPostfix% common crash_generation_client exception_handler
     cd tools\\windows\\dump_syms
     gyp dump_syms.gyp --format=msvs
-    msbuild -m dump_syms.vcxproj /property:Configuration=Release /property:Platform="x64"
+    msbuild -m dump_syms.vcxproj /property:Configuration=Release /property:Platform="x64" %ToolsetProp%
 win:
     deactivate
 mac:
@@ -1535,11 +1560,11 @@ win:
         -I "%ANGLE_DIR%\\include" ^
         -D "KHRONOS_STATIC=" ^
         -D "DESKTOP_APP_QT_STATIC_ANGLE=" ^
-        QMAKE_LIBS_OPENGL_ES2_DEBUG="%ANGLE_LIBS_DIR%\\Debug\\tg_angle.lib %ZLIB_LIBS_DIR%\\Debug\\zlibstaticd.lib d3d9.lib dxgi.lib dxguid.lib" ^
-        QMAKE_LIBS_OPENGL_ES2_RELEASE="%ANGLE_LIBS_DIR%\\Release\\tg_angle.lib %ZLIB_LIBS_DIR%\\Release\\zlibstatic.lib d3d9.lib dxgi.lib dxguid.lib" ^
+        QMAKE_LIBS_OPENGL_ES2_DEBUG="%ANGLE_LIBS_DIR%\\Debug\\tg_angle.lib %ZLIB_LIBS_DIR%\\Debug\\libzsd.lib d3d9.lib dxgi.lib dxguid.lib" ^
+        QMAKE_LIBS_OPENGL_ES2_RELEASE="%ANGLE_LIBS_DIR%\\Release\\tg_angle.lib %ZLIB_LIBS_DIR%\\Release\\libzs.lib d3d9.lib dxgi.lib dxguid.lib" ^
         -egl ^
-        QMAKE_LIBS_EGL_DEBUG="%ANGLE_LIBS_DIR%\\Debug\\tg_angle.lib %ZLIB_LIBS_DIR%\\Debug\\zlibstaticd.lib d3d9.lib dxgi.lib dxguid.lib Gdi32.lib User32.lib" ^
-        QMAKE_LIBS_EGL_RELEASE="%ANGLE_LIBS_DIR%\\Release\\tg_angle.lib %ZLIB_LIBS_DIR%\\Release\\zlibstatic.lib d3d9.lib dxgi.lib dxguid.lib Gdi32.lib User32.lib" ^
+        QMAKE_LIBS_EGL_DEBUG="%ANGLE_LIBS_DIR%\\Debug\\tg_angle.lib %ZLIB_LIBS_DIR%\\Debug\\libzsd.lib d3d9.lib dxgi.lib dxguid.lib Gdi32.lib User32.lib" ^
+        QMAKE_LIBS_EGL_RELEASE="%ANGLE_LIBS_DIR%\\Release\\tg_angle.lib %ZLIB_LIBS_DIR%\\Release\\libzs.lib d3d9.lib dxgi.lib dxguid.lib Gdi32.lib User32.lib" ^
         -openssl-linked ^
         -I "%OPENSSL_DIR%\\include" ^
         OPENSSL_LIBS_DEBUG="%OPENSSL_LIBS_DIR%.dbg\\libssl.lib %OPENSSL_LIBS_DIR%.dbg\\libcrypto.lib Ws2_32.lib Gdi32.lib Advapi32.lib Crypt32.lib User32.lib" ^
@@ -1567,10 +1592,10 @@ else: # qt > '6'
     git submodule update --init --recursive --progress qtbase qtimageformats qtshadertools qtsvg
 depends:patches/qtbase_""" + qt + """/*.patch
 mac:
-    find $PWD/../patches/qtbase_$QT -type f -print0 | sort -z | xargs -0 git -C qtbase apply -v
     if [ -d "../patches/qt6_highsierra" ]; then
         find "$PWD/../patches/qt6_highsierra" -maxdepth 1 -name "*.patch" -print0 | sort -z | xargs -0 git -C qtbase apply -v
     fi
+    find $PWD/../patches/qtbase_$QT -type f -print0 | sort -z | xargs -0 git -C qtbase apply -v
     sed -i.bak 's/tqtc-//' {qtimageformats,qtsvg}/dependencies.yaml
 
     CONFIGURATIONS=-debug
@@ -1602,7 +1627,14 @@ mac:
     cmake --install .
 win:
     cd qtbase
-    for /r %%i in (..\\..\\patches\\qtbase_%QT%\\*) do git apply %%i -v
+    setlocal enabledelayedexpansion
+    for /r %%i in (..\\..\\patches\\qtbase_%QT%\\*) do (
+        git apply %%i -v
+        if errorlevel 1 (
+            echo ERROR: Applying patch %%~nxi failed!
+            exit /b 1
+        )
+    )
     cd ..
 
     SET CONFIGURATIONS=-debug
@@ -1643,8 +1675,8 @@ win:
         -D JPEG_LIBRARY_RELEASE="%MOZJPEG_DIR%\\Release\\jpeg-static.lib" ^
         -D ZLIB_FOUND=1 ^
         -D ZLIB_INCLUDE_DIR="%ZLIB_LIBS_DIR%" ^
-        -D ZLIB_LIBRARY_DEBUG="%ZLIB_LIBS_DIR%\\Debug\\zlibstaticd.lib" ^
-        -D ZLIB_LIBRARY_RELEASE="%ZLIB_LIBS_DIR%\\Release\\zlibstatic.lib" ^
+        -D ZLIB_LIBRARY_DEBUG="%ZLIB_LIBS_DIR%\\Debug\\libzsd.lib" ^
+        -D ZLIB_LIBRARY_RELEASE="%ZLIB_LIBS_DIR%\\Release\\libzs.lib" ^
         -D WebP_INCLUDE_DIR="%WEBP_DIR%\\src" ^
         -D WebP_demux_INCLUDE_DIR="%WEBP_DIR%\\src" ^
         -D WebP_mux_INCLUDE_DIR="%WEBP_DIR%\\src" ^
@@ -1834,7 +1866,7 @@ win:
         -DOPENSSL_CRYPTO_LIBRARY="%OPENSSL_LIBS_DIR%.dbg\\libcrypto.lib" ^
         -DZLIB_FOUND=1 ^
         -DZLIB_INCLUDE_DIR=%ZLIB_LIBS_DIR% ^
-        -DZLIB_LIBRARIES="%ZLIB_LIBS_DIR%\\Debug\\zlibstaticd.lib" ^
+        -DZLIB_LIBRARIES="%ZLIB_LIBS_DIR%\\Debug\\libzsd.lib" ^
         -DCMAKE_CONFIGURATION_TYPES=Debug ^
         -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded$<$<CONFIG:Debug>:Debug>" ^
         -DCMAKE_POLICY_DEFAULT_CMP0091=NEW ^
@@ -1856,7 +1888,7 @@ release:
         -DOPENSSL_CRYPTO_LIBRARY="%OPENSSL_LIBS_DIR%\\libcrypto.lib" ^
         -DZLIB_FOUND=1 ^
         -DZLIB_INCLUDE_DIR=%ZLIB_LIBS_DIR% ^
-        -DZLIB_LIBRARIES="%ZLIB_LIBS_DIR%\\Release\\zlibstatic.lib" ^
+        -DZLIB_LIBRARIES="%ZLIB_LIBS_DIR%\\Release\\libzs.lib" ^
         -DCMAKE_CONFIGURATION_TYPES=Release ^
         -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded$<$<CONFIG:Debug>:Debug>" ^
         -DCMAKE_POLICY_DEFAULT_CMP0091=NEW ^
