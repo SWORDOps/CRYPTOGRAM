@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 */
 #include "data/data_quantum_storage.h"
+#include "data/data_tsm_factory.h"
 
 #include <openssl/evp.h>
 #include <openssl/aes.h>
@@ -260,8 +261,13 @@ bool QuantumSecureStorage::initialize(SecureStorageTier targetTier) {
     // Use the better of requested and detected tier
     _currentTier = std::max(targetTier, detectedTier);
 
+    // Initialize TSM interface
     if (_currentTier <= SecureStorageTier::Tier2_Enhanced) {
+        auto tsm = TSMFactory::createForPlatform();
+        if (tsm && tsm->initialize() == TSMResult::Success) {
+            _tsmInterface = std::shared_ptr<TSMInterface>(std::move(tsm));
         } else {
+            // Fallback to software TSM
             _currentTier = SecureStorageTier::Tier3_Standard;
         }
     }
@@ -395,6 +401,7 @@ base::expected<QString, SecureStorageResult> QuantumSecureStorage::storeData(
         entry.requestingApplication = "SpyGram";
         entry.success = (result == SecureStorageResult::Success);
         entry.tierUsed = _currentTier;
+        entry.hardwareUsed = _tsmInterface ? "TSM" : "Software";
 
         d->logAuditEntry(entry);
     }
@@ -500,6 +507,7 @@ SecureStorageResult QuantumSecureStorage::storeDataTier0(
     const EncryptedDataContainer &container) {
 
     // Tier 0: GNA + NPU + TPM 2.0 quantum-secured storage
+    if (!_quantumGuard || !_tsmInterface) {
         return SecureStorageResult::HardwareUnavailable;
     }
 
@@ -516,6 +524,8 @@ SecureStorageResult QuantumSecureStorage::storeDataTier0(
     const auto keySpan = makeSpan(key.publicKey);
 
     // Seal key with TPM 2.0
+    auto sealResult = _tsmInterface->sealData(keySpan);
+    if (sealResult != TSMResult::Success) {
         return SecureStorageResult::HardwareUnavailable;
     }
 
@@ -557,10 +567,12 @@ SecureStorageResult QuantumSecureStorage::storeDataTier1(
     const EncryptedDataContainer &container) {
 
     // Tier 1: NPU + TPM 2.0 hardware-backed storage
+    if (!_tsmInterface) {
         return SecureStorageResult::HardwareUnavailable;
     }
 
     // Generate hardware-backed key
+    auto keyResult = _tsmInterface->generateKey(TSMKeyType::AES256);
     if (!keyResult) {
         return SecureStorageResult::HardwareUnavailable;
     }
@@ -595,10 +607,12 @@ SecureStorageResult QuantumSecureStorage::storeDataTier2(
     const EncryptedDataContainer &container) {
 
     // Tier 2: TPM 2.0 hardware-secured storage
+    if (!_tsmInterface) {
         return SecureStorageResult::HardwareUnavailable;
     }
 
     // Generate TPM-backed key
+    auto keyResult = _tsmInterface->generateKey(TSMKeyType::AES256);
     if (!keyResult) {
         return SecureStorageResult::HardwareUnavailable;
     }
@@ -632,6 +646,7 @@ SecureStorageResult QuantumSecureStorage::storeDataTier3(
     const bytes::const_span &data,
     const EncryptedDataContainer &container) {
 
+    // Tier 3: Software TSM encrypted storage
 
     // Generate software encryption key
     bytes::vector key(kAES256KeySize);
@@ -770,6 +785,7 @@ SecureStorageResult QuantumSecureStorage::storeDataTier4(
 
 base::expected<bytes::vector, SecureStorageResult> QuantumSecureStorage::retrieveDataTier0(const QString &dataId) {
     // Tier 0: GNA + NPU + TPM 2.0 quantum-secured retrieval
+    if (!_quantumGuard || !_tsmInterface) {
         return base::make_unexpected(SecureStorageResult::HardwareUnavailable);
     }
 
@@ -812,6 +828,7 @@ base::expected<bytes::vector, SecureStorageResult> QuantumSecureStorage::retriev
 
 base::expected<bytes::vector, SecureStorageResult> QuantumSecureStorage::retrieveDataTier1(const QString &dataId) {
     // Tier 1: NPU + TPM 2.0 hardware-backed retrieval
+    if (!_tsmInterface) {
         return base::make_unexpected(SecureStorageResult::HardwareUnavailable);
     }
 
@@ -844,6 +861,7 @@ base::expected<bytes::vector, SecureStorageResult> QuantumSecureStorage::retriev
 
 base::expected<bytes::vector, SecureStorageResult> QuantumSecureStorage::retrieveDataTier2(const QString &dataId) {
     // Tier 2: TPM 2.0 hardware-secured retrieval
+    if (!_tsmInterface) {
         return base::make_unexpected(SecureStorageResult::HardwareUnavailable);
     }
 
@@ -875,6 +893,7 @@ base::expected<bytes::vector, SecureStorageResult> QuantumSecureStorage::retriev
 }
 
 base::expected<bytes::vector, SecureStorageResult> QuantumSecureStorage::retrieveDataTier3(const QString &dataId) {
+    // Tier 3: Software TSM encrypted retrieval
 
     QString filePath = d->containerPath + "/" + dataId + ".tier3";
     QFile file(filePath);

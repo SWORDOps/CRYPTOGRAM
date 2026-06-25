@@ -15,6 +15,7 @@ struct ComposeFeatures {
 	bool ttlInfo : 1 = true;
 	bool botCommandSend : 1 = true;
 	bool silentBroadcastToggle : 1 = true;
+	bool attachBotsMenu : 1 = true;
 	bool inlineBots : 1 = true;
 	bool megagroupSet : 1 = true;
 	bool collectibleStatus : 1 = false;

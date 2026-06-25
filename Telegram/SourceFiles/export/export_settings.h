@@ -62,10 +62,14 @@ struct Settings {
 		GroupsMask          = PrivateGroups | PublicGroups,
 		ChannelsMask        = PrivateChannels | PublicChannels,
 		GroupsChannelsMask  = GroupsMask | ChannelsMask,
+		NonChannelChatsMask = PersonalChats | BotChats | PrivateGroups,
+		AnyChatsMask        = PersonalChats | BotChats | GroupsChannelsMask,
+		NonChatsMask        = (PersonalInfo
 			| Userpics
 			| Contacts
 			| Stories
 			| Sessions),
+		AllMask             = NonChatsMask | OtherData | AnyChatsMask,
 	};
 	using Types = base::flags<Type>;
 	friend inline constexpr auto is_flag_type(Type) { return true; };

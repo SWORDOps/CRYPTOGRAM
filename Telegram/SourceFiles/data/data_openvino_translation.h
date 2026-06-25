@@ -228,7 +228,6 @@ private:
 
 	// Cache operations
 	QString getCachedTranslation(const QString &text, TranslationModel model);
-	void addToCache(const QString &text, const QString &translation, TranslationModel model);
 
 	// Performance optimization
 

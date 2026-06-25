@@ -1096,6 +1096,7 @@ void PreviewBox(
 	)->setTryMakeSimilarLines(true);
 	box->addRow(
 		CreateSwitch(box->verticalLayout(), &state->selected, state->order),
+		st::premiumDotsMargin);
 	const auto showFinished = [=] {
 		state->showFinished = true;
 		if (base::take(state->preloadScheduled)) {

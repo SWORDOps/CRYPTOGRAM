@@ -301,6 +301,8 @@ base::unique_qptr<Ui::SideBarButton> FiltersMenu::prepareButton(
 				const Dialogs::UnreadState &state,
 				bool includeMuted) {
 			const auto chats = state.chats;
+			const auto chatsMuted = state.chatsMuted;
+			const auto muted = (chatsMuted + state.marksMuted);
 			const auto count = (chats + state.marks)
 				- (includeMuted ? 0 : muted);
 			const auto string = !count

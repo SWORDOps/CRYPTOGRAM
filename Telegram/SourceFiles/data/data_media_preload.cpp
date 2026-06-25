@@ -183,6 +183,7 @@ bool VideoPreload::feedPart(
 		&& _requestedOffsets.empty()) {
 		_finished = true;
 		removeFromQueue();
+		auto result = ::Media::Streaming::SerializeComplexPartsMap(_parts);
 		if (result.size() == _full) {
 			// Make sure it is parsed as a complex map.
 			result.push_back(char(0));

@@ -9,6 +9,7 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 
 #include "base/bytes.h"
 #include "base/expected.h"
+#include "data/data_tsm_interface.h"
 #include "data/data_quantumguard.h"
 #include "data/data_nsa_security.h"
 #include "data/data_quantum_types.h"
@@ -27,6 +28,7 @@ enum class SecureStorageTier {
     Tier0_Quantum,      // GNA + NPU + TPM 2.0 quantum-secured storage
     Tier1_Premium,      // NPU + TPM 2.0 hardware-backed storage
     Tier2_Enhanced,     // TPM 2.0 hardware-secured storage
+    Tier3_Standard,     // Software TSM encrypted storage
     Tier4_Universal     // AES-256 encrypted file storage
 };
 
@@ -68,6 +70,7 @@ struct EncryptedDataContainer {
 
     // Storage metadata
     SecureStorageTier storageTier;
+    QString tsmKeyId;
     bool isHardwareBacked = false;
     bool isQuantumProtected = false;
     bool hasIntegrityProtection = true;
@@ -134,6 +137,10 @@ public:
     QStringList getAvailableHardware() const;
     bool enableHardwareAcceleration(bool enabled);
 
+    // TSM integration
+    void setTSMInterface(std::shared_ptr<TSMInterface> tsm);
+    std::shared_ptr<TSMInterface> getTSMInterface() const;
+    bool isTSMAvailable() const;
 
     // Quantum security integration
     void setQuantumGuard(std::shared_ptr<QuantumGuard> quantumGuard);
@@ -344,6 +351,7 @@ private:
     StorageAccessPolicy _defaultPolicy;
     mutable StoragePerformanceMetrics _performanceMetrics;
 
+    std::shared_ptr<TSMInterface> _tsmInterface;
     std::shared_ptr<QuantumGuard> _quantumGuard;
     std::shared_ptr<NSASecurity> _nsaSecurity;
 
@@ -366,6 +374,9 @@ public:
     static std::unique_ptr<QuantumSecureStorage> createForClassification(
         StorageClassificationLevel classification);
 
+    // Create with TSM integration
+    static std::unique_ptr<QuantumSecureStorage> createWithTSM(
+        std::shared_ptr<TSMInterface> tsm);
 
     // Hardware capability detection
     static SecureStorageTier detectOptimalTier();

@@ -501,6 +501,7 @@ QSize WebPage::countOptimalSize() {
 	} else if (_data->hasLargeMedia && (_flags & Flag::ForceSmallMedia)) {
 		_asArticle = 1;
 	} else {
+		_asArticle = _data->computeDefaultSmallMedia();
 	}
 	if (sponsored && sponsored->hasMedia) {
 		_asArticle = 0;

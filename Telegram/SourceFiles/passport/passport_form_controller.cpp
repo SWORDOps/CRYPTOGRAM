@@ -2206,6 +2206,7 @@ void FormController::startPhoneVerification(not_null<Value*> value) {
 						timeout.value_or(60),
 					});
 				}
+			}, [&](const MTPDauth_sentCodeTypeFragmentSms &data) {
 				value->verification.codeLength = data.vlength().v;
 				value->verification.fragmentUrl = qs(data.vurl());
 				value->verification.call = nullptr;

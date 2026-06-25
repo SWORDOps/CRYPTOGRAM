@@ -127,6 +127,7 @@ PreLaunchInput::PreLaunchInput(QWidget *parent, bool password) : QLineEdit(paren
 	setPalette(p);
 
 	QLineEdit::setTextMargins(0, 0, 0, 0);
+	setContentsMargins(0, 0, 0, 0);
 	if (password) {
 		setEchoMode(QLineEdit::Password);
 	}
@@ -146,6 +147,7 @@ PreLaunchLog::PreLaunchLog(QWidget *parent) : QTextEdit(parent) {
 	setReadOnly(true);
 	setFrameStyle(int(QFrame::NoFrame) | QFrame::Plain);
 	viewport()->setAutoFillBackground(false);
+	setContentsMargins(0, 0, 0, 0);
 	document()->setDocumentMargin(0);
 	show();
 };

@@ -360,6 +360,7 @@ private:
 	[[nodiscard]] FullStoryId nextPreloadId() const;
 	void startPreloading(not_null<Story*> story);
 	void preloadFinished(FullStoryId id, bool markAsPreloaded = false);
+	void preloadListsMore();
 
 	void notifySourcesChanged(StorySourcesList list);
 	void pushHiddenCountsToFolder();

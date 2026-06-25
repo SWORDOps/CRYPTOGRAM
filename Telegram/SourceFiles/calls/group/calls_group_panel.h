@@ -238,6 +238,7 @@ private:
 	object_ptr<Ui::FlatLabel> _startsWhen = { nullptr };
 	object_ptr<Ui::RpWidget> _emptyRtmp = { nullptr };
 	ChooseJoinAsProcess _joinAsProcess;
+	std::optional<QRect> _lastSmallGeometry;
 	std::optional<QRect> _lastLargeGeometry;
 	bool _lastLargeMaximized = false;
 	bool _showWideControls = false;

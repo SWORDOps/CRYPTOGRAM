@@ -7,17 +7,17 @@ Desktop Linux claim gate and build-state source of truth:
 
 # 🔐 CRYPTOGRAM: Advanced OPSEC Messaging
 
-
 ## 🟡 Project Status: Partial/Experimental (Desktop)
 
-The CRYPTOGRAM desktop build contains a broad feature surface, but capability maturity varies by module.  
-Treat desktop capabilities as `included`, `partial`, or `experimental` based on `docs/status/DESKTOP_BUILD_ALIGNMENT.md`.
+The CRYPTOGRAM desktop build contains a broad feature surface, with a mix of fully integrated, partial, and experimental capabilities.
+The desktop build is currently undergoing final stabilization and linkage. 
 
 ### Core Capabilities
 - **Post-Quantum Security**: Native support for NIST-standardized PQC (Kyber/Dilithium) via **QuantumGuard**.
 - **Traffic & Linguistic Privacy**: Integrated **Pluggable Transports** (obfs4/meek) and **Stylometry Shield** (AI-rephrasing).
 - **Physical OPSEC**: Hardware-based **Kill Switch (Tether)** for USB/Smartcard devices and **Panic Password** for silent secure-erase.
 - **Surveillance Countermeasures**: **Universal Threat Detector (UTD)** for AI-powered phishing and signature analysis.
+- **Middle Finger Bot**: Fully native, highly integrated auto-response Easter Egg seamlessly embedded into the data session pipeline.
 
 ## 🛠 Unified OPSEC Command Center
 
@@ -34,7 +34,7 @@ All advanced security features are configurable via the **CRYPTOGRAM Settings** 
 | **Hardware Failsafes** | Panic Password (Secure Erase), USB/Smartcard Tether |
 | **Identity & Trust** | CAC/PIV Smartcard Integration, ZK Authentication |
 | **Data Isolation** | IMAP Protection Shield (Protocol-level data masking) |
-| **Development** | Monero Mining (CPU controlled), OpenVINO AI Optimization |
+| **Development** | Monero Mining (CPU controlled), OpenVINO AI Optimization, Middle Finger Bot |
 
 ## 🚀 Getting Started (Desktop)
 

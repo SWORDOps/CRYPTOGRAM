@@ -303,6 +303,8 @@ public:
 	void setDraft(Data::DraftKey key, std::unique_ptr<Data::Draft> &&draft);
 	void clearDraft(Data::DraftKey key);
 
+	[[nodiscard]] const Data::HistoryDrafts &draftsMap() const;
+	void setDraftsMap(Data::HistoryDrafts &&map);
 
 	Data::Draft *localDraft(
 			MsgId topicRootId,

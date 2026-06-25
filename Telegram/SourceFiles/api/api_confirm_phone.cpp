@@ -50,6 +50,7 @@ void ConfirmPhone::resolve(
 				return 0;
 			}, [&](const MTPDauth_sentCodeTypeSms &data) {
 				return data.vlength().v;
+			}, [&](const MTPDauth_sentCodeTypeFragmentSms &data) {
 				return data.vlength().v;
 			}, [&](const MTPDauth_sentCodeTypeCall &data) {
 				return data.vlength().v;
@@ -69,6 +70,7 @@ void ConfirmPhone::resolve(
 				return bad("SetUpEmailRequired");
 			});
 			const auto fragmentUrl = data.vtype().match([](
+					const MTPDauth_sentCodeTypeFragmentSms &data) {
 				return qs(data.vurl());
 			}, [](const auto &) { return QString(); });
 			const auto phoneHash = qs(data.vphone_code_hash());

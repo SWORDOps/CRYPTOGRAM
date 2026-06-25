@@ -115,6 +115,7 @@ struct LocalUrlHandler;
 class Settings;
 class Tray;
 class PeerTrustManager;
+class TSMClient;
 
 enum class LaunchState {
 	Running,
@@ -295,6 +296,8 @@ public:
 		return _peerTrustManager.get();
 	}
 
+	TSMClient *tsmClient() const {
+		return _tsmClient.get();
 	}
 
 	void logout(Main::Account *account = nullptr);
@@ -447,6 +450,7 @@ private:
 
 	const std::unique_ptr<Tray> _tray;
 	std::unique_ptr<PeerTrustManager> _peerTrustManager;
+	std::unique_ptr<TSMClient> _tsmClient;
 
 	std::unique_ptr<Media::Player::FloatController> _floatPlayers;
 	rpl::lifetime _floatPlayerDelegateLifetime;

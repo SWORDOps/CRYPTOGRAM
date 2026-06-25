@@ -90,6 +90,7 @@ private:
 
 	// FileSize: Right now any file size fits 32 bit.
 
+	using PartsMap = base::flat_map<uint32, QByteArray>;
 
 	template <int Size>
 	class StackIntVector {
@@ -126,9 +127,12 @@ private:
 
 		struct PrepareFillResult {
 			StackIntVector<kLoadFromRemoteMax> offsetsFromLoader;
+			PartsMap::const_iterator start;
+			PartsMap::const_iterator finish;
 			bool ready = true;
 		};
 
+		void processCacheData(PartsMap &&data);
 		void addPart(uint32 offset, QByteArray bytes);
 		PrepareFillResult prepareFill(uint32 from, uint32 till);
 
@@ -137,6 +141,7 @@ private:
 			uint32 from,
 			uint32 till) const;
 
+		PartsMap parts;
 		Flags flags;
 
 	};
@@ -156,6 +161,7 @@ private:
 
 		[[nodiscard]] int requestSliceSizesCount() const;
 
+		void processCacheResult(int sliceNumber, PartsMap &&result);
 		void processCachedSizes(const std::vector<int> &sizes);
 		void processPart(uint32 offset, QByteArray &&bytes);
 
@@ -262,6 +268,7 @@ private:
 	// Streaming thread.
 	std::deque<uint32> _offsetsForDownloader;
 	base::flat_set<uint32> _downloaderOffsetsRequested;
+	base::flat_map<uint32, std::optional<PartsMap>> _downloaderReadCache;
 
 	// Communication from main thread to streaming thread.
 	// Streaming thread to main thread communicates using crl::on_main.
@@ -272,6 +279,7 @@ private:
 
 };
 
+[[nodiscard]] QByteArray SerializeComplexPartsMap(
 	const base::flat_map<uint32, QByteArray> &parts);
 
 } // namespace Streaming

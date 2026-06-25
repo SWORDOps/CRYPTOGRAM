@@ -586,6 +586,7 @@ void Message::refreshRightBadge() {
 
 		const auto many = (boosts > 1);
 		auto added = Ui::Text::IconEmoji(many
+			? &st::boostsMessageIcon
 			: &st::boostMessageIcon
 		).append(many ? QString::number(boosts) : QString());
 		badge.append(' ').append(Ui::Text::Colorized(added, 1));

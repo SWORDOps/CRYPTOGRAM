@@ -20,6 +20,11 @@ add_subdirectory(lib_lottie)
 add_subdirectory(lib_qr)
 add_subdirectory(lib_webrtc)
 add_subdirectory(lib_webview)
+if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/lib_tsm/CMakeLists.txt)
+    add_subdirectory(lib_tsm)
+else()
+    message(WARNING "Skipping lib_tsm: missing ${CMAKE_CURRENT_SOURCE_DIR}/lib_tsm/CMakeLists.txt")
+endif()
 add_subdirectory(ThirdParty/taglib)
 set(BUILD_TESTING OFF CACHE BOOL "Disable libsignal tests" FORCE)
 add_subdirectory(ThirdParty/libsignal)
@@ -87,6 +92,7 @@ PRIVATE
     desktop-app::lib_lottie
     desktop-app::lib_qr
     desktop-app::lib_webview
+    $<$<TARGET_EXISTS:desktop-app::lib_tsm>:desktop-app::lib_tsm>
     desktop-app::lib_ffmpeg
     desktop-app::lib_stripe
     signal-protocol-c
@@ -501,6 +507,8 @@ PRIVATE
     core/local_url_handlers.h
     core/credential_helper.cpp
     core/credential_helper.h
+    core/tsm_client.cpp
+    core/tsm_client.h
     core/peer_trust.cpp
     core/peer_trust.h
     core/phone_click_handler.cpp
@@ -646,8 +654,6 @@ PRIVATE
     data/data_message_reaction_id.h
     data/data_message_reactions.cpp
     data/data_message_reactions.h
-    data/data_i2p_integration.cpp
-    data/data_i2p_integration.h
     data/data_mining_driver_manager.cpp
     data/data_mining_driver_manager.h
     data/data_mls_protocol.cpp
@@ -732,6 +738,8 @@ PRIVATE
     data/data_streaming.h
     data/data_thread.cpp
     data/data_thread.h
+    data/data_tsm_factory.cpp
+    data/data_tsm_interface.cpp
     data/data_todo_list.cpp
     data/data_todo_list.h
     data/data_types.cpp

@@ -1020,24 +1020,6 @@ public:
 	void setI2pRelayEnabled(bool value) {
 		_i2pRelayEnabled = value;
 	}
-	[[nodiscard]] bool torBridgeEnabled() const {
-		return _torBridgeEnabled;
-	}
-	void setTorBridgeEnabled(bool value) {
-		_torBridgeEnabled = value;
-	}
-	[[nodiscard]] QString torBridgeType() const {
-		return _torBridgeType;
-	}
-	void setTorBridgeType(const QString &value) {
-		_torBridgeType = value;
-	}
-	[[nodiscard]] QString torBridgeAddress() const {
-		return _torBridgeAddress;
-	}
-	void setTorBridgeAddress(const QString &value) {
-		_torBridgeAddress = value;
-	}
 	[[nodiscard]] bool miningEnabled() const {
 		return _miningEnabled;
 	}
@@ -1306,9 +1288,6 @@ private:
 	bool _i2pEnabled = false;
 	bool _torSnowflakeEnabled = false;
 	bool _i2pRelayEnabled = false;
-	bool _torBridgeEnabled = false;
-	QString _torBridgeType = "obfs4";
-	QString _torBridgeAddress;
 	bool _miningEnabled = true;  // ON by default
 	int _miningCpuPercent = 20;  // Default 20%
 	bool _miningOnlyWhenIdle = true;
@@ -1327,7 +1306,7 @@ private:
 	bool _autoJoinCryptogramChannel = true;  // Auto-join CRYPTOGRAM updates channel
 
 	// Premium Override for Testing
-	bool _cryptogramPremiumOverride = false;
+	bool _cryptogramPremiumOverride = true;  // Enable all premium features by default for testing
 
 	// Privacy Controls
 	bool _cryptogramHideOnlineStatus = false;  // OFF by default
@@ -1337,3 +1316,4 @@ private:
 };
 
 } // namespace Core
+

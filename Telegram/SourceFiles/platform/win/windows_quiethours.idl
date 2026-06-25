@@ -44,6 +44,7 @@ library QuietHours
 	}
 
 	[uuid(b0217783-87b7-422c-b902-5c148c14f150)]
+	interface IQuietMomentsManager : IUnknown
 	{
 		HRESULT GetAllQuietMomentModes([out] UINT32* count, [out, retval] UINT32** quietMomentModes);
 		HRESULT GetQuietMoment([in] UINT32 quietMomentId, [out, retval] IQuietMoment** quietMoment);
@@ -64,6 +65,7 @@ library QuietHours
 		HRESULT GetProfile([in, string] LPWSTR profileId, [out, retval] IQuietHoursProfile**);
 		HRESULT GetAllProfileData(UINT32* count, QH_PROFILE_DATA*);
 		HRESULT GetDisplayNameForProfile([in, string] LPWSTR profileId, [out, string, retval] LPWSTR* displayName);
+		[propget] HRESULT QuietMomentsManager([out, retval] IQuietMomentsManager**);
 		[propget] HRESULT OffProfileId([out, string, retval] LPWSTR* profileId);
 		[propget] HRESULT ActiveQuietMomentProfile([out, string, retval] LPWSTR* profileId);
 		[propput] HRESULT ActiveQuietMomentProfile([in] LPWSTR profileId);

@@ -66,6 +66,9 @@ private:
     // Device Trust Section
     void setupDeviceTrustSection(not_null<Ui::VerticalLayout*> container);
 
+    // TSM Integration Section (Optional)
+    void setupTSMSection(not_null<Ui::VerticalLayout*> container);
+    void setupTSMSessionsSection(not_null<Ui::VerticalLayout*> container);
     void setupZKAuthenticationSection(not_null<Ui::VerticalLayout*> container);
 
     // Surveillance & Voice Security
@@ -104,6 +107,7 @@ private:
     // IMAP & Protocol Protection
     void setupIMAPSection(not_null<Ui::VerticalLayout*> container);
 
+    // TSM Integration Section (Optional)
     void setupEncryptionSection(not_null<Ui::VerticalLayout*> container);
     void createEncryptionToggle(not_null<Ui::VerticalLayout*> container);
     void createKeyExchangeUI(not_null<Ui::VerticalLayout*> container);

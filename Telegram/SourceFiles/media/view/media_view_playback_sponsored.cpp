@@ -211,10 +211,12 @@ void Close::paintEvent(QPaintEvent *e) {
 	const auto twice = twiceSmall
 		+ allowedProgress * (twiceFinal - twiceSmall);
 	const auto leftFinal = (width() - size) / 2.;
+	const auto leftSmall = (width() + st::mediaSponsoredCloseDiameter) / 2.
 		- (st::mediaSponsoredCloseStroke / 2.)
 		- sizeSmall;
 	const auto topFinal = (height() - size) / 2.;
 	const auto topSmall = (height() - st::mediaSponsoredCloseDiameter) / 2.;
+	const auto left = leftSmall + allowedProgress * (leftFinal - leftSmall);
 	const auto top = topSmall + allowedProgress * (topFinal - topSmall);
 
 	auto hq = PainterHighQualityEnabler(p);

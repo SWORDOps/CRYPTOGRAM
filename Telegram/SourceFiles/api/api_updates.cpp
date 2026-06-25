@@ -1122,15 +1122,6 @@ void Updates::handleSendActionUpdate(
 		history->streamedDrafts().apply(rootId, fromId, when, data);
 		return;
 	}
-	if (const auto covert = session().data().covertChannel()) {
-		action.match(
-			[&](const MTPDsendMessageTypingAction &) {
-				covert->processTypingIndicator(peer, Api::SendProgressType::Typing, crl::now());
-			},
-			[](const auto &) {
-			});
-	}
-
 	session().data().sendActionManager().registerFor(
 		history,
 		rootId,

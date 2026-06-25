@@ -182,6 +182,7 @@ giftBoxResaleColorTop: 1px;
 giftBoxPadding: margins(11px, 4px, 11px, 24px);
 giftBoxGiftSkip: point(10px, 8px);
 giftBoxGiftHeight: 164px;
+giftBoxGiftSmall: 108px;
 giftBoxGiftRadius: 12px;
 giftBoxGiftBadgeFont: font(10px semibold);
 giftBoxByStarsStyle: TextStyle(defaultTextStyle) {

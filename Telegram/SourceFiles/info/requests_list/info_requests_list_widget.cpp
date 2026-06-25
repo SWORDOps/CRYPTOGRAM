@@ -235,6 +235,9 @@ bool Widget::showInternal(not_null<ContentMemento*> memento) {
 	if (!controller()->validateMementoPeer(memento)) {
 		return false;
 	}
+	if (auto requestsMemento = dynamic_cast<Memento*>(memento.get())) {
+		if (requestsMemento->peer() == peer()) {
+			restoreState(requestsMemento);
 			return true;
 		}
 	}

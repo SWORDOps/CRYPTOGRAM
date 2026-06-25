@@ -119,6 +119,7 @@ struct WebPageData {
 
 	[[nodiscard]] QString displayedSiteName() const;
 	[[nodiscard]] TimeId extractVideoTimestamp() const;
+	[[nodiscard]] bool computeDefaultSmallMedia() const;
 	[[nodiscard]] bool suggestEnlargePhoto() const;
 
 	const WebPageId id = 0;

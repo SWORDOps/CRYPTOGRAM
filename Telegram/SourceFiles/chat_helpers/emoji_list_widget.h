@@ -418,6 +418,7 @@ private:
 	const int _staticCount = 0;
 	StickersListFooter *_footer = nullptr;
 	std::unique_ptr<GradientPremiumStar> _premiumIcon;
+	std::unique_ptr<LocalStickersManager> _localSetsManager;
 	ChannelData *_megagroupSet = nullptr;
 	uint64 _megagroupSetIdRequested = 0;
 	Fn<std::unique_ptr<Ui::Text::CustomEmoji>(

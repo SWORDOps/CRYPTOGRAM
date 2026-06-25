@@ -1102,6 +1102,7 @@ void Panel::migrationInviteUsers(std::vector<InviteRequest> users) {
 }
 
 void Panel::enlargeVideo() {
+	_lastSmallGeometry = window()->geometry();
 
 	const auto available = window()->screen()->availableGeometry();
 	const auto width = std::max(

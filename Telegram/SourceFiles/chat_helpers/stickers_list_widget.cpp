@@ -189,6 +189,7 @@ StickersListWidget::StickersListWidget(
 , _features(descriptor.features)
 , _overBg(st::roundRadiusLarge, st().overBg)
 , _api(&session().mtp())
+, _localSetsManager(std::make_unique<LocalStickersManager>(&session()))
 , _customRecentIds(std::move(descriptor.customRecentList))
 , _section(Section::Stickers)
 , _isMasks(_mode == Mode::Masks)
@@ -1924,6 +1925,7 @@ void StickersListWidget::mouseReleaseEvent(QMouseEvent *e) {
 		} else if (auto button = std::get_if<OverButton>(&pressed)) {
 			Assert(button->section >= 0 && button->section < sets.size());
 			if (sets[button->section].externalLayout) {
+				_localSetsManager->install(sets[button->section].id);
 				update();
 			} else {
 				removeSet(sets[button->section].id);
@@ -2052,6 +2054,7 @@ void StickersListWidget::processHideFinished() {
 }
 
 void StickersListWidget::processPanelHideFinished() {
+	if (_localSetsManager->clearInstalledLocally()) {
 		refreshStickers();
 	}
 	clearHeavyData();
@@ -2152,6 +2155,7 @@ void StickersListWidget::refreshFeaturedSets() {
 			if (it == sets.cend()
 				|| ((it->second->flags & SetFlag::Installed)
 					&& !(it->second->flags & SetFlag::Archived)
+					&& !_localSetsManager->isInstalledLocally(set.id))) {
 				continue;
 			}
 			set.flags = it->second->flags;
@@ -2175,6 +2179,7 @@ void StickersListWidget::refreshSearchSets() {
 				entry.stickers = std::move(elements);
 			}
 			if (!SetInMyList(entry.flags)) {
+				_localSetsManager->removeInstalledLocally(entry.id);
 				entry.externalLayout = true;
 			}
 		}
@@ -2239,6 +2244,7 @@ bool StickersListWidget::appendSet(
 	if ((skip == AppendSkip::Installed)
 		&& (set->flags & SetFlag::Installed)
 		&& !(set->flags & SetFlag::Archived)) {
+		if (!_localSetsManager->isInstalledLocally(setId)) {
 			return false;
 		}
 	}

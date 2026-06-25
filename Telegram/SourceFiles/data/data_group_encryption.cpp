@@ -34,31 +34,17 @@ GroupEncryption::GroupEncryption() {
 }
 
 GroupEncryption::~GroupEncryption() {
-	if (_mlsProtocol) {
-		for (auto it = _groupToMLS.begin(); it != _groupToMLS.end(); ++it) {
-			_mlsProtocol->removeGroup(it.value());
-		}
-	}
-	_groupToMLS.clear();
-	_mlsToGroup.clear();
 	LOG(("GroupEncryption: Destroyed"));
 }
 
 bool GroupEncryption::createEncryptedGroup(not_null<PeerData*> group) {
-	auto existingGroupId = getMLSGroupId(group);
-	if (_mlsProtocol && !existingGroupId.empty() && !_mlsProtocol->hasGroup(existingGroupId)) {
-		_groupToMLS.remove(group->id);
-		_mlsToGroup.remove(existingGroupId);
-		existingGroupId = MLSGroupId();
-	}
-
 	if (!_mlsProtocol) {
 		LOG(("GroupEncryption: MLS protocol not available"));
 		return false;
 	}
 
 	// Check if already encrypted
-	if (!existingGroupId.empty() && _mlsProtocol->hasGroup(existingGroupId)) {
+	if (isEncrypted(group)) {
 		LOG(("GroupEncryption: Group already encrypted"));
 		return true;
 	}
@@ -74,10 +60,6 @@ bool GroupEncryption::createEncryptedGroup(not_null<PeerData*> group) {
 	auto mlsGroupId = _mlsProtocol->createGroup(
 		members,
 		MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
-	if (mlsGroupId.empty()) {
-		LOG(("GroupEncryption: MLS createGroup returned empty group id"));
-		return false;
-	}
 
 	// Store mapping
 	_groupToMLS[group->id] = mlsGroupId;
@@ -99,9 +81,6 @@ bool GroupEncryption::destroyEncryptedGroup(not_null<PeerData*> group) {
 	// Remove mappings
 	_mlsToGroup.remove(mlsGroupId);
 	_groupToMLS.erase(it);
-	if (_mlsProtocol) {
-		_mlsProtocol->removeGroup(mlsGroupId);
-	}
 
 	LOG(("GroupEncryption: Destroyed encrypted group"));
 
@@ -217,10 +196,6 @@ std::optional<QString> GroupEncryption::decryptGroupMessage(
 		LOG(("GroupEncryption: Decryption failed"));
 		return std::nullopt;
 	}
-	if (plaintextBytes->empty()) {
-		LOG(("GroupEncryption: Decrypted empty group message"));
-		return QString();
-	}
 
 	// Convert bytes to QString
 	QByteArray plaintextArray(
@@ -265,55 +240,20 @@ MLSGroupId GroupEncryption::getMLSGroupId(not_null<PeerData*> group) const {
 
 QVector<UserId> GroupEncryption::getCryptogramMembers(not_null<PeerData*> group) const {
 	QVector<UserId> result;
-	auto includeCryptogramUser = [&](UserData *user) {
-		if (!user) {
-			return;
-		}
-		const auto userId = user->id;
-		if (!EnhancedPrivacy::IsCryptogramUser(userId)) {
-			return;
-		}
-		if (!result.contains(userId)) {
-			result.append(userId);
-		}
-	};
 
 	// Get all members depending on group type
 	if (const auto chat = group->asChat()) {
 		// Regular group chat
 		for (const auto &participant : chat->participants) {
-			includeCryptogramUser(participant);
+			if (EnhancedPrivacy::IsCryptogramUser(participant->id)) {
+				result.append(participant->id);
+			}
 		}
 	} else if (const auto channel = group->asChannel()) {
 		// Supergroup or channel
-		if (!channel->isMegagroup()) {
-			LOG(("GroupEncryption: Channel encryption requires megagroup participants"));
-			return result;
-		}
-
-		const auto mgInfo = channel->mgInfo.get();
-		if (!mgInfo) {
-			LOG(("GroupEncryption: Missing megagroup info for channel %1")
-				.arg(channel->id.value()));
-			return result;
-		}
-
-		for (const auto &participant : mgInfo->lastParticipants) {
-			includeCryptogramUser(participant);
-		}
-		for (const auto &admin : mgInfo->lastAdmins) {
-			includeCryptogramUser(admin.first);
-		}
-		if (mgInfo->creator) {
-			includeCryptogramUser(mgInfo->creator);
-		}
-
-		if (result.isEmpty()
-			&& channel->amIn()
-			&& channel->membersCount() == 1
-			&& EnhancedPrivacy::IsCryptogramUser(channel->session().user()->id)) {
-			includeCryptogramUser(channel->session().user());
-		}
+		// In a real implementation, we'd fetch the member list
+		// For now, assume we have access to participants
+		LOG(("GroupEncryption: Channel/supergroup member detection not yet implemented"));
 	}
 
 	return result;

@@ -1269,6 +1269,7 @@ void SessionNavigation::showRepliesForMessage(
 				if (post) {
 					post->setCommentsItemId(item->fullId());
 					if (const auto maxId = data.vmax_id()) {
+						post->setCommentsMaxId(maxId->v);
 					}
 					post->setCommentsInboxReadTill(
 						data.vread_inbox_max_id().value_or_empty());

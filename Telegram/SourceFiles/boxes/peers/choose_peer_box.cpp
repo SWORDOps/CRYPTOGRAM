@@ -69,7 +69,9 @@ private:
 
 };
 
+using RightsMap = std::vector<std::pair<ChatAdminRight, tr::phrase<>>>;
 
+[[nodiscard]] RightsMap GroupRights() {
 	using Flag = ChatAdminRight;
 	return {
 		{ Flag::ChangeInfo, tr::lng_request_group_change_info },
@@ -84,6 +86,7 @@ private:
 	};
 }
 
+[[nodiscard]] RightsMap BroadcastRights() {
 	using Flag = ChatAdminRight;
 	return {
 		{ Flag::ChangeInfo, tr::lng_request_channel_change_info },
@@ -99,6 +102,7 @@ private:
 
 [[nodiscard]] QString RightsText(
 		ChatAdminRights rights,
+		const RightsMap &phrases) {
 	auto list = QStringList();
 	for (const auto &[flag, phrase] : phrases) {
 		if (rights & flag) {

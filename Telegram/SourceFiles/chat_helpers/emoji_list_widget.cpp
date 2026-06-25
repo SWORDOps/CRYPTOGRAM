@@ -489,6 +489,7 @@ EmojiListWidget::EmojiListWidget(
 , _premiumIcon(_mode == Mode::EmojiStatus
 	? std::make_unique<GradientPremiumStar>()
 	: nullptr)
+, _localSetsManager(
 	std::make_unique<LocalStickersManager>(&session()))
 , _customRecentFactory(std::move(descriptor.customRecentFactory))
 , _freeEffects(std::move(descriptor.freeEffects))
@@ -1840,6 +1841,7 @@ void EmojiListWidget::mouseReleaseEvent(QMouseEvent *e) {
 		} else if (hasRemoveButton(button->section)) {
 			removeSet(id);
 		} else if (hasAddButton(button->section)) {
+			_localSetsManager->install(id);
 		} else if (const auto resolved = _show->resolveWindow()) {
 			_jumpedToPremium.fire({});
 			switch (_mode) {
@@ -2263,6 +2265,7 @@ void EmojiListWidget::processHideFinished() {
 
 void EmojiListWidget::processPanelHideFinished() {
 	unloadAllCustom();
+	if (_localSetsManager->clearInstalledLocally()) {
 		refreshCustom();
 	}
 }
@@ -2323,6 +2326,7 @@ void EmojiListWidget::refreshCustom() {
 			: !!(it->second->flags & Data::StickersSetFlag::Installed);
 		const auto sortAsInstalled = canRemove
 			&& (!(it->second->flags & Data::StickersSetFlag::Featured)
+				|| !_localSetsManager->isInstalledLocally(lookupId));
 		if (!megagroup && sortAsInstalled != installed) {
 			return;
 		}

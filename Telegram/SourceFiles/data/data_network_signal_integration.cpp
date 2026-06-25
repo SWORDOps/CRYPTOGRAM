@@ -10,6 +10,7 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include "data/data_session.h"
 #include "data/data_signal_hkdf.h"
 #include "data/data_signal_protocol.h"
+#include "data/data_tsm_interface.h"
 #include "base/random.h"
 #include "base/openssl_help.h"
 
@@ -23,6 +24,9 @@ namespace Data {
 void NetworkSecurity::integrateWithSignalProtocol(not_null<SignalProtocol*> signalProtocol) {
     _signalProtocol = signalProtocol;
 
+    // Enable TSM integration in Signal Protocol if available
+    if (_tsmInterface && signalProtocol->isTSMEnabled()) {
+        _setupSignalTSMNetworkIntegration();
     }
 
     // Setup network-secured Signal Protocol operations
@@ -32,11 +36,17 @@ void NetworkSecurity::integrateWithSignalProtocol(not_null<SignalProtocol*> sign
     _configureSignalNetworkKeyDerivation();
 }
 
+void NetworkSecurity::integrateWithTSM(std::shared_ptr<TSMInterface> tsm) {
+    _tsmInterface = tsm;
 
+    if (_signalProtocol && _signalProtocol->isTSMEnabled()) {
+        _setupSignalTSMNetworkIntegration();
     }
 
+    // Generate network-specific keys using TSM
     auto networkKeys = generateNetworkKeys();
     if (networkKeys) {
+        _configureNetworkKeysWithTSM(*networkKeys);
     }
 }
 
@@ -51,18 +61,29 @@ base::expected<bytes::vector, NetworkSecurityResult> NetworkSecurity::secureNetw
         const QString keyInfo = "SpyGram-Network-Security-v1";
         const auto derivedKey = _signalProtocol->deriveKey(networkKey, keyInfo, 32);
 
+        // If TSM is available, further secure the key
+        if (_tsmInterface) {
+            const auto tsmResult = _tsmInterface->encrypt(
                 "network-master-key",
                 derivedKey,
                 bytes::const_span{}
             );
 
+            if (tsmResult) {
+                // Return TSM-encrypted key
                 bytes::vector securedKey;
                 securedKey.reserve(
+                    tsmResult->ciphertext.size() +
+                    tsmResult->iv.size() +
+                    tsmResult->authTag.size()
                 );
 
                 securedKey.insert(securedKey.end(),
+                    tsmResult->iv.begin(), tsmResult->iv.end());
                 securedKey.insert(securedKey.end(),
+                    tsmResult->ciphertext.begin(), tsmResult->ciphertext.end());
                 securedKey.insert(securedKey.end(),
+                    tsmResult->authTag.begin(), tsmResult->authTag.end());
 
                 return securedKey;
             }
@@ -76,6 +97,7 @@ base::expected<bytes::vector, NetworkSecurityResult> NetworkSecurity::secureNetw
 }
 
 base::expected<bytes::vector, NetworkSecurityResult> NetworkSecurity::generateNetworkKeys() {
+    if (!_tsmInterface) {
         // Fallback to software key generation
         bytes::vector networkKey(32);
         base::RandomFill(networkKey);
@@ -83,6 +105,9 @@ base::expected<bytes::vector, NetworkSecurityResult> NetworkSecurity::generateNe
     }
 
     try {
+        // Generate network master key using TSM
+        const auto keyResult = _tsmInterface->generateKey(
+            TSMKeyType::CustomEncryption,
             "spygram-network-master"
         );
 
@@ -91,6 +116,7 @@ base::expected<bytes::vector, NetworkSecurityResult> NetworkSecurity::generateNe
         }
 
         // Derive actual network keys from master key
+        const auto derivedKeys = _tsmInterface->deriveKey(
             keyResult->keyId,
             "network-security-keys-v1",
             64  // 32 bytes for obfuscation + 32 bytes for mesh networking
@@ -371,16 +397,24 @@ QString UniversalNetworkSecurity::_generateTierAppropiateMitigation(
 }
 
 // Enhanced Signal Protocol integration methods
+void NetworkSecurity::_setupSignalTSMNetworkIntegration() {
+    if (!_signalProtocol || !_tsmInterface) {
         return;
     }
 
+    // Generate network-specific identity keys using TSM
+    const auto networkIdentityResult = _tsmInterface->generateKey(
+        TSMKeyType::DeviceAttestation,
         "spygram-network-identity"
     );
 
     if (networkIdentityResult) {
+        // Use TSM-generated key for network authentication
         _networkIdentityKeyId = networkIdentityResult->keyId;
     }
 
+    // Setup TSM-backed network key exchange
+    _setupTSMNetworkKeyExchange();
 }
 
 void NetworkSecurity::_setupNetworkSecuredSignalOperations() {
@@ -406,10 +440,14 @@ void NetworkSecurity::_configureSignalNetworkKeyDerivation() {
     // providing cryptographic binding between Signal security and network security
 }
 
+void NetworkSecurity::_setupTSMNetworkKeyExchange() {
+    if (!_tsmInterface || _networkIdentityKeyId.isEmpty()) {
         return;
     }
 
     // Generate ephemeral key exchange keys for network operations
+    const auto ephemeralKeyResult = _tsmInterface->generateKey(
+        TSMKeyType::SignalPreKey,
         "spygram-network-ephemeral"
     );
 
@@ -418,6 +456,8 @@ void NetworkSecurity::_configureSignalNetworkKeyDerivation() {
     }
 }
 
+void NetworkSecurity::_configureNetworkKeysWithTSM(const bytes::vector &networkKeys) {
+    if (!_tsmInterface || networkKeys.size() < 64) {
         return;
     }
 
@@ -425,6 +465,9 @@ void NetworkSecurity::_configureSignalNetworkKeyDerivation() {
     const bytes::vector obfuscationKey(networkKeys.begin(), networkKeys.begin() + 32);
     const bytes::vector meshKey(networkKeys.begin() + 32, networkKeys.end());
 
+    // Store keys securely in TSM
+    _tsmInterface->encrypt("network-obfuscation-key", obfuscationKey);
+    _tsmInterface->encrypt("network-mesh-key", meshKey);
 }
 
 // Network Performance Monitor Implementation

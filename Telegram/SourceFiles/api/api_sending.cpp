@@ -193,22 +193,14 @@ void SendExistingMedia(
 		TextUtilities::ConvertTextTagsToEntities(message.textWithTags.tags)
 	};
 	TextUtilities::Trim(caption);
-	const auto secureCaption = api->ApplyCryptogramSecureTransportForHistory(
-		history,
-		caption);
-	auto captionText = secureCaption.text;
-	auto captionEntities = secureCaption.entities;
-	if (captionText.size() > MaxMessageSize) {
-		captionText = caption.text;
-		captionEntities = caption.entities;
-	}
 	auto sentEntities = EntitiesToMTP(
 		session,
-		captionEntities,
+		caption.entities,
 		ConvertOption::SkipLocal);
 	if (!sentEntities.v.isEmpty()) {
 		sendFlags |= MTPmessages_SendMedia::Flag::f_entities;
 	}
+	const auto captionText = caption.text;
 	const auto starsPaid = std::min(
 		peer->starsPerMessageChecked(),
 		action.options.starsApproved);

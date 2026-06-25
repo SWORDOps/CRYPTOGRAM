@@ -3370,6 +3370,7 @@ Controller::Controller(not_null<Main::Session*> session, PickCallback pick)
 		_contactBirthdays.empty()
 			? rpl::producer<QString>(nullptr)
 			: tr::lng_contacts_header())) {
+	setStyleOverrides(&st::peerListSmallSkips);
 }
 
 void Controller::rowRightActionClicked(not_null<PeerListRow*> row) {

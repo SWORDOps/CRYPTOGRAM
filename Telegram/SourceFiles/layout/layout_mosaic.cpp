@@ -373,6 +373,7 @@ void AbstractMosaicLayout::layoutRow(Row &row, int fullWidth) {
 		const auto w = desiredWidth
 			? (item->maxWidth() * availableWidth / desiredWidth)
 			: item->maxWidth();
+		const auto actualWidth = std::max(w, st::inlineResultsMinWidth);
 		row.height = std::max(
 			row.height,
 			item->resizeGetHeight(actualWidth));

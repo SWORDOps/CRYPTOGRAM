@@ -343,6 +343,7 @@ public:
 	[[nodiscard]] PaidPostType paidType() const;
 
 	void setCommentsInboxReadTill(MsgId readTillId);
+	void setCommentsMaxId(MsgId maxId);
 	void setCommentsPossibleMaxId(MsgId possibleMaxId);
 	[[nodiscard]] bool areCommentsUnread() const;
 

@@ -1088,6 +1088,7 @@ Dialogs::UnreadState SavedSublist::unreadStateFor(
 	result.marks = mark ? 1 : 0;
 	result.reactions = unreadReactions().has() ? 1 : 0;
 	result.messagesMuted = muted ? result.messages : 0;
+	result.chatsMuted = muted ? result.chats : 0;
 	result.marksMuted = muted ? result.marks : 0;
 	result.reactionsMuted = muted ? result.reactions : 0;
 	result.known = known;

@@ -39,6 +39,7 @@ struct UnreadState {
 	int messages = 0;
 	int messagesMuted = 0;
 	int chats = 0;
+	int chatsMuted = 0;
 	int marks = 0;
 	int marksMuted = 0;
 	int reactions = 0;
@@ -50,6 +51,7 @@ struct UnreadState {
 		messages += other.messages;
 		messagesMuted += other.messagesMuted;
 		chats += other.chats;
+		chatsMuted += other.chatsMuted;
 		marks += other.marks;
 		marksMuted += other.marksMuted;
 		reactions += other.reactions;
@@ -61,6 +63,7 @@ struct UnreadState {
 		messages -= other.messages;
 		messagesMuted -= other.messagesMuted;
 		chats -= other.chats;
+		chatsMuted -= other.chatsMuted;
 		marks -= other.marks;
 		marksMuted -= other.marksMuted;
 		reactions -= other.reactions;
@@ -87,6 +90,7 @@ inline QDebug operator<<(QDebug debug, const UnreadState &state) {
 	return debug.nospace() << "UnreadState(messages:" << state.messages
 	<< ", messagesMuted:" << state.messagesMuted
 	<< ", chats:" << state.chats
+	<< ", chatsMuted:" << state.chatsMuted
 	<< ", marks:" << state.marks
 	<< ", marksMuted:" << state.marksMuted
 	<< ", reactions:" << state.reactions

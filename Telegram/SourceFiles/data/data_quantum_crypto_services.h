@@ -11,6 +11,7 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include "base/expected.h"
 #include "data/data_quantumguard.h"
 #include "data/data_nsa_security.h"
+#include "data/data_tsm_interface.h"
 #include "data/data_quantum_types.h"
 
 #include <QtCore/QObject>
@@ -226,21 +227,30 @@ public:
     void performBenchmarks();
     QMap<QString, double> getBenchmarkResults() const;
 
+    // TSM integration for hardware-backed operations
+    void setTSMInterface(std::shared_ptr<TSMInterface> tsm);
+    std::shared_ptr<TSMInterface> getTSMInterface() const;
 
+    base::expected<CryptoOperationResult, QString> tsmGenerateKey(
+        TSMKeyType keyType,
         AccelerationType preferredAcceleration = AccelerationType::TPM_Hardware);
 
+    base::expected<CryptoOperationResult, QString> tsmEncrypt(
         const bytes::const_span &plaintext,
         const QString &keyId,
         AccelerationType preferredAcceleration = AccelerationType::TPM_Hardware);
 
+    base::expected<CryptoOperationResult, QString> tsmDecrypt(
         const bytes::const_span &ciphertext,
         const QString &keyId,
         AccelerationType preferredAcceleration = AccelerationType::TPM_Hardware);
 
+    base::expected<CryptoOperationResult, QString> tsmSign(
         const bytes::const_span &data,
         const QString &keyId,
         AccelerationType preferredAcceleration = AccelerationType::TPM_Hardware);
 
+    base::expected<CryptoOperationResult, QString> tsmAttest(
         const bytes::const_span &nonce,
         AccelerationType preferredAcceleration = AccelerationType::TPM_Hardware);
 
@@ -376,6 +386,7 @@ private:
     NSAClassificationLevel _classificationLevel = NSAClassificationLevel::Secret;
     mutable CryptoPerformanceMetrics _performanceMetrics;
 
+    std::shared_ptr<TSMInterface> _tsmInterface;
     std::shared_ptr<NSASecurity> _nsaSecurity;
     std::shared_ptr<QuantumGuard> _quantumGuard;
 
@@ -403,6 +414,9 @@ public:
         SecurityStrength minSecurity,
         bool requireQuantumResistance = true);
 
+    // Create with TSM integration
+    static std::unique_ptr<QuantumCryptoServices> createWithTSM(
+        std::shared_ptr<TSMInterface> tsm);
 
     // Hardware capability detection
     static QList<HardwareCapability> detectHardwareCapabilities();

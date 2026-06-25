@@ -279,6 +279,7 @@ private:
 	base::Timer _stateUpdateTimer;
 
 	// Synchronization
+	QMutex _statsMutex;
 	QMutex _configMutex;
 
 	// State tracking

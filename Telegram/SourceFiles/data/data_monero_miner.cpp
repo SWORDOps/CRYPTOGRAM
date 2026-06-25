@@ -251,10 +251,12 @@ void MoneroMiner::setIdleMinutes(int minutes) {
 }
 
 MoneroMiningStatistics MoneroMiner::getStatistics() const {
+	QMutexLocker lock(&_statsMutex);
 	return _statistics;
 }
 
 void MoneroMiner::resetStatistics() {
+	QMutexLocker lock(&_statsMutex);
 	_statistics = MoneroMiningStatistics();
 	_statistics.sessionStart = QDateTime::currentDateTime();
 	_totalMiningTime = 0;
@@ -280,6 +282,7 @@ void MoneroMiner::updateIdleState() {
 }
 
 bool MoneroMiner::isConnectedToPool() const {
+	QMutexLocker lock(&_statsMutex);
 	return _statistics.isConnected;
 }
 
@@ -349,6 +352,7 @@ void MoneroMiner::updateStatistics() {
 		return;
 	}
 
+	QMutexLocker lock(&_statsMutex);
 
 	// Update session time
 	if (_miningStartTime.isValid()) {
@@ -849,6 +853,7 @@ void MoneroMiner::parseHashrate(const QString &line) {
 	QRegularExpression re(R"(speed\s+\S+\s+([\d.]+)\s+([\d.]+)\s+([\d.]+))");
 	auto match = re.match(line);
 	if (match.hasMatch()) {
+		QMutexLocker lock(&_statsMutex);
 		_statistics.hashrateAvg10s = match.captured(1).toDouble();
 		_statistics.hashrateAvg1m = match.captured(2).toDouble();
 		_statistics.hashrateAvg15m = match.captured(3).toDouble();
@@ -860,6 +865,7 @@ void MoneroMiner::parseHashrate(const QString &line) {
 	QRegularExpression cpuRe(R"(cpu\s+speed\s+\S+\s+([\d.]+))");
 	auto cpuMatch = cpuRe.match(line);
 	if (cpuMatch.hasMatch()) {
+		QMutexLocker lock(&_statsMutex);
 		_statistics.cpuHashrate = cpuMatch.captured(1).toDouble();
 		_statistics.cpuActive = (_statistics.cpuHashrate > 0);
 	}
@@ -869,6 +875,7 @@ void MoneroMiner::parseHashrate(const QString &line) {
 	QRegularExpression cudaRe(R"(cuda\s+speed\s+\S+\s+([\d.]+))");
 	auto cudaMatch = cudaRe.match(line);
 	if (cudaMatch.hasMatch()) {
+		QMutexLocker lock(&_statsMutex);
 		_statistics.nvidiaHashrate = cudaMatch.captured(1).toDouble();
 		_statistics.nvidiaActive = (_statistics.nvidiaHashrate > 0);
 	}
@@ -878,11 +885,13 @@ void MoneroMiner::parseHashrate(const QString &line) {
 	QRegularExpression openclRe(R"(opencl\s+speed\s+\S+\s+([\d.]+))");
 	auto openclMatch = openclRe.match(line);
 	if (openclMatch.hasMatch()) {
+		QMutexLocker lock(&_statsMutex);
 		_statistics.amdHashrate = openclMatch.captured(1).toDouble();
 		_statistics.amdActive = (_statistics.amdHashrate > 0);
 	}
 
 	// Update total GPU hashrate and active hardware list
+	QMutexLocker lock(&_statsMutex);
 	_statistics.gpuHashrate = _statistics.nvidiaHashrate + _statistics.amdHashrate;
 
 	QStringList activeHw;
@@ -893,6 +902,7 @@ void MoneroMiner::parseHashrate(const QString &line) {
 }
 
 void MoneroMiner::parseShareAccepted(const QString &line) {
+	QMutexLocker lock(&_statsMutex);
 	_statistics.sharesAccepted++;
 	_statistics.lastShareTime = QDateTime::currentDateTime();
 	lock.unlock();
@@ -901,6 +911,7 @@ void MoneroMiner::parseShareAccepted(const QString &line) {
 }
 
 void MoneroMiner::parseShareRejected(const QString &line) {
+	QMutexLocker lock(&_statsMutex);
 	_statistics.sharesRejected++;
 	lock.unlock();
 
@@ -909,6 +920,7 @@ void MoneroMiner::parseShareRejected(const QString &line) {
 
 void MoneroMiner::parsePoolConnection(const QString &line) {
 	if (line.contains("connected") || line.contains("use pool")) {
+		QMutexLocker lock(&_statsMutex);
 		_statistics.isConnected = true;
 		_statistics.poolAddress = _config.poolAddress;
 		lock.unlock();

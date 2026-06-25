@@ -379,6 +379,7 @@ private:
 	Ui::RoundRect _overBg;
 	std::unique_ptr<Ui::TabbedSearch> _search;
 	MTP::Sender _api;
+	std::unique_ptr<LocalStickersManager> _localSetsManager;
 	ChannelData *_megagroupSet = nullptr;
 	uint64 _megagroupSetIdRequested = 0;
 	std::vector<StickerCustomRecentDescriptor> _customRecentIds;

@@ -25,6 +25,7 @@ Settings NormalizeSettings(const Settings &settings) {
 		return base::duplicate(settings);
 	}
 	auto result = base::duplicate(settings);
+	result.types = result.fullChats = Settings::Type::AnyChatsMask;
 	return result;
 }
 
@@ -268,6 +269,7 @@ void ControllerObject::skipFile(uint64 randomId) {
 void ControllerObject::fillExportSteps() {
 	using Type = Settings::Type;
 	_steps.push_back(Step::Initializing);
+	if (_settings.types & Type::AnyChatsMask) {
 		_steps.push_back(Step::DialogsList);
 	}
 	if (_settings.types & Type::PersonalInfo) {
@@ -288,6 +290,7 @@ void ControllerObject::fillExportSteps() {
 	if (_settings.types & Type::OtherData) {
 		_steps.push_back(Step::OtherData);
 	}
+	if (_settings.types & Type::AnyChatsMask) {
 		_steps.push_back(Step::Dialogs);
 	}
 }
@@ -302,6 +305,7 @@ void ControllerObject::fillSubstepsInSteps(const ApiWrap::StartInfo &info) {
 		result[index] = count;
 	};
 	push(Step::Initializing, 1);
+	if (_settings.types & Settings::Type::AnyChatsMask) {
 		push(Step::DialogsList, 1);
 	}
 	if (_settings.types & Settings::Type::PersonalInfo) {
@@ -322,6 +326,7 @@ void ControllerObject::fillSubstepsInSteps(const ApiWrap::StartInfo &info) {
 	if (_settings.types & Settings::Type::OtherData) {
 		push(Step::OtherData, 1);
 	}
+	if (_settings.types & Settings::Type::AnyChatsMask) {
 		push(Step::Dialogs, info.dialogsCount);
 	}
 	_substepsInStep = std::move(result);

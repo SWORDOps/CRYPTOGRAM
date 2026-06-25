@@ -897,6 +897,7 @@ void DraftOptionsBox(
 		if (state->preview->hasLargeMedia) {
 			const auto small = state->webpage.forceSmallMedia
 				|| (!state->webpage.forceLargeMedia
+					&& state->preview->computeDefaultSmallMedia());
 			Settings::AddButtonWithIcon(
 				bottom,
 				(small
@@ -1308,6 +1309,7 @@ void ShowReplyToChatBox(
 				reply,
 				[=](Chosen thread) { _singleChosen.fire_copy(thread); });
 			if (_authorRow.content) {
+				setStyleOverrides(&st::peerListSmallSkips);
 			}
 		}
 

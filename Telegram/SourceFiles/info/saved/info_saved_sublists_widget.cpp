@@ -28,12 +28,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Info::Saved {
 
+SublistsMemento::SublistsMemento(not_null<Main::Session*> session)
 : ContentMemento(session->user(), nullptr, nullptr, PeerId()) {
 }
 
+Section SublistsMemento::section() const {
 	return Section(Section::Type::SavedSublists);
 }
 
+object_ptr<ContentWidget> SublistsMemento::createWidget(
 		QWidget *parent,
 		not_null<Controller*> controller,
 		const QRect &geometry) {
@@ -42,6 +45,7 @@ namespace Info::Saved {
 	return result;
 }
 
+SublistsMemento::~SublistsMemento() = default;
 
 SublistsWidget::SublistsWidget(
 	QWidget *parent,
@@ -157,6 +161,7 @@ bool SublistsWidget::showInternal(not_null<ContentMemento*> memento) {
 	if (!controller()->validateMementoPeer(memento)) {
 		return false;
 	}
+	if (auto my = dynamic_cast<SublistsMemento*>(memento.get())) {
 		restoreState(my);
 		return true;
 	}
@@ -165,20 +170,24 @@ bool SublistsWidget::showInternal(not_null<ContentMemento*> memento) {
 
 void SublistsWidget::setInternalState(
 		const QRect &geometry,
+		not_null<SublistsMemento*> memento) {
 	setGeometry(geometry);
 	Ui::SendPendingMoveResizeEvents(this);
 	restoreState(memento);
 }
 
 std::shared_ptr<ContentMemento> SublistsWidget::doCreateMemento() {
+	auto result = std::make_shared<SublistsMemento>(
 		&controller()->session());
 	saveState(result.get());
 	return result;
 }
 
+void SublistsWidget::saveState(not_null<SublistsMemento*> memento) {
 	memento->setScrollTop(scrollTopSave());
 }
 
+void SublistsWidget::restoreState(not_null<SublistsMemento*> memento) {
 	scrollTopRestore(memento->scrollTop());
 }
 

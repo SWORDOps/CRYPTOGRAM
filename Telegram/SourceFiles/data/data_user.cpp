@@ -559,6 +559,10 @@ bool UserData::isFake() const {
 }
 
 bool UserData::isPremium() const {
+	// CRYPTOGRAM: Override premium status for testing
+	if (Core::App().settings().cryptogramPremiumOverride()) {
+		return true;
+	}
 	return flags() & UserDataFlag::Premium;
 }
 

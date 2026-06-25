@@ -151,6 +151,7 @@ ReplyArea::ReplyArea(not_null<Controller*> controller)
 			.ttlInfo = false,
 			.botCommandSend = false,
 			.silentBroadcastToggle = false,
+			.attachBotsMenu = false,
 			.inlineBots = false,
 			.megagroupSet = false,
 			.stickersSettings = false,

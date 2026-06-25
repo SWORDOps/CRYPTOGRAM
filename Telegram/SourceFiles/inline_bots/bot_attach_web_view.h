@@ -448,6 +448,7 @@ private:
 
 };
 
+[[nodiscard]] std::unique_ptr<Ui::DropdownMenu> MakeAttachBotsMenu(
 	not_null<QWidget*> parent,
 	not_null<Window::SessionController*> controller,
 	not_null<PeerData*> peer,

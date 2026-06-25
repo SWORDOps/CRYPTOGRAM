@@ -58,6 +58,7 @@ BadgesState BadgesForUnread(
 	const auto counterFull = state.marks
 		+ (countMessages ? state.messages : state.chats);
 	const auto counterMuted = state.marksMuted
+		+ (countMessages ? state.messagesMuted : state.chatsMuted);
 	const auto unreadMuted = (counterFull <= counterMuted);
 
 	const auto includeMuted = (include == IncludeInBadge::All)

@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Ui {
 
+inline constexpr auto kOutlineSegmentsMax = 50;
 
 struct OutlineSegment {
 	QBrush brush;

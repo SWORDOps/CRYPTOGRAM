@@ -367,9 +367,6 @@ public:
 	void sendShortcutMessages(
 		not_null<PeerData*> peer,
 		BusinessShortcutId id);
-	[[nodiscard]] TextWithEntities ApplyCryptogramSecureTransportForHistory(
-		not_null<History*> history,
-		const TextWithEntities &input) const;
 	void sendMessage(
 		MessageToSend &&message,
 		std::optional<MsgId> localMessageId = std::nullopt);

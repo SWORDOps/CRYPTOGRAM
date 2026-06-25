@@ -116,6 +116,7 @@ void Gif::initDimensions() {
 		_maxw = 0;
 	} else {
 		w = w * st::inlineMediaHeight / h;
+		_maxw = qMax(w, int32(st::inlineResultsMinWidth));
 	}
 	_minh = st::inlineMediaHeight + st::inlineResultsSkip;
 }
@@ -665,6 +666,7 @@ void Photo::initDimensions() {
 		_maxw = 0;
 	} else {
 		w = w * st::inlineMediaHeight / h;
+		_maxw = qMax(w, int32(st::inlineResultsMinWidth));
 	}
 	_minh = st::inlineMediaHeight + st::inlineResultsSkip;
 }

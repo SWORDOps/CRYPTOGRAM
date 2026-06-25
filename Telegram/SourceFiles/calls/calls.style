@@ -865,6 +865,8 @@ groupCallMenuToggle: IconButton {
 	width: 36px;
 	height: 36px;
 
+	icon: icon {{ "info/edit/dotsmini", groupCallMemberInactiveIcon }};
+	iconOver: icon {{ "info/edit/dotsmini", groupCallMemberInactiveIcon }};
 	iconPosition: point(2px, 2px);
 
 	rippleAreaPosition: point(3px, 3px);
