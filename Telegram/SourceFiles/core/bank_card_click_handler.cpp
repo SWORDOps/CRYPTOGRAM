@@ -105,7 +105,6 @@ ResolveBankCardAction::ResolveBankCardAction(
 , _st(st)
 , _height(st::groupCallJoinAsPhotoSize) {
 	setAcceptBoth(true);
-	initResizeHook(parent->sizeValue());
 	setStatus(Status::Loading);
 }
 
@@ -209,12 +208,12 @@ void BankCardClickHandler::onClick(ClickContext context) const {
 
 	const auto addTitle = [=](const QString &name) {
 		auto button = base::make_unique_q<Ui::Menu::MultilineAction>(
-			menu,
+			menu->menu(),
 			menu->st().menu,
 			st::historyHasCustomEmoji,
 			st::historyBankCardMenuMultilinePosition,
 			TextWithEntities{ name });
-		button->setClickedCallback(copy);
+		button->setActionTriggered(copy);
 		menu->addAction(std::move(button));
 	};
 

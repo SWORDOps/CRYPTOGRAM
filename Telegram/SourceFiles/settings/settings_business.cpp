@@ -602,7 +602,7 @@ void Business::setupContent() {
 			) | rpl::on_next([=](bool toggled) {
 				api->setToggled(
 					toggled
-				) | rpl::start(rpl::on_error_done([=](const QString &error) {
+				) | rpl::on_error_done([=](const QString &error) {
 					_controller->showToast(error);
 				}, [] {
 				}, button->lifetime());

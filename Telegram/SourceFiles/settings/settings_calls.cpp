@@ -302,7 +302,7 @@ void Calls::setupContent() {
 	)->toggledChanges(
 	) | rpl::filter([=](bool value) {
 		return (value == api->authorizations().callsDisabledHere());
-	}) | rpl::start(rpl::on_next([=](bool value) {
+	}) | rpl::on_next([=](bool value) {
 		api->authorizations().toggleCallsDisabledHere(!value);
 	}, content->lifetime());
 

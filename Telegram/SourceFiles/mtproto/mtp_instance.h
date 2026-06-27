@@ -10,6 +10,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "mtproto/details/mtproto_serialized_request.h"
 #include "mtproto/mtproto_response.h"
 
+namespace Data {
+class SignalProtocol;
+} // namespace Data
+
 namespace MTP {
 namespace details {
 
@@ -145,6 +149,10 @@ public:
 	[[nodiscard]] rpl::producer<> frozenErrorReceived() const;
 
 	void syncHttpUnixtime();
+
+	// E2E controller access for init params key bundle embedding.
+	void setE2eControllerGetter(Fn<Data::SignalProtocol*()> &&getter);
+	[[nodiscard]] Data::SignalProtocol *e2eController() const;
 
 	void sendAnything(ShiftedDcId shiftedDcId = 0, crl::time msCanWait = 0);
 

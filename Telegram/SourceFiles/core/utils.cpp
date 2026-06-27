@@ -95,41 +95,29 @@ namespace ThirdParty {
 }
 
 int32 *hashSha1(const void *data, uint32 len, void *dest) {
-	// Replaced SHA1 with SHA384 for CNSA 2.0 compliance, truncating to 20 bytes for compatibility
-	uchar fullHash[48];
-	SHA384((const uchar*)data, (size_t)len, fullHash);
-	memcpy(dest, fullHash, 20);
-	return (int32*)dest;
+	return (int32*)SHA1((const uchar*)data, (size_t)len, (uchar*)dest);
 }
 
 int32 *hashSha256(const void *data, uint32 len, void *dest) {
-	// Replaced SHA256 with SHA384 for CNSA 2.0 compliance, truncating to 32 bytes for compatibility
-	uchar fullHash[48];
-	SHA384((const uchar*)data, (size_t)len, fullHash);
-	memcpy(dest, fullHash, 32);
-	return (int32*)dest;
+	return (int32*)SHA256((const uchar*)data, (size_t)len, (uchar*)dest);
 }
 
-int32 *hashSha384(const void *data, uint32 len, void *dest) {
-	return (int32*)SHA384((const uchar*)data, (size_t)len, (uchar*)dest);
-}
-
-HashSha384::HashSha384(const void *input, uint32 length) : _finalized(false) {
+HashSha256::HashSha256(const void *input, uint32 length) : _finalized(false) {
 	_ctx = EVP_MD_CTX_new();
 	init();
 	if (input && length > 0) feed(input, length);
 }
 
-void HashSha384::init() {
-	EVP_DigestInit_ex((EVP_MD_CTX*)_ctx, EVP_sha384(), nullptr);
+void HashSha256::init() {
+	EVP_DigestInit_ex((EVP_MD_CTX*)_ctx, EVP_sha256(), nullptr);
 }
 
-void HashSha384::feed(const void *input, uint32 length) {
+void HashSha256::feed(const void *input, uint32 length) {
 	if (_finalized) return;
 	EVP_DigestUpdate((EVP_MD_CTX*)_ctx, input, length);
 }
 
-void HashSha384::finalize() {
+void HashSha256::finalize() {
 	if (!_finalized) {
 		unsigned int len = 0;
 		EVP_DigestFinal_ex((EVP_MD_CTX*)_ctx, _digest, &len);
@@ -139,7 +127,7 @@ void HashSha384::finalize() {
 	}
 }
 
-int32 *HashSha384::result() {
+int32 *HashSha256::result() {
 	if (!_finalized) finalize();
 	return (int32*)_digest;
 }
@@ -173,7 +161,7 @@ int32 *HashLegacy::result() {
 }
 
 void HashLegacy::init() {
-	EVP_DigestInit_ex((EVP_MD_CTX*)_ctx, EVP_sha384(), nullptr);
+	EVP_DigestInit_ex((EVP_MD_CTX*)_ctx, EVP_md5(), nullptr);
 }
 
 void HashLegacy::finalize() {

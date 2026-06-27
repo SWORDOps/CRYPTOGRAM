@@ -74,7 +74,7 @@ public:
         if (_testBridgeConnectivity(bridge)) {
             _bridges[bridge.bridgeId].isActive = true;
             _bridges[bridge.bridgeId].lastActive = QDateTime::currentDateTime();
-            emit bridgeAdded(bridge.bridgeId);
+            // emit bridgeAdded(bridge.bridgeId);
             return NetworkSecurityResult::Success;
         } else {
             _bridges.remove(bridge.bridgeId);
@@ -88,7 +88,7 @@ public:
         }
 
         _bridges.remove(bridgeId);
-        emit bridgeRemoved(bridgeId);
+        // emit bridgeRemoved(bridgeId);
         return NetworkSecurityResult::Success;
     }
 
@@ -149,7 +149,7 @@ private slots:
             if (bridge.isActive != isHealthy) {
                 bridge.isActive = isHealthy;
                 bridge.lastActive = QDateTime::currentDateTime();
-                emit bridgeStatusChanged(bridge.bridgeId, isHealthy);
+                // emit bridgeStatusChanged(bridge.bridgeId, isHealthy);
             }
 
             // Update reliability score based on health checks
@@ -164,7 +164,7 @@ private slots:
             // Select new optimal bridge
             auto optimalBridge = selectOptimalBridge();
             if (optimalBridge) {
-                emit optimalBridgeChanged(optimalBridge->bridgeId);
+                // emit optimalBridgeChanged(optimalBridge->bridgeId);
             }
         }
     }
@@ -355,7 +355,7 @@ public:
             _startHeartbeat();
 
             _isConnected = true;
-            emit meshNetworkJoined(_nodes.size());
+            // emit meshNetworkJoined(_nodes.size());
             return NetworkSecurityResult::Success;
 
         } catch (...) {
@@ -379,7 +379,7 @@ public:
         _nodes.clear();
 
         _isConnected = false;
-        emit meshNetworkLeft();
+        // emit meshNetworkLeft();
         return NetworkSecurityResult::Success;
     }
 
@@ -563,7 +563,7 @@ private:
 
         if (!_nodes.contains(nodeId)) {
             _nodes[nodeId] = node;
-            emit nodeDiscovered(nodeId);
+            // emit nodeDiscovered(nodeId);
         } else {
             _nodes[nodeId].lastSeen = node.lastSeen;
         }
@@ -610,7 +610,7 @@ private:
         auto it = _nodes.begin();
         while (it != _nodes.end()) {
             if (it->lastSeen < cutoffTime) {
-                emit nodeDisconnected(it->nodeId);
+                // emit nodeDisconnected(it->nodeId);
                 it = _nodes.erase(it);
             } else {
                 ++it;
@@ -735,18 +735,18 @@ void NetworkSecurity::initializeNetworkComponents() {
     if (_bridgeManager) {
         connect(_bridgeManager.get(), &BridgeManager::bridgeStatusChanged,
                 this, [this](const QString &bridgeId, bool connected) {
-                    emit bridgeConnectionStatusChanged(bridgeId, connected);
+                    // emit bridgeConnectionStatusChanged(bridgeId, connected);
                 });
     }
 
     if (_meshManager) {
         connect(_meshManager.get(), &MeshNetworkManager::meshNetworkJoined,
                 this, [this](int nodeCount) {
-                    emit meshNetworkStatusChanged(true, nodeCount);
+                    // emit meshNetworkStatusChanged(true, nodeCount);
                 });
         connect(_meshManager.get(), &MeshNetworkManager::meshNetworkLeft,
                 this, [this]() {
-                    emit meshNetworkStatusChanged(false, 0);
+                    // emit meshNetworkStatusChanged(false, 0);
                 });
     }
 }

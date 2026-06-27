@@ -300,6 +300,10 @@ public:
 	[[nodiscard]] bool hasViews() const {
 		return _flags & MessageFlag::HasViews;
 	}
+	[[nodiscard]] MsgId idToLink() const;
+
+	void setTextValue(TextWithEntities text, bool force = false);
+
 	[[nodiscard]] bool isPost() const {
 		return _flags & MessageFlag::Post;
 	}
@@ -615,7 +619,6 @@ private:
 	[[nodiscard]] bool generateLocalEntitiesByReply() const;
 	[[nodiscard]] TextWithEntities withLocalEntities(
 		const TextWithEntities &textWithEntities) const;
-	void setTextValue(TextWithEntities text, bool force = false);
 	[[nodiscard]] bool isTooOldForEdit(TimeId now) const;
 	[[nodiscard]] bool isLegacyMessage() const {
 		return _flags & MessageFlag::Legacy;

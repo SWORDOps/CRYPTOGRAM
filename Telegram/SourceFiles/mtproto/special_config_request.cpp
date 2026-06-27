@@ -24,11 +24,14 @@ namespace {
 constexpr auto kSendNextTimeout = crl::time(800);
 
 constexpr auto kPublicKey = "\
------BEGIN PUBLIC KEY-----\n\
-MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEI56Fn65OyKMJ3IQLZqEctJMG7IMKs87W\n\
-Gwxk0yT/paOcFHs2C5VIJLpkwuJUscHSDhsh51vFlOuaOAmeI2YgEMFzP1D2yQS8\n\
-R0Ta0w4MqB5F3DA7GZV35624v/r4BNW7\n\
------END PUBLIC KEY-----\
+-----BEGIN RSA PUBLIC KEY-----\n\
+MIIBCgKCAQEAyr+18Rex2ohtVy8sroGPBwXD3DOoKCSpjDqYoXgCqB7ioln4eDCF\n\
+fOBUlfXUEvM/fnKCpF46VkAftlb4VuPDeQSS/ZxZYEGqHaywlroVnXHIjgqoxiAd\n\
+192xRGreuXIaUKmkwlM9JID9WS2jUsTpzQ91L8MEPLJ/4zrBwZua8W5fECwCCh2c\n\
+9G5IzzBm+otMS/YKwmR1olzRCyEkyAEjXWqBI9Ftv5eG8m0VkBzOG655WIYdyV0H\n\
+fDK/NWcvGqa0w/nriMD6mDjKOryamw0OP9QuYgMN0C9xMW9y8SmP4h92OAWodTYg\n\
+Y1hZCxdv6cs5UnW9+PWvS+WIbkh+GaWYxwIDAQAB\n\
+-----END RSA PUBLIC KEY-----\
 "_cs;
 
 const auto kRemoteProject = "peak-vista-421";
@@ -443,7 +446,16 @@ bool SpecialConfigRequest::decryptSimpleConfig(const QByteArray &bytes) {
 
 	auto publicKey = details::RSAPublicKey(bytes::make_span(kPublicKey));
 	auto decrypted = publicKey.decrypt(bytes::make_span(decodedBytes));
+	if (decrypted.empty()) {
+		LOG(("Config Error: Failed to decrypt special config response."));
+		return false;
+	}
 	auto decryptedBytes = gsl::make_span(decrypted);
+
+	if (decryptedBytes.size() <= CTRState::KeySize) {
+		LOG(("Config Error: Decrypted payload too small."));
+		return false;
+	}
 
 	auto aesEncryptedBytes = decryptedBytes.subspan(CTRState::KeySize);
 	auto aesivec = bytes::make_vector(decryptedBytes.subspan(CTRState::KeySize - CTRState::IvecSize, CTRState::IvecSize));
@@ -454,7 +466,7 @@ bool SpecialConfigRequest::decryptSimpleConfig(const QByteArray &bytes) {
 	constexpr auto kDigestSize = 16;
 	auto dataSize = aesEncryptedBytes.size() - kDigestSize;
 	auto data = aesEncryptedBytes.subspan(0, dataSize);
-	auto hash = openssl::Sha384(data);
+	auto hash = openssl::Sha256(data);
 	if (bytes::compare(gsl::make_span(hash).subspan(0, kDigestSize), aesEncryptedBytes.subspan(dataSize)) != 0) {
 		LOG(("Config Error: Bad digest."));
 		return false;

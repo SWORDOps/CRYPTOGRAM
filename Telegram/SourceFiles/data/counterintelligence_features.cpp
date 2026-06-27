@@ -43,7 +43,7 @@ QString generateSecureId() {
         QByteArray::fromRawData(
             reinterpret_cast<const char*>(randomData.data()),
             randomData.size()),
-        QCryptographicHash::Sha384).toHex();
+        QCryptographicHash::Sha256).toHex();
 }
 
 // Generate HMAC for creating secure tokens
@@ -51,7 +51,7 @@ QByteArray generateHMAC(const QByteArray &data, const QByteArray &key) {
     return QMessageAuthenticationCode::hash(
         data, 
         key,
-        QCryptographicHash::Sha384);
+        QCryptographicHash::Sha256);
 }
 
 } // namespace
@@ -126,7 +126,7 @@ QString HoneypotData::generateFingerprint(const QVariantMap &content) {
     QJsonDocument doc(QJsonObject::fromVariantMap(content));
     return QCryptographicHash::hash(
         doc.toJson(QJsonDocument::Compact),
-        QCryptographicHash::Sha384).toHex();
+        QCryptographicHash::Sha256).toHex();
 }
 
 QByteArray HoneypotData::serialize() const {
@@ -365,7 +365,7 @@ QColor AdversaryGroup::generateGroupColor(const QString &groupId) {
     // Use the groupId hash to seed the color generation
     const auto hash = QCryptographicHash::hash(
         groupId.toUtf8(),
-        QCryptographicHash::Sha384);
+        QCryptographicHash::Sha256);
     
     // Extract bytes from the hash for RGB values
     // Using different positions to ensure color diversity
@@ -975,7 +975,7 @@ bool CounterIntelligenceManager::isCanaryToken(const QString &url) const {
                     const auto baseUrl = parsedUrl.toString(QUrl::RemoveQuery);
                     const auto expectedSignature = QCryptographicHash::hash(
                         (baseUrl + token.id).toUtf8(),
-                        QCryptographicHash::Sha384).toHex();
+                        QCryptographicHash::Sha256).toHex();
                     
                     // Check for a partial match (we use partial to allow for URL shorteners)
                     if (signature.contains(expectedSignature.left(16)) || 
@@ -1113,7 +1113,7 @@ bool CounterIntelligenceManager::isCanaryToken(const DocumentData *document) con
                     QByteArray::fromRawData(
                         reinterpret_cast<const char*>(document->data().constData()),
                         document->size),
-                    QCryptographicHash::Sha384).toHex();
+                    QCryptographicHash::Sha256).toHex();
                 
                 if (token.placementContext.contains(fileHash)) {
                     return true;
@@ -1126,7 +1126,7 @@ bool CounterIntelligenceManager::isCanaryToken(const DocumentData *document) con
                         QByteArray::fromRawData(
                             reinterpret_cast<const char*>(document->data().constData()),
                             4096),
-                        QCryptographicHash::Sha384).toHex();
+                        QCryptographicHash::Sha256).toHex();
                     
                     if (token.placementContext.contains(partialHash)) {
                         return true;

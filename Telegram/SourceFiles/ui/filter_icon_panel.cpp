@@ -276,11 +276,8 @@ void FilterIconPanel::paintEvent(QPaintEvent *e) {
 		hideFinished();
 	} else {
 		if (!_cache.isNull()) _cache = QPixmap();
-		Ui::Shadow::paint(
-			p,
-			innerRect(),
-			width(),
-			st::emojiPanAnimation.shadow);
+		static Ui::BoxShadow shadow(st::emojiPanAnimation.shadow);
+		shadow.paint(p, innerRect(), st::roundRadiusSmall);
 	}
 }
 
@@ -381,8 +378,8 @@ void FilterIconPanel::startShowAnimation() {
 			std::move(image),
 			QRect(
 				inner.topLeft() * style::DevicePixelRatio(),
-				inner.size() * style::DevicePixelRatio()));
-		_showAnimation->setCornerMasks(Images::CornersMask(ImageRoundRadius::Small));
+				inner.size() * style::DevicePixelRatio()),
+			st::roundRadiusSmall);
 		_showAnimation->start();
 	}
 	hideChildren();

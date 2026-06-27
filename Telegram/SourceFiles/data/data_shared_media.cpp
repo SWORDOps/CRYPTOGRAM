@@ -176,7 +176,7 @@ rpl::producer<SparseIdsSlice> SharedMediaViewer(
 			limitAfter
 		)) | rpl::filter([=](const Result &result) {
 			return builder->applyInitial(result);
-		}) | rpl::start(rpl::on_next_done(
+		}) | rpl::on_next_done(
 			pushNextSnapshot,
 			[=] { builder->checkInsufficient(); },
 			lifetime);

@@ -108,7 +108,7 @@ void Email::setupContent() {
 				data.hint,
 				!data.email.isEmpty(),
 				data.email)
-		) | rpl::start(rpl::on_next_error_done([=](Api::CloudPassword::SetOk d) {
+		) | rpl::on_next_error_done([=](Api::CloudPassword::SetOk d) {
 			_requestLifetime.destroy();
 
 			auto data = stepData();

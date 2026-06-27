@@ -814,7 +814,7 @@ void LocationPicker::setupWindow(const Descriptor &descriptor) {
 		parent.y() + (parent.height() - window->height()) / 2);
 
 	_container = CreateChild<RpWidget>(_body.get());
-	_mapContainerViewAdded = st::pickLocationButtonSkip
+	const auto _mapContainerViewAdded = st::pickLocationButtonSkip
 		+ st::pickLocationButton.height
 		+ st::pickLocationButtonSkip
 		+ st::boxDividerHeight;

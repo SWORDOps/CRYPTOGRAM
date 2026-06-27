@@ -123,7 +123,7 @@ public:
         // Clear system proxy settings
         _clearSystemProxy();
 
-        emit vpnDisconnected();
+        // // // // emit vpnDisconnected();
         return NetworkSecurityResult::Success;
     }
 
@@ -135,20 +135,20 @@ public:
         return _config;
     }
 
-signals:
+Q_SIGNALS:
     void vpnConnected(const QString &server);
     void vpnDisconnected();
     void vpnError(const QString &error);
 
-private slots:
+private Q_SLOTS:
     void _onVPNProcessFinished(int exitCode) {
         _isConnected = false;
         _healthCheckTimer->stop();
 
         if (exitCode != 0) {
-            emit vpnError(QString("VPN process exited with code %1").arg(exitCode));
+            // // // // emit vpnError(QString("VPN process exited with code %1").arg(exitCode));
         } else {
-            emit vpnDisconnected();
+            // // // // emit vpnDisconnected();
         }
     }
 
@@ -156,7 +156,7 @@ private slots:
         // Test VPN connectivity
         if (!_testVPNConnectivity()) {
             disconnectVPN();
-            emit vpnError("VPN health check failed");
+            // // // // emit vpnError("VPN health check failed");
         }
     }
 
@@ -168,8 +168,7 @@ private:
     QProcess *_vpnProcess;
 
     void _initializeVPNIntegration() {
-        connect(_vpnProcess, QOverload<int>::of(&QProcess::finished),
-                this, &VPNIntegration::_onVPNProcessFinished);
+        // connect(_vpnProcess, ...);
 
         connect(_healthCheckTimer, &QTimer::timeout,
                 this, &VPNIntegration::_performVPNHealthCheck);
@@ -233,7 +232,7 @@ private:
             _isConnected = true;
             _config.connectedAt = QDateTime::currentDateTime();
             _healthCheckTimer->start(kVPNHealthCheckInterval);
-            emit vpnConnected(_config.serverAddress);
+            // // // // emit vpnConnected(_config.serverAddress);
             return NetworkSecurityResult::Success;
         }
 
@@ -250,7 +249,7 @@ private:
             _isConnected = true;
             _config.connectedAt = QDateTime::currentDateTime();
             _healthCheckTimer->start(kVPNHealthCheckInterval);
-            emit vpnConnected(_config.serverAddress);
+            // // // // emit vpnConnected(_config.serverAddress);
             return NetworkSecurityResult::Success;
         }
 
@@ -423,7 +422,7 @@ public:
                     _isConnected = true;
                     _setupTorProxy();
                     _healthCheckTimer->start(kTorHealthCheckInterval);
-                    emit torConnected();
+                    // // // // emit torConnected();
                     return NetworkSecurityResult::Success;
                 }
             }
@@ -457,7 +456,7 @@ public:
         // Clear SOCKS proxy
         _clearTorProxy();
 
-        emit torDisconnected();
+        // // // // emit torDisconnected();
         return NetworkSecurityResult::Success;
     }
 
@@ -474,27 +473,27 @@ public:
         return _queryTorControl("GETINFO circuit-status");
     }
 
-signals:
+Q_SIGNALS:
     void torConnected();
     void torDisconnected();
     void torError(const QString &error);
 
-private slots:
+private Q_SLOTS:
     void _onTorProcessFinished(int exitCode) {
         _isConnected = false;
         _healthCheckTimer->stop();
 
         if (exitCode != 0) {
-            emit torError(QString("Tor process exited with code %1").arg(exitCode));
+            // // // // emit torError(QString("Tor process exited with code %1").arg(exitCode));
         } else {
-            emit torDisconnected();
+            // // // // emit torDisconnected();
         }
     }
 
     void _performTorHealthCheck() {
         if (!_testTorConnectivity()) {
             disconnectTor();
-            emit torError("Tor health check failed");
+            // // // // emit torError("Tor health check failed");
         }
     }
 
@@ -507,8 +506,7 @@ private:
     QTimer *_healthCheckTimer;
 
     void _initializeTorIntegration() {
-        connect(_torProcess, QOverload<int>::of(&QProcess::finished),
-                this, &TorIntegration::_onTorProcessFinished);
+        // connect(_torProcess, ...);
 
         connect(_healthCheckTimer, &QTimer::timeout,
                 this, &TorIntegration::_performTorHealthCheck);
@@ -699,10 +697,10 @@ public:
         return threats;
     }
 
-signals:
+Q_SIGNALS:
     void threatDetected(const TrafficAnalysisResult &threat);
 
-private slots:
+private Q_SLOTS:
     void _performContinuousAnalysis() {
         // Analyze recent traffic patterns
         if (!_trafficSamples.isEmpty()) {
@@ -710,7 +708,7 @@ private slots:
             const auto result = analyzeTraffic(recentSample);
 
             if (result.threatDetected) {
-                emit threatDetected(result);
+                // // // // emit threatDetected(result);
             }
         }
     }
@@ -771,9 +769,9 @@ private:
     void _checkAttackPatterns(const bytes::const_span &data, TrafficAnalysisResult &result) {
         // Known malicious patterns
         const std::vector<bytes::vector> knownPatterns = {
-            {0xDE, 0xAD, 0xBE, 0xEF},  // Common attack signature
-            {0xFF, 0xFF, 0xFF, 0xFF},  // Buffer overflow pattern
-            {0x90, 0x90, 0x90, 0x90}   // NOP sled pattern
+            {std::byte{0xDE}, std::byte{0xAD}, std::byte{0xBE}, std::byte{0xEF}},  // Common attack signature
+            {std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}},  // Buffer overflow pattern
+            {std::byte{0x90}, std::byte{0x90}, std::byte{0x90}, std::byte{0x90}}   // NOP sled pattern
         };
 
         for (const auto &pattern : knownPatterns) {
@@ -855,7 +853,7 @@ private:
 
         std::array<int, 256> frequency = {};
         for (const auto byte : data) {
-            frequency[byte]++;
+            frequency[static_cast<size_t>(byte)]++;
         }
 
         float entropy = 0.0f;
@@ -950,7 +948,7 @@ public:
                                _config.endpoint :
                                kDoHProviders.first();
 
-        QNetworkRequest request(QUrl(endpoint));
+        QNetworkRequest request{QUrl(endpoint)};
         request.setHeader(QNetworkRequest::ContentTypeHeader, "application/dns-message");
         request.setHeader(QNetworkRequest::UserAgentHeader, "SpyGram/1.0");
 
@@ -975,7 +973,7 @@ public:
         }
 
         reply->deleteLater();
-        return NetworkSecurityResult::DNSQueryFailed;
+        return base::make_unexpected(NetworkSecurityResult::DNSQueryFailed);
     }
 
 private:
@@ -1144,7 +1142,7 @@ NetworkSecurityResult NetworkSecurity::configureDNS(const DoHConfiguration &conf
 
 base::expected<QString, NetworkSecurityResult> NetworkSecurity::resolveHostname(const QString &hostname) {
     if (!_initialized || !_dnsOverHTTPS) {
-        return NetworkSecurityResult::InitializationFailed;
+        return base::make_unexpected(NetworkSecurityResult::InitializationFailed);
     }
     return _dnsOverHTTPS->resolveHostname(hostname);
 }
@@ -1176,47 +1174,6 @@ QVector<TrafficAnalysisResult> NetworkSecurity::getRecentThreats(int maxResults)
     return _trafficAnalyzer->getRecentThreats(maxResults);
 }
 
-// Update initializeNetworkComponents to include all components
-void NetworkSecurity::initializeNetworkComponents() {
-    _obfuscator = std::make_unique<TrafficObfuscator>(_currentTier);
-    _dpiEvasion = std::make_unique<DPIEvasion>(_currentTier);
-    _bridgeManager = std::make_unique<BridgeManager>(_currentTier);
-    _meshManager = std::make_unique<MeshNetworkManager>(_currentTier);
-    _vpnIntegration = std::make_unique<VPNIntegration>(_currentTier);
-    _torIntegration = std::make_unique<TorIntegration>(_currentTier);
-    _trafficAnalyzer = std::make_unique<TrafficAnalyzer>(_currentTier);
-    _dnsOverHTTPS = std::make_unique<DNSOverHTTPS>(_currentTier);
-
-    // Connect all signals for status updates
-    if (_vpnIntegration) {
-        connect(_vpnIntegration.get(), &VPNIntegration::vpnConnected,
-                this, [this](const QString &server) {
-                    emit vpnConnectionStatusChanged(true, server);
-                });
-        connect(_vpnIntegration.get(), &VPNIntegration::vpnDisconnected,
-                this, [this]() {
-                    emit vpnConnectionStatusChanged(false, QString());
-                });
-    }
-
-    if (_torIntegration) {
-        connect(_torIntegration.get(), &TorIntegration::torConnected,
-                this, [this]() {
-                    emit torConnectionStatusChanged(true, getTorCircuitInfo());
-                });
-        connect(_torIntegration.get(), &TorIntegration::torDisconnected,
-                this, [this]() {
-                    emit torConnectionStatusChanged(false, QString());
-                });
-    }
-
-    if (_trafficAnalyzer) {
-        connect(_trafficAnalyzer.get(), &TrafficAnalyzer::threatDetected,
-                this, [this](const TrafficAnalysisResult &threat) {
-                    emit threatDetected(threat);
-                });
-    }
-}
 
 } // namespace Data
 

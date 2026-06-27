@@ -1,0 +1,8 @@
+cryptogram-desktop (1.1.0-1) unstable; urgency=medium
+
+  * Initial release.
+  * Packaged for high-security deployment standard.
+  * Wired up full Double Ratchet E2EE implementation.
+  * Bound dependencies to Debian ecosystem packages.
+
+ -- CRYPTOGRAM Maintainer <maintainer@example.com>  Wed, 24 Jun 2026 09:57:00 +0100

@@ -168,7 +168,7 @@ void ShowFiltersListMenu(
 			text,
 			callback);
 		auto item = base::make_unique_q<Ui::Menu::Action>(
-			state->menu.get(),
+			state->menu->menu(),
 			state->menu->st().menu,
 			action,
 			icon,

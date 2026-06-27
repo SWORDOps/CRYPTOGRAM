@@ -13,6 +13,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "storage/file_download.h"
 #include "data/data_document.h"
 #include "data/data_document_media.h"
+#include "data/data_user.h"
+#include "data/data_enhanced_privacy.h"
 #include "data/data_photo.h"
 #include "data/data_session.h"
 #include "ui/image/image_location_factory.h"
@@ -333,6 +335,12 @@ void Uploader::upload(
 					Data::kImageCacheTag));
 		}
 		if (!file->content.isEmpty()) {
+			if (file->filemime == "image/jpeg" || file->filemime == "image/png" || file->filemime == "image/webp") {
+				auto image = QImage::fromData(file->content);
+				if (!image.isNull()) {
+					Data::EnhancedPrivacy::SpoofMediaMetadata(image, file->content, "jpeg");
+				}
+			}
 			document->setDataAndCache(file->content);
 		}
 		if (!file->filepath.isEmpty()) {

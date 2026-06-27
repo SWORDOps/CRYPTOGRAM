@@ -7,18 +7,16 @@
 #include <vector>
 #include <rpl/producer.h>
 
-namespace tsm {
-class TSMService;
-} // namespace tsm
-
 namespace Core {
 
 struct TSMSession {
     QString id;
     QString name;
-    int64 created = 0;
-    int64 size = 0;
+    int64_t created = 0;
+    int64_t size = 0;
     bool encrypted = false;
+
+    bool operator==(const TSMSession &other) const = default;
 };
 
 class TSMClient : public QObject {

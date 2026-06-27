@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -3233,7 +3233,7 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					_menu->addSeparator(&st::expandedMenuSeparator);
 				}
 				auto item = base::make_unique_q<Ui::Menu::MultilineAction>(
-					_menu,
+					_menu->menu(),
 					st::menuWithIcons,
 					st::historyHasCustomEmoji,
 					st::historySponsoredAboutMenuLabelPosition,

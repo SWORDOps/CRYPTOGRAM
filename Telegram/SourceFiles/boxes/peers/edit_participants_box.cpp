@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -1706,7 +1706,7 @@ base::unique_qptr<Ui::PopupMenu> ParticipantsBoxController::rowContextMenu(
 				st::historyHasCustomEmojiPosition,
 				std::move(text));
 			if (const auto n = _navigation) {
-				button->setClickedCallback([=] {
+				button->setActionTriggered([=] {
 					n->parentController()->showPeerInfo(by);
 				});
 			}

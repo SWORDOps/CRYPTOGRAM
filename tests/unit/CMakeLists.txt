@@ -23,7 +23,8 @@ target_link_libraries(test_double_ratchet
     PRIVATE
     Catch2::Catch2WithMain
     desktop-app::lib_base
-    # Add other necessary libraries
+    desktop-app::lib_ui
+    OpenSSL::Crypto
 )
 
 add_executable(test_mls_protocol

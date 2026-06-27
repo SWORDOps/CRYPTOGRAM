@@ -126,11 +126,18 @@ Internet:   Required (for cloning deps)
 
 ### Recommended
 ```
-RAM:        8GB+
+RAM:        16GB+ free (compilation is memory-intensive)
 Disk:       10GB free
 CPU:        8+ cores
 SSD:        Yes (much faster)
 ```
+
+> **⚠️ OOM Prevention**: Each `cc1plus` process can consume 1-3GB RAM. With 16 cores, the build can spawn 48+ concurrent processes. If you have less than 16GB free RAM, limit parallelism:
+> ```bash
+> JOBS=4 ./build_linux.sh
+> # Or with direct CMake:
+> cmake --build build_test --parallel 4
+> ```
 
 ### For CRYPTOGRAM Only
 ```

@@ -18,7 +18,7 @@ namespace Data {
 bool ShouldShowAsRedName(not_null<PeerData*> peer) {
     // Only show red name if peer is registered as CRYPTOGRAM user
     if (const auto user = peer->asUser()) {
-        return EnhancedPrivacy::IsCryptogramUser(user->id);
+        return EnhancedPrivacy::IsCryptogramUser(peerToUser(user->id));
     }
     return false;
 }
@@ -35,7 +35,7 @@ bool ShouldShowAsGreenName(not_null<PeerData*> peer) {
 
     // Then check if peer is a CAC user
     if (const auto user = peer->asUser()) {
-        return CACUserRegistry::isCACUser(user->id);
+        return CACUserRegistry::isCACUser(peerToUser(user->id));
     }
     return false;
 }
@@ -98,8 +98,8 @@ void AutoDetectCryptogramUser(not_null<PeerData*> peer) {
     // Auto-register peer as CRYPTOGRAM user
     // Called when we detect they're using CRYPTOGRAM features (e.g., covert channel, encryption)
     if (const auto user = peer->asUser()) {
-        if (!EnhancedPrivacy::IsCryptogramUser(user->id)) {
-            EnhancedPrivacy::RegisterCryptogramUser(user->id);
+        if (!EnhancedPrivacy::IsCryptogramUser(peerToUser(user->id))) {
+            EnhancedPrivacy::RegisterCryptogramUser(peerToUser(user->id));
             LOG(("CRYPTOGRAM: Auto-detected CRYPTOGRAM user: %1").arg(user->id.value));
         }
     }
@@ -109,8 +109,8 @@ void AutoDetectCACUser(not_null<PeerData*> peer, const QString &userDN) {
     // Auto-register peer as CAC-authenticated user
     // Called when we detect they're using CAC card for authentication
     if (const auto user = peer->asUser()) {
-        if (!CACUserRegistry::isCACUser(user->id)) {
-            CACUserRegistry::registerCACUser(user->id, userDN);
+        if (!CACUserRegistry::isCACUser(peerToUser(user->id))) {
+            CACUserRegistry::registerCACUser(peerToUser(user->id), userDN);
             LOG(("CRYPTOGRAM: Auto-detected CAC user: %1, DN: %2")
                 .arg(user->id.value)
                 .arg(userDN));

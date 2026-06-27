@@ -1201,8 +1201,8 @@ QByteArray Parser::documentFullUrl(const Document &document) {
 }
 
 QByteArray Parser::embedUrl(const QByteArray &html) {
-	auto binary = std::array<uchar, SHA384_DIGEST_LENGTH>{};
-	SHA384(
+	auto binary = std::array<uchar, SHA256_DIGEST_LENGTH>{};
+	SHA256(
 		reinterpret_cast<const unsigned char*>(html.data()),
 		html.size(),
 		binary.data());

@@ -736,7 +736,7 @@ DownloadMtprotoTask::CheckCdnHashResult DownloadMtprotoTask::checkCdnFileHash(
 	if (cdnFileHashIt == _cdnFileHashes.cend()) {
 		return CheckCdnHashResult::NoHash;
 	}
-	const auto realHash = openssl::Sha384(buffer);
+	const auto realHash = openssl::Sha256(buffer);
 	const auto receivedHash = bytes::make_span(cdnFileHashIt->second.hash);
 	if (bytes::compare(realHash, receivedHash)) {
 		return CheckCdnHashResult::Invalid;

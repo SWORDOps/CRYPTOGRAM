@@ -59,7 +59,7 @@ void Credits::load(bool force) {
 			apply(balance);
 			_loader = nullptr;
 		};
-		apiStats->request() | rpl::start(rpl::on_error_done([=] {
+		apiStats->request() | rpl::on_error_done([=] {
 			finish(false);
 		}, [=] {
 			finish(true);

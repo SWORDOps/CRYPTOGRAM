@@ -664,8 +664,8 @@ BotAction::BotAction(
 		+ _st.itemStyle.font->height
 		+ _st.itemPadding.bottom()) {
 	setAcceptBoth(false);
-	initResizeHook(parent->sizeValue());
-	setClickedCallback(std::move(callback));
+	fitToMenuWidth();
+	setActionTriggered(std::move(callback));
 
 	_icon.move(_st.itemIconPosition);
 
@@ -1980,7 +1980,7 @@ void WebViewInstance::botSetEmojiStatus(
 	}
 	_session->data().customEmojiManager().resolve(
 		request.customEmojiId
-	) | rpl::start(rpl::on_next_error([=](not_null<DocumentData*> document) {
+	) | rpl::on_next_error([=](not_null<DocumentData*> document) {
 		const auto sticker = document->sticker();
 		if (!sticker || sticker->setType != Data::StickersType::Emoji) {
 			callback(u"SUGGESTED_EMOJI_INVALID"_q);

@@ -75,7 +75,7 @@ void InnerWidget::load() {
 		const auto api = apiLifetime->make_state<Api::CreditsEarnStatistics>(
 			peer()->asUser());
 		api->request(
-		) | rpl::start(rpl::on_error_done([show = _show](const QString &error) {
+		) | rpl::on_error_done([show = _show](const QString &error) {
 			show->showToast(error);
 		}, [=] {
 			done(api->data());

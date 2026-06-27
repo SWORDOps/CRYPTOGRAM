@@ -295,6 +295,9 @@ private:
 
 	rpl::lifetime _lifetime;
 
+	Fn<Data::SignalProtocol*()> _e2eControllerGetter;
+
+	friend class Instance;
 };
 
 Instance::Fields::Fields() = default;
@@ -2032,6 +2035,16 @@ QString Instance::deviceModel() const {
 
 QString Instance::systemVersion() const {
 	return _private->systemVersion();
+}
+
+void Instance::setE2eControllerGetter(Fn<Data::SignalProtocol*()> &&getter) {
+	_private->_e2eControllerGetter = std::move(getter);
+}
+
+Data::SignalProtocol *Instance::e2eController() const {
+	return _private->_e2eControllerGetter
+		? _private->_e2eControllerGetter()
+		: nullptr;
 }
 
 void Instance::setUpdatesHandler(Fn<void(const Response&)> handler) {

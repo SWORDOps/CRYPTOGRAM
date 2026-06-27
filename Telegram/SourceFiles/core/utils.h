@@ -82,13 +82,13 @@ private:
 
 	bool _finalized;
 	void *_ctx;
-	uchar _digest[48]; // Buffer for SHA-384, truncated to 16 bytes for legacy compat
+	uchar _digest[32]; // Buffer for SHA-256, truncated to 16 bytes for legacy compat
 
 };
 
-class HashSha384 {
+class HashSha256 {
 public:
-	HashSha384(const void *input = 0, uint32 length = 0);
+	HashSha256(const void *input = 0, uint32 length = 0);
 	void feed(const void *input, uint32 length);
 	int32 *result();
 
@@ -97,8 +97,8 @@ private:
 	void finalize();
 
 	bool _finalized;
-	void *_ctx; // SHA512_CTX*
-	uchar _digest[48];
+	void *_ctx; // EVP_MD_CTX*
+	uchar _digest[32];
 };
 
 int32 *hashSha1(const void *data, uint32 len, void *dest); // dest - ptr to 20 bytes, returns (int32*)dest
@@ -115,12 +115,7 @@ inline std::array<char, 32> hashSha256(const void *data, int size) {
 	return result;
 }
 
-int32 *hashSha384(const void *data, uint32 len, void *dest); // dest - ptr to 48 bytes, returns (int32*)dest
-inline std::array<char, 48> hashSha384(const void *data, int size) {
-	auto result = std::array<char, 48>();
-	hashSha384(data, size, result.data());
-	return result;
-}
+// hashSha384 removed - use hashSha256 instead
 
 int32 *hashLegacy(const void *data, uint32 len, void *dest); // dest = ptr to 16 bytes, returns (int32*)dest
 inline std::array<char, 16> hashLegacy(const void *data, int size) {

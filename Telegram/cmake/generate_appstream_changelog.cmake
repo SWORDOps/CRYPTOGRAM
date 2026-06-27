@@ -5,8 +5,6 @@
 # https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 function(generate_appstream_changelog target_name changelog_path metadata_path)
-    find_package(Python3 REQUIRED)
-
     set(gen_dst ${CMAKE_CURRENT_BINARY_DIR}/gen)
     file(MAKE_DIRECTORY ${gen_dst})
 
@@ -17,18 +15,8 @@ function(generate_appstream_changelog target_name changelog_path metadata_path)
     OUTPUT
         ${gen_timestamp}
     COMMAND
-        ${Python3_EXECUTABLE}
-        ${submodules_loc}/build/changelog2appstream.py
-        -c "${changelog_path}"
-        -m "${metadata_path}"
-        -n 10
-    COMMAND
         echo 1> ${gen_timestamp}
-    COMMENT "Generating AppStream changelog (${target_name})"
-    DEPENDS
-        ${submodules_loc}/build/changelog2appstream.py
-        ${changelog_path}
-        ${metadata_path}
+    COMMENT "Generating dummy AppStream changelog (${target_name})"
     )
     generate_target(${target_name} appstream_changelog ${gen_timestamp} "${gen_files}" ${gen_dst})
 endfunction()

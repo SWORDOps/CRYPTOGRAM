@@ -190,7 +190,7 @@ void EmailConfirm::setupContent() {
 			return;
 		}
 		_requestLifetime = cloudPassword().resendEmailCode(
-		) | rpl::start(rpl::on_error_done([=](const QString &type) {
+		) | rpl::on_error_done([=](const QString &type) {
 			_requestLifetime.destroy();
 
 			error->show();
@@ -213,7 +213,7 @@ void EmailConfirm::setupContent() {
 					return;
 				}
 				_requestLifetime = cloudPassword().resetPassword(
-				) | rpl::start(rpl::on_next_error_done([=](
+				) | rpl::on_next_error_done([=](
 						Api::CloudPassword::ResetRetryDate retryDate) {
 					_requestLifetime.destroy();
 					const auto left = std::max(
@@ -276,7 +276,7 @@ void EmailConfirm::setupContent() {
 		} else if (!_requestLifetime && recoverEmailPattern.isEmpty()) {
 			_requestLifetime = cloudPassword().confirmEmail(
 				newText
-			) | rpl::start(rpl::on_error_done([=](const QString &type) {
+			) | rpl::on_error_done([=](const QString &type) {
 				_requestLifetime.destroy();
 
 				newInput->setFocus();
@@ -313,7 +313,7 @@ void EmailConfirm::setupContent() {
 		} else if (!_requestLifetime) {
 			_requestLifetime = cloudPassword().checkRecoveryEmailAddressCode(
 				newText
-			) | rpl::start(rpl::on_error_done([=](const QString &type) {
+			) | rpl::on_error_done([=](const QString &type) {
 				_requestLifetime.destroy();
 
 				newInput->setFocus();

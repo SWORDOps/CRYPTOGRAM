@@ -732,7 +732,7 @@ void Player::start() {
 
 	if (guard && _audio && !_audioFinished) {
 		_audio->playPosition(
-		) | rpl::start(rpl::on_next_done([=](crl::time position) {
+		) | rpl::on_next_done([=](crl::time position) {
 			audioPlayedTill(position);
 		}, [=] {
 			Expects(_stage == Stage::Started);
@@ -746,7 +746,7 @@ void Player::start() {
 
 	if (guard && _video) {
 		_video->checkNextFrame(
-		) | rpl::start(rpl::on_next_done([=] {
+		) | rpl::on_next_done([=] {
 			checkVideoStep();
 		}, [=] {
 			Assert(_stage == Stage::Started);

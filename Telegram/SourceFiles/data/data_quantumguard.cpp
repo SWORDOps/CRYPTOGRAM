@@ -155,7 +155,7 @@ QString QuantumGuard::makeKeyId() const {
 QByteArray QuantumGuard::makeSignature(
         const QByteArray &key,
         const QByteArray &data) const {
-    auto hmac = QCryptographicHash::hash(key + data, QCryptographicHash::Sha384);
+    auto hmac = QCryptographicHash::hash(key + data, QCryptographicHash::Sha256);
     return hmac;
 }
 

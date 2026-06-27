@@ -197,7 +197,7 @@ base::weak_qptr<Ui::RpWidget> Manage::createPinnedToBottom(
 			QString(),
 			false,
 			QString()
-		) | rpl::start(rpl::on_error_done([=](const QString &type) {
+		) | rpl::on_error_done([=](const QString &type) {
 			AbstractStep::isPasswordInvalidError(type);
 		}, [=] {
 			setStepData(StepData());

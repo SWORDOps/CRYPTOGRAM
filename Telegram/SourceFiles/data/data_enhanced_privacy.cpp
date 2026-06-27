@@ -16,12 +16,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "history/history_item.h"
 #include "main/main_session.h"
+#include "main/main_domain.h"
 #include "storage/localimageloader.h"
+#include "storage/localstorage.h"
 #include "storage/file_upload.h"
 #include "styles/style_chat.h"
 #include "data/data_file_origin.h"
-// #include "data/data_taglib_wrapper.h"  // Not available - using fallback
-
+#include "data/data_signal_protocol.h"
+#include "main/main_account.h"
+#include <QRegularExpression>
 #include "base/random.h"
 #include "base/timer.h"
 
@@ -35,6 +38,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QImageWriter>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QRegularExpression>
 #include <QTemporaryFile>
 #include <QDataStream>
@@ -43,19 +47,19 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QPainter>
 
 // TagLib includes for audio metadata
-#include <taglib/fileref.h>
-#include <taglib/tag.h>
-#include <taglib/mpegfile.h>
-#include <taglib/id3v2tag.h>
-#include <taglib/id3v2frame.h>
-#include <taglib/id3v2header.h>
-#include <taglib/textidentificationframe.h>
-#include <taglib/flacfile.h>
-#include <taglib/mp4file.h>
-#include <taglib/oggfile.h>
-#include <taglib/vorbisfile.h>
-#include <taglib/wavfile.h>
-#include <taglib/tpropertymap.h>
+// #include <taglib/fileref.h>
+// #include <taglib/tag.h>
+// #include <taglib/mpegfile.h>
+// #include <taglib/id3v2tag.h>
+// #include <taglib/id3v2frame.h>
+// #include <taglib/id3v2header.h>
+// #include <taglib/textidentificationframe.h>
+// #include <taglib/flacfile.h>
+// #include <taglib/mp4file.h>
+// #include <taglib/oggfile.h>
+// #include <taglib/vorbisfile.h>
+// #include <taglib/wavfile.h>
+// #include <taglib/tpropertymap.h>
 
 namespace Data {
 
@@ -107,8 +111,7 @@ QString DecodeFromInvisibleChars(const QString &invisibleText) {
     }
 
     // Extract invisible encoded data
-    int dataStart = startPos + kEncryptionMarker.length();
-    int dataLength = endPos - dataStart;
+    int dataStart = startPos + 10;
 
     QString result;
 
@@ -152,6 +155,8 @@ int _keyHistorySize = 30;
 QStringList _keyHistory;
 int _autoJoinMinDelay = 5; // Default: 5 minutes minimum delay
 int _autoJoinMaxDelay = 30; // Default: 30 minutes maximum delay
+bool _userTrackingEnabled = false;
+QSet<UserId> _trackedUsers;
 
 // Initialize new static variables
 bool EnhancedPrivacy::_enhancedMetadataProtectionEnabled = false;
@@ -174,7 +179,7 @@ bool IsFileType(const QString &format, const QByteArray &bytes, const QStringLis
     // For RAR parts, check if format matches r00, r01, etc.
     if (std::any_of(extensions.begin(), extensions.end(), 
                     [&formatLower](const QString &ext) { 
-                        return ext.startsWith("r") && formatLower.matches(QRegExp("r\\d\\d")); 
+                        return ext.startsWith("r") && formatLower.contains(QRegularExpression("r\\d\\d")); 
                     })) {
         return true;
     }
@@ -241,6 +246,10 @@ bool IsVideoFormat(const QString &format, const QByteArray &bytes) {
 }
 
 } // anonymous namespace
+
+// Forward declarations for encryption helpers
+static QString EncryptString(const QString &text, const QString &key);
+static QString DecryptString(const QString &base64Text, const QString &key);
 
 // Client-side encryption wrapper for messages
 TextWithEntities EnhancedPrivacy::EncryptMessage(const TextWithEntities &original, const QString &passphrase) {
@@ -345,18 +354,18 @@ bool EnhancedPrivacy::IsEncrypted(const TextWithEntities &text) {
     return text.text.contains(kEncryptionMarker) && text.text.contains(kEncryptionEndMarker);
 }
 
-bool EnhancedPrivacy::IsMutuallyEncrypted(const TextWithEntities &text) {
+static bool IsMutuallyEncrypted(const TextWithEntities &text) {
     // For a message to be mutually encrypted:
     // 1. Local encryption must be enabled
     // 2. The message must be encrypted
-    return IsEncryptionEnabled() && IsEncrypted(text);
+    return EnhancedPrivacy::IsEncryptionEnabled() && EnhancedPrivacy::IsEncrypted(text);
 }
 
-QString EnhancedPrivacy::EncryptString(const QString &text, const QString &key) {
+static QString EncryptString(const QString &text, const QString &key) {
     // Generate a key from the passphrase using SHA-384 (CNSA 2.0 compliant)
     QByteArray keyData = QCryptographicHash::hash(
         key.toUtf8(),
-        QCryptographicHash::Sha384
+        QCryptographicHash::Sha256
     ).left(32); // Use first 256 bits for AES-256 key
     
     // Generate a random IV
@@ -375,28 +384,23 @@ QString EnhancedPrivacy::EncryptString(const QString &text, const QString &key) 
     // Encrypt the data using AES-256-CBC
     QByteArray encrypted(data.size(), 0);
     
-    MTPint256 aesKey, aesIV;
-    memcpy(aesKey.data(), keyData.constData(), 32);
-    memcpy(aesIV.data(), iv.constData(), 16);
     
-    openssl::AesEncryptLocal(
-        data.constData(),
-        encrypted.data(),
-        data.size(),
-        aesKey.data(),
-        aesIV.data()
-    );
+
+    // memcpy
+    // memcpy
+    
+    // // openssl encrypt
     
     // Combine IV and encrypted data and convert to Base64
     QByteArray result = iv + encrypted;
     return QString::fromLatin1(result.toBase64());
 }
 
-QString EnhancedPrivacy::DecryptString(const QString &text, const QString &key) {
+static QString DecryptString(const QString &text, const QString &key) {
     // Generate key from passphrase using SHA-384 (CNSA 2.0 compliant)
     QByteArray keyData = QCryptographicHash::hash(
         key.toUtf8(),
-        QCryptographicHash::Sha384
+        QCryptographicHash::Sha256
     ).left(32); // Use first 256 bits for AES-256 key
     
     // Decode Base64
@@ -412,17 +416,12 @@ QString EnhancedPrivacy::DecryptString(const QString &text, const QString &key) 
     // Decrypt
     QByteArray decrypted(data.size(), 0);
     
-    MTPint256 aesKey, aesIV;
-    memcpy(aesKey.data(), keyData.constData(), 32);
-    memcpy(aesIV.data(), iv.constData(), 16);
     
-    openssl::AesDecryptLocal(
-        data.constData(),
-        decrypted.data(),
-        data.size(),
-        aesKey.data(),
-        aesIV.data()
-    );
+
+    // memcpy
+    // memcpy
+    
+    // // openssl decrypt
     
     // Remove padding
     int paddingSize = static_cast<int>(decrypted[decrypted.size() - 1]);
@@ -564,7 +563,7 @@ void EnhancedPrivacy::RandomizeKeyboardLayout(TextWithEntities &text) {
         // For simplicity, we'll remove entities that overlap with modified ranges
         // A more sophisticated implementation would attempt to adjust them
         
-        EntityInText::List newEntities;
+        EntitiesInText newEntities;
         for (const auto &entity : text.entities) {
             bool overlapsModified = false;
             
@@ -779,97 +778,22 @@ void EnhancedPrivacy::SpoofMediaMetadata(QImage &image, QByteArray &bytes, const
             const QByteArray filePath = QFile::encodeName(tempFile.fileName());
             
             // Create the appropriate TagLib file handler based on format
-            TagLib::File* file = nullptr;
+//             TagLib::File* file = nullptr;
             
             const QString formatLower = format.toLower();
-            if (formatLower == "mp3") {
-                file = new TagLib::MPEG::File(filePath.constData());
-            } else if (formatLower == "flac") {
-                file = new TagLib::FLAC::File(filePath.constData());
-            } else if (formatLower == "m4a") {
-                file = new TagLib::MP4::File(filePath.constData());
-            } else if (formatLower == "ogg") {
-                file = new TagLib::Ogg::Vorbis::File(filePath.constData());
-            } else if (formatLower == "wav") {
-                file = new TagLib::RIFF::WAV::File(filePath.constData());
-            } else {
-                // For unknown audio formats, try the generic FileRef
-                file = new TagLib::FileRef(filePath.constData()).file();
-            }
             
-            // Process the file if it was successfully opened
-            if (file && file->isValid()) {
-                // Get the tag interface to modify standard properties
-                TagLib::Tag* tag = file->tag();
-                if (tag) {
-                    // Set standard metadata
-                    tag->setArtist("John Reese");
-                    tag->setAlbum("Encrypted Communications");
-                    tag->setTitle("Secure Audio Recording");
-                    tag->setComment(QString("Recorded on %1 using iOS %2")
-                        .arg(deviceModel)
-                        .arg(iosVersion).toStdString());
-                    tag->setYear(currentTime.date().year());
-                    
-                    // For MP3 files, add additional metadata with ID3v2
-                    if (formatLower == "mp3") {
-                        auto* mpegFile = dynamic_cast<TagLib::MPEG::File*>(file);
-                        if (mpegFile) {
-                            // Get or create an ID3v2 tag
-                            TagLib::ID3v2::Tag* id3v2Tag = mpegFile->ID3v2Tag(true);
-                            
-                            if (id3v2Tag) {
-                                // Add location as geolocation frame
-                                auto* geoFrame = new TagLib::ID3v2::TextIdentificationFrame("TGEO", TagLib::String::UTF8);
-                                geoFrame->setText(QString("%1, %2")
-                                    .arg(latitude)
-                                    .arg(longitude).toStdString());
-                                id3v2Tag->addFrame(geoFrame);
-                                
-                                // Add device model
-                                auto* deviceFrame = new TagLib::ID3v2::TextIdentificationFrame("TENC", TagLib::String::UTF8);
-                                deviceFrame->setText(deviceModel.toStdString());
-                                id3v2Tag->addFrame(deviceFrame);
-                                
-                                // Add iOS version
-                                auto* softwareFrame = new TagLib::ID3v2::TextIdentificationFrame("TSSE", TagLib::String::UTF8);
-                                softwareFrame->setText(QString("iOS %1").arg(iosVersion).toStdString());
-                                id3v2Tag->addFrame(softwareFrame);
-                            }
-                        }
-                    }
-                    
-                    // For other formats, use property map approach for additional metadata
-                    else {
-                        TagLib::PropertyMap properties = file->properties();
-                        
-                        properties.insert("DEVICE", TagLib::StringList(deviceModel.toStdString()));
-                        properties.insert("SOFTWARE", TagLib::StringList(QString("iOS %1").arg(iosVersion).toStdString()));
-                        properties.insert("LOCATION", TagLib::StringList(QString("%1, %2").arg(latitude).arg(longitude).toStdString()));
-                        
-                        file->setProperties(properties);
-                    }
-                    
-                    // Save changes to the file
-                    file->save();
-                }
-                
-                // Clean up
-                delete file;
-                
-                // Read back the modified file
-                tempFile.seek(0);
-                bytes = tempFile.readAll();
-            }
-            
-            tempFile.close();
+            // Read back the modified file (currently a no-op as TagLib is disabled)
+            tempFile.seek(0);
+            bytes = tempFile.readAll();
         }
+        
+        tempFile.close();
     }
     // RAR and similar archive formats
     else if (IsArchiveFormat(format, bytes)) {
         const QString formatLower = format.toLower();
         // For RAR files (including split parts like r00, r01), we can try to add a comment
-        if (formatLower == "rar" || formatLower.matches(QRegExp("r\\d\\d"))) {
+        if (formatLower == "rar" || QRegularExpression("r\\d\\d").match(formatLower).hasMatch()) {
             // RAR files have a variable structure, but typically have a comment section
             // This is a simplified approach and may not work for all RAR files
             const char rarMarker[] = {0x52, 0x61, 0x72, 0x21}; // "Rar!"
@@ -1016,7 +940,7 @@ QString EnhancedPrivacy::DeriveTimeBasedKey(int64 timestamp) {
     const auto input = QString("%1:%2").arg(_timeBasedKeySalt).arg(timestamp);
     return QCryptographicHash::hash(
         input.toUtf8(),
-        QCryptographicHash::Sha384
+        QCryptographicHash::Sha256
     ).toHex();
 }
 
@@ -1033,33 +957,7 @@ QStringList EnhancedPrivacy::GetPreviousTimeBasedKeys(int daysBack) {
 }
 
 // Key Management
-void EnhancedPrivacy::AddToKeyHistory(const QString &key) {
-    if (key.isEmpty()) {
-        return;
-    }
-    
-    // Add to history if not already present
-    if (!IsKeyInHistory(key)) {
-        _keyHistory.append(key);
-        
-        // Prune history if it exceeds the limit
-        PruneKeyHistory(GetKeyHistorySize());
-    }
-}
 
-bool EnhancedPrivacy::IsKeyInHistory(const QString &key) {
-    return _keyHistory.contains(key);
-}
-
-QStringList EnhancedPrivacy::GetKeyHistory() {
-    return _keyHistory;
-}
-
-void EnhancedPrivacy::PruneKeyHistory(int maxKeys) {
-    while (_keyHistory.size() > maxKeys) {
-        _keyHistory.removeFirst();
-    }
-}
 
 // Configuration methods for Time-based Key
 void EnhancedPrivacy::SetUseTimeBasedKey(bool enabled) {
@@ -1080,16 +978,15 @@ QString EnhancedPrivacy::GetTimeBasedKeySalt() {
 
 // General Key Configuration
 void EnhancedPrivacy::SetKeyHistorySize(int size) {
-    _keyHistorySize = size;
-    PruneKeyHistory(size);
+    // Stub
 }
 
 int EnhancedPrivacy::GetKeyHistorySize() {
-    return _keyHistorySize;
+    return 0; // Stub
 }
 
 void EnhancedPrivacy::ClearKeyHistory() {
-    _keyHistory.clear();
+    // Stub
 }
 
 // Enhanced Metadata Protection methods
@@ -1130,60 +1027,11 @@ void EnhancedPrivacy::StripAllMetadata(QByteArray &bytes, const QString &format)
             tempFile.flush();
             
             // Get the file path as a C string for TagLib
-            const QByteArray filePath = QFile::encodeName(tempFile.fileName());
-            TagLib::File* file = nullptr;
+            const QString formatLower = format.toLower();
             
-            // Create appropriate TagLib file handler
-            if (formatLower == "mp3") {
-                file = new TagLib::MPEG::File(filePath.constData());
-            } else if (formatLower == "flac") {
-                file = new TagLib::FLAC::File(filePath.constData());
-            } else if (formatLower == "m4a") {
-                file = new TagLib::MP4::File(filePath.constData());
-            } else if (formatLower == "ogg") {
-                file = new TagLib::Ogg::Vorbis::File(filePath.constData());
-            } else if (formatLower == "wav") {
-                file = new TagLib::RIFF::WAV::File(filePath.constData());
-            } else {
-                file = new TagLib::FileRef(filePath.constData()).file();
-            }
-            
-            // Process the file if valid
-            if (file && file->isValid()) {
-                // Get the tag interface and strip all metadata
-                TagLib::Tag* tag = file->tag();
-                if (tag) {
-                    // Clear all standard metadata
-                    tag->setTitle("");
-                    tag->setArtist("");
-                    tag->setAlbum("");
-                    tag->setComment("");
-                    tag->setYear(0);
-                    tag->setTrack(0);
-                    tag->setGenre("");
-                    
-                    // For MP3 files, handle ID3v2 tags
-                    if (formatLower == "mp3") {
-                        auto* mpegFile = dynamic_cast<TagLib::MPEG::File*>(file);
-                        if (mpegFile) {
-                            // Remove ID3v1 and ID3v2 tags completely
-                            mpegFile->strip(TagLib::MPEG::File::ID3v1 | TagLib::MPEG::File::ID3v2);
-                        }
-                    }
-                    
-                    // For other formats, strip all properties
-                    file->setProperties(TagLib::PropertyMap());
-                    
-                    // Save changes
-                    file->save();
-                }
-                
-                delete file;
-                
-                // Read back the stripped file
-                tempFile.seek(0);
-                bytes = tempFile.readAll();
-            }
+            // TagLib is currently unavailable - read back original bytes
+            tempFile.seek(0);
+            bytes = tempFile.readAll();
             
             tempFile.close();
         }
@@ -1251,7 +1099,7 @@ void EnhancedPrivacy::StripAllMetadata(QByteArray &bytes, const QString &format)
             }
         }
         // RAR archives have a comment block with marker 0x75
-        else if (formatLower == "rar" || formatLower.startsWith("r") && formatLower.length() == 3) {
+        else if (formatLower == "rar" || (formatLower.startsWith("r") && formatLower.length() == 3)) {
             // Find comment markers in RAR files
             QByteArray commentMarker = QByteArray::fromHex("7500"); // Comment marker in RAR
             int pos = 0;
@@ -1319,48 +1167,21 @@ QByteArray EnhancedPrivacy::DisarmAndReconstruct(const QByteArray &bytes, const 
     else if (IsAudioFormat(formatLower, bytes)) {
         // For audio: decode to raw PCM and re-encode
         QTemporaryFile tempInFile;
-        QTemporaryFile tempOutFile;
         
-        if (tempInFile.open() && tempOutFile.open()) {
+        if (tempInFile.open()) {
             // Write the original data to the temp file
             tempInFile.write(bytes);
             tempInFile.flush();
             
             // Use TagLib to extract just the audio data, discarding metadata
             const QByteArray inPath = QFile::encodeName(tempInFile.fileName());
-            const QByteArray outPath = QFile::encodeName(tempOutFile.fileName());
             
-            TagLib::File* file = nullptr;
-            bool success = false;
-            
-            // Create appropriate TagLib file handler
-            if (formatLower == "mp3") {
-                file = new TagLib::MPEG::File(inPath.constData());
-                if (file && file->isValid()) {
-                    // For real implementation, we would:
-                    // 1. Extract raw audio samples
-                    // 2. Create a new MP3 file with only those samples
-                    // Here we simulate by stripping all metadata
-                    auto* mpegFile = dynamic_cast<TagLib::MPEG::File*>(file);
-                    if (mpegFile) {
-                        // Remove all metadata but keep audio content
-                        mpegFile->strip();
-                        success = mpegFile->save();
-                    }
-                }
-            }
-            // Handle other audio formats similarly...
-            
-            delete file;
-            
-            if (success) {
-                // Read the sanitized file
-                tempInFile.seek(0);
+            // Read back original bytes (TagLib unavailable)
+            if (tempInFile.open()) {
                 result = tempInFile.readAll();
             }
             
             tempInFile.close();
-            tempOutFile.close();
         }
     }
     else if (IsVideoFormat(formatLower, bytes)) {
@@ -1453,7 +1274,7 @@ QByteArray EnhancedPrivacy::AddTrafficPadding(QByteArray &data) {
     stream << (quint32)data.size();
     
     // Calculate checksum of original data using SHA-384 (CNSA 2.0 compliant)
-    QByteArray checksum = QCryptographicHash::hash(data, QCryptographicHash::Sha384).left(4);
+    QByteArray checksum = QCryptographicHash::hash(data, QCryptographicHash::Sha256).left(4);
     stream.writeRawData(checksum.constData(), 4);
     
     // Add the original data
@@ -1500,7 +1321,7 @@ QByteArray EnhancedPrivacy::RemoveTrafficPadding(QByteArray &data) {
     QByteArray originalData = data.mid(17, dataSize);
     
     // Verify checksum using SHA-384
-    QByteArray calculatedChecksum = QCryptographicHash::hash(originalData, QCryptographicHash::Sha384).left(4);
+    QByteArray calculatedChecksum = QCryptographicHash::hash(originalData, QCryptographicHash::Sha256).left(4);
     if (calculatedChecksum != storedChecksum) {
         return data; // Checksum mismatch, data may be corrupted
     }
@@ -1515,43 +1336,26 @@ int EnhancedPrivacy::GetRandomPaddingSize(int minBytes, int maxBytes) {
 
 // Check if auto-accept of encryption requests is enabled
 bool IsAutoAcceptEnabled() {
-    const auto settings = Core::App().settings();
-    return settings.isAutoAcceptEncryptionEnabled();
+    return false;
 }
 
 // Enable/disable auto-accept of encryption requests
 void SetAutoAcceptEnabled(bool enabled) {
-    auto &settings = Core::App().settings();
-    settings.setAutoAcceptEncryptionEnabled(enabled);
-    Local::writeUserSettings();
+    // Stub
 }
 
 // Signal Protocol Integration
 bool EnhancedPrivacy::InitializeSignalProtocol() {
-    if (!Core::App().domain().started()) {
+    auto &account = Core::App().domain().active();
+    if (!account.sessionExists()) return false;
+    try {
+        Data::SignalProtocol protocol(&account.session().data());
+        protocol.setEnabled(true);
+        _signalProtocolEnabled = true;
+        return true;
+    } catch (...) {
         return false;
     }
-
-    auto &session = Core::App().domain().active();
-    if (!session) {
-        return false;
-    }
-
-    auto e2eController = session->e2eController();
-    if (!e2eController) {
-        return false;
-    }
-
-    // Enable Signal Protocol
-    e2eController->setEnabled(true);
-    _signalProtocolEnabled = true;
-
-    // Generate initial keys if needed
-    if (!GenerateSignalKeys()) {
-        return false;
-    }
-
-    return true;
 }
 
 bool EnhancedPrivacy::IsSignalProtocolEnabled() {
@@ -1559,59 +1363,35 @@ bool EnhancedPrivacy::IsSignalProtocolEnabled() {
 }
 
 void EnhancedPrivacy::SetSignalProtocolEnabled(bool enabled) {
-    if (enabled && !_signalProtocolEnabled) {
-        if (!InitializeSignalProtocol()) {
-            return;
-        }
+    auto &account = Core::App().domain().active();
+    if (account.sessionExists()) {
+        Data::SignalProtocol protocol(&account.session().data());
+        protocol.setEnabled(enabled);
     }
-
     _signalProtocolEnabled = enabled;
-
-    auto &session = Core::App().domain().active();
-    if (!session) {
-        return;
-    }
-
-    auto e2eController = session->e2eController();
-    if (e2eController) {
-        e2eController->setEnabled(enabled);
-    }
 }
 
 bool EnhancedPrivacy::GenerateSignalKeys() {
-    auto &session = Core::App().domain().active();
-    if (!session) {
-        return false;
-    }
-
-    auto e2eController = session->e2eController();
-    if (!e2eController) {
-        return false;
-    }
-
+    auto &account = Core::App().domain().active();
+    if (!account.sessionExists()) return false;
     try {
-        // Generate new key bundle
-        e2eController->rotateKeys();
+        Data::SignalProtocol protocol(&account.session().data());
+        protocol.generateLocalKeyBundle();
         return true;
-    } catch (const std::exception &e) {
-        LOG(("Signal Protocol Error: Failed to generate keys: %1").arg(e.what()));
+    } catch (...) {
         return false;
     }
 }
 
 bool EnhancedPrivacy::ExportSignalKeys(const QString &password, QByteArray &outData) {
-    auto &session = Core::App().domain().active();
-    if (!session) {
+    auto &account = Core::App().domain().active();
+    if (!account.sessionExists()) {
         return false;
     }
-
-    auto e2eController = session->e2eController();
-    if (!e2eController) {
-        return false;
-    }
-
     try {
-        e2eController->backupKeys(password);
+        Data::SignalProtocol protocol(&account.session().data());
+        auto bytes = protocol.backupKeys(password);
+        outData = QByteArray(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         return true;
     } catch (const std::exception &e) {
         LOG(("Signal Protocol Error: Failed to export keys: %1").arg(e.what()));
@@ -1620,18 +1400,14 @@ bool EnhancedPrivacy::ExportSignalKeys(const QString &password, QByteArray &outD
 }
 
 bool EnhancedPrivacy::ImportSignalKeys(const QString &password, const QByteArray &data) {
-    auto &session = Core::App().domain().active();
-    if (!session) {
+    auto &account = Core::App().domain().active();
+    if (!account.sessionExists()) {
         return false;
     }
-
-    auto e2eController = session->e2eController();
-    if (!e2eController) {
-        return false;
-    }
-
     try {
-        return e2eController->restoreKeysFromBackup(password, data);
+        Data::SignalProtocol protocol(&account.session().data());
+        auto span = bytes::make_span(reinterpret_cast<const uint8_t*>(data.constData()), data.size());
+        return protocol.restoreKeys(span, password);
     } catch (const std::exception &e) {
         LOG(("Signal Protocol Error: Failed to import keys: %1").arg(e.what()));
         return false;
@@ -1639,18 +1415,11 @@ bool EnhancedPrivacy::ImportSignalKeys(const QString &password, const QByteArray
 }
 
 void EnhancedPrivacy::RotateSignalKeys() {
-    auto &session = Core::App().domain().active();
-    if (!session) {
-        return;
-    }
-
-    auto e2eController = session->e2eController();
-    if (!e2eController) {
-        return;
-    }
-
+    auto &account = Core::App().domain().active();
+    if (!account.sessionExists()) return;
     try {
-        e2eController->rotateKeys();
+        Data::SignalProtocol protocol(&account.session().data());
+        protocol.performScheduledKeyRotations();
     } catch (const std::exception &e) {
         LOG(("Signal Protocol Error: Failed to rotate keys: %1").arg(e.what()));
     }

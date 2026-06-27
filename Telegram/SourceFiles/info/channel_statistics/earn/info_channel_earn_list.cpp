@@ -317,7 +317,7 @@ void InnerWidget::load() {
 				) | rpl::on_next([=](not_null<PeerData*> bot) {
 					_state.premiumBotId = bot->id;
 					state->apiCredits.request(
-					) | rpl::start(rpl::on_error_done([=](const QString &error) {
+					) | rpl::on_error_done([=](const QString &error) {
 						if (canViewCredits) {
 							fail(error);
 						} else {
@@ -334,7 +334,7 @@ void InnerWidget::load() {
 		};
 		const auto isMegagroup = _peer->isMegagroup();
 		state->api.request(
-		) | rpl::start(rpl::on_error_done([=](const QString &error) {
+		) | rpl::on_error_done([=](const QString &error) {
 			if (isMegagroup) {
 				_state.currencyEarn = {};
 				if (error == u"BROADCAST_REQUIRED"_q) {

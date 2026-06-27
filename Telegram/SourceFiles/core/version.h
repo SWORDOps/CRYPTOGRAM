@@ -19,9 +19,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 // used in Updater.cpp and Setup.iss for Windows
 constexpr auto AppId = "{9DB6C981-7FD2-41B5-AEF2-20C933FD3F21}"_cs;
-constexpr auto AppNameOld = "Telegram Win (Unofficial)"_cs;
-constexpr auto AppName = "64Gram Desktop"_cs;
-constexpr auto AppFile = "64Gram"_cs;
+constexpr auto AppNameOld = "Cryptogram (Unofficial)"_cs;
+constexpr auto AppName = "Cryptogram"_cs;
+constexpr auto AppFile = "Cryptogram"_cs;
 constexpr auto AppVersion = 1001083;
 constexpr auto AppVersionStr = "1.1.83";
 constexpr auto AppBetaVersion = false;

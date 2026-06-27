@@ -96,6 +96,11 @@ public:
 	QString phraseMaximize() override;
 	QString phraseRestore() override;
 
+	void touchCounterIncrement() override;
+	[[nodiscard]] int touchCounterNow() override;
+
+private:
+	int _touchCounter = 0;
 };
 
 [[nodiscard]] bool OpenGLLastCheckFailed();

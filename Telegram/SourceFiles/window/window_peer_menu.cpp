@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -1497,27 +1497,6 @@ void Filler::addViewAsMessages() {
 	const auto peer = _peer;
 	const auto controller = _controller;
 	const auto parentHideRequests = std::make_shared<rpl::event_stream<>>();
-	const auto filterOutChatPreview = [=] {
-		if (base::IsAltPressed()) {
-			const auto callback = [=](bool shown) {
-				if (!shown) {
-					parentHideRequests->fire({});
-				}
-			};
-			controller->showChatPreview({
-				peer->owner().history(peer),
-				FullMsgId(),
-			}, callback, QApplication::activePopupWidget());
-			return true;
-		} else if (base::IsCtrlPressed()) {
-			Ui::PreventDelayedActivation();
-			controller->showInNewWindow(SeparateId(
-				SeparateType::Chat,
-				peer->owner().history(peer)));
-			return true;
-		}
-		return false;
-	};
 	const auto open = [=] {
 		if (const auto forum = peer->forum()) {
 			peer->owner().saveViewAsMessages(forum, true);
@@ -1525,12 +1504,11 @@ void Filler::addViewAsMessages() {
 		controller->showPeerHistory(peer->id);
 	};
 	auto to_instant = rpl::map_to(anim::type::instant);
-	_addAction({
+	_addAction(Ui::Menu::MenuCallback::Args{
 		.text = tr::lng_forum_view_as_messages(tr::now),
 		.handler = open,
 		.icon = &st::menuIconAsMessages,
-		.triggerFilter = filterOutChatPreview,
-		.hideRequests = parentHideRequests->events() | to_instant
+		.hideRequests = parentHideRequests->events() | std::move(to_instant)
 	});
 }
 
@@ -1804,7 +1782,7 @@ void Filler::addToggleFee() {
 			removeFee);
 	}, feeRemoved ? &st::menuIconEarn : &st::menuIconCancelFee);
 	_addAction({ .isSeparator = true });
-	_addAction({ .make = [=](not_null<Ui::RpWidget*> actionParent) {
+	_addAction({ .make = [=](not_null<Ui::PopupMenu*> actionParent) {
 		auto helper = Ui::Text::CustomEmojiHelper();
 		const auto text = feeRemoved
 			? tr::lng_context_fee_free(
@@ -1826,7 +1804,7 @@ void Filler::addToggleFee() {
 		const auto action = new QAction(actionParent);
 		action->setDisabled(true);
 		auto result = base::make_unique_q<Ui::Menu::Action>(
-			actionParent,
+			actionParent->menu(),
 			st::windowFeeItem,
 			action,
 			nullptr,

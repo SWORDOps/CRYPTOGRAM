@@ -18,19 +18,44 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace MTP::details {
 namespace {
 
+enum class Format {
+	RSAPublicKey,
+	RSA_PUBKEY,
+	Unknown,
+};
+
 struct BIODeleter {
 	void operator()(BIO *value) {
 		BIO_free(value);
 	}
 };
 
-EVP_PKEY *CreateRaw(bytes::const_span key) {
+Format GuessFormat(bytes::const_span key) {
+	const auto array = QByteArray::fromRawData(
+		reinterpret_cast<const char*>(key.data()),
+		key.size());
+	if (array.indexOf("BEGIN RSA PUBLIC KEY") >= 0) {
+		return Format::RSAPublicKey;
+	} else if (array.indexOf("BEGIN PUBLIC KEY") >= 0) {
+		return Format::RSA_PUBKEY;
+	}
+	return Format::Unknown;
+}
+
+RSA *CreateRaw(bytes::const_span key) {
+	const auto format = GuessFormat(key);
 	const auto bio = std::unique_ptr<BIO, BIODeleter>{
 		BIO_new_mem_buf(
 			const_cast<gsl::byte*>(key.data()),
 			key.size()),
 	};
-	return PEM_read_bio_PUBKEY(bio.get(), nullptr, nullptr, nullptr);
+	switch (format) {
+	case Format::RSAPublicKey:
+		return PEM_read_bio_RSAPublicKey(bio.get(), nullptr, nullptr, nullptr);
+	case Format::RSA_PUBKEY:
+		return PEM_read_bio_RSA_PUBKEY(bio.get(), nullptr, nullptr, nullptr);
+	}
+	Unexpected("format in RSAPublicKey::Private::Create.");
 }
 
 } // namespace
@@ -54,33 +79,34 @@ private:
 	void computeFingerprint();
 	[[nodiscard]] static bytes::vector ToBytes(const BIGNUM *number);
 
-	EVP_PKEY *_pkey = nullptr;
+	RSA *_rsa = nullptr;
 	uint64 _fingerprint = 0;
 
 };
 
 RSAPublicKey::Private::Private(bytes::const_span key)
-	: _pkey(CreateRaw(key)) {
-	if (_pkey) {
+	: _rsa(CreateRaw(key)) {
+	if (_rsa) {
 		computeFingerprint();
 	}
 }
 
 RSAPublicKey::Private::Private(bytes::const_span nBytes, bytes::const_span eBytes)
-	: _pkey(nullptr) {
-	// For ECC, we expect the full key in nBytes (SPKI format). eBytes is ignored.
-	// If it was legacy RSA usage, this constructor is deprecated/unsupported for RSA composition.
-	if (!nBytes.empty()) {
-		const unsigned char *p = reinterpret_cast<const unsigned char*>(nBytes.data());
-		_pkey = d2i_PUBKEY(nullptr, &p, nBytes.size());
-		if (_pkey) {
+	: _rsa(RSA_new()) {
+	if (_rsa) {
+		const auto n = openssl::BigNum(nBytes).takeRaw();
+		const auto e = openssl::BigNum(eBytes).takeRaw();
+		const auto valid = (n != nullptr) && (e != nullptr);
+		if (!RSA_set0_key(_rsa, n, e, nullptr) || !valid) {
+			RSA_free(base::take(_rsa));
+		} else {
 			computeFingerprint();
 		}
 	}
 }
 
 bool RSAPublicKey::Private::valid() const {
-	return _pkey != nullptr;
+	return _rsa != nullptr;
 }
 
 uint64 RSAPublicKey::Private::fingerprint() const {
@@ -89,101 +115,103 @@ uint64 RSAPublicKey::Private::fingerprint() const {
 
 bytes::vector RSAPublicKey::Private::getN() const {
 	Expects(valid());
-	// Return full key in N for ECC serialization support
-	int len = i2d_PUBKEY(_pkey, nullptr);
-	if (len > 0) {
-		auto result = bytes::vector(len);
-		unsigned char *p = reinterpret_cast<unsigned char*>(result.data());
-		i2d_PUBKEY(_pkey, &p);
-		return result;
-	}
-	return {};
+
+	const BIGNUM *n;
+	RSA_get0_key(_rsa, &n, nullptr, nullptr);
+	return ToBytes(n);
 }
 
 bytes::vector RSAPublicKey::Private::getE() const {
 	Expects(valid());
-	return {}; // Empty for ECC
+
+	const BIGNUM *e;
+	RSA_get0_key(_rsa, nullptr, &e, nullptr);
+	return ToBytes(e);
 }
 
 bytes::vector RSAPublicKey::Private::encrypt(bytes::const_span data) const {
 	Expects(valid());
 
-	EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new(_pkey, nullptr);
-	if (!ctx) return {};
-	if (EVP_PKEY_encrypt_init(ctx) <= 0) {
-		EVP_PKEY_CTX_free(ctx);
+	constexpr auto kEncryptSize = 256;
+	auto result = bytes::vector(kEncryptSize, gsl::byte{});
+	auto res = RSA_public_encrypt(kEncryptSize, reinterpret_cast<const unsigned char*>(data.data()), reinterpret_cast<unsigned char*>(result.data()), _rsa, RSA_NO_PADDING);
+	if (res < 0 || res > kEncryptSize) {
+		OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS, nullptr);
+		LOG(("RSA Error: RSA_public_encrypt failed, key fp: %1, result: %2, error: %3").arg(fingerprint()).arg(res).arg(ERR_error_string(ERR_get_error(), 0)));
 		return {};
+	} else if (auto zeroBytes = kEncryptSize - res) {
+		auto resultBytes = gsl::make_span(result);
+		bytes::move(resultBytes.subspan(zeroBytes, res), resultBytes.subspan(0, res));
+		bytes::set_with_const(resultBytes.subspan(0, zeroBytes), gsl::byte{});
 	}
-
-	size_t outlen = 0;
-	if (EVP_PKEY_encrypt(ctx, nullptr, &outlen, reinterpret_cast<const unsigned char*>(data.data()), data.size()) <= 0) {
-		EVP_PKEY_CTX_free(ctx);
-		return {};
-	}
-
-	auto result = bytes::vector(outlen);
-	if (EVP_PKEY_encrypt(ctx, reinterpret_cast<unsigned char*>(result.data()), &outlen, reinterpret_cast<const unsigned char*>(data.data()), data.size()) <= 0) {
-		EVP_PKEY_CTX_free(ctx);
-		return {};
-	}
-	
-	EVP_PKEY_CTX_free(ctx);
-	result.resize(outlen);
 	return result;
 }
 
 bytes::vector RSAPublicKey::Private::decrypt(bytes::const_span data) const {
 	Expects(valid());
 
-	EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new(_pkey, nullptr);
-	if (!ctx) return {};
-	if (EVP_PKEY_decrypt_init(ctx) <= 0) {
-		EVP_PKEY_CTX_free(ctx);
+	constexpr auto kDecryptSize = 256;
+	auto result = bytes::vector(kDecryptSize, gsl::byte{});
+	auto res = RSA_public_decrypt(kDecryptSize, reinterpret_cast<const unsigned char*>(data.data()), reinterpret_cast<unsigned char*>(result.data()), _rsa, RSA_NO_PADDING);
+	if (res < 0 || res > kDecryptSize) {
+		OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS, nullptr);
+		LOG(("RSA Error: RSA_public_encrypt failed, key fp: %1, result: %2, error: %3").arg(fingerprint()).arg(res).arg(ERR_error_string(ERR_get_error(), 0)));
 		return {};
+	} else if (auto zeroBytes = kDecryptSize - res) {
+		auto resultBytes = gsl::make_span(result);
+		bytes::move(resultBytes.subspan(zeroBytes, res), resultBytes.subspan(0, res));
+		bytes::set_with_const(resultBytes.subspan(0, zeroBytes), gsl::byte{});
 	}
-
-	size_t outlen = 0;
-	if (EVP_PKEY_decrypt(ctx, nullptr, &outlen, reinterpret_cast<const unsigned char*>(data.data()), data.size()) <= 0) {
-		EVP_PKEY_CTX_free(ctx);
-		return {};
-	}
-
-	auto result = bytes::vector(outlen);
-	if (EVP_PKEY_decrypt(ctx, reinterpret_cast<unsigned char*>(result.data()), &outlen, reinterpret_cast<const unsigned char*>(data.data()), data.size()) <= 0) {
-		EVP_PKEY_CTX_free(ctx);
-		return {};
-	}
-
-	EVP_PKEY_CTX_free(ctx);
-	result.resize(outlen);
 	return result;
 }
 
 bytes::vector RSAPublicKey::Private::encryptOAEPpadding(bytes::const_span data) const {
 	Expects(valid());
-	// Fallback to standard encrypt for ECC, OAEP is RSA specific
-	return encrypt(data);
+
+	const auto resultSize = RSA_size(_rsa);
+	auto result = bytes::vector(resultSize, gsl::byte{});
+	const auto encryptedSize = RSA_public_encrypt(
+		data.size(),
+		reinterpret_cast<const unsigned char*>(data.data()),
+		reinterpret_cast<unsigned char*>(result.data()),
+		_rsa,
+		RSA_PKCS1_OAEP_PADDING);
+	if (encryptedSize != resultSize) {
+		OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS, nullptr);
+		LOG(("RSA Error: RSA_public_encrypt failed, "
+			"key fp: %1, result: %2, error: %3"
+			).arg(fingerprint()
+			).arg(encryptedSize
+			).arg(ERR_error_string(ERR_get_error(), 0)
+			));
+		return {};
+	}
+	return result;
 }
 
 RSAPublicKey::Private::~Private() {
-	EVP_PKEY_free(_pkey);
+	RSA_free(_rsa);
 }
 
 void RSAPublicKey::Private::computeFingerprint() {
 	Expects(valid());
 
-	unsigned char *buf = nullptr;
-	int len = i2d_PUBKEY(_pkey, &buf);
-	if (len > 0 && buf) {
-		auto sha384 = hashSha384(buf, len);
-		// Use the last 8 bytes as fingerprint
-		_fingerprint = *(uint64*)(sha384.data() + 40); 
-		OPENSSL_free(buf);
-	}
+	const BIGNUM *n, *e;
+	mtpBuffer string;
+	RSA_get0_key(_rsa, &n, &e, nullptr);
+	MTP_bytes(ToBytes(n)).write(string);
+	MTP_bytes(ToBytes(e)).write(string);
+
+	bytes::array<20> sha1Buffer;
+	openssl::Sha1To(sha1Buffer, bytes::make_span(string));
+	_fingerprint = *(uint64*)(sha1Buffer.data() + 12);
 }
 
 bytes::vector RSAPublicKey::Private::ToBytes(const BIGNUM *number) {
-	return {};
+	auto size = BN_num_bytes(number);
+	auto result = bytes::vector(size, gsl::byte{});
+	BN_bn2bin(number, reinterpret_cast<unsigned char*>(result.data()));
+	return result;
 }
 
 RSAPublicKey::RSAPublicKey(bytes::const_span key)

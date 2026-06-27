@@ -334,7 +334,7 @@ MTP::AuthKeyPtr CreateLegacyLocalKey(
 		(uchar*)salt.data(),
 		salt.size(),
 		iterationsCount,
-		EVP_sha384(),
+		EVP_sha256(),
 		key.size(),
 		(uchar*)key.data());
 
@@ -465,8 +465,8 @@ void FileWriteDescriptor::finish() {
 		base::RandomFill(toEncrypt.data() + size, fullSize - size);
 	}
 	*(uint32*)toEncrypt.data() = size;
-	QByteArray encrypted(0x10 + fullSize, Qt::Uninitialized); // 128bit of sha384 - key128, sizeof(data), data
-	hashSha384(toEncrypt.constData(), toEncrypt.size(), encrypted.data()); // Writes 48 bytes, but we use only first 16 for key
+	QByteArray encrypted(0x10 + fullSize, Qt::Uninitialized); // 128bit of sha256 - key128, sizeof(data), data
+	hashSha256(toEncrypt.constData(), toEncrypt.size(), encrypted.data()); // Writes 32 bytes, but we use only first 16 for key
 	MTP::aesEncryptLocal(toEncrypt.constData(), encrypted.data() + 0x10, fullSize, key, encrypted.constData());
 
 	return encrypted;
@@ -545,7 +545,7 @@ bool ReadFile(
 
 		// read data
 		QByteArray bytes = f.read(f.size());
-		int32 dataSize = bytes.size() - 48; // SHA-384 is 48 bytes
+		int32 dataSize = bytes.size() - 32; // SHA-256 is 32 bytes
 		if (dataSize < 0) {
 			DEBUG_LOG(("App Info: bad file '%1', could not read sign part"
 				).arg(name));
@@ -553,12 +553,12 @@ bool ReadFile(
 		}
 
 		// check signature
-		HashSha384 hash;
+		HashSha256 hash;
 		hash.feed(bytes.constData(), dataSize);
 		hash.feed(&dataSize, sizeof(dataSize));
 		hash.feed(&version, sizeof(version));
 		hash.feed(magic, TdfMagicLen);
-		if (memcmp(hash.result(), bytes.constData() + dataSize, 48)) {
+		if (memcmp(hash.result(), bytes.constData() + dataSize, 32)) {
 			DEBUG_LOG(("App Info: bad file '%1', signature did not match"
 				).arg(name));
 			continue;
@@ -597,8 +597,8 @@ bool DecryptLocal(
 	decrypted.resize(fullLen);
 	const char *encryptedKey = encrypted.constData(), *encryptedData = encrypted.constData() + 16;
 	aesDecryptLocal(encryptedData, decrypted.data(), fullLen, key, encryptedKey);
-	uchar shaBuffer[48];
-	if (memcmp(hashSha384(decrypted.constData(), decrypted.size(), shaBuffer), encryptedKey, 16)) { // Compare first 16 bytes of SHA-384
+	uchar shaBuffer[32];
+	if (memcmp(hashSha256(decrypted.constData(), decrypted.size(), shaBuffer), encryptedKey, 16)) { // Compare first 16 bytes of SHA-256
 		LOG(("App Info: bad decrypt key, data not decrypted - incorrect password?"));
 		return false;
 	}

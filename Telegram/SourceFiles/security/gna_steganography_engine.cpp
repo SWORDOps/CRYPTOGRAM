@@ -709,7 +709,7 @@ QByteArray GNASteganographyEngine::generatePseudoRandomSequence(int length, cons
     sequence.reserve(length);
 
     // Simple linear congruential generator
-    QCryptographicHash hash(QCryptographicHash::Sha384);
+    QCryptographicHash hash(QCryptographicHash::Sha256);
     hash.addData(seed.toUtf8());
     QByteArray seedHash = hash.result();
 
@@ -785,7 +785,7 @@ QByteArray GNASteganographyEngine::addSteganographyHeader(const QByteArray& data
     stream << static_cast<quint32>(data.size());
     stream << static_cast<quint32>(_config.method);
 
-    QCryptographicHash hash(QCryptographicHash::Sha384);
+    QCryptographicHash hash(QCryptographicHash::Sha256);
     hash.addData(data);
     QByteArray checksum = hash.result().left(8);
     header.append(checksum);
@@ -808,7 +808,7 @@ QByteArray GNASteganographyEngine::removeSteganographyHeader(const QByteArray& d
     QByteArray payload = data.mid(HEADER_SIZE, size);
     QByteArray storedChecksum = data.mid(8, 8);
 
-    QCryptographicHash hash(QCryptographicHash::Sha384);
+    QCryptographicHash hash(QCryptographicHash::Sha256);
     hash.addData(payload);
     QByteArray calculatedChecksum = hash.result().left(8);
 

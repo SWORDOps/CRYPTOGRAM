@@ -601,98 +601,51 @@ check_android_ndk() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
+# CRYPTOGRAM Android Overlay Validation
 # ──────────────────────────────────────────────────────────────────────────────
+check_cryptogram_android_overlay() {
+    print_step "5" "8" "CRYPTOGRAM Android Overlay Validation"
 
     local start_time
     start_time=$(date +%s)
 
-        print_step_complete "5/8"
+    if [ ! -d "$ANDROID_ROOT" ]; then
+        fail "Android project not found at: $ANDROID_ROOT"
+    fi
+
+    cd "$ANDROID_ROOT" || fail "Cannot change to Android directory"
+
+    local required_files=(
+        "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp"
+        "TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.java"
+        "TMessagesProj/src/main/java/org/telegram/ui/CryptogramSettingsActivity.java"
+    )
+
+    local missing=()
+    local file
+    for file in "${required_files[@]}"; do
+        if [ ! -f "$file" ]; then
+            missing+=("$file")
+        fi
+    done
+
+    if [ "${#missing[@]}" -gt 0 ]; then
+        print_error "CRYPTOGRAM Android overlay is not applied to telegram-android"
         echo ""
-        return 0
-    fi
-
-        print_step_complete "5/8"
+        echo "Missing overlay markers:"
+        printf '  - %s\n' "${missing[@]}"
         echo ""
-        return 0
+        echo "This checkout currently contains a restored Telegram Android base,"
+        echo "but the CRYPTOGRAM Android modifications still live in the superproject"
+        echo "overlay tree and are not applied automatically by this script."
+        fail "Apply the CRYPTOGRAM Android overlay before building"
     fi
 
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # ──────────────────────────────────────────────────────────────────────────
-
-    # Option 1: Hardcoded IP/hostname
-    else
-        # Option 2: mDNS auto-discovery
-
-        local discovered_host=""
-        local discovered_port=""
-
-        # Try avahi-browse (Linux)
-        if command -v avahi-browse >/dev/null 2>&1; then
-            print_debug "Using avahi-browse for mDNS discovery"
-            local avahi_output
-
-            if [ -n "$avahi_output" ]; then
-                discovered_host=$(echo "$avahi_output" | cut -d';' -f8)
-                discovered_port=$(echo "$avahi_output" | cut -d';' -f9)
-
-                if [ -n "$discovered_host" ]; then
-                fi
-            fi
-        fi
-
-        # Try dns-sd (macOS/BSD) if avahi didn't work
-        if [ -z "$discovered_host" ] && command -v dns-sd >/dev/null 2>&1; then
-            print_debug "Using dns-sd for mDNS discovery"
-            # dns-sd requires background process, use timeout
-            local dns_output
-
-            if [ -n "$dns_output" ]; then
-                # Parse: hostname.local.:8443 can be reached at 192.168.1.100:8443
-                discovered_host=$(echo "$dns_output" | grep -oP '\d+\.\d+\.\d+\.\d+' | head -n1)
-                discovered_port=$(echo "$dns_output" | grep -oP ':\d+' | tr -d ':' | head -n1)
-
-                if [ -n "$discovered_host" ]; then
-                fi
-            fi
-        fi
-
-        # Use discovered endpoint or fall back to default
-        if [ -n "$discovered_host" ]; then
-        else
-            print_warning "mDNS discovery failed or not available"
-        fi
-    fi
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # ──────────────────────────────────────────────────────────────────────────
-
-
-            print_step_complete "5/8"
-            echo ""
-            return 0
-        fi
-    fi
-
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # ──────────────────────────────────────────────────────────────────────────
-EOF
-
-    if command -v curl >/dev/null 2>&1; then
-        else
-        fi
-    fi
-
-    else
-    fi
-
-    fi
-
-    save_state
-
+    print_info "CRYPTOGRAM overlay markers detected"
 
     local elapsed=$(($(date +%s) - start_time))
+    COMPONENT_TIMES["dependencies"]=${COMPONENT_TIMES["dependencies"]:-0}
+    log "ANDROID" "CRYPTOGRAM Android overlay markers verified"
 
     print_step_complete "5/8"
     echo ""
@@ -770,17 +723,17 @@ build_android_app() {
     case "${BUILD_TYPE,,}" in
         release)
             if [ -n "$KEYSTORE_PATH" ] && [ -f "$KEYSTORE_PATH" ]; then
-                gradle_task="bundleRelease"
+                gradle_task=":TMessagesProj_App:bundleAfatRelease"
                 output_type="AAB (Android App Bundle)"
                 print_info "Building RELEASE with signing"
             else
                 print_warning "No keystore found - building unsigned release"
-                gradle_task="assembleRelease"
+                gradle_task=":TMessagesProj_App:assembleAfatRelease"
                 output_type="Unsigned APK"
             fi
             ;;
         debug|*)
-            gradle_task="assembleDebug"
+            gradle_task=":TMessagesProj_App:assembleAfatDebug"
             output_type="Debug APK"
             BUILD_TYPE="debug"
             ;;
@@ -799,8 +752,6 @@ build_android_app() {
         gradle_args="$gradle_args -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD"
         gradle_args="$gradle_args -Pandroid.injected.signing.key.alias=$KEYSTORE_ALIAS"
         gradle_args="$gradle_args -Pandroid.injected.signing.key.password=$KEY_PASSWORD"
-    fi
-
     fi
 
     # Clean build directory if force rebuild
@@ -931,7 +882,8 @@ show_summary() {
     echo ""
     echo "Timings:"
     printf "  %-20s: %s\n" "Total Time" "$(format_time "$total_time")"
-
+    local component
+    for component in system submodules sdk ndk dependencies build; do
         if [ -n "${COMPONENT_TIMES[$component]:-}" ] && [ "${COMPONENT_TIMES[$component]}" -gt 0 ]; then
             printf "  %-20s: %s\n" "$component" "$(format_time "${COMPONENT_TIMES[$component]}")"
         fi
@@ -1004,7 +956,6 @@ parse_args() {
                 ;;
             --dry-run)
                 DRY_RUN=1
-                ;;
                 ;;
             --keystore=*)
                 KEYSTORE_PATH="${1#*=}"
@@ -1089,6 +1040,7 @@ main() {
     initialize_submodules
     check_android_sdk
     check_android_ndk
+    check_cryptogram_android_overlay
     fetch_dependencies
     build_android_app
     verify_artifacts

@@ -209,9 +209,24 @@ ParsedPQ FactorizeBigPQ(const QByteArray &pqStr) {
 [[nodiscard]] bool IsGoodEncryptedInner(
 		bytes::const_span keyAesEncrypted,
 		const RSAPublicKey &key) {
-	// For ECC, this RSA-specific modulus check is not relevant/applicable.
-	// We assume the encryption was good if it succeeded.
-	return true;
+	Expects(keyAesEncrypted.size() == 256);
+
+	const auto modulus = key.getN();
+	const auto e = key.getE();
+	const auto shift = (256 - int(modulus.size()));
+	Assert(shift >= 0);
+	for (auto i = 0; i != 256; ++i) {
+		const auto a = keyAesEncrypted[i];
+		const auto b = (i < shift)
+			? bytes::type(0)
+			: modulus[i - shift];
+		if (a > b) {
+			return false;
+		} else if (a < b) {
+			return true;
+		}
+	}
+	return false;
 }
 
 template <typename PQInnerData>
@@ -263,11 +278,10 @@ template <typename PQInnerData>
 		dataWithHash.resize(kDataWithPaddingPrimes + kDataHashPrimes);
 		const auto dataWithHashBytes = bytes::make_span(dataWithHash);
 		
-		// Use SHA-384 but truncate to 32 bytes for protocol compatibility
-		auto sha384 = openssl::Sha384(tempKey, bytes::make_span(dataWithPadding));
+		auto sha256 = openssl::Sha256(tempKey, bytes::make_span(dataWithPadding));
 		bytes::copy(
 			dataWithHashBytes.subspan(kDataWithPaddingPrimes * kPrime),
-			bytes::make_span(sha384).subspan(0, 32));
+			bytes::make_span(sha256));
 
 		auto aesEncrypted = mtpBuffer();
 		auto keyAesEncrypted = mtpBuffer();
@@ -292,9 +306,7 @@ template <typename PQInnerData>
 		keyAesEncrypted.resize(fullSize);
 		const auto keyAesEncryptedBytes = bytes::make_span(keyAesEncrypted);
 		
-		// Use SHA-384 but truncate to 32 bytes for protocol compatibility
-		const auto aesHashFull = openssl::Sha384(aesEncryptedBytes);
-		const auto aesHash = bytes::make_span(aesHashFull).subspan(0, 32);
+		auto aesHash = openssl::Sha256(aesEncryptedBytes);
 		
 		for (auto i = 0; i != kKeySize; ++i) {
 			keyAesEncryptedBytes[i] = tempKey[i] ^ aesHash[i];
@@ -337,12 +349,10 @@ template <typename PQInnerData>
 
 	const auto bytes = bytes::make_span(encBuffer);
 
-	// Use SHA-384 but truncate to 20 bytes for protocol compatibility
-	const auto hashFull = openssl::Sha384(bytes.subspan(
+	auto hash = openssl::Sha1(bytes.subspan(
 		kSkipPrimes * sizeof(mtpPrime),
 		client_dh_inner_size));
-	const auto hash = bytes::make_span(hashFull).subspan(0, 20);
-	
+
 	bytes::copy(bytes, hash);
 	bytes::set_random(bytes.subspan(encSize * sizeof(mtpPrime)));
 
@@ -353,11 +363,9 @@ template <typename PQInnerData>
 	return sdhEncString;
 }
 
-// 128 lower-order bits of SHA1 (upgraded to truncated SHA-384).
+// 128 lower-order bits of SHA1.
 MTPint128 NonceDigest(bytes::const_span data) {
-	// Use SHA-384 but truncate to 20 bytes to simulate SHA1 length for protocol compatibility
-	const auto hashFull = openssl::Sha384(data);
-	const auto hash = bytes::make_span(hashFull).subspan(0, 20);
+	const auto hash = openssl::Sha1(data);
 	return *(MTPint128*)(hash.data() + 4);
 }
 
@@ -520,13 +528,18 @@ void DcKeyCreator::pqAnswered(
 			return failed();
 		}
 		DEBUG_LOG(("AuthKey Info: getting dc key..."));
+		LOG(("AuthKey Debug: server fingerprints count: %1").arg(data.vserver_public_key_fingerprints().v.size()));
+		for (const auto &fp : data.vserver_public_key_fingerprints().v) {
+			LOG(("AuthKey Debug: server fingerprint: %1").arg(static_cast<uint64>(fp.v)));
+		}
 		const auto rsaKey = _dcOptions->getDcRSAKey(
 			_dcId,
 			data.vserver_public_key_fingerprints().v);
 		if (!rsaKey.valid()) {
-			DEBUG_LOG(("AuthKey Error: unknown public key."));
+			LOG(("AuthKey Error: unknown public key."));
 			return failed(DcKeyError::UnknownPublicKey);
 		}
+		LOG(("AuthKey Debug: matched key fingerprint: %1").arg(rsaKey.fingerprint()));
 
 		attempt->data.server_nonce = data.vserver_nonce();
 		attempt->data.new_nonce = base::RandomValue<MTPint256>();
@@ -615,24 +628,21 @@ void DcKeyCreator::dhParamsAnswered(
 		bytes::copy(tmp_aes.subspan(nlen + slen), bytes::object_as_span(&attempt->data.new_nonce));
 		bytes::copy(tmp_aes.subspan(nlen + slen + nlen), bytes::object_as_span(&attempt->data.new_nonce));
 		
-		auto sha384ns = openssl::Sha384(tmp_aes.subspan(0, nlen + slen));
-		const auto sha384ns_truncated = bytes::make_span(sha384ns).subspan(0, 20);
+		auto sha1ns = openssl::Sha1(tmp_aes.subspan(0, nlen + slen));
 		
-		auto sha384sn = openssl::Sha384(tmp_aes.subspan(nlen, nlen + slen));
-		const auto sha384sn_truncated = bytes::make_span(sha384sn).subspan(0, 20);
+		auto sha1sn = openssl::Sha1(tmp_aes.subspan(nlen, nlen + slen));
 		
-		auto sha384nn = openssl::Sha384(tmp_aes.subspan(nlen + slen, nlen + nlen));
-		const auto sha384nn_truncated = bytes::make_span(sha384nn).subspan(0, 20);
+		auto sha1nn = openssl::Sha1(tmp_aes.subspan(nlen + slen, nlen + nlen));
 
 		mtpBuffer decBuffer;
 		decBuffer.resize(encDHBufLen);
 
 		const auto aesKey = bytes::make_span(attempt->data.aesKey);
 		const auto aesIV = bytes::make_span(attempt->data.aesIV);
-		bytes::copy(aesKey, sha384ns_truncated);
-		bytes::copy(aesKey.subspan(20), sha384sn_truncated.subspan(0, 12));
-		bytes::copy(aesIV, sha384sn_truncated.subspan(12, 8));
-		bytes::copy(aesIV.subspan(8), sha384nn_truncated);
+		bytes::copy(aesKey, sha1ns);
+		bytes::copy(aesKey.subspan(20), bytes::make_span(sha1sn).subspan(0, 12));
+		bytes::copy(aesIV, bytes::make_span(sha1sn).subspan(12, 8));
+		bytes::copy(aesIV.subspan(8), sha1nn);
 		bytes::copy(aesIV.subspan(28), bytes::object_as_span(&attempt->data.new_nonce).subspan(0, 4));
 
 		aesIgeDecryptRaw(encDHStr.constData(), &decBuffer[0], encDHLen, aesKey.data(), aesIV.data());
@@ -654,18 +664,17 @@ void DcKeyCreator::dhParamsAnswered(
 			DEBUG_LOG(("AuthKey Error: received server_nonce: %1, sent server_nonce: %2").arg(Logs::mb(&dh_inner_data.vserver_nonce(), 16).str(), Logs::mb(&attempt->data.server_nonce, 16).str()));
 			return failed();
 		}
-		const auto sha384BufferFull = openssl::Sha384(
+		const auto sha1Buffer = openssl::Sha1(
 			bytes::make_span(decBuffer).subspan(
 				5 * sizeof(mtpPrime),
 				(to - from) * sizeof(mtpPrime)));
-		const auto sha384Buffer = bytes::make_span(sha384BufferFull).subspan(0, 20);
 		
-		const auto sha384Dec = bytes::make_span(decBuffer).subspan(
+		const auto sha1Dec = bytes::make_span(decBuffer).subspan(
 			0,
-			20); // kSha1Size
-		if (bytes::compare(sha384Dec, sha384Buffer)) {
-			LOG(("AuthKey Error: sha384 hash of encrypted part did not match!"));
-			DEBUG_LOG(("AuthKey Error: sha384 did not match, server_nonce: %1, new_nonce %2, encrypted data %3").arg(Logs::mb(&attempt->data.server_nonce, 16).str(), Logs::mb(&attempt->data.new_nonce, 16).str(), Logs::mb(encDHStr.constData(), encDHLen).str()));
+			20);
+		if (bytes::compare(sha1Dec, sha1Buffer)) {
+			LOG(("AuthKey Error: sha1 hash of encrypted part did not match!"));
+			DEBUG_LOG(("AuthKey Error: sha1 did not match, server_nonce: %1, new_nonce %2, encrypted data %3").arg(Logs::mb(&attempt->data.server_nonce, 16).str(), Logs::mb(&attempt->data.new_nonce, 16).str(), Logs::mb(encDHStr.constData(), encDHLen).str()));
 			return failed();
 		}
 		base::unixtime::update(dh_inner_data.vserver_time().v);
@@ -723,8 +732,7 @@ void DcKeyCreator::dhClientParamsSend(not_null<Attempt*> attempt) {
 	}
 	AuthKey::FillData(attempt->authKey, computedAuthKey);
 
-	auto auth_key_sha_full = openssl::Sha384(attempt->authKey);
-	auto auth_key_sha = bytes::make_span(auth_key_sha_full).subspan(0, 20);
+	auto auth_key_sha = openssl::Sha1(attempt->authKey);
 	memcpy(&attempt->data.auth_key_aux_hash.v, auth_key_sha.data(), 8);
 	memcpy(&attempt->data.auth_key_hash.v, auth_key_sha.data() + 12, 8);
 

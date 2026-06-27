@@ -76,19 +76,23 @@ CRYPTOGRAM provides multiple layers of security to protect your communications:
 **Guarantee**: Past communications remain secure even if long-term keys are compromised.
 
 **Implementation**:
+- X3DH extended triple-Diffie-Hellman key exchange for session initialization
+- Double Ratchet algorithm with DH ratchet on every message round-trip
 - Ephemeral keys for each session
-- Automatic key rotation
-- Double ratchet algorithm
+- Automatic key rotation via HKDF-SHA256 chain key advancement
+- AES-256-GCM authenticated encryption with per-message nonce
 - Session key deletion after use
+- Zeroization of sensitive cryptographic buffers
 
 ### Post-Compromise Security
 **Guarantee**: Future communications remain secure after key compromise.
 
 **Implementation**:
-- Continuous key rotation
-- Self-healing ratchet
-- Fresh key generation
-- Break-in recovery
+- Continuous DH ratchet key rotation
+- Self-healing ratchet (new chain key per epoch)
+- MLS TreeKEM group key evolution
+- Fresh key generation on every received DH key
+- Break-in recovery via new DH ratchet step
 
 ### Deniability
 **Guarantee**: Cannot prove who sent a message.

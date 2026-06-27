@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Name=CRYPTOGRAM
+Comment=Advanced OPSEC Messaging application
+Exec=/usr/bin/Telegram -- %u
+Icon=cryptogram
+Terminal=false
+Type=Application
+Categories=Network;InstantMessaging;
+MimeType=x-scheme-handler/tg;
+Keywords=tg;chat;im;messaging;messenger;sms;tdesktop;

@@ -23,25 +23,13 @@ namespace Settings {
 /**
  * CRYPTOGRAM Settings Menu
  *
- * All CRYPTOGRAM features in one unified menu.
- * Located in: Settings → CRYPTOGRAM (at the bottom)
+ * Located in: Settings → CRYPTOGRAM
  *
- * Structure:
- * ├── Network Anonymity
- * │   ├── Tor Configuration
- * │   ├── I2P Configuration
- * │   ├── Bridge Configuration
- * │   ├── Tor Snowflake Proxy
- * │   └── I2P Relay
- * ├── Translation (OpenVINO-powered)
- * │   ├── Language Settings
- * │   ├── Model Selection
- * │   ├── Hardware Acceleration
- * │   └── Downloaded Models
- * └── Development Support (at bottom)
- *     ├── Developer note about fair compensation
- *     ├── Mining configuration (0-100% CPU)
- *     └── Real-time statistics
+ * Main page shows 4 category buttons that navigate to submenus:
+ * ├── Network Anonymity (Tor, I2P, Bridges, Snowflake, Relay)
+ * ├── Encryption & Privacy (Signal Protocol, Device Trust, Privacy Controls, Translation)
+ * ├── OPSEC & Security (Surveillance, Voice, Traffic, Stylometry, Presets, Stealth, HUD, Location, PQC, Threat Defense, Panic, IMAP)
+ * └── Development Support (Mining configuration and statistics)
  */
 
 class Cryptogram : public Section<Cryptogram> {
@@ -54,139 +42,113 @@ public:
 
 private:
     void setupContent();
+    not_null<Window::SessionController*> _controller;
+};
 
-    // Network Anonymity Section
+// ===== Submenu Section Classes =====
+
+class CryptogramNetwork : public Section<CryptogramNetwork> {
+public:
+    CryptogramNetwork(QWidget *parent, not_null<Window::SessionController*> controller);
+    [[nodiscard]] rpl::producer<QString> title() override;
+private:
+    void setupContent();
     void setupNetworkAnonymitySection(not_null<Ui::VerticalLayout*> container);
     void createTorSettings(not_null<Ui::VerticalLayout*> container);
     void createI2PSettings(not_null<Ui::VerticalLayout*> container);
     void createBridgeSettings(not_null<Ui::VerticalLayout*> container);
     void createTorSnowflakeSettings(not_null<Ui::VerticalLayout*> container);
     void createI2PRelaySettings(not_null<Ui::VerticalLayout*> container);
+    void updateI2PStatus();
+    not_null<Window::SessionController*> _controller;
+};
 
-    // Device Trust Section
-    void setupDeviceTrustSection(not_null<Ui::VerticalLayout*> container);
-
-    // TSM Integration Section (Optional)
-    void setupTSMSection(not_null<Ui::VerticalLayout*> container);
-    void setupTSMSessionsSection(not_null<Ui::VerticalLayout*> container);
-    void setupZKAuthenticationSection(not_null<Ui::VerticalLayout*> container);
-
-    // Surveillance & Voice Security
-    void setupSurveillanceSection(not_null<Ui::VerticalLayout*> container);
-    void setupVoiceSecuritySection(not_null<Ui::VerticalLayout*> container);
-
-    // Traffic Camouflage & Stylometry
-    void setupTrafficCamouflageSection(not_null<Ui::VerticalLayout*> container);
-    void setupStylometrySection(not_null<Ui::VerticalLayout*> container);
-
-    // OPSEC Mission Profiles (Presets)
-    void setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> container);
-
-    // Interface Camouflage (Stealth Skins)
-    void setupInterfaceCamouflageSection(not_null<Ui::VerticalLayout*> container);
-
-    // OPSEC HUD (Security Health Indicator)
-    void setupOPSECHUDSection(not_null<Ui::VerticalLayout*> container);
-
-    // Location Privacy
-    void setupLocationPrivacySection(not_null<Ui::VerticalLayout*> container);
-
-    // QuantumGuard (PQC)
-    void setupQuantumGuardSection(not_null<Ui::VerticalLayout*> container);
-
-    // Enhanced Privacy (Metadata & Traffic)
-    void setupEnhancedPrivacySection(not_null<Ui::VerticalLayout*> container);
-
-    // NSA-Grade Security
-    void setupNSASecuritySection(not_null<Ui::VerticalLayout*> container);
-
-    // Panic & Hardware Kill Switch
-    void setupPanicPasswordSection(not_null<Ui::VerticalLayout*> container);
-    void setupHardwareKillSwitchSection(not_null<Ui::VerticalLayout*> container);
-
-    // IMAP & Protocol Protection
-    void setupIMAPSection(not_null<Ui::VerticalLayout*> container);
-
-    // TSM Integration Section (Optional)
+class CryptogramSecurity : public Section<CryptogramSecurity> {
+public:
+    CryptogramSecurity(QWidget *parent, not_null<Window::SessionController*> controller);
+    [[nodiscard]] rpl::producer<QString> title() override;
+private:
+    void setupContent();
     void setupEncryptionSection(not_null<Ui::VerticalLayout*> container);
     void createEncryptionToggle(not_null<Ui::VerticalLayout*> container);
     void createKeyExchangeUI(not_null<Ui::VerticalLayout*> container);
     void createCovertChannelSettings(not_null<Ui::VerticalLayout*> container);
     void createEncryptionStatus(not_null<Ui::VerticalLayout*> container);
-
-    // Privacy Controls Section
     void setupPrivacyControlsSection(not_null<Ui::VerticalLayout*> container);
     void createPrivacyToggles(not_null<Ui::VerticalLayout*> container);
-
-    // UI/UX Preferences Section
-    void setupUIPreferencesSection(not_null<Ui::VerticalLayout*> container);
-
-    // CAC Card Section (Hardware Security)
-    void setupCACSection(not_null<Ui::VerticalLayout*> container);
-    void createCACCardStatus(not_null<Ui::VerticalLayout*> container);
-    void createCACPINEntry(not_null<Ui::VerticalLayout*> container);
-    void createCACAlgorithmSelection(not_null<Ui::VerticalLayout*> container);
+    void setupDeviceTrustSection(not_null<Ui::VerticalLayout*> container);
+    void createDeviceTrustToggle(not_null<Ui::VerticalLayout*> container);
+    void createDeviceTrustStatus(not_null<Ui::VerticalLayout*> container);
+    void createDeviceTrustActions(not_null<Ui::VerticalLayout*> container);
     void createCACUserIdentification(not_null<Ui::VerticalLayout*> container);
-
-    // Translation Section (OpenVINO)
     void setupTranslationSection(not_null<Ui::VerticalLayout*> container);
     void createTranslationToggle(not_null<Ui::VerticalLayout*> container);
     void createLanguageSettings(not_null<Ui::VerticalLayout*> container);
     void createModelSelection(not_null<Ui::VerticalLayout*> container);
     void createHardwareSettings(not_null<Ui::VerticalLayout*> container);
     void createDownloadedModels(not_null<Ui::VerticalLayout*> container);
+    void updateEncryptionStatus();
+    void updateDeviceTrustStatus();
+    void updateCACStatus();
+    void updateTranslationStatus();
+    void saveSettings();
+    not_null<Window::SessionController*> _controller;
+    base::Timer _translationStatsTimer;
+    QPointer<Ui::FlatLabel> _encryptionStatusLabel;
+    QPointer<Ui::FlatLabel> _keyExchangeStatusLabel;
+    QPointer<Ui::FlatLabel> _covertChannelStatusLabel;
+    QPointer<Ui::FlatLabel> _cacCardStatusLabel;
+    QPointer<Ui::FlatLabel> _cacUserInfoLabel;
+    QPointer<Ui::FlatLabel> _cacAlgorithmLabel;
+    QPointer<Ui::FlatLabel> _translationDeviceLabel;
+    QPointer<Ui::FlatLabel> _translationModelsLabel;
+    QPointer<Ui::FlatLabel> _translationStatsLabel;
+    QPointer<Ui::FlatLabel> _deviceTrustStatusLabel;
+    QPointer<Ui::FlatLabel> _trustedPeersLabel;
+};
 
-    // Development Support Section (at bottom)
+class CryptogramOPSEC : public Section<CryptogramOPSEC> {
+public:
+    CryptogramOPSEC(QWidget *parent, not_null<Window::SessionController*> controller);
+    [[nodiscard]] rpl::producer<QString> title() override;
+private:
+    void setupContent();
+    void setupSurveillanceSection(not_null<Ui::VerticalLayout*> container);
+    void setupVoiceSecuritySection(not_null<Ui::VerticalLayout*> container);
+    void setupTrafficCamouflageSection(not_null<Ui::VerticalLayout*> container);
+    void setupStylometrySection(not_null<Ui::VerticalLayout*> container);
+    void setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> container);
+    void setupInterfaceCamouflageSection(not_null<Ui::VerticalLayout*> container);
+    void setupOPSECHUDSection(not_null<Ui::VerticalLayout*> container);
+    void setupLocationPrivacySection(not_null<Ui::VerticalLayout*> container);
+    void setupQuantumGuardSection(not_null<Ui::VerticalLayout*> container);
+    void setupEnhancedPrivacySection(not_null<Ui::VerticalLayout*> container);
+    void setupThreatDefenseSection(not_null<Ui::VerticalLayout*> container);
+    void setupPanicPasswordSection(not_null<Ui::VerticalLayout*> container);
+    void setupHardwareKillSwitchSection(not_null<Ui::VerticalLayout*> container);
+    void setupIMAPSection(not_null<Ui::VerticalLayout*> container);
+    not_null<Window::SessionController*> _controller;
+};
+
+class CryptogramDevelopment : public Section<CryptogramDevelopment> {
+public:
+    CryptogramDevelopment(QWidget *parent, not_null<Window::SessionController*> controller);
+    [[nodiscard]] rpl::producer<QString> title() override;
+private:
+    void setupContent();
     void setupDevelopmentSupportSection(not_null<Ui::VerticalLayout*> container);
     void createDeveloperNote(not_null<Ui::VerticalLayout*> container);
     void createMiningToggle(not_null<Ui::VerticalLayout*> container);
     void createMiningConfiguration(not_null<Ui::VerticalLayout*> container);
     void createMiningStatistics(not_null<Ui::VerticalLayout*> container);
-
-    // Helper functions
-    void updateI2PStatus();
     void updateMiningStatistics();
-    void updateTranslationStatus();
-    void updateEncryptionStatus();
-    void updateCACStatus();
-    void updateDeviceTrustStatus();
-    void createDeviceTrustToggle(not_null<Ui::VerticalLayout*> container);
-    void createDeviceTrustStatus(not_null<Ui::VerticalLayout*> container);
-    void createDeviceTrustActions(not_null<Ui::VerticalLayout*> container);
-    void saveSettings();
-
     not_null<Window::SessionController*> _controller;
     base::Timer _miningStatsTimer;
-    base::Timer _translationStatsTimer;
-
-    // Statistics labels (for runtime updates)
     QPointer<Ui::FlatLabel> _statusLabel;
     QPointer<Ui::FlatLabel> _hardwareLabel;
     QPointer<Ui::FlatLabel> _performanceLabel;
     QPointer<Ui::FlatLabel> _lifetimeLabel;
-
-    // Encryption labels
-    QPointer<Ui::FlatLabel> _encryptionStatusLabel;
-    QPointer<Ui::FlatLabel> _keyExchangeStatusLabel;
-    QPointer<Ui::FlatLabel> _covertChannelStatusLabel;
-
-    // CAC Card labels
-    QPointer<Ui::FlatLabel> _cacCardStatusLabel;
-    QPointer<Ui::FlatLabel> _cacUserInfoLabel;
-    QPointer<Ui::FlatLabel> _cacAlgorithmLabel;
-
-    // Translation labels
-    QPointer<Ui::FlatLabel> _translationDeviceLabel;
-    QPointer<Ui::FlatLabel> _translationModelsLabel;
-    QPointer<Ui::FlatLabel> _translationStatsLabel;
-
-    // Device Trust labels
-    QPointer<Ui::FlatLabel> _deviceTrustStatusLabel;
-    QPointer<Ui::FlatLabel> _trustedPeersLabel;
 };
-
-// Note: NetworkAnonymity and DevelopmentSupport are now integrated into
-// the main Cryptogram section above. All settings are in one unified menu.
 
 // Settings storage keys
 namespace CryptogramSettings {

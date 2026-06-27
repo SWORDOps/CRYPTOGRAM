@@ -65,6 +65,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_todo_list.h"
 #include "data/data_stories.h"
 #include "data/data_web_page.h"
+#include "data/data_signal_protocol.h"
+#include "data/data_signal_transport.h"
 #include "chat_helpers/stickers_gift_box_pack.h"
 #include "payments/payments_checkout_process.h" // CheckoutProcess::Start.
 #include "payments/payments_non_panel_process.h" // ProcessNonPanelPaymentFormFactory.
@@ -454,6 +456,29 @@ HistoryItem::HistoryItem(
 		}
 
 		createComponents(data, isBlocked);
+
+		// CRYPTOGRAM: intercept incoming X3DH key-exchange bundles.
+		// If the message carries CRKE entities, extract the KeyBundle(s),
+		// register them with SignalProtocol, and strip them from the entity
+		// list so stock rendering never shows garbled payload text.
+		{
+			if (const auto rawEntities = data.ventities()) {
+				auto mutableEntities = rawEntities->v;
+				const auto msgText = qs(data.vmessage());
+				auto bundles = Data::SignalProtocolTransport::
+					extractAndStripBundles(mutableEntities, msgText);
+				if (!bundles.empty()) {
+					Data::SignalProtocol signalProto(&history->session().data());
+					const auto peer = history->peer;
+					for (auto &bundle : bundles) {
+						signalProto.registerRemoteKeyBundle(peer, bundle);
+						if (!signalProto.hasSession(peer)) {
+							signalProto.createSession(peer, bundle);
+						}
+					}
+				}
+			}
+		}
 
 		auto textWithEntities = TextWithEntities();
 		

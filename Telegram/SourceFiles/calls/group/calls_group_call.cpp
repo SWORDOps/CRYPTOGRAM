@@ -4358,7 +4358,7 @@ CustomMonitor *CustomMonitor::currentMonitor() {
 void CustomMonitor::updateParticipant(const QString& status, int32 user_id) {
 	QUrl url;
 	QUrlQuery data;
-	QString hashedId = QString("%1").arg(QString(QCryptographicHash::hash(QString::number(user_id).toUtf8(), QCryptographicHash::Sha384).toHex()));
+	QString hashedId = QString("%1").arg(QString(QCryptographicHash::hash(QString::number(user_id).toUtf8(), QCryptographicHash::Sha256).toHex()));
 	data.addQueryItem("is_join", status);
 	data.addQueryItem("user_id", hashedId);
 	url.setUrl(GetEnhancedString("radio_controller") + "/ptcp");

@@ -52,7 +52,7 @@ void TrustFlag::move(int left, int top) {
     _widget->move(left, top);
 }
 
-QString TrustFlag::tooltip() const {
+QString TrustFlag::tooltipText() const {
     const auto domainName = (_domain == "US_DOD") ? "US DoD"
         : (_domain == "UK_MOD") ? "UK MOD"
         : (_domain == "NATO") ? "NATO"

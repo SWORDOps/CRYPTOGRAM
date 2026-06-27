@@ -3958,7 +3958,7 @@ bool OverlayWidget::initStreaming(const StartStreaming &startStreaming) {
 	Core::App().updateNonIdle();
 
 	_streamed->instance.player().updates(
-	) | rpl::start(rpl::on_next_error([=](Streaming::Update &&update) {
+	) | rpl::on_next_error([=](Streaming::Update &&update) {
 		handleStreamingUpdate(std::move(update));
 	}, [=](Streaming::Error &&error) {
 		handleStreamingError(std::move(error));

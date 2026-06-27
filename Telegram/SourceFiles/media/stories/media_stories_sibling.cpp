@@ -184,7 +184,7 @@ void Sibling::LoaderVideo::createStreamedPlayer() {
 		[] {}); // waitingCallback
 	_streamed->lockPlayer();
 	_streamed->player().updates(
-	) | rpl::start(rpl::on_next_error([=](Streaming::Update &&update) {
+	) | rpl::on_next_error([=](Streaming::Update &&update) {
 		v::match(update.data, [&](Streaming::Information &update) {
 			_update();
 		}, [](const auto &update) {

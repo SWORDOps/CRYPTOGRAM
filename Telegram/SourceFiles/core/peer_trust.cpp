@@ -6,6 +6,8 @@
 #include <QSettings>
 #include <QCryptographicHash>
 #include <QRandomGenerator>
+#include <QStandardPaths>
+#include <QObject>
 
 namespace Core {
 
@@ -74,7 +76,7 @@ void PeerTrustManager::requestVerification(uint64 userId) {
     auto challenge = generateChallenge();
     _private->pendingChallenges[userId] = challenge;
 
-    emit verificationRequested(userId, challenge);
+    Q_EMIT verificationRequested(userId, challenge);
 }
 
 std::map<uint64, PeerTrustInfo> PeerTrustManager::getTrustedPeers() const {
@@ -100,7 +102,7 @@ void PeerTrustManager::respondToChallenge(
 
     auto cred = _private->credHelper->readToken();
     if (!cred) {
-        emit verificationComplete(userId, false);
+        Q_EMIT verificationComplete(userId, false);
         return;
     }
 
@@ -108,7 +110,7 @@ void PeerTrustManager::respondToChallenge(
 
     auto signature = _private->credHelper->signData(challenge, pin);
     if (!signature) {
-        emit verificationComplete(userId, false);
+        Q_EMIT verificationComplete(userId, false);
         return;
     }
 
@@ -121,20 +123,20 @@ void PeerTrustManager::handleChallengeResponse(
 
     auto it = _private->pendingChallenges.find(userId);
     if (it == _private->pendingChallenges.end()) {
-        emit verificationComplete(userId, false);
+        Q_EMIT verificationComplete(userId, false);
         return;
     }
 
     const auto &challenge = it->second;
 
     if (!_private->validator->validateChain(certificate)) {
-        emit verificationComplete(userId, false);
+        Q_EMIT verificationComplete(userId, false);
         _private->pendingChallenges.erase(it);
         return;
     }
 
     if (!_private->validator->checkRevocation(certificate)) {
-        emit verificationComplete(userId, false);
+        Q_EMIT verificationComplete(userId, false);
         _private->pendingChallenges.erase(it);
         return;
     }
@@ -144,7 +146,7 @@ void PeerTrustManager::handleChallengeResponse(
     cred.isValid = true;
 
     if (!_private->credHelper->verifySignature(cred, challenge, signature)) {
-        emit verificationComplete(userId, false);
+        Q_EMIT verificationComplete(userId, false);
         _private->pendingChallenges.erase(it);
         return;
     }
@@ -163,8 +165,8 @@ void PeerTrustManager::handleChallengeResponse(
 
     storePeerTrust(userId, info);
 
-    emit verificationComplete(userId, true);
-    emit peerVerified(userId, domain);
+    Q_EMIT verificationComplete(userId, true);
+    Q_EMIT peerVerified(userId, domain);
 
     _private->pendingChallenges.erase(it);
 }

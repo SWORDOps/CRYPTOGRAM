@@ -244,7 +244,7 @@ void TabbedPanel::paintEvent(QPaintEvent *e) {
 		hideFinished();
 	} else {
 		if (!_cache.isNull()) _cache = QPixmap();
-		Ui::Shadow::paint(p, innerRect(), width(), _selector->st().showAnimation.shadow);
+		Ui::BoxShadow(_selector->st().showAnimation.shadow).paint(p, innerRect(), st::emojiPanRadius);
 	}
 }
 
@@ -380,8 +380,8 @@ void TabbedPanel::startShowAnimation() {
 			std::move(image),
 			QRect(
 				inner.topLeft() * style::DevicePixelRatio(),
-				inner.size() * style::DevicePixelRatio()));
-		_showAnimation->setCornerMasks(Images::CornersMask(st::emojiPanRadius));
+				inner.size() * style::DevicePixelRatio()),
+			st::emojiPanRadius);
 		_showAnimation->start();
 	}
 	hideChildren();

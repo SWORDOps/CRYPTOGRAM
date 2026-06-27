@@ -301,10 +301,10 @@ bool UnpackUpdate(const QString &filepath) {
 		return false;
 	}
 
-	uchar shaBuffer[48];
-	bool goodSha = !memcmp(compressed.constData() + hSigLen, hashSha384(compressed.constData() + hSigLen + hShaLen, compressedLen + hPropsLen + hOriginalSizeLen, shaBuffer), hShaLen);
+	uchar shaBuffer[32];
+	bool goodSha = !memcmp(compressed.constData() + hSigLen, hashSha256(compressed.constData() + hSigLen + hShaLen, compressedLen + hPropsLen + hOriginalSizeLen, shaBuffer), hShaLen);
 	if (!goodSha) {
-		LOG(("Update Error: bad SHA-384 hash of update file!"));
+		LOG(("Update Error: bad SHA-256 hash of update file!"));
 		return false;
 	}
 
@@ -326,11 +326,11 @@ bool UnpackUpdate(const QString &filepath) {
 	bool signatureValid = false;
 	if (ctx) {
 		if (EVP_PKEY_verify_init(ctx) > 0 &&
-			EVP_PKEY_CTX_set_signature_md(ctx, EVP_sha384()) > 0) {
-			if (EVP_PKEY_verify(ctx, (const uchar*)compressed.constData(), hSigLen, (const uchar*)(compressed.constData() + hSigLen), hShaLen) == 1) {
-				signatureValid = true;
+			EVP_PKEY_CTX_set_signature_md(ctx, EVP_sha256()) > 0) {
+				if (EVP_PKEY_verify(ctx, (const uchar*)compressed.constData(), hSigLen, (const uchar*)(compressed.constData() + hSigLen), hShaLen) == 1) {
+					signatureValid = true;
+				}
 			}
-		}
 		EVP_PKEY_CTX_free(ctx);
 	}
 
@@ -355,7 +355,7 @@ bool UnpackUpdate(const QString &filepath) {
 		ctx = EVP_PKEY_CTX_new(pbKey, nullptr);
 		if (ctx) {
 			if (EVP_PKEY_verify_init(ctx) > 0 &&
-				EVP_PKEY_CTX_set_signature_md(ctx, EVP_sha384()) > 0) {
+				EVP_PKEY_CTX_set_signature_md(ctx, EVP_sha256()) > 0) {
 				if (EVP_PKEY_verify(ctx, (const uchar*)compressed.constData(), hSigLen, (const uchar*)(compressed.constData() + hSigLen), hShaLen) == 1) {
 					signatureValid = true;
 				}
@@ -1706,12 +1706,12 @@ QString countAlphaVersionSignature(uint64 version) { // duplicated in packer.cpp
 
 	QByteArray signedData = (qstr("TelegramBeta_") + QString::number(version, 16).toLower()).toUtf8();
 
-	static const int32 shaSize = 48, keySize = 128;
+	[[maybe_unused]] static const int32 shaSize = 32, keySize = 128;
 
 	uchar shaBuffer[shaSize];
-	hashSha384(signedData.constData(), signedData.size(), shaBuffer); // count sha384
+	hashSha256(signedData.constData(), signedData.size(), shaBuffer); // count sha256
 
-	uint32 siglen = 0;
+	[[maybe_unused]] uint32 siglen = 0;
 
 	EVP_PKEY *prKey = [] {
 		const auto bio = MakeBIO(
@@ -1731,7 +1731,7 @@ QString countAlphaVersionSignature(uint64 version) { // duplicated in packer.cpp
 	bool signSuccess = false;
 	if (ctx) {
 		if (EVP_PKEY_sign_init(ctx) > 0 &&
-			EVP_PKEY_CTX_set_signature_md(ctx, EVP_sha384()) > 0) {
+			EVP_PKEY_CTX_set_signature_md(ctx, EVP_sha256()) > 0) {
 			
 			// First call to get length
 			if (EVP_PKEY_sign(ctx, nullptr, &siglen_t, (const uchar*)shaBuffer, shaSize) > 0) {

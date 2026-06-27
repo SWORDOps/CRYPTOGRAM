@@ -97,7 +97,7 @@ void ProcessZoom(
 		d.api->requestZoom(
 			zoomToken,
 			x
-		) | rpl::start(rpl::on_next_error_done([=](
+		) | rpl::on_next_error_done([=](
 				const Data::StatisticalGraph &graph) {
 			if (graph.chart) {
 				widget->setZoomedChartData(graph.chart, x, type);
@@ -165,7 +165,7 @@ void FillStatistic(
 			descriptor.api->requestZoom(
 				graphData.zoomToken,
 				0
-			) | rpl::start(rpl::on_next_error_done([=, graphPtr = &graphData](
+			) | rpl::on_next_error_done([=, graphPtr = &graphData](
 					const Data::StatisticalGraph &graph) mutable {
 				{
 					// Save the loaded async data to cache.
@@ -649,7 +649,7 @@ void InnerWidget::load() {
 	) | rpl::take(1) | rpl::on_next([=] {
 		if (!_contextId && !_storyId) {
 			descriptor.api->request(
-			) | rpl::start(rpl::on_done([=] {
+			) | rpl::on_done([=] {
 				_state.stats = Data::AnyStatistics{
 					descriptor.api->channelStats(),
 					descriptor.api->supergroupStats(),

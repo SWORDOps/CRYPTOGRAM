@@ -840,7 +840,7 @@ void Instance::playStreamed(
 	data->streamed->instance.lockPlayer();
 
 	data->streamed->instance.player().updates(
-	) | rpl::start(rpl::on_next_error([=](Streaming::Update &&update) {
+	) | rpl::on_next_error([=](Streaming::Update &&update) {
 		handleStreamingUpdate(data, std::move(update));
 	}, [=](Streaming::Error &&error) {
 		handleStreamingError(data, std::move(error));

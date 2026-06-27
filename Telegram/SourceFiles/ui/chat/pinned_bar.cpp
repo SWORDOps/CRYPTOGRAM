@@ -88,7 +88,7 @@ void PinnedBar::setContent(rpl::producer<Ui::MessageBarContent> content) {
 		copy
 	) | rpl::map([=](const MessageBarContent &content) {
 		return content.title.isEmpty() || content.text.text.isEmpty();
-	}) | rpl::start(rpl::on_next_done([=](bool hidden) {
+	}) | rpl::on_next_done([=](bool hidden) {
 		_shouldBeShown = !hidden;
 		if (!_forceHidden) {
 			_wrap.toggle(_shouldBeShown, anim::type::normal);

@@ -66,27 +66,27 @@ echo
 echo "TEST 1: Required files"
 echo "-------------------------------------"
 required_files=(
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp"
-    "TMessagesProj/jni/cryptogram/data_signal_protocol.cpp"
-    "TMessagesProj/jni/cryptogram/data_signal_protocol.h"
-    "TMessagesProj/jni/cryptogram/data_mls_protocol.cpp"
-    "TMessagesProj/jni/cryptogram/data_mls_protocol.h"
-    "TMessagesProj/jni/cryptogram/data_group_encryption.cpp"
-    "TMessagesProj/jni/cryptogram/data_group_encryption.h"
-    "TMessagesProj/jni/cryptogram/data_enhanced_privacy.cpp"
-    "TMessagesProj/jni/cryptogram/data_enhanced_privacy.h"
-    "TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt"
-    "TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DoubleRatchet.kt"
-    "TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MLSProtocol.kt"
-    "TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/EnhancedPrivacy.kt"
-    "TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java"
-    "TMessagesProj/src/main/java/org/telegram/ui/CryptogramSettingsActivity.java"
-    "TMessagesProj/src/main/java/org/telegram/ui/Components/CryptogramIndicator.java"
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp"
+    "telegram-android/TMessagesProj/jni/cryptogram/data/data_signal_protocol.cpp"
+    "telegram-android/TMessagesProj/jni/cryptogram/data/data_signal_protocol.h"
+    "telegram-android/TMessagesProj/jni/cryptogram/data/data_mls_protocol.cpp"
+    "telegram-android/TMessagesProj/jni/cryptogram/data/data_mls_protocol.h"
+    "telegram-android/TMessagesProj/jni/cryptogram/data/data_group_encryption.cpp"
+    "telegram-android/TMessagesProj/jni/cryptogram/data/data_group_encryption.h"
+    "telegram-android/TMessagesProj/jni/cryptogram/data/data_enhanced_privacy.cpp"
+    "telegram-android/TMessagesProj/jni/cryptogram/data/data_enhanced_privacy.h"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DoubleRatchet.kt"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MLSProtocol.kt"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/EnhancedPrivacy.kt"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/ui/CryptogramSettingsActivity.java"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/ui/Components/CryptogramIndicator.java"
     "tests/unit/test_cryptogram_features.cpp"
     "tests/unit/test_double_ratchet.cpp"
     "tests/unit/test_mls_protocol.cpp"
     "tests/unit/CMakeLists.txt"
-    "TMessagesProj/jni/CMakeLists.txt"
+    "telegram-android/TMessagesProj/jni/CMakeLists.txt"
     "docs/status/TEST_HARNESS_SCOPE.md"
 )
 
@@ -98,99 +98,158 @@ echo
 echo "TEST 2: JNI and API surface"
 echo "-------------------------------------"
 require_grep 'Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeInitializeSession' \
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
     "JNI DoubleRatchet initializeSession exists"
 require_grep 'Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeEncrypt' \
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
     "JNI DoubleRatchet encrypt exists"
 require_grep 'Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeDecrypt' \
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
     "JNI DoubleRatchet decrypt exists"
 require_grep 'Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeGetState' \
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
     "JNI DoubleRatchet getState exists"
 require_grep 'Java_org_telegram_messenger_cryptogram_MLSProtocol_nativeCreateGroup' \
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
     "JNI MLS createGroup exists"
 require_grep 'Java_org_telegram_messenger_cryptogram_MLSProtocol_nativeEncryptGroupMessage' \
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
     "JNI MLS encryptGroupMessage exists"
 require_grep 'Java_org_telegram_messenger_cryptogram_MLSProtocol_nativeDecryptGroupMessage' \
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
     "JNI MLS decryptGroupMessage exists"
 require_grep 'Java_org_telegram_messenger_cryptogram_MLSProtocol_nativeAddMember' \
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
     "JNI MLS addMember exists"
 require_grep 'Java_org_telegram_messenger_cryptogram_MLSProtocol_nativeRemoveMember' \
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
     "JNI MLS removeMember exists"
 require_grep 'Java_org_telegram_messenger_cryptogram_EnhancedPrivacy_nativeIsCryptogramUser' \
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
     "JNI EnhancedPrivacy isCryptogramUser exists"
 require_grep 'Java_org_telegram_messenger_cryptogram_CryptogramNative_nativeCheckDoubleRatchet' \
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
     "JNI native Double Ratchet self-check exists"
 require_grep 'Java_org_telegram_messenger_cryptogram_CryptogramNative_nativeCheckMLS' \
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
     "JNI native MLS self-check exists"
 require_grep 'System\.loadLibrary\("cryptogram"\)' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt" \
     "Kotlin native library load present"
 require_grep 'nativeCheckDoubleRatchet' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt" \
     "Kotlin Double Ratchet self-check binding present"
 require_grep 'nativeCheckMLS' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt" \
     "Kotlin MLS self-check binding present"
 require_grep 'System\.loadLibrary\("cryptogram"\)' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DoubleRatchet.kt" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DoubleRatchet.kt" \
     "DoubleRatchet native coupling present"
 require_grep 'System\.loadLibrary\("cryptogram"\)' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MLSProtocol.kt" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MLSProtocol.kt" \
     "MLS native coupling present"
 require_grep 'nativeIsCryptogramUser' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/EnhancedPrivacy.kt" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/EnhancedPrivacy.kt" \
     "EnhancedPrivacy native binding present"
 
 echo
 echo "TEST 3: Integration hooks"
 echo "-------------------------------------"
 require_grep 'encryptOutgoingMessage\(' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java" \
     "Outgoing encryption hook present"
 require_grep 'decryptIncomingMessage\(' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java" \
     "Incoming decryption hook present"
 require_grep 'CryptogramSettingsActivity' \
-    "TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java" \
     "Settings entry point present"
 require_grep 'toggleCryptogramDoubleRatchet' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
     "Double Ratchet toggle present"
 require_grep 'toggleCryptogramMLS' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
     "MLS toggle present"
 require_grep 'toggleCryptogramHideOnlineStatus' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
     "Hide online status toggle present"
 require_grep 'toggleCryptogramHideTypingIndicator' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
     "Hide typing indicator toggle present"
 require_grep 'toggleCryptogramHideReadReceipts' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
     "Hide read receipts toggle present"
 require_grep 'toggleCryptogramCuratedStickers' \
-    "TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
     "Curated stickers toggle present"
+
+echo
+echo "TEST 3b: OPSEC integration hooks"
+echo "-------------------------------------"
+require_grep 'Java_org_telegram_messenger_cryptogram_OPSECHelper_nativeWrapDpiEvasion' \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "JNI OPSECHelper DPI evasion exists"
+require_grep 'Java_org_telegram_messenger_cryptogram_OPSECHelper_nativeSecureWipe' \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "JNI OPSECHelper secure wipe exists"
+require_grep 'Java_org_telegram_messenger_cryptogram_OPSECHelper_nativeCheckPQC' \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "JNI OPSECHelper PQC check exists"
+require_grep 'nativeWrapDpiEvasion' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/OPSECHelper.kt" \
+    "Kotlin OPSECHelper DPI evasion binding present"
+require_grep 'isStylometryShieldEnabled' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/OPSECHelper.kt" \
+    "OPSECHelper stylometry shield check present"
+require_grep 'applyStylometry' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/OPSECHelper.kt" \
+    "OPSECHelper applyStylometry present"
+require_grep 'OPSECHelper' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java" \
+    "OPSECHelper wired into message pipeline"
+require_grep 'ThreatDetector' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java" \
+    "ThreatDetector wired into incoming message path"
+require_file "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/ThreatDetector.kt" \
+    "ThreatDetector.kt exists"
+require_file "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MediaMetadataHelper.kt" \
+    "MediaMetadataHelper.kt exists"
+require_grep 'toggleCryptogramPanicPassword' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
+    "Panic password toggle present"
+require_grep 'toggleCryptogramAntiForensics' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
+    "Anti-forensics toggle present"
+require_grep 'toggleCryptogramDpiEvasion' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
+    "DPI evasion toggle present"
+require_grep 'toggleCryptogramStylometryShield' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
+    "Stylometry shield toggle present"
+require_grep 'toggleCryptogramUtd' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
+    "UTD toggle present"
+require_grep 'setCryptogramQuantumSecurityLevel' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
+    "Quantum security level setter present"
+require_grep 'setCryptogramThreatDefenseLevel' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
+    "Threat defense level setter present"
+require_grep 'applyPreset' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/ui/CryptogramSettingsActivity.java" \
+    "OPSEC preset application present"
+require_grep 'opsecSectionRow' \
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/ui/CryptogramSettingsActivity.java" \
+    "OPSEC section row present in settings UI"
 
 echo
 echo "TEST 4: Build declarations and test wiring"
 echo "-------------------------------------"
-require_grep 'add_library\(cryptogram STATIC' \
-    "TMessagesProj/jni/CMakeLists.txt" \
-    "cryptogram static library declared"
+require_grep 'add_library\(cryptogram SHARED' \
+    "telegram-android/TMessagesProj/jni/CMakeLists.txt" \
+    "cryptogram shared library declared"
 require_grep 'target_link_libraries\(cryptogram' \
-    "TMessagesProj/jni/CMakeLists.txt" \
+    "telegram-android/TMessagesProj/jni/CMakeLists.txt" \
     "cryptogram linked into JNI target"
 require_grep 'test_cryptogram_features\.cpp' \
     "tests/unit/CMakeLists.txt" \
@@ -212,13 +271,13 @@ echo
 echo "TEST 5: Runtime gaps to review manually"
 echo "-------------------------------------"
 warn_grep 'Will call:' \
-    "TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
     "JNI wrapper still contains placeholder call paths"
 warn_grep 'placeholder implementation|placeholder packages|placeholder group ID' \
-    "TMessagesProj/jni/cryptogram/data_mls_protocol.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/data/data_mls_protocol.cpp" \
     "MLS implementation still contains placeholder logic"
 warn_grep 'HPKE encryption would be used here|Current implementation passes the secret through until HPKE path encryption lands|return the secret \(placeholder\)' \
-    "TMessagesProj/jni/cryptogram/data_mls_protocol.cpp" \
+    "telegram-android/TMessagesProj/jni/cryptogram/data/data_mls_protocol.cpp" \
     "MLS dormant UpdatePath helper still contains non-HPKE placeholder path-secret handling"
 
 echo

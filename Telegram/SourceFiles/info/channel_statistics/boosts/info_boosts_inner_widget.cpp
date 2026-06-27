@@ -288,7 +288,7 @@ void InnerWidget::load() {
 	_showFinished.events(
 	) | rpl::take(1) | rpl::on_next([=] {
 		api->request(
-		) | rpl::start(rpl::on_error_done([](const QString &error) {
+		) | rpl::on_error_done([](const QString &error) {
 		}, [=] {
 			_state = api->boostStatus();
 			_loaded.fire(true);

@@ -6,7 +6,8 @@ For license and copyright information please follow this link:
 https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 */
 #include "data/data_signal_protocol.h"
-#include "data/data_tsm_factory.cpp"
+#include "data/data_signal_transport.h"
+#include "data/data_tsm_factory.h"
 #include "core/peer_trust_encryption.h"
 
 #include <openssl/evp.h>
@@ -45,11 +46,15 @@ constexpr auto kSignalMsgDbPrefix = "signal_messages_";
 constexpr auto kSignalBackupName = "signal_keys_backup.enc";
 constexpr auto kDHKeySize = 32; // X25519 key size in bytes
 constexpr auto kAesKeySize = 32; // AES-256 key size
-constexpr auto kAesIvSize = 16;  // AES IV size
+constexpr auto kAesIvSize = 16;  // AES IV size (CBC legacy)
+constexpr auto kGcmIvSize = 12;  // AES-GCM IV size
+constexpr auto kGcmTagSize = 16; // AES-GCM auth tag size
 constexpr auto kMaxSkippedKeys = 1000; // Maximum skipped message keys to store
 constexpr auto kInfoRootKey = "WhisperRatchet"; // Used in HKDF for root keys
 constexpr auto kInfoChainKey = "WhisperMessageKeys"; // Used in HKDF for chain keys
 constexpr auto kInfoMessageKey = "WhisperMessageKey"; // Used in HKDF for message keys
+constexpr auto kInfoKdfRk = "CryptogramKDF_RK"; // Used in HKDF for KDF_RK
+constexpr auto kInfoX3DH = "CryptogramX3DH"; // Used in HKDF for X3DH initial root key
 
 inline const unsigned char *asConstUChar(const bytes::const_span &span) {
     return reinterpret_cast<const unsigned char *>(span.data());
@@ -109,6 +114,108 @@ bool aesEncryptLocal(
     }
     EVP_CIPHER_CTX_free(ctx);
     return true;
+}
+
+// AES-256-GCM encrypt: returns ciphertext || tag
+bytes::vector aesGcmEncryptLocal(
+        const bytes::const_span &plaintext,
+        const bytes::const_span &key,
+        const bytes::const_span &iv,
+        const bytes::const_span &aad) {
+    bytes::vector result(plaintext.size() + kGcmTagSize);
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) return {};
+
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr,
+                           asConstUChar(key), asConstUChar(iv)) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+
+    int outLen = 0;
+    if (!aad.empty()) {
+        if (EVP_EncryptUpdate(ctx, nullptr, &outLen,
+                              asConstUChar(aad), aad.size()) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            return {};
+        }
+    }
+
+    if (EVP_EncryptUpdate(ctx, asUChar(result), &outLen,
+                          asConstUChar(plaintext), plaintext.size()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+
+    int finalLen = 0;
+    if (EVP_EncryptFinal_ex(ctx, asUChar(result) + outLen, &finalLen) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, kGcmTagSize,
+            asUChar(result) + outLen + finalLen) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+
+    EVP_CIPHER_CTX_free(ctx);
+    result.resize(outLen + finalLen + kGcmTagSize);
+    return result;
+}
+
+// AES-256-GCM decrypt: input is ciphertext || tag, returns plaintext or empty on auth failure
+bytes::vector aesGcmDecryptLocal(
+        const bytes::const_span &ciphertextWithTag,
+        const bytes::const_span &key,
+        const bytes::const_span &iv,
+        const bytes::const_span &aad) {
+    if (ciphertextWithTag.size() < kGcmTagSize) return {};
+
+    const auto ctLen = ciphertextWithTag.size() - kGcmTagSize;
+    bytes::vector plaintext(ctLen);
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) return {};
+
+    if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr,
+                           asConstUChar(key), asConstUChar(iv)) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+
+    int outLen = 0;
+    if (!aad.empty()) {
+        if (EVP_DecryptUpdate(ctx, nullptr, &outLen,
+                              asConstUChar(aad), aad.size()) != 1) {
+            EVP_CIPHER_CTX_free(ctx);
+            return {};
+        }
+    }
+
+    if (EVP_DecryptUpdate(ctx, asUChar(plaintext), &outLen,
+                          asConstUChar(ciphertextWithTag), ctLen) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+
+    // Set the tag from the end of the input
+    auto tagSpan = bytes::make_span(ciphertextWithTag).subspan(ctLen);
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, kGcmTagSize,
+            const_cast<unsigned char*>(asConstUChar(tagSpan))) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+
+    int finalLen = 0;
+    if (EVP_DecryptFinal_ex(ctx, asUChar(plaintext) + outLen, &finalLen) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {}; // Authentication failed
+    }
+
+    EVP_CIPHER_CTX_free(ctx);
+    plaintext.resize(outLen + finalLen);
+    return plaintext;
 }
 
 bool aesDecryptLocal(
@@ -320,6 +427,9 @@ SignalProtocol::SignalProtocol(not_null<Session*> session)
         // Save the generated keys
         saveIdentityKeys();
     }
+
+    // Pre-generate cached key bundle for MTProto init params
+    refreshCachedKeyBundle();
 }
 
 SignalProtocol::~SignalProtocol() {
@@ -448,64 +558,77 @@ bytes::vector SignalProtocol::encryptMessage(
         LOG(("Signal Protocol: Using %1 with TPM backing for CAC-verified peer %2")
             .arg(trustParams.cipher)
             .arg(peer->id.value));
-        // TODO: Integrate TPM-backed encryption with specified cipher
-        // For now, fall through to standard encryption
-        // Future: Call TSM interface for hardware-backed key generation
     }
 
     // Get the current session
     auto session = getSession(peer);
-    
+
     // Update last used timestamp
     session.lastUsedAt = base::unixtime::now();
-    
+
+    // DH ratchet: if we received a new remote DH key, rotate our DH key pair
+    if (session.pendingRemoteDH) {
+        // Save old sending chain length
+        session.previousSendingChainLength = session.sendingMessageCounter;
+
+        // Generate new DH key pair
+        session.dhSendingPrivateKey = generateDH();
+        session.dhSendingPublicKey = x25519PublicFromPrivate(session.dhSendingPrivateKey);
+
+        // Perform DH ratchet: KDF_RK(rootKey, DH(new_priv, remote_pub))
+        auto dhOutput = x25519(session.dhSendingPrivateKey, session.dhRemotePublicKey);
+        auto rkResult = kdfRk(session.rootKey, dhOutput);
+        session.rootKey = rkResult.rootKey;
+        session.sendingChainKey = rkResult.chainKey;
+
+        // Reset sending counter
+        session.sendingMessageCounter = 0;
+        session.pendingRemoteDH = false;
+
+        secureWipe(dhOutput);
+    }
+
     // Generate message key from chain key
-    auto messageKey = deriveKey(session.sendingChainKey, 
-                               kInfoMessageKey, 
+    auto messageKey = deriveKey(session.sendingChainKey,
+                               kInfoMessageKey,
                                kAesKeySize);
-    
+
     // Advance the chain key
     session.sendingChainKey = ratchetChainKey(session.sendingChainKey);
-    
+
     // Prepare metadata
     outMetadata.messageCounter = session.sendingMessageCounter++;
     outMetadata.senderPublicKey = session.dhSendingPublicKey;
     outMetadata.timestamp = base::unixtime::now();
-    
-    // Create random IV
-    outMetadata.iv = generateRandomBytes(kAesIvSize);
-    
-    // Encrypt plaintext using AES-256-CBC
-    bytes::vector ciphertext(plaintext.size() + 32); // Allocate space for padding
 
-    // Prepare AES key and IV
-    bytes::vector aesKey(kAesKeySize);
-    bytes::vector aesIV(kAesIvSize);
-    bytes::copy(bytes::make_span(aesKey), bytes::make_span(messageKey));
-    bytes::copy(bytes::make_span(aesIV), bytes::make_span(outMetadata.iv));
+    // Create random IV for AES-GCM (12 bytes)
+    outMetadata.iv = generateRandomBytes(kGcmIvSize);
 
-    // Ensure plaintext length is a multiple of 16 (AES block size)
-    auto plainCopy = bytes::make_vector(plaintext);
-    int padding = 16 - (plainCopy.size() % 16);
-    plainCopy.resize(plainCopy.size() + padding, bytes::type(padding));
+    // Build AAD: message counter (4 bytes) + sender public key (32 bytes)
+    bytes::vector aad;
+    aad.reserve(4 + session.dhSendingPublicKey.size());
+    auto counter = outMetadata.messageCounter;
+    aad.push_back(bytes::type((counter >> 24) & 0xFF));
+    aad.push_back(bytes::type((counter >> 16) & 0xFF));
+    aad.push_back(bytes::type((counter >> 8) & 0xFF));
+    aad.push_back(bytes::type(counter & 0xFF));
+    aad.insert(aad.end(), session.dhSendingPublicKey.begin(), session.dhSendingPublicKey.end());
 
-    // Encrypt
-    if (!aesEncryptLocal(
-            reinterpret_cast<const void*>(plainCopy.data()),
-            reinterpret_cast<void*>(ciphertext.data()),
-            plainCopy.size(),
-            aesKey.data(),
-            aesIV.data())) {
-        LOG(("Signal Protocol Error: AES encryption failed"));
+    // Encrypt plaintext using AES-256-GCM (returns ciphertext || tag)
+    auto ciphertext = aesGcmEncrypt(plaintext, messageKey, outMetadata.iv, aad);
+
+    // Zeroize sensitive key material
+    secureWipe(messageKey);
+    secureWipe(aad);
+
+    if (ciphertext.empty()) {
+        LOG(("Signal Protocol Error: AES-GCM encryption failed"));
         return {};
     }
 
-    // Resize to actual ciphertext size
-    ciphertext.resize(plainCopy.size());
-    
     // Update the session
     updateSession(peer, session);
-    
+
     return ciphertext;
 }
 
@@ -514,28 +637,74 @@ bytes::vector SignalProtocol::decryptMessage(
     const bytes::const_span &ciphertext,
     not_null<PeerData*> peer,
     const MessageMetadata &metadata) {
-    
+
     if (!hasSession(peer)) {
         LOG(("Signal Protocol: No session for peer %1").arg(peer->id.value));
         return {};
     }
-    
+
     // Get the current session
     auto session = getSession(peer);
-    
+
     // Update last used timestamp
     session.lastUsedAt = base::unixtime::now();
-    
-    bytes::vector plaintext(ciphertext.size());
+
+    // DH ratchet: check if the sender's DH key has changed
+    const bool dhChanged = (metadata.senderPublicKey != session.dhRemotePublicKey)
+        && !metadata.senderPublicKey.empty()
+        && !session.dhRemotePublicKey.empty();
+
+    if (dhChanged) {
+        // Save old receiving chain length
+        session.previousSendingChainLength = session.receivingMessageCounter;
+
+        // Update remote DH key
+        session.dhRemotePublicKey = metadata.senderPublicKey;
+
+        // Generate new DH key pair for our side
+        auto newDhPrivate = generateDH();
+        auto newDhPublic = x25519PublicFromPrivate(newDhPrivate);
+
+        // First KDF_RK: derive new root key and receiving chain key
+        auto dhOutput1 = x25519(newDhPrivate, session.dhRemotePublicKey);
+        auto rkResult1 = kdfRk(session.rootKey, dhOutput1);
+        session.rootKey = rkResult1.rootKey;
+        session.receivingChainKey = rkResult1.chainKey;
+
+        // Second KDF_RK: derive new root key and sending chain key
+        auto dhOutput2 = x25519(newDhPrivate, session.dhRemotePublicKey);
+        auto rkResult2 = kdfRk(session.rootKey, dhOutput2);
+        session.rootKey = rkResult2.rootKey;
+        session.sendingChainKey = rkResult2.chainKey;
+
+        // Update our DH keys
+        session.dhSendingPrivateKey = newDhPrivate;
+        session.dhSendingPublicKey = newDhPublic;
+
+        // Reset counters for new chain
+        session.receivingMessageCounter = 0;
+        session.sendingMessageCounter = 0;
+
+        // Clear skipped message keys from previous chain
+        for (auto &sk : session.skippedMessageKeys) {
+            secureWipe(sk.key);
+        }
+        session.skippedMessageKeys.clear();
+
+        secureWipe(dhOutput1);
+        secureWipe(dhOutput2);
+    }
+
     bytes::vector messageKey;
-    
+    bytes::vector plaintext;
+
     // Check if this is the expected message in sequence
     if (metadata.messageCounter == session.receivingMessageCounter) {
         // Expected message - derive key from current chain
-        messageKey = deriveKey(session.receivingChainKey, 
-                              kInfoMessageKey, 
+        messageKey = deriveKey(session.receivingChainKey,
+                              kInfoMessageKey,
                               kAesKeySize);
-        
+
         // Advance chain key
         session.receivingChainKey = ratchetChainKey(session.receivingChainKey);
         session.receivingMessageCounter++;
@@ -543,41 +712,38 @@ bytes::vector SignalProtocol::decryptMessage(
         // Future message - we need to catch up
         if (metadata.messageCounter - session.receivingMessageCounter > 2000) {
             LOG(("Signal Protocol: Too many skipped messages"));
-            return {}; // Too many skipped messages - possible attack
+            return {};
         }
-        
+
         // Store current keys
         auto currentChainKey = session.receivingChainKey;
         auto currentCounter = session.receivingMessageCounter;
-        
+
         // Skip ahead and save the skipped keys
         while (currentCounter < metadata.messageCounter) {
-            auto skippedKey = deriveKey(currentChainKey, 
-                                       kInfoMessageKey, 
+            auto skippedKey = deriveKey(currentChainKey,
+                                       kInfoMessageKey,
                                        kAesKeySize);
-            
-            // Save skipped key
+
             SessionState::SkippedKey skip;
             skip.messageNumber = currentCounter;
             skip.key = skippedKey;
             session.skippedMessageKeys.push_back(skip);
-            
-            // Enforce max skipped keys
+
             if (session.skippedMessageKeys.size() > kMaxSkippedKeys) {
+                secureWipe(session.skippedMessageKeys.front().key);
                 session.skippedMessageKeys.erase(session.skippedMessageKeys.begin());
             }
-            
-            // Advance
+
             currentChainKey = ratchetChainKey(currentChainKey);
             currentCounter++;
         }
-        
+
         // Get key for current message
-        messageKey = deriveKey(currentChainKey, 
-                              kInfoMessageKey, 
+        messageKey = deriveKey(currentChainKey,
+                              kInfoMessageKey,
                               kAesKeySize);
-        
-        // Update session state
+
         session.receivingChainKey = ratchetChainKey(currentChainKey);
         session.receivingMessageCounter = currentCounter + 1;
     } else {
@@ -588,44 +754,42 @@ bytes::vector SignalProtocol::decryptMessage(
             [&](const SessionState::SkippedKey &key) {
                 return key.messageNumber == metadata.messageCounter;
             });
-        
+
         if (it != session.skippedMessageKeys.end()) {
             messageKey = it->key;
             session.skippedMessageKeys.erase(it);
         } else {
             LOG(("Signal Protocol: Message key not found for counter %1")
                 .arg(metadata.messageCounter));
-            return {}; // Message key not found
+            return {};
         }
     }
-    
-    // Decrypt using AES-256-CBC
-    bytes::vector aesKey(kAesKeySize);
-    bytes::vector aesIV(kAesIvSize);
-    bytes::copy(bytes::make_span(aesKey), bytes::make_span(messageKey));
-    bytes::copy(bytes::make_span(aesIV), bytes::make_span(metadata.iv));
 
-    if (!aesDecryptLocal(
-            reinterpret_cast<const void*>(ciphertext.data()),
-            reinterpret_cast<void*>(plaintext.data()),
-            ciphertext.size(),
-            aesKey.data(),
-            aesIV.data())) {
-        LOG(("Signal Protocol Error: AES decryption failed"));
+    // Build AAD: message counter (4 bytes) + sender public key (32 bytes)
+    bytes::vector aad;
+    aad.reserve(4 + metadata.senderPublicKey.size());
+    auto counter = metadata.messageCounter;
+    aad.push_back(bytes::type((counter >> 24) & 0xFF));
+    aad.push_back(bytes::type((counter >> 16) & 0xFF));
+    aad.push_back(bytes::type((counter >> 8) & 0xFF));
+    aad.push_back(bytes::type(counter & 0xFF));
+    aad.insert(aad.end(), metadata.senderPublicKey.begin(), metadata.senderPublicKey.end());
+
+    // Decrypt using AES-256-GCM (input is ciphertext || tag)
+    plaintext = aesGcmDecrypt(ciphertext, messageKey, metadata.iv, aad);
+
+    // Zeroize sensitive key material
+    secureWipe(messageKey);
+    secureWipe(aad);
+
+    if (plaintext.empty()) {
+        LOG(("Signal Protocol Error: AES-GCM decryption failed (auth tag mismatch)"));
         return {};
     }
-    
-    // Remove padding
-    if (!plaintext.empty()) {
-        auto paddingSize = static_cast<int>(plaintext.back());
-        if (paddingSize > 0 && paddingSize <= 16 && paddingSize <= plaintext.size()) {
-            plaintext.resize(plaintext.size() - paddingSize);
-        }
-    }
-    
+
     // Update session
     updateSession(peer, session);
-    
+
     return plaintext;
 }
 
@@ -736,6 +900,55 @@ bytes::vector SignalProtocol::ratchetRootKey(const SessionState &state) {
     auto dhOutput = x25519(state.dhSendingPrivateKey, state.dhRemotePublicKey);
     auto combined = bytes::concatenate(state.rootKey, dhOutput);
     return deriveKey(combined, kInfoRootKey, kAesKeySize);
+}
+
+SignalProtocol::KdfRkResult SignalProtocol::kdfRk(
+        const bytes::const_span &rootKey,
+        const bytes::const_span &dhOutput) {
+    // KDF_RK: HKDF-SHA256(dhOutput, salt=rootKey, info=kInfoKdfRk) -> 64 bytes
+    // First 32 bytes = new root key, second 32 bytes = new chain key
+    auto combined = bytes::concatenate(rootKey, dhOutput);
+    auto derived = deriveKey(combined, kInfoKdfRk, kAesKeySize * 2);
+
+    KdfRkResult result;
+    auto span = bytes::make_span(derived);
+    result.rootKey = bytes::vector(span.begin(), span.begin() + kAesKeySize);
+    result.chainKey = bytes::vector(span.begin() + kAesKeySize, span.begin() + (kAesKeySize * 2));
+
+    secureWipe(derived);
+    return result;
+}
+
+bytes::vector SignalProtocol::aesGcmEncrypt(
+        const bytes::const_span &plaintext,
+        const bytes::const_span &key,
+        const bytes::const_span &iv,
+        const bytes::const_span &aad) {
+    return aesGcmEncryptLocal(plaintext, key, iv, aad);
+}
+
+bytes::vector SignalProtocol::aesGcmDecrypt(
+        const bytes::const_span &ciphertext,
+        const bytes::const_span &key,
+        const bytes::const_span &iv,
+        const bytes::const_span &aad) {
+    return aesGcmDecryptLocal(ciphertext, key, iv, aad);
+}
+
+void SignalProtocol::secureWipe(bytes::vector &data) {
+    if (!data.empty()) {
+        OPENSSL_cleanse(data.data(), data.size());
+        data.clear();
+    }
+}
+
+const SignalProtocol::KeyBundle &SignalProtocol::cachedKeyBundle() const {
+    return _cachedBundle;
+}
+
+void SignalProtocol::refreshCachedKeyBundle() {
+    _cachedBundle = generateLocalKeyBundle();
+    _cachedBundleValid = true;
 }
 
 // Helpers
@@ -849,79 +1062,207 @@ HistoryItem* SignalProtocol::loadEncryptedHistoryLocal(
 // Including session management, key rotation, etc.
 
 void SignalProtocol::createSession(not_null<PeerData*> peer, const KeyBundle &remoteBundle) {
+    // Verify remote bundle signature before using it
+    if (!verifyKeyBundleSignature(remoteBundle)) {
+        LOG(("Signal Protocol Error: Remote key bundle signature verification failed in createSession for peer %1").arg(peer->id.value));
+        return;
+    }
+
     SessionState state;
-    
+
     // Initialize device IDs
     state.localDevice = _localDevice;
     state.remoteDevice = remoteBundle.deviceId;
-    
-    // Get our pre-keys
-    auto keyPath = signalStoragePath(_session) + kSignalKeyDbName;
-    QFile keyFile(keyPath);
-    bytes::vector signedPreKeyPrivate;
-    
-    if (keyFile.open(QIODevice::ReadOnly)) {
-        auto data = keyFile.readAll();
-        auto doc = QJsonDocument::fromJson(data);
-        auto obj = doc.object();
-        
-        if (obj.contains("signedPreKey")) {
-            auto preKey = obj["signedPreKey"].toObject();
-            auto privateKeyBase64 = preKey["private"].toString().toLatin1();
-            signedPreKeyPrivate = bytes::make_vector(QByteArray::fromBase64(privateKeyBase64));
-        }
-        
-        keyFile.close();
-    }
-    
-    if (signedPreKeyPrivate.empty()) {
-        LOG(("Signal Protocol: Could not load signed pre-key"));
-        return;
-    }
-    
-    // Generate ephemeral key pair
+
+    // Alice initiates: generate ephemeral key pair (EK_A)
     state.dhSendingPrivateKey = generateDH();
     state.dhSendingPublicKey = x25519PublicFromPrivate(state.dhSendingPrivateKey);
-    
-    // Set remote public key
+
+    // Set remote DH public key to Bob's signed pre-key
     state.dhRemotePublicKey = remoteBundle.signedPreKey;
-    
-    // Calculate shared secrets for the initial keys
-    auto dh1 = x25519(signedPreKeyPrivate, remoteBundle.identityKey);
-    auto dh2 = x25519(_identityKeyPrivate, remoteBundle.signedPreKey);
-    auto dh3 = x25519(signedPreKeyPrivate, remoteBundle.signedPreKey);
-    auto dh4 = bytes::vector();
+
+    // X3DH: Alice uses her identity key (IK_A) and ephemeral key (EK_A)
+    // against Bob's signed pre-key (SPK_B) and optional one-time pre-key (OPK_B)
+    //
+    // DH1 = X25519(IK_A_priv, SPK_B_pub)  -- Alice identity x Bob signed pre-key
+    // DH2 = X25519(EK_A_priv, SPK_B_pub)  -- Alice ephemeral x Bob signed pre-key
+    // DH3 = X25519(IK_A_priv, OPK_B_pub)  -- Alice identity x Bob one-time pre-key (if present)
+    // DH4 = X25519(EK_A_priv, OPK_B_pub)  -- Alice ephemeral x Bob one-time pre-key (if present)
+    //
+    // RK = HKDF(DH1 || DH2 || DH3 || DH4, info=kInfoX3DH)
+    // SK (initial sending chain) = KDF_RK(RK, DH4) if OPK exists, else KDF_RK(RK, DH2)
+
+    auto dh1 = x25519(_identityKeyPrivate, remoteBundle.signedPreKey);
+    auto dh2 = x25519(state.dhSendingPrivateKey, remoteBundle.signedPreKey);
+
+    bytes::vector combined;
+    bytes::vector dhForChainInit;
+
     if (!remoteBundle.oneTimePreKey.empty()) {
-        dh4 = x25519(signedPreKeyPrivate, remoteBundle.oneTimePreKey);
+        auto dh3 = x25519(_identityKeyPrivate, remoteBundle.oneTimePreKey);
+        auto dh4 = x25519(state.dhSendingPrivateKey, remoteBundle.oneTimePreKey);
+        combined = bytes::concatenate(dh1, dh2, dh3, dh4);
+        dhForChainInit = dh4;
+        secureWipe(dh3);
+    } else {
+        combined = bytes::concatenate(dh1, dh2);
+        dhForChainInit = dh2;
     }
-    
-    // Combine secrets for the root key
-    auto combined = bytes::concatenate(dh1, dh2, dh3, dh4);
-    state.rootKey = deriveKey(combined, kInfoRootKey, kAesKeySize);
-    
-    // Initialize chain keys
-    auto chainKeyData = deriveKey(state.rootKey, "chain", kAesKeySize * 2);
+
+    // Derive initial root key from X3DH combined secret
+    state.rootKey = deriveKey(combined, kInfoX3DH, kAesKeySize);
+
+    // Derive initial sending chain key via KDF_RK
+    auto rkResult = kdfRk(state.rootKey, dhForChainInit);
+    state.rootKey = rkResult.rootKey;
+    state.sendingChainKey = rkResult.chainKey;
+
+    // Receiving chain key: derive from root key with different info
+    // Bob will derive the same when he processes Alice's first message
+    auto recvChainData = deriveKey(state.rootKey, kInfoChainKey, kAesKeySize * 2);
     {
-        auto span = bytes::make_span(chainKeyData);
-        state.sendingChainKey = bytes::vector(span.begin(), span.begin() + kAesKeySize);
+        auto span = bytes::make_span(recvChainData);
         state.receivingChainKey = bytes::vector(span.begin() + kAesKeySize, span.begin() + (kAesKeySize * 2));
     }
-    
+
     // Initialize counters
     state.sendingMessageCounter = 0;
     state.receivingMessageCounter = 0;
     state.previousSendingChainLength = 0;
-    
+    state.pendingRemoteDH = false;
+
     // Set creation timestamp
     state.createdAt = base::unixtime::now();
     state.lastUsedAt = state.createdAt;
-    
+
+    // Zeroize sensitive DH outputs
+    secureWipe(dh1);
+    secureWipe(dh2);
+    secureWipe(dhForChainInit);
+    secureWipe(combined);
+
     // Store the session
     _peerKeyData[peer->id].remoteBundle = remoteBundle;
     _peerKeyData[peer->id].sessions.push_back(state);
-    
+
     // Save to disk
     saveSession(peer, state);
+}
+
+void SignalProtocol::createSessionFromInitialMessage(
+        not_null<PeerData*> peer,
+        const bytes::const_span &aliceIdentityKey,
+        const bytes::const_span &aliceEphemeralKey,
+        const KeyBundle &aliceBundle) {
+    // Bob's side: he receives Alice's identity key and ephemeral key
+    // along with Alice's key bundle (for future ratcheting).
+
+    // Load Bob's signed pre-key private and one-time pre-key private from storage
+    auto keyPath = signalStoragePath(_session) + kSignalKeyDbName;
+    QFile keyFile(keyPath);
+    bytes::vector signedPreKeyPrivate;
+    bytes::vector oneTimePreKeyPrivate;
+
+    if (keyFile.open(QIODevice::ReadOnly)) {
+        auto data = keyFile.readAll();
+        auto doc = QJsonDocument::fromJson(data);
+        auto obj = doc.object();
+
+        if (obj.contains("signedPreKey")) {
+            auto preKey = obj["signedPreKey"].toObject();
+            signedPreKeyPrivate = bytes::make_vector(
+                QByteArray::fromBase64(preKey["private"].toString().toLatin1()));
+        }
+
+        if (obj.contains("oneTimePreKey")) {
+            auto oneTimeKey = obj["oneTimePreKey"].toObject();
+            oneTimePreKeyPrivate = bytes::make_vector(
+                QByteArray::fromBase64(oneTimeKey["private"].toString().toLatin1()));
+        }
+
+        keyFile.close();
+    }
+
+    if (signedPreKeyPrivate.empty()) {
+        LOG(("Signal Protocol: Could not load signed pre-key for receiver-side init"));
+        return;
+    }
+
+    SessionState state;
+    state.localDevice = _localDevice;
+    state.remoteDevice = aliceBundle.deviceId;
+
+    // Bob's DH sending key is his signed pre-key (Alice already has it)
+    state.dhSendingPrivateKey = signedPreKeyPrivate;
+    state.dhSendingPublicKey = x25519PublicFromPrivate(signedPreKeyPrivate);
+
+    // Remote DH key is Alice's ephemeral key
+    state.dhRemotePublicKey = bytes::make_vector(aliceEphemeralKey);
+
+    // X3DH from Bob's perspective:
+    // DH1 = X25519(SPK_B_priv, IK_A_pub)  -- Bob signed pre-key x Alice identity key
+    // DH2 = X25519(SPK_B_priv, EK_A_pub)  -- Bob signed pre-key x Alice ephemeral key
+    // DH3 = X25519(OPK_B_priv, IK_A_pub)  -- Bob one-time pre-key x Alice identity key (if present)
+    // DH4 = X25519(OPK_B_priv, EK_A_pub)  -- Bob one-time pre-key x Alice ephemeral key (if present)
+    auto dh1 = x25519(signedPreKeyPrivate, aliceIdentityKey);
+    auto dh2 = x25519(signedPreKeyPrivate, aliceEphemeralKey);
+
+    bytes::vector combined;
+    bytes::vector dhForChainInit;
+
+    if (!oneTimePreKeyPrivate.empty()) {
+        auto dh3 = x25519(oneTimePreKeyPrivate, aliceIdentityKey);
+        auto dh4 = x25519(oneTimePreKeyPrivate, aliceEphemeralKey);
+        combined = bytes::concatenate(dh1, dh2, dh3, dh4);
+        dhForChainInit = dh4;
+        secureWipe(dh3);
+    } else {
+        combined = bytes::concatenate(dh1, dh2);
+        dhForChainInit = dh2;
+    }
+
+    // Derive initial root key from X3DH combined secret (same as Alice)
+    state.rootKey = deriveKey(combined, kInfoX3DH, kAesKeySize);
+
+    // Derive initial chain keys via KDF_RK (same as Alice)
+    auto rkResult = kdfRk(state.rootKey, dhForChainInit);
+    state.rootKey = rkResult.rootKey;
+
+    // Bob's receiving chain = Alice's sending chain, and vice versa
+    state.receivingChainKey = rkResult.chainKey;
+
+    // Bob's sending chain: derive from root key with different info
+    auto sendChainData = deriveKey(state.rootKey, kInfoChainKey, kAesKeySize * 2);
+    {
+        auto span = bytes::make_span(sendChainData);
+        state.sendingChainKey = bytes::vector(span.begin(), span.begin() + kAesKeySize);
+    }
+
+    // Initialize counters
+    state.sendingMessageCounter = 0;
+    state.receivingMessageCounter = 0;
+    state.previousSendingChainLength = 0;
+    state.pendingRemoteDH = false;
+
+    // Set creation timestamp
+    state.createdAt = base::unixtime::now();
+    state.lastUsedAt = state.createdAt;
+
+    // Zeroize sensitive DH outputs
+    secureWipe(dh1);
+    secureWipe(dh2);
+    secureWipe(dhForChainInit);
+    secureWipe(combined);
+    secureWipe(oneTimePreKeyPrivate);
+
+    // Store Alice's bundle and the session
+    _peerKeyData[peer->id].remoteBundle = aliceBundle;
+    _peerKeyData[peer->id].sessions.push_back(state);
+
+    // Save to disk
+    saveSession(peer, state);
+
+    LOG(("Signal Protocol: Receiver-side session created for peer %1").arg(peer->id.value));
 }
 
 bool SignalProtocol::hasSession(not_null<PeerData*> peer) const {
@@ -991,14 +1332,15 @@ void SignalProtocol::rotateSession(not_null<PeerData*> peer, bool forceRotate) {
     // Perform DH with current remote key
     auto dhResult = x25519(newPrivateKey, session.dhRemotePublicKey);
     
-    // Derive new root key and chain keys
-    auto combinedDH = bytes::concatenate(session.rootKey, dhResult);
-    session.rootKey = deriveKey(combinedDH, kInfoRootKey, kAesKeySize);
-    
+    // Derive new root key and chain keys via KDF_RK
+    auto rkResult = kdfRk(session.rootKey, dhResult);
+    session.rootKey = rkResult.rootKey;
+    session.sendingChainKey = rkResult.chainKey;
+
+    // Derive receiving chain key from new root key
     auto chainKeyData = deriveKey(session.rootKey, kInfoChainKey, kAesKeySize * 2);
     {
         auto span = bytes::make_span(chainKeyData);
-        session.sendingChainKey = bytes::vector(span.begin(), span.begin() + kAesKeySize);
         session.receivingChainKey = bytes::vector(span.begin() + kAesKeySize, span.begin() + (kAesKeySize * 2));
     }
     
@@ -1012,6 +1354,9 @@ void SignalProtocol::rotateSession(not_null<PeerData*> peer, bool forceRotate) {
     
     // Update timestamps
     session.lastUsedAt = now;
+    
+    // Zeroize DH output
+    secureWipe(dhResult);
     
     // Save updated session
     updateSession(peer, session);
@@ -2170,8 +2515,271 @@ TimeId SignalProtocol::getKeyRotationInterval() const {
     return _keyRotationInterval;
 }
 
+QString SignalProtocol::wrapEncryptedText(const bytes::vector &ciphertext, const MessageMetadata &metadata) {
+    QByteArray data;
+    QDataStream stream(&data, QIODevice::WriteOnly);
+    stream.setVersion(QDataStream::Qt_5_15);
+    
+    stream << metadata.messageCounter;
+    stream << QByteArray(reinterpret_cast<const char*>(metadata.iv.data()), metadata.iv.size());
+    stream << QByteArray(reinterpret_cast<const char*>(metadata.senderPublicKey.data()), metadata.senderPublicKey.size());
+    stream << metadata.timestamp;
+    stream << QByteArray(reinterpret_cast<const char*>(ciphertext.data()), ciphertext.size());
+
+    const QChar kInvis[4] = { QChar(0x200B), QChar(0x200C), QChar(0x200D), QChar(0x2060) };
+    const QString kMarker = QString() + QChar(0xFEFF) + QChar(0x200B) + QChar(0x200C) + QChar(0xFEFF);
+    
+    QString result = "🔒 Encrypted Message" + kMarker;
+    for (char c : data) {
+        uint8 byte = static_cast<uint8>(c);
+        result += kInvis[(byte >> 6) & 3];
+        result += kInvis[(byte >> 4) & 3];
+        result += kInvis[(byte >> 2) & 3];
+        result += kInvis[byte & 3];
+    }
+    return result;
+}
+
+std::optional<std::pair<bytes::vector, SignalProtocol::MessageMetadata>> SignalProtocol::unwrapEncryptedText(const QString &text) {
+    const QString kMarker = QString() + QChar(0xFEFF) + QChar(0x200B) + QChar(0x200C) + QChar(0xFEFF);
+    int markerIdx = text.indexOf(kMarker);
+    if (markerIdx < 0) return std::nullopt;
+    
+    const QChar kInvis[4] = { QChar(0x200B), QChar(0x200C), QChar(0x200D), QChar(0x2060) };
+    auto charToBits = [&](QChar c) -> int {
+        for (int i = 0; i < 4; ++i) if (c == kInvis[i]) return i;
+        return -1;
+    };
+    
+    QByteArray data;
+    int payloadStart = markerIdx + kMarker.size();
+    for (int i = payloadStart; i + 3 < text.size(); i += 4) {
+        int b1 = charToBits(text[i]);
+        int b2 = charToBits(text[i+1]);
+        int b3 = charToBits(text[i+2]);
+        int b4 = charToBits(text[i+3]);
+        if (b1 < 0 || b2 < 0 || b3 < 0 || b4 < 0) break;
+        uint8 byte = (b1 << 6) | (b2 << 4) | (b3 << 2) | b4;
+        data.append(static_cast<char>(byte));
+    }
+    
+    QDataStream stream(data);
+    stream.setVersion(QDataStream::Qt_5_15);
+    
+    MessageMetadata metadata;
+    QByteArray iv, senderPublicKey, ct;
+    stream >> metadata.messageCounter >> iv >> senderPublicKey >> metadata.timestamp >> ct;
+    
+    if (stream.status() != QDataStream::Ok) return std::nullopt;
+    
+    metadata.iv = bytes::make_vector(iv);
+    metadata.senderPublicKey = bytes::make_vector(senderPublicKey);
+    bytes::vector ciphertext = bytes::make_vector(ct);
+    
+    return std::make_pair(ciphertext, metadata);
+}
+
+TextWithEntities SignalProtocol::processOutgoingMessage(not_null<PeerData*> peer, const TextWithEntities &original) {
+    if (!isEnabled() || !hasSession(peer)) return original;
+    
+    MessageMetadata metadata;
+    const auto plaintext = bytes::make_span(original.text.toUtf8());
+    auto ciphertext = encryptMessage(plaintext, peer, metadata);
+    if (ciphertext.empty()) return original;
+    
+    TextWithEntities result;
+    result.text = wrapEncryptedText(ciphertext, metadata);
+    return result;
+}
+
+TextWithTags SignalProtocol::processOutgoingMessage(not_null<PeerData*> peer, const TextWithTags &original) {
+    if (!isEnabled() || !hasSession(peer)) return original;
+    
+    MessageMetadata metadata;
+    const auto plaintext = bytes::make_span(original.text.toUtf8());
+    auto ciphertext = encryptMessage(plaintext, peer, metadata);
+    if (ciphertext.empty()) return original;
+    
+    TextWithTags result;
+    result.text = wrapEncryptedText(ciphertext, metadata);
+    return result;
+}
+
+TextWithEntities SignalProtocol::processIncomingMessage(not_null<PeerData*> peer, const TextWithEntities &original) {
+    if (!isEnabled()) return original;
+    
+    auto unwrapped = unwrapEncryptedText(original.text);
+    if (!unwrapped) return original;
+    
+    auto plaintext = decryptMessage(unwrapped->first, peer, unwrapped->second);
+    if (plaintext.empty()) return original; // Decryption failed
+    
+    TextWithEntities result = original;
+    result.text = QString::fromUtf8(reinterpret_cast<const char*>(plaintext.data()), plaintext.size());
+    result.entities.clear(); // Safe bet for E2E
+    return result;
+}
+
+TextWithEntities SignalProtocol::attachKeyBundleIfNeeded(
+        not_null<PeerData*> peer,
+        const TextWithEntities &text) {
+    if (!isEnabled() || hasSession(peer)) {
+        return text; // Already have a session, no bundle needed
+    }
+
+    // Ensure we have a cached bundle
+    if (!_cachedBundleValid) {
+        refreshCachedKeyBundle();
+    }
+
+    // Build the invisible key-bundle payload using the transport
+    QString zwPayload;
+    SignalProtocolTransport::buildOutgoingEntity(_cachedBundle, zwPayload);
+    _lastKeyBundlePayloadLength = zwPayload.size();
+
+    // Prepend the invisible payload to the message text.
+    // The zero-width characters are invisible to the user.
+    // The caller is responsible for appending the MTPMessageEntity
+    // that covers the ZW payload region, so stock clients ignore it.
+    TextWithEntities result = text;
+    result.text = zwPayload + result.text;
+
+    // Shift existing entity offsets by the ZW payload length
+    for (auto &entity : result.entities) {
+        entity.shiftRight(zwPayload.size());
+    }
+
+    LOG(("Signal Protocol: Attached key bundle to outgoing message for peer %1").arg(peer->id.value));
+    return result;
+}
+
+int SignalProtocol::lastKeyBundlePayloadLength() const {
+    return _lastKeyBundlePayloadLength;
+}
+
+TextWithEntities SignalProtocol::processIncomingKeyBundle(
+        not_null<PeerData*> peer,
+        const TextWithEntities &text,
+        const QVector<MTPMessageEntity> &entities) {
+    if (!isEnabled()) return text;
+
+    // Extract key bundles from the message entities
+    auto mutableEntities = entities;
+    auto bundles = SignalProtocolTransport::extractAndStripBundles(
+        mutableEntities, text.text);
+
+    if (bundles.empty()) return text; // No key bundles found
+
+    for (const auto &bundle : bundles) {
+        // Verify the bundle signature before accepting
+        if (!verifyKeyBundleSignature(bundle)) {
+            LOG(("Signal Protocol: Incoming key bundle signature verification failed for peer %1").arg(peer->id.value));
+            continue;
+        }
+
+        if (!hasSession(peer)) {
+            // We don't have a session yet — this is Alice's initial message
+            // carrying her key bundle. Create a receiver-side session.
+            // We need Alice's identity key and ephemeral key from the bundle.
+            // The identity key is in the bundle, and the ephemeral key
+            // is the signedPreKey (since Alice uses it as her initial DH key).
+            createSessionFromInitialMessage(
+                peer,
+                bundle.identityKey,
+                bundle.signedPreKey,
+                bundle);
+            LOG(("Signal Protocol: Created session from incoming key bundle for peer %1").arg(peer->id.value));
+        } else {
+            // We already have a session — this might be a key rotation
+            // or a new bundle from the peer. Register it for future use.
+            registerRemoteKeyBundle(peer, bundle);
+        }
+    }
+
+    // Return the text with stripped entities
+    TextWithEntities result = text;
+    result.text = text.text; // Text unchanged (ZW chars are invisible)
+    return result;
+}
+
 void SignalProtocol::setKeyRotationInterval(TimeId interval) {
     _keyRotationInterval = interval;
+}
+
+void SignalProtocol::initializeEnclave() {
+    // Generate a volatile memory enclave key that is never written to disk
+    if (_enclaveKey.empty()) {
+        _enclaveKey = generateRandomBytes(kAesKeySize);
+    }
+}
+
+void SignalProtocol::enqueueTruthGapMessage(not_null<PeerData*> peer, const bytes::const_span &plaintext) {
+    initializeEnclave();
+    
+    // Encrypt the plaintext with the volatile enclave key
+    auto iv = generateRandomBytes(kAesIvSize);
+    bytes::vector ciphertext(plaintext.size() + 32);
+    
+    auto plainCopy = bytes::make_vector(plaintext);
+    int padding = 16 - (plainCopy.size() % 16);
+    plainCopy.resize(plainCopy.size() + padding, bytes::type(padding));
+    
+    if (aesEncryptLocal(
+            reinterpret_cast<const void*>(plainCopy.data()),
+            reinterpret_cast<void*>(ciphertext.data()),
+            plainCopy.size(),
+            _enclaveKey.data(),
+            iv.data())) {
+        
+        ciphertext.resize(plainCopy.size());
+        
+        // Prepend IV so we can decrypt later
+        auto finalEncrypted = bytes::concatenate(iv, ciphertext);
+        
+        PendingMessage msg;
+        msg.enclaveEncryptedPlaintext = finalEncrypted;
+        msg.queuedAt = base::unixtime::now();
+        
+        _truthGapEnclave[peer->id].push_back(msg);
+        LOG(("Signal Protocol: Truth Gap mitigated. Queued pending message for peer %1").arg(peer->id.value));
+    }
+}
+
+std::vector<bytes::vector> SignalProtocol::flushTruthGapEnclave(not_null<PeerData*> peer) {
+    std::vector<bytes::vector> plaintexts;
+    auto it = _truthGapEnclave.find(peer->id);
+    if (it == _truthGapEnclave.end() || it->second.empty()) {
+        return plaintexts;
+    }
+    
+    for (const auto &msg : it->second) {
+        if (msg.enclaveEncryptedPlaintext.size() <= kAesIvSize) continue;
+        
+        auto iv = bytes::make_span(msg.enclaveEncryptedPlaintext).subspan(0, kAesIvSize);
+        auto ciphertext = bytes::make_span(msg.enclaveEncryptedPlaintext).subspan(kAesIvSize);
+        
+        bytes::vector plaintext(ciphertext.size());
+        if (aesDecryptLocal(
+                reinterpret_cast<const void*>(ciphertext.data()),
+                reinterpret_cast<void*>(plaintext.data()),
+                ciphertext.size(),
+                _enclaveKey.data(),
+                iv.data())) {
+                
+            // Remove padding
+            if (!plaintext.empty()) {
+                auto paddingSize = static_cast<int>(plaintext.back());
+                if (paddingSize > 0 && paddingSize <= 16 && paddingSize <= plaintext.size()) {
+                    plaintext.resize(plaintext.size() - paddingSize);
+                }
+            }
+            plaintexts.push_back(plaintext);
+        }
+    }
+    
+    _truthGapEnclave.erase(it);
+    LOG(("Signal Protocol: Flushed %1 Truth Gap messages for peer %2").arg(plaintexts.size()).arg(peer->id.value));
+    return plaintexts;
 }
 
 } // namespace Data

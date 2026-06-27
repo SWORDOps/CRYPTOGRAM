@@ -115,8 +115,8 @@ auto EmptyMessageDraftSources()
 	//const auto testAddition = (cTestMode() ? u":/test/"_q : QString());
 	const auto testAddition = QString();
 	const auto dataNameUtf8 = (dataName + testAddition).toUtf8();
-	FileKey dataNameHash[6] = { 0 }; // SHA-384 produces 48 bytes (6 * 8 bytes)
-	hashSha384(dataNameUtf8.constData(), dataNameUtf8.size(), dataNameHash);
+	FileKey dataNameHash[4] = { 0 }; // SHA-256 produces 32 bytes (4 * 8 bytes)
+	hashSha256(dataNameUtf8.constData(), dataNameUtf8.size(), dataNameHash);
 	return dataNameHash[0];
 }
 

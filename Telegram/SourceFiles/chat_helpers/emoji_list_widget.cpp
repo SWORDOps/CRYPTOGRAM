@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "chat_helpers/emoji_list_widget.h"
 
+#include "ui/widgets/shadow.h"
+#include "base/platform/base_platform_info.h"
 #include "window/window_media_preview.h"
 #include "api/api_peer_photo.h"
 #include "apiwrap.h"
@@ -232,7 +234,7 @@ void EmojiColorPicker::paintEvent(QPaintEvent *e) {
 		p.drawPixmap(0, 0, _cache);
 		return;
 	}
-	Ui::Shadow::paint(p, inner, width(), _st.showAnimation.shadow);
+	Ui::BoxShadow(_st.showAnimation.shadow).paint(p, inner, st::emojiPanRadius);
 	_backgroundRect.paint(p, inner);
 
 	const auto skip = topColorAllSkip();

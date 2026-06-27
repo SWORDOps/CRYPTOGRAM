@@ -1809,7 +1809,7 @@ void FormController::loadFile(File &file) {
 			Data::kImageCacheTag));
 	const auto loader = j->second.get();
 	loader->updates(
-	) | rpl::start(rpl::on_next_error_done([=] {
+	) | rpl::on_next_error_done([=] {
 		fileLoadProgress(key, loader->currentOffset());
 	}, [=](FileLoader::Error error) {
 		fileLoadFail(key);

@@ -446,7 +446,7 @@ void UserpicButton::choosePhotoLocally() {
 auto UserpicButton::makeResetToOriginalAction()
 -> base::unique_qptr<Menu::ItemBase> {
 	auto item = base::make_unique_q<Menu::Action>(
-		_menu.get(),
+		_menu->menu(),
 		_menu->st().menu,
 		Menu::CreateAction(
 			_menu.get(),
@@ -789,7 +789,7 @@ bool UserpicButton::createStreamingObjects(not_null<PhotoData*> photo) {
 		nullptr);
 	_streamed->lockPlayer();
 	_streamed->player().updates(
-	) | rpl::start(rpl::on_next_error([=](Update &&update) {
+	) | rpl::on_next_error([=](Update &&update) {
 		handleStreamingUpdate(std::move(update));
 	}, [=](Error &&error) {
 		handleStreamingError(std::move(error));

@@ -123,7 +123,7 @@ rpl::producer<std::vector<GiftTypeStars>> GiftsStars(
 		using namespace Api;
 		const auto api = lifetime.make_state<PremiumGiftCodeOptions>(peer);
 		api->requestStarGifts(
-		) | rpl::start(rpl::on_error_done([=](QString error) {
+		) | rpl::on_error_done([=](QString error) {
 			consumer.put_next({});
 		}, [=] {
 			auto list = std::vector<GiftTypeStars>();

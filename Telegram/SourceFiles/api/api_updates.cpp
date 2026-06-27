@@ -764,7 +764,7 @@ void Updates::addActiveChat(rpl::producer<PeerData*> chat) {
 	const auto key = _activeChats.empty() ? 0 : _activeChats.back().first + 1;
 	std::move(
 		chat
-	) | rpl::start(rpl::on_next_done([=](PeerData *peer) {
+	) | rpl::on_next_done([=](PeerData *peer) {
 		auto &active = _activeChats[key];
 		const auto was = active.peer;
 		if (was != peer) {

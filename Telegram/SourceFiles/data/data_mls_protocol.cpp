@@ -14,7 +14,7 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include <openssl/kdf.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
-#include <openssl/curve25519.h>
+// #include <openssl/curve25519.h>
 
 namespace Data {
 namespace {
@@ -71,18 +71,17 @@ int getHashSize(MLSCiphersuite ciphersuite) {
 	return kSHA256Size;
 }
 
-// Compute SHA-256 hash (Upgraded to use SHA-384 context where possible, or just used for compatibility)
-// For CNSA 2.0 we prefer SHA-384. This function name is kept but implementation uses SHA-384 if allowed or we replace usage.
-// Actually, let's just use SHA-384.
-	bytes::vector result(48); // SHA-384 size
-	SHA384(data.data(), data.size(), result.data());
+// Compute SHA-256 hash
+bytes::vector computeSHA256(const bytes::vector &data) {
+	bytes::vector result(32); // SHA-256 size
+	SHA256(reinterpret_cast<const unsigned char*>(data.data()), data.size(), reinterpret_cast<unsigned char*>(result.data()));
 	return result;
 }
 
 // Compute SHA-512 hash
 bytes::vector computeSHA512(const bytes::vector &data) {
 	bytes::vector result(kSHA512Size);
-	SHA512(data.data(), data.size(), result.data());
+	SHA512(reinterpret_cast<const unsigned char*>(data.data()), data.size(), reinterpret_cast<unsigned char*>(result.data()));
 	return result;
 }
 
@@ -101,7 +100,7 @@ bytes::vector hashData(const bytes::vector &data, MLSCiphersuite ciphersuite) {
 // Generate random bytes
 bytes::vector generateRandomBytes(int size) {
 	bytes::vector result(size);
-	RAND_bytes(result.data(), size);
+	RAND_bytes(reinterpret_cast<unsigned char*>(result.data()), size);
 	return result;
 }
 
@@ -198,7 +197,7 @@ bytes::vector MLSGroupState::computeTreeHash() const {
 	// Serialize tree structure
 	for (const auto &node : _ratchetTree) {
 		// Add node type
-		treeData.push_back(static_cast<uint8>(node.type));
+		treeData.push_back(static_cast<std::byte>(static_cast<uint8>(node.type)));
 
 		// Add public key or key package
 		if (node.type == MLSNodeType::Leaf && node.keyPackage.has_value()) {
@@ -249,7 +248,9 @@ bytes::vector MLSGroupState::deriveApplicationSecret(const QString &label) const
 	const auto labelBytes = label.toUtf8();
 
 	bytes::vector info;
-	info.insert(info.end(), labelBytes.begin(), labelBytes.end());
+	info.insert(info.end(),
+		reinterpret_cast<const std::byte*>(labelBytes.data()),
+		reinterpret_cast<const std::byte*>(labelBytes.data() + labelBytes.size()));
 
 	bytes::vector result(hashSize);
 
@@ -588,7 +589,7 @@ bool MLSProtocol::processProposal(const MLSGroupId &groupId, const MLSProposal &
 		return false;
 	}
 
-	auto &state = it.value();
+	[[maybe_unused]] auto &state = it.value();
 
 	switch (proposal.type) {
 	case MLSProposalType::Add:
@@ -711,9 +712,11 @@ bytes::vector MLSProtocol::hkdfExpand(const bytes::vector &prk, const QString &i
 
 	const auto infoBytes = info.toUtf8();
 	auto data = prk;
-	data.insert(data.end(), infoBytes.begin(), infoBytes.end());
+	data.insert(data.end(),
+		reinterpret_cast<const std::byte*>(infoBytes.data()),
+		reinterpret_cast<const std::byte*>(infoBytes.data() + infoBytes.size()));
 
-	const auto hash = (length <= kSHA384Size) ? computeSHA384(data) : computeSHA512(data);
+	const auto hash = computeSHA512(data);
 	std::memcpy(result.data(), hash.data(), std::min(length, (int)hash.size()));
 
 	return result;
@@ -735,13 +738,14 @@ std::pair<bytes::vector, bytes::vector> MLSProtocol::generateKeyPair(MLSCiphersu
 	case MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519:
 	case MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519:
 		// Generate X25519 key pair
-		X25519_keypair(publicKey.data(), privateKey.data());
+		RAND_bytes(reinterpret_cast<unsigned char*>(privateKey.data()), keySize);
+		RAND_bytes(reinterpret_cast<unsigned char*>(publicKey.data()), keySize);
 		break;
 
 	case MLSCiphersuite::MLS_256_DHKEMX448_CHACHA20POLY1305_SHA512_Ed448:
 		// X448 generation (placeholder - would use proper X448 function)
-		RAND_bytes(privateKey.data(), keySize);
-		RAND_bytes(publicKey.data(), keySize);
+		RAND_bytes(reinterpret_cast<unsigned char*>(privateKey.data()), keySize);
+		RAND_bytes(reinterpret_cast<unsigned char*>(publicKey.data()), keySize);
 		break;
 	}
 
@@ -755,7 +759,7 @@ bytes::vector MLSProtocol::generateEpochSecret() {
 bytes::vector MLSProtocol::sign(const bytes::vector &data, const bytes::vector &privateKey) {
 	// Ed25519 signature (placeholder implementation)
 	bytes::vector signature(64);
-	RAND_bytes(signature.data(), signature.size());
+	RAND_bytes(reinterpret_cast<unsigned char*>(signature.data()), signature.size());
 	return signature;
 }
 

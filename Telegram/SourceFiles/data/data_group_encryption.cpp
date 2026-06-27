@@ -8,6 +8,7 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include "data/data_group_encryption.h"
 
 #include "data/data_enhanced_privacy.h"
+#include "data/data_signal_transport.h"
 #include "data/data_channel.h"
 #include "data/data_chat.h"
 #include "data/data_user.h"
@@ -102,12 +103,12 @@ bool GroupEncryption::addGroupMember(not_null<PeerData*> group, not_null<UserDat
 	}
 
 	// Only add if user is a CRYPTOGRAM user
-	if (!EnhancedPrivacy::IsCryptogramUser(user->id)) {
+	if (!EnhancedPrivacy::IsCryptogramUser(peerToUser(user->id))) {
 		LOG(("GroupEncryption: Cannot add non-CRYPTOGRAM user to encrypted group"));
 		return false;
 	}
 
-	return _mlsProtocol->addMember(mlsGroupId, user->id);
+	return _mlsProtocol->addMember(mlsGroupId, peerToUser(user->id));
 }
 
 bool GroupEncryption::removeGroupMember(not_null<PeerData*> group, not_null<UserData*> user) {
@@ -120,7 +121,7 @@ bool GroupEncryption::removeGroupMember(not_null<PeerData*> group, not_null<User
 		return false;
 	}
 
-	return _mlsProtocol->removeMember(mlsGroupId, user->id);
+	return _mlsProtocol->removeMember(mlsGroupId, peerToUser(user->id));
 }
 
 QVector<UserId> GroupEncryption::getGroupMembers(not_null<PeerData*> group) const {
@@ -140,7 +141,7 @@ QVector<UserId> GroupEncryption::getGroupMembers(not_null<PeerData*> group) cons
 
 	QVector<UserId> result;
 	for (const auto &member : state->members()) {
-		result.append(member.userId);
+		result.push_back(member.userId);
 	}
 
 	return result;
@@ -245,8 +246,8 @@ QVector<UserId> GroupEncryption::getCryptogramMembers(not_null<PeerData*> group)
 	if (const auto chat = group->asChat()) {
 		// Regular group chat
 		for (const auto &participant : chat->participants) {
-			if (EnhancedPrivacy::IsCryptogramUser(participant->id)) {
-				result.append(participant->id);
+			if (EnhancedPrivacy::IsCryptogramUser(peerToUser(participant->id))) {
+				result.push_back(peerToUser(participant->id));
 			}
 		}
 	} else if (const auto channel = group->asChannel()) {
@@ -257,6 +258,64 @@ QVector<UserId> GroupEncryption::getCryptogramMembers(not_null<PeerData*> group)
 	}
 
 	return result;
+}
+
+// ========== MLS Welcome Transport ==========
+
+QString GroupEncryption::buildOutgoingMLSWelcome(
+		not_null<PeerData*> group,
+		not_null<UserData*> newMember) {
+	if (!_mlsProtocol) {
+		return {};
+	}
+
+	auto mlsGroupId = getMLSGroupId(group);
+	if (mlsGroupId.empty()) {
+		return {};
+	}
+
+	// Build a Welcome message for the new member
+	MLSWelcome welcome;
+	welcome.version = kMLSProtocolVersion;
+	welcome.ciphersuite = MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519;
+	welcome.timestamp = QDateTime::currentDateTime();
+
+	// In a full implementation, the encrypted group secrets and group info
+	// would be encrypted for the new member's key package init key.
+	// For now, we generate placeholder encrypted blobs.
+	auto state = _mlsProtocol->getGroupState(mlsGroupId);
+	if (state.has_value()) {
+		auto context = state->groupContext();
+		// Serialize group context as the encrypted group info
+		welcome.encryptedGroupInfo = context.groupId;
+		welcome.encryptedGroupSecrets = state->deriveEpochSecret();
+	}
+
+	QString zwText;
+	[[maybe_unused]] auto entity = SignalProtocolTransport::buildOutgoingMLSWelcome(welcome, zwText);
+
+	LOG(("GroupEncryption: Built MLS Welcome for user %1 in group %2")
+		.arg(newMember->id.value)
+		.arg(group->id.value));
+
+	return zwText;
+}
+
+bool GroupEncryption::processIncomingMLSWelcome(const MLSWelcome &welcome) {
+	if (!_mlsProtocol) {
+		return false;
+	}
+
+	// Process the welcome through MLS protocol
+	auto groupId = _mlsProtocol->processWelcome(welcome);
+	if (groupId.empty()) {
+		LOG(("GroupEncryption: Failed to process MLS Welcome"));
+		return false;
+	}
+
+	LOG(("GroupEncryption: Processed MLS Welcome for group"));
+
+	return true;
 }
 
 // ========== Global Functions ==========

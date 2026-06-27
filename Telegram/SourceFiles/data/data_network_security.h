@@ -182,6 +182,7 @@ class NetworkSecurity : public QObject {
 
 public:
     explicit NetworkSecurity(not_null<Session*> session);
+    Q_DISABLE_COPY_MOVE(NetworkSecurity)
     ~NetworkSecurity();
 
     // Initialization and configuration
@@ -207,6 +208,23 @@ public:
     base::expected<bytes::vector, NetworkSecurityResult> evadeDPI(
         const bytes::const_span &data,
         const QString &targetProtocol = "https");
+
+    // DPI evasion transport wrapping — wraps outgoing MTP data in a
+    // protocol mimicry layer (HTTPS/HTTP/DNS/Generic) to defeat DPI.
+    // Returns the wrapped bytes, or empty on failure.
+    QByteArray wrapOutgoingData(const QByteArray &data);
+
+    // Apply DPI evasion settings to a socket connection (e.g. set proxy,
+    // adjust TLS settings). Returns true if applied successfully.
+    bool applyToSocket(class QAbstractSocket *socket);
+
+    // DPI evasion state
+    bool isDPIEvasionActive() const { return _dpiEvasionActive; }
+    void setDPIEvasionActive(bool active) { _dpiEvasionActive = active; }
+    void setDPIEvasionMethod(int method) { _dpiEvasionMethod = method; }
+    int dpiEvasionMethod() const { return _dpiEvasionMethod; }
+    qint64 dpiPacketsWrapped() const { return _dpiPacketsWrapped; }
+    qint64 dpiBytesWrapped() const { return _dpiBytesWrapped; }
 
     // Bridge relay management
     NetworkSecurityResult addBridge(const BridgeConfiguration &bridge);
@@ -264,6 +282,10 @@ public:
     void integrateWithTSM(std::shared_ptr<TSMInterface> tsm);
     base::expected<bytes::vector, NetworkSecurityResult> generateNetworkKeys();
 
+Q_SIGNALS:
+    void threatDetected(const TrafficAnalysisResult &threat);
+    void vpnConnectionStatusChanged(bool connected, const QString &status);
+    void torConnectionStatusChanged(bool connected, const QString &status);
 
 private:
     // Traffic obfuscation implementations
@@ -286,18 +308,18 @@ private:
     class DNSOverHTTPS;
     class NetworkPerformanceMonitor;
 
-    std::unique_ptr<TrafficObfuscator> _obfuscator;
-    std::unique_ptr<DPIEvasion> _dpiEvasion;
-    std::unique_ptr<ProtocolMimicry> _protocolMimicry;
-    std::unique_ptr<BridgeManager> _bridgeManager;
-    std::unique_ptr<MeshNetworkManager> _meshManager;
-    std::unique_ptr<TorIntegration> _torIntegration;
-    std::unique_ptr<VPNIntegration> _vpnIntegration;
-    std::unique_ptr<TrafficAnalyzer> _trafficAnalyzer;
-    std::unique_ptr<AnomalyDetector> _anomalyDetector;
-    std::unique_ptr<ThreatMitigator> _threatMitigator;
-    std::unique_ptr<DNSOverHTTPS> _dnsOverHTTPS;
-    std::unique_ptr<NetworkPerformanceMonitor> _performanceMonitor;
+    std::shared_ptr<TrafficObfuscator> _obfuscator;
+    std::shared_ptr<DPIEvasion> _dpiEvasion;
+    std::shared_ptr<ProtocolMimicry> _protocolMimicry;
+    std::shared_ptr<BridgeManager> _bridgeManager;
+    std::shared_ptr<MeshNetworkManager> _meshManager;
+    std::shared_ptr<TorIntegration> _torIntegration;
+    std::shared_ptr<VPNIntegration> _vpnIntegration;
+    std::shared_ptr<TrafficAnalyzer> _trafficAnalyzer;
+    std::shared_ptr<AnomalyDetector> _anomalyDetector;
+    std::shared_ptr<ThreatMitigator> _threatMitigator;
+    std::shared_ptr<DNSOverHTTPS> _dnsOverHTTPS;
+    std::shared_ptr<NetworkPerformanceMonitor> _performanceMonitor;
 
     not_null<Session*> _session;
     NetworkSecurityConfig _config;
@@ -305,12 +327,23 @@ private:
     bool _initialized = false;
     bool _continuousMonitoring = false;
 
+    // DPI evasion state
+    bool _dpiEvasionActive = false;
+    int _dpiEvasionMethod = 0;  // 0=HTTPS, 1=HTTP, 2=DNS, 3=Generic, 4=Auto
+    qint64 _dpiPacketsWrapped = 0;
+    qint64 _dpiBytesWrapped = 0;
+
     // Integration interfaces
     SignalProtocol* _signalProtocol = nullptr;
     std::shared_ptr<TSMInterface> _tsmInterface;
 
     // Helper methods
     NetworkSecurityResult validateConfiguration(const NetworkSecurityConfig &config);
+    void initializeNetworkComponents();
+    void setupHardwareTierOptimizations();
+    void configureUniversalFallbacks();
+    void setupPerformanceMonitoring();
+    void adaptFeatureToTier(const QString &feature, NetworkSecurityTier tier);
 
     // Universal compatibility helpers
     bool isHardwareFeatureAvailable(const QString &feature) const;
@@ -340,6 +373,7 @@ class UniversalNetworkSecurity : public QObject {
 
 public:
     explicit UniversalNetworkSecurity(not_null<Session*> session);
+    Q_DISABLE_COPY_MOVE(UniversalNetworkSecurity)
     ~UniversalNetworkSecurity();
 
     // Universal initialization that works across all hardware tiers
@@ -366,4 +400,14 @@ private:
 
 };
 
+} // namespace Data
+
+// Global DPI evasion hook — allows the MTP transport layer to
+// wrap outgoing data without direct access to Data::Session.
+// Set by the session when DPI evasion is enabled.
+namespace Data {
+void SetGlobalDPIEvasionCallback(std::function<QByteArray(const QByteArray&)> callback);
+void ClearGlobalDPIEvasionCallback();
+QByteArray ApplyGlobalDPIEvasion(const QByteArray &data);
+bool IsGlobalDPIEvasionActive();
 } // namespace Data

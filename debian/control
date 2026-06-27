@@ -1,0 +1,21 @@
+Source: cryptogram-desktop
+Section: net
+Priority: optional
+Maintainer: CRYPTOGRAM Maintainer <maintainer@example.com>
+Build-Depends: debhelper-compat (= 13), cmake, ninja-build, pkg-config,
+ libqt6core6, libqt6gui6, libqt6widgets6, qt6-base-dev, qt6-wayland, libqt6svg6-dev,
+ libssl-dev, libxcb1-dev, libxcb-keysyms1-dev, libgl1-mesa-dev,
+ libopenal-dev, liblz4-dev, libxxhash-dev, libavcodec-dev, libavformat-dev,
+ libavutil-dev, libswscale-dev, libswresample-dev, libvpx-dev,
+ libprotobuf-dev, protobuf-compiler, libminizip-dev, librlottie-dev,
+ libavfilter-dev, libglibmm-2.68-dev, libopus-dev, libglib2.0-dev, libhunspell-dev
+Standards-Version: 4.6.0
+Homepage: https://example.com
+
+Package: cryptogram-desktop
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Advanced OPSEC Messaging application
+ CRYPTOGRAM is a privacy-enhanced desktop application for secure messaging.
+ It features advanced OPSEC capabilities, including Double Ratchet and 
+ Post-Quantum Cryptography implementations.

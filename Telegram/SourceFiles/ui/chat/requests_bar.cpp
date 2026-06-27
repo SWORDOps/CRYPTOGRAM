@@ -84,7 +84,7 @@ RequestsBar::RequestsBar(
 		copy
 	) | rpl::map([=](const RequestsBarContent &content) {
 		return !content.count;
-	}) | rpl::start(rpl::on_next_done([=](bool hidden) {
+	}) | rpl::on_next_done([=](bool hidden) {
 		_shouldBeShown = !hidden;
 		if (!_forceHidden) {
 			_wrap.toggle(_shouldBeShown, anim::type::normal);

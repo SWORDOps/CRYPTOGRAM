@@ -921,7 +921,7 @@ void ApplyUserUpdate(not_null<UserData*> user, const MTPDuserFull &update) {
 				}
 				currencyLoadLifetime->destroy();
 			};
-			currencyLoad->request() | rpl::start(rpl::on_error_done(
+			currencyLoad->request() | rpl::on_error_done(
 				[=](const QString &error) {
 					apply(CreditsAmount(0, CreditsType::Ton));
 				},

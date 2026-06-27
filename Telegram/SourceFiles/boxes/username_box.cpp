@@ -370,9 +370,9 @@ void UsernamesBox(
 
 	const auto finish = [=] {
 		list->save(
-		) | rpl::start(rpl::on_done([=] {
+		) | rpl::on_done([=] {
 			editor->save(
-			) | rpl::start(rpl::on_done([=] {
+			) | rpl::on_done([=] {
 				box->closeBox();
 			}, box->lifetime());
 		}, box->lifetime());

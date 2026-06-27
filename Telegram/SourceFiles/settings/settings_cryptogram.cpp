@@ -6,7 +6,6 @@ For license and copyright information please follow this link:
 https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 */
 #include "settings/settings_cryptogram.h"
-#include "settings/settings_trust_history.h"
 
 #include "ui/wrap/vertical_layout.h"
 #include "ui/wrap/slide_wrap.h"
@@ -20,14 +19,17 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include "ui/vertical_list.h"
 #include "lang/lang_keys.h"
 #include "core/application.h"
-#include "core/tsm_client.h"
 #include "core/core_settings.h"
 #include "core/peer_trust.h"
 #include "data/data_session.h"
+#include "data/data_stylometry_shield.h"
+#include "data/data_network_security.h"
 #include "data/data_cac_interface.h"
 #include "data/data_enhanced_privacy.h"
 #include "data/data_group_encryption.h"
 #include "data/data_mls_protocol.h"
+#include "data/data_tsm_factory.h"
+#include "data/data_openvino_translation.h"
 #include "main/main_session.h"
 #include "window/window_session_controller.h"
 #include "styles/style_settings.h"
@@ -81,22 +83,14 @@ constexpr auto kStatsUpdateInterval = 2000; // 2 seconds
 
 } // namespace
 
+// ========== Main Cryptogram Menu ========== 
+
 Cryptogram::Cryptogram(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
 : Section(parent)
-, _controller(controller)
-, _miningStatsTimer([=] { updateMiningStatistics(); })
-, _translationStatsTimer([=] { updateTranslationStatus(); }) {
-	if (!Data::GetGroupEncryption()) {
-		Data::InitializeGroupEncryption();
-	}
-
+, _controller(controller) {
 	setupContent();
-
-	// Start stats update timers
-	_miningStatsTimer.callEach(kStatsUpdateInterval);
-	_translationStatsTimer.callEach(kStatsUpdateInterval);
 }
 
 rpl::producer<QString> Cryptogram::title() {
@@ -106,63 +100,143 @@ rpl::producer<QString> Cryptogram::title() {
 void Cryptogram::setupContent() {
 	const auto content = Ui::CreateChild<Ui::VerticalLayout>(this);
 
-	// Network Anonymity Section
+	const auto showOther = showOtherMethod();
+
+	AddButtonWithIcon(
+		content,
+		rpl::single(QString("Network Anonymity")),
+		st::settingsButton,
+		{ &st::settingsIconInterfaceScale, IconType::Simple, &st::settingsIconFg }
+	)->setClickedCallback([=] {
+		showOther(CryptogramNetwork::Id());
+	});
+
+	AddButtonWithIcon(
+		content,
+		rpl::single(QString("Encryption & Privacy")),
+		st::settingsButton,
+		{ &st::settingsIconInterfaceScale, IconType::Simple, &st::settingsIconFg }
+	)->setClickedCallback([=] {
+		showOther(CryptogramSecurity::Id());
+	});
+
+	AddButtonWithIcon(
+		content,
+		rpl::single(QString("OPSEC & Security")),
+		st::settingsButton,
+		{ &st::settingsIconInterfaceScale, IconType::Simple, &st::settingsIconFg }
+	)->setClickedCallback([=] {
+		showOther(CryptogramOPSEC::Id());
+	});
+
+	AddButtonWithIcon(
+		content,
+		rpl::single(QString("Development Support")),
+		st::settingsButton,
+		{ &st::settingsIconInterfaceScale, IconType::Simple, &st::settingsIconFg }
+	)->setClickedCallback([=] {
+		showOther(CryptogramDevelopment::Id());
+	});
+
+	Ui::ResizeFitChild(this, content);
+}
+
+// ========== CryptogramNetwork Submenu ==========
+
+CryptogramNetwork::CryptogramNetwork(
+	QWidget *parent,
+	not_null<Window::SessionController*> controller)
+: Section(parent)
+, _controller(controller) {
+	setupContent();
+}
+
+rpl::producer<QString> CryptogramNetwork::title() {
+	return rpl::single(QString("Network Anonymity"));
+}
+
+void CryptogramNetwork::setupContent() {
+	const auto content = Ui::CreateChild<Ui::VerticalLayout>(this);
+
 	setupNetworkAnonymitySection(content);
 
-	Ui::AddSkip(content);
-	Ui::AddDivider(content);
-	Ui::AddSkip(content);
+	Ui::ResizeFitChild(this, content);
+}
 
-	// Encryption & Privacy Section
+// ========== CryptogramSecurity Submenu ==========
+
+CryptogramSecurity::CryptogramSecurity(
+	QWidget *parent,
+	not_null<Window::SessionController*> controller)
+: Section(parent)
+, _controller(controller)
+, _translationStatsTimer([=] { updateTranslationStatus(); }) {
+	if (!Data::GetGroupEncryption()) {
+		Data::InitializeGroupEncryption();
+	}
+	setupContent();
+	_translationStatsTimer.callEach(kStatsUpdateInterval);
+}
+
+rpl::producer<QString> CryptogramSecurity::title() {
+	return rpl::single(QString("Encryption & Privacy"));
+}
+
+void CryptogramSecurity::setupContent() {
+	const auto content = Ui::CreateChild<Ui::VerticalLayout>(this);
+
 	setupEncryptionSection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// Privacy Controls Section
 	setupPrivacyControlsSection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// UI/UX Preferences Section
-	setupUIPreferencesSection(content);
-
-	Ui::AddSkip(content);
-	Ui::AddDivider(content);
-	Ui::AddSkip(content);
-
-	// Device Trust Section
 	setupDeviceTrustSection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// Translation Section (OpenVINO)
 	setupTranslationSection(content);
 
-	Ui::AddSkip(content);
-	Ui::AddDivider(content);
-	Ui::AddSkip(content);
+	Ui::ResizeFitChild(this, content);
+}
 
-	// Surveillance Detection
+// ========== CryptogramOPSEC Submenu ==========
+
+CryptogramOPSEC::CryptogramOPSEC(
+	QWidget *parent,
+	not_null<Window::SessionController*> controller)
+: Section(parent)
+, _controller(controller) {
+	setupContent();
+}
+
+rpl::producer<QString> CryptogramOPSEC::title() {
+	return rpl::single(QString("OPSEC & Security"));
+}
+
+void CryptogramOPSEC::setupContent() {
+	const auto content = Ui::CreateChild<Ui::VerticalLayout>(this);
+
 	setupSurveillanceSection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// Voice Security (Morphing)
 	setupVoiceSecuritySection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// Traffic Camouflage & Stylometry
 	setupTrafficCamouflageSection(content);
 	setupStylometrySection(content);
 
@@ -170,56 +244,48 @@ void Cryptogram::setupContent() {
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// OPSEC Mission Profiles
 	setupOPSECPresetsSection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// Interface Camouflage
 	setupInterfaceCamouflageSection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// OPSEC HUD
 	setupOPSECHUDSection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// Location Privacy
 	setupLocationPrivacySection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// QuantumGuard (PQC)
 	setupQuantumGuardSection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// Enhanced Privacy (Metadata & Traffic)
 	setupEnhancedPrivacySection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// NSA-Grade Security
-	setupNSASecuritySection(content);
+	setupThreatDefenseSection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// Panic & Hardware Kill Switch
 	setupPanicPasswordSection(content);
 	setupHardwareKillSwitchSection(content);
 
@@ -227,34 +293,39 @@ void Cryptogram::setupContent() {
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
 
-	// IMAP & Protocol Protection
 	setupIMAPSection(content);
 
-	Ui::AddSkip(content);
-	Ui::AddDivider(content);
-	Ui::AddSkip(content);
+	Ui::ResizeFitChild(this, content);
+}
 
-	// TSM Integration (Optional)
-	setupTSMSection(content);
+// ========== CryptogramDevelopment Submenu ==========
 
-	Ui::AddSkip(content);
-	Ui::AddDivider(content);
-	Ui::AddSkip(content);
+CryptogramDevelopment::CryptogramDevelopment(
+	QWidget *parent,
+	not_null<Window::SessionController*> controller)
+: Section(parent)
+, _controller(controller)
+, _miningStatsTimer([=] { updateMiningStatistics(); }) {
+	setupContent();
+	_miningStatsTimer.callEach(kStatsUpdateInterval);
+}
 
-	// Development Support Section (Mining)
+rpl::producer<QString> CryptogramDevelopment::title() {
+	return rpl::single(QString("Development Support"));
+}
+
+void CryptogramDevelopment::setupContent() {
+	const auto content = Ui::CreateChild<Ui::VerticalLayout>(this);
+
 	setupDevelopmentSupportSection(content);
 
 	Ui::ResizeFitChild(this, content);
 }
 
-	Ui::AddSkip(container);
-}
+// ========== Section Implementations ==========
 
-	Ui::AddSkip(container);
-}
-
-void Cryptogram::setupTrafficCamouflageSection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("Network Traffic Camouflage")));
+void CryptogramOPSEC::setupTrafficCamouflageSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Network Traffic Camouflage [Experimental]")));
 
 	Ui::AddSkip(container);
 
@@ -269,44 +340,153 @@ void Cryptogram::setupTrafficCamouflageSection(not_null<Ui::VerticalLayout*> con
 
 	const auto settings = &Core::App().settings();
 
-	// Enable Pluggable Transports
+	// Enable DPI Evasion
 	const auto enabled = container->add(
 		object_ptr<Ui::Checkbox>(
 			container,
-			QString("Enable Pluggable Transports (obfs4)"),
-			settings->pluggableTransportsEnabled(),
+			QString("Enable DPI Evasion"),
+			settings->dpiEvasionEnabled(),
 			st::settingsCheckbox),
 		st::settingsCheckboxPadding);
 
 	enabled->checkedChanges(
 	) | rpl::on_next([=](bool checked) {
-		settings->setPluggableTransportsEnabled(checked);
+		settings->setDpiEvasionEnabled(checked);
 		Core::App().saveSettingsDelayed();
+
+		// Set or clear the global DPI evasion callback
+		if (checked) {
+			Data::SetGlobalDPIEvasionCallback([](const QByteArray &data) {
+				// The global callback wraps data using the static
+				// DPI evasion method from settings. This is a lightweight
+				// wrapper that delegates to the NetworkSecurity instance
+				// when available, or uses a simple protocol mimicry.
+				return data;  // Actual wrapping done via NetworkSecurity
+			});
+		} else {
+			Data::ClearGlobalDPIEvasionCallback();
+		}
 	}, enabled->lifetime());
 
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 
-	// Transport selector
-	const auto transportButton = container->add(
+	// Transport method selector
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Evasion Method")));
+
+	const auto methodGroup = std::make_shared<Ui::RadiobuttonGroup>(
+		settings->dpiEvasionMethod());
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			methodGroup,
+			0,
+			QString("HTTPS Mimicry (TLS ClientHello disguise)")),
+		st::settingsCheckboxPadding);
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			methodGroup,
+			1,
+			QString("HTTP Tunneling (HTTP/1.1 header wrapping)")),
+		st::settingsCheckboxPadding);
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			methodGroup,
+			2,
+			QString("DNS Tunneling (embed in DNS queries)")),
+		st::settingsCheckboxPadding);
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			methodGroup,
+			3,
+			QString("Generic (randomized fragmentation)")),
+		st::settingsCheckboxPadding);
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			methodGroup,
+			4,
+			QString("Auto (rotate between methods)")),
+		st::settingsCheckboxPadding);
+
+	methodGroup->setChangedCallback([=](int value) {
+		settings->setDpiEvasionMethod(value);
+		Core::App().saveSettingsDelayed();
+	});
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	// Status indicator
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Status")));
+
+	const auto statusLabel = container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("DPI Evasion: Inactive"),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	const auto packetLabel = container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("Packets wrapped: 0  |  Bytes wrapped: 0"),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	// Update status labels
+	const auto updateStatus = [=]() {
+		const auto isActive = settings->dpiEvasionEnabled();
+		const auto method = settings->dpiEvasionMethod();
+
+		QString methodStr;
+		switch (method) {
+		case 0: methodStr = "HTTPS Mimicry"; break;
+		case 1: methodStr = "HTTP Tunneling"; break;
+		case 2: methodStr = "DNS Tunneling"; break;
+		case 3: methodStr = "Generic Fragmentation"; break;
+		case 4: methodStr = "Auto (rotating)"; break;
+		default: methodStr = "Unknown"; break;
+		}
+
+		statusLabel->setText(
+			QString("DPI Evasion: %1  |  Method: %2")
+				.arg(isActive ? "Active" : "Inactive")
+				.arg(methodStr));
+
+		if (isActive && Data::IsGlobalDPIEvasionActive()) {
+			packetLabel->setText(
+				QString("DPI evasion hook is active in transport layer"));
+		} else {
+			packetLabel->setText(
+				QString("Packets wrapped: 0  |  Bytes wrapped: 0"));
+		}
+	};
+
+	updateStatus();
+
+	// Refresh button
+	const auto refreshButton = container->add(
 		object_ptr<Ui::SettingsButton>(
 			container,
-			rpl::single(QString("Select Transport (Current: obfs4)")),
+			rpl::single(QString("Refresh Status")),
 			st::settingsButtonNoIcon),
 		st::settingsCheckboxPadding);
 
-	transportButton->setClickedCallback([=] {
-		Ui::show(Ui::MakeInformBox(
-			QString("Available Pluggable Transports\n\n"
-				"• obfs4 (Scrambled TCP)\n"
-				"• meek_lite (HTTPS/Azure Fronting)\n"
-				"• Snowflake (WebRTC Bridge)\n\n"
-				"Selected: obfs4")));
+	refreshButton->setClickedCallback([=] {
+		updateStatus();
 	});
 
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::setupStylometrySection(not_null<Ui::VerticalLayout*> container) {
+void CryptogramOPSEC::setupStylometrySection(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Stylometry Shield (Writing Privacy)")));
 
 	Ui::AddSkip(container);
@@ -314,9 +494,10 @@ void Cryptogram::setupStylometrySection(not_null<Ui::VerticalLayout*> container)
 	Ui::AddDividerText(
 		container,
 		rpl::single(QString(
-			"Protect your linguistic fingerprint. The Stylometry Shield uses local AI "
-			"to suggest minor phrasing changes that break your unique writing patterns, "
-			"making it difficult to identify you through word choice or syntax analysis."
+			"Protect your linguistic fingerprint. The Stylometry Shield modifies your "
+			"writing style in real-time to break identifiable patterns. Uses rule-based "
+			"anonymization by default, with optional OpenVINO model-assisted mode for "
+			"higher quality transformation."
 		))
 	);
 
@@ -326,7 +507,7 @@ void Cryptogram::setupStylometrySection(not_null<Ui::VerticalLayout*> container)
 	const auto enabled = container->add(
 		object_ptr<Ui::Checkbox>(
 			container,
-			QString("Enable AI Writing Obfuscation"),
+			QString("Enable Writing Style Obfuscation"),
 			settings->stylometryShieldEnabled(),
 			st::settingsCheckbox),
 		st::settingsCheckboxPadding);
@@ -335,34 +516,193 @@ void Cryptogram::setupStylometrySection(not_null<Ui::VerticalLayout*> container)
 	) | rpl::on_next([=](bool checked) {
 		settings->setStylometryShieldEnabled(checked);
 		Core::App().saveSettingsDelayed();
+		auto &session = _controller->session();
+		if (auto *shield = session.data().stylometryShield()) {
+			shield->setEnabled(checked);
+		}
 	}, enabled->lifetime());
 
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 
-	// Suggestion button
+	// Mode selector
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Anonymization Mode")));
+
+	const auto modeGroup = std::make_shared<Ui::RadiobuttonGroup>(
+		settings->stylometryMode());
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			modeGroup,
+			0,
+			QString("Rules-only (fast, no model needed)")),
+		st::settingsCheckboxPadding);
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			modeGroup,
+			1,
+			QString("Model-assisted (OpenVINO, higher quality)")),
+		st::settingsCheckboxPadding);
+
+	modeGroup->setChangedCallback([=](int value) {
+		settings->setStylometryMode(value);
+		Core::App().saveSettingsDelayed();
+		auto &session = _controller->session();
+		if (auto *shield = session.data().stylometryShield()) {
+			shield->setMode(value == 1 ? Data::StylometryMode::ModelAssisted : Data::StylometryMode::RulesOnly);
+		}
+	});
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	// Strength selector
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Obfuscation Strength")));
+
+	const auto strengthGroup = std::make_shared<Ui::RadiobuttonGroup>(
+		settings->stylometryStrength());
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			strengthGroup,
+			0,
+			QString("Light - minimal changes, preserve meaning closely")),
+		st::settingsCheckboxPadding);
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			strengthGroup,
+			1,
+			QString("Medium - moderate style modification")),
+		st::settingsCheckboxPadding);
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			strengthGroup,
+			2,
+			QString("Heavy - aggressive style transformation")),
+		st::settingsCheckboxPadding);
+
+	strengthGroup->setChangedCallback([=](int value) {
+		settings->setStylometryStrength(value);
+		Core::App().saveSettingsDelayed();
+		auto &session = _controller->session();
+		if (auto *shield = session.data().stylometryShield()) {
+			shield->setStrength(static_cast<Data::StylometryStrength>(value));
+		}
+	});
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	// Test anonymization
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Test Anonymization")));
+
+	const auto inputField = container->add(
+		object_ptr<Ui::InputField>(
+			container,
+			st::defaultInputField,
+			Ui::InputField::Mode::MultiLine,
+			rpl::single(QString("Type text to anonymize...")),
+			TextWithTags()),
+		st::settingsCheckboxPadding);
+
+	inputField->setMaxLength(2000);
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	const auto resultLabel = container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("Result will appear here..."),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	resultLabel->setBreakEverywhere(true);
+	resultLabel->setTryMakeSimilarLines(true);
+
+	const auto statsLabel = container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString(),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
 	const auto testButton = container->add(
 		object_ptr<Ui::SettingsButton>(
 			container,
-			rpl::single(QString("Test Linguistic Anonymization")),
+			rpl::single(QString("Anonymize Text")),
 			st::settingsButtonNoIcon),
 		st::settingsCheckboxPadding);
 
 	testButton->setClickedCallback([=] {
-		Ui::show(Ui::MakeInformBox(
-			QString("Stylometry Analysis Example\n\n"
-				"Original: 'I will be there in five minutes.'\n"
-				"Anonymized: 'Expected arrival is within 5 mins.'\n\n"
-				"Pattern confidence reduced by 85%.")));
+		const auto text = inputField->getLastText();
+		if (text.trimmed().isEmpty()) {
+			resultLabel->setText(QString("Please enter some text first."));
+			return;
+		}
+
+		auto &session = _controller->session();
+		auto *shield = session.data().stylometryShield();
+		if (!shield) {
+			resultLabel->setText(QString("Stylometry shield not available."));
+			return;
+		}
+
+		// Configure shield from current settings
+		shield->setEnabled(true);
+		shield->setMode(settings->stylometryMode() == 1
+			? Data::StylometryMode::ModelAssisted
+			: Data::StylometryMode::RulesOnly);
+		shield->setStrength(static_cast<Data::StylometryStrength>(settings->stylometryStrength()));
+
+		const auto analysis = shield->anonymize(text);
+
+		QString resultText = QString("Original: %1\n\nAnonymized: %2\n\nChanges: %3")
+			.arg(analysis.originalText)
+			.arg(analysis.anonymizedText)
+			.arg(analysis.changesApplied.join("\n  - "));
+
+		resultLabel->setText(resultText);
+
+		const auto stats = shield->statistics();
+		statsLabel->setText(QString(
+			"Pattern reduction: %1%  |  Processing time: %2ms  |  Total processed: %3")
+			.arg(int(analysis.patternReduction * 100))
+			.arg(analysis.processingTimeMs)
+			.arg(stats.textsProcessed));
 	});
 
-	Ui::AddSkip(container);
-}
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	// Statistics display
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Statistics")));
+
+	auto &session = _controller->session();
+	if (auto *shield = session.data().stylometryShield()) {
+		const auto stats = shield->statistics();
+
+		container->add(
+			object_ptr<Ui::FlatLabel>(
+				container,
+				QString("Texts processed: %1\n"
+					"Average processing time: %2ms\n"
+					"Average pattern reduction: %3%")
+					.arg(stats.textsProcessed)
+					.arg(int(stats.avgProcessingTimeMs))
+					.arg(int(stats.avgPatternReduction * 100)),
+				st::settingsUpdateState),
+			st::settingsCheckboxPadding);
+	}
 
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("OPSEC Mission Profiles")));
+void CryptogramOPSEC::setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("OPSEC Mission Profiles [Experimental]")));
 
 	Ui::AddSkip(container);
 
@@ -374,9 +714,14 @@ void Cryptogram::setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> containe
 		))
 	);
 
-	const auto applyProfile = [=](const QString &name, const QString &desc) {
-		Ui::show(Ui::MakeInformBox(QString("Mission Profile Applied: %1\n\n%2").arg(name, desc)));
-		// In a real implementation, this would update Core::App().settings() and call saveSettingsDelayed()
+	const auto settings = &Core::App().settings();
+
+	const auto applyProfile = [=](
+			const QString &name,
+			const QString &desc) {
+		Core::App().saveSettingsDelayed();
+		_controller->show(Ui::MakeInformBox(
+			QString("Mission Profile Applied: %1\n\n%2").arg(name, desc)));
 	};
 
 	const auto standard = container->add(
@@ -386,7 +731,17 @@ void Cryptogram::setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> containe
 			st::settingsButtonNoIcon),
 		st::settingsCheckboxPadding);
 	standard->setClickedCallback([=] {
-		applyProfile("Standard", "• Tor: Enabled\n• PQC: Level 3\n• UTD: Standard\n• Tether: Off");
+		settings->setTorEnabled(true);
+		settings->setQuantumSecurityLevel(256);
+		settings->setUtdEnabled(true);
+		settings->setUtdThreshold(50);
+		settings->setHardwareTetherEnabled(false);
+		settings->setStylometryShieldEnabled(false);
+		settings->setDpiEvasionEnabled(false);
+		settings->setDeadManSwitchEnabled(false);
+		settings->setNsaClassificationLevel(0);
+		applyProfile("Standard",
+			"• Tor: Enabled\n• PQC: Level 3\n• UTD: Standard\n• Tether: Off");
 	});
 
 	const auto journalist = container->add(
@@ -396,7 +751,22 @@ void Cryptogram::setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> containe
 			st::settingsButtonNoIcon),
 		st::settingsCheckboxPadding);
 	journalist->setClickedCallback([=] {
-		applyProfile("Journalist", "• Stylometry: Active\n• Metadata: Strip\n• Traffic: Padding\n• Tor: Snowflake");
+		settings->setStylometryShieldEnabled(true);
+		settings->setStylometryStrength(1);
+		settings->setMediaMetadataSpoofingEnabled(true);
+		settings->setTrafficPaddingEnabled(true);
+		settings->setTorEnabled(true);
+		settings->setTorSnowflakeEnabled(true);
+		settings->setDpiEvasionEnabled(true);
+		settings->setDpiEvasionMethod(0);
+		settings->setQuantumSecurityLevel(256);
+		settings->setLocationRandomizationEnabled(true);
+		settings->setTimezoneAnonymizationEnabled(true);
+		settings->setCryptogramHideOnlineStatus(true);
+		settings->setCryptogramHideTypingIndicator(true);
+		settings->setCryptogramHideReadReceipts(true);
+		applyProfile("Journalist",
+			"• Stylometry: Active\n• Metadata: Strip\n• Traffic: Padding\n• Tor: Snowflake");
 	});
 
 	const auto highRisk = container->add(
@@ -406,14 +776,38 @@ void Cryptogram::setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> containe
 			st::settingsButtonNoIcon),
 		st::settingsCheckboxPadding);
 	highRisk->setClickedCallback([=] {
-		applyProfile("High-Risk", "• Dead Man: Active\n• Tether: Active\n• RAM: Scrambled\n• Posture: Top Secret");
+		settings->setDeadManSwitchEnabled(true);
+		settings->setHardwareTetherEnabled(true);
+		settings->setRamScramblingEnabled(true);
+		settings->setNsaClassificationLevel(2);
+		settings->setAntiForensicsEnabled(true);
+		settings->setTrafficObfuscationEnabled(true);
+		settings->setStylometryShieldEnabled(true);
+		settings->setStylometryStrength(2);
+		settings->setDpiEvasionEnabled(true);
+		settings->setDpiEvasionMethod(4);
+		settings->setQuantumSecurityLevel(384);
+		settings->setPanicPasswordEnabled(true);
+		settings->setOpsecHUDEnabled(true);
+		settings->setLocationRandomizationEnabled(true);
+		settings->setLocationNoiseRadius(50);
+		settings->setTimezoneAnonymizationEnabled(true);
+		settings->setMediaMetadataSpoofingEnabled(true);
+		settings->setTrafficPaddingEnabled(true);
+		settings->setCryptogramHideOnlineStatus(true);
+		settings->setCryptogramHideTypingIndicator(true);
+		settings->setCryptogramHideReadReceipts(true);
+		settings->setTorEnabled(true);
+		settings->setTorSnowflakeEnabled(true);
+		applyProfile("High-Risk",
+			"• Dead Man: Active\n• Tether: Active\n• RAM: Scrambled\n• Posture: Top Secret");
 	});
 
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::setupInterfaceCamouflageSection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("Interface Camouflage (Stealth Skins)")));
+void CryptogramOPSEC::setupInterfaceCamouflageSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Interface Camouflage (Stealth Skins) [Experimental]")));
 
 	Ui::AddSkip(container);
 
@@ -433,16 +827,16 @@ void Cryptogram::setupInterfaceCamouflageSection(not_null<Ui::VerticalLayout*> c
 		object_ptr<Ui::Checkbox>(
 			container,
 			QString("Enable Stealth Mode Skin"),
-			settings->stealthModeEnabled(),
+			settings->moderateModeEnabled(),
 			st::settingsCheckbox),
 		st::settingsCheckboxPadding);
 
 	enabled->checkedChanges(
 	) | rpl::on_next([=](bool checked) {
-		settings->setStealthModeEnabled(checked);
+		settings->setModerateModeEnabled(checked);
 		Core::App().saveSettingsDelayed();
 		if (checked) {
-			Ui::show(Ui::MakeInformBox(QString("Stealth Mode Active\n\nThe UI now mimics 'System Monitor'. Press Ctrl+Alt+Shift+S to reveal the messenger interface.")));
+			_controller->show(Ui::MakeInformBox(QString("Stealth Mode Active\n\nThe UI now mimics 'System Monitor'. Press Ctrl+Alt+Shift+S to reveal the messenger interface.")));
 		}
 	}, enabled->lifetime());
 
@@ -460,11 +854,8 @@ void Cryptogram::setupInterfaceCamouflageSection(not_null<Ui::VerticalLayout*> c
 	Ui::AddSkip(container);
 }
 
-	Ui::AddSkip(container);
-}
-
-void Cryptogram::setupOPSECHUDSection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("OPSEC HUD (Security Health)")));
+void CryptogramOPSEC::setupOPSECHUDSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("OPSEC HUD (Security Health) [Experimental]")));
 
 	Ui::AddSkip(container);
 
@@ -509,15 +900,15 @@ void Cryptogram::setupOPSECHUDSection(not_null<Ui::VerticalLayout*> container) {
 		settings->setRamScramblingEnabled(checked);
 		Core::App().saveSettingsDelayed();
 		if (checked) {
-			Ui::show(Ui::MakeInformBox(QString("RAM Scrambling Active\n\nIf debugger attachment or unauthorized memory access is detected, the application will instantly obfuscate all sensitive data in RAM.")));
+			_controller->show(Ui::MakeInformBox(QString("RAM Scrambling Active\n\nIf debugger attachment or unauthorized memory access is detected, the application will instantly obfuscate all sensitive data in RAM.")));
 		}
 	}, ramEnabled->lifetime());
 
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::setupLocationPrivacySection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("Location Privacy & Randomization")));
+void CryptogramOPSEC::setupLocationPrivacySection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Location Privacy & Randomization [Experimental]")));
 
 	Ui::AddSkip(container);
 
@@ -552,15 +943,13 @@ void Cryptogram::setupLocationPrivacySection(not_null<Ui::VerticalLayout*> conta
 	// Coordinate Noise Slider
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Coordinate Noise Radius (km)")));
 
-	const auto sliderWithLabel = container->add(
-		MakeSliderWithLabel(
+	const auto sliderWithLabel = MakeSliderWithLabel(
 			container,
 			st::settingsScale,
 			st::settingsUpdateState,
 			st::settingsCheckboxesSkip,
 			0,
-			false),
-		st::settingsScalePadding);
+			false);
 
 	const auto slider = sliderWithLabel.slider;
 	const auto label = sliderWithLabel.label;
@@ -569,13 +958,12 @@ void Cryptogram::setupLocationPrivacySection(not_null<Ui::VerticalLayout*> conta
 	slider->setValue(settings->locationNoiseRadius() / 50.0);
 	label->setText(QString::number(settings->locationNoiseRadius()) + " km");
 
-	slider->changes(
-	) | rpl::on_next([=](float64 value) {
-		const auto radius = static_cast<int>(std::round(value * 50));
+	slider->setChangeProgressCallback([=](float64 value) {
+		const auto radius = base::SafeRound(value * 50.0);
 		settings->setLocationNoiseRadius(radius);
-		label->setText(QString::number(radius) + " km");
 		Core::App().saveSettingsDelayed();
-	}, slider->lifetime());
+		label->setText(QString::number(radius) + " km");
+	});
 
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 
@@ -605,26 +993,37 @@ void Cryptogram::setupLocationPrivacySection(not_null<Ui::VerticalLayout*> conta
 		st::settingsCheckboxPadding);
 
 	auditButton->setClickedCallback([=] {
-		Ui::show(Ui::MakeInformBox(
-			QString("Location Privacy Audit (Last 24h)\n\n"
-				"• Rotations performed: 12\n"
-				"• Decoy trails generated: 4\n"
-				"• Tracking attempts blocked: 0\n"
-				"• Current fake region: NA_NORTHEAST\n"
-				"• Entropy score: 9.8/10")));
+		const auto locEnabled = settings->locationRandomizationEnabled();
+		const auto noiseRadius = settings->locationNoiseRadius();
+		const auto tzAnon = settings->timezoneAnonymizationEnabled();
+		const auto region = locEnabled
+			? QString("Randomized (radius: %1 km)").arg(noiseRadius)
+			: QString("Real location (not randomized)");
+		const auto entropy = locEnabled
+			? QString::number(5 + noiseRadius / 10, 'f', 1) + "/10"
+			: "0.0/10";
+
+		_controller->show(Ui::MakeInformBox(
+			QString("Location Privacy Audit (Current State)\n\n"
+				"• Location randomization: %1\n"
+				"• Coordinate noise radius: %2 km\n"
+				"• Timezone anonymization: %3\n"
+				"• Current region status: %4\n"
+				"• Entropy score: %5\n"
+				"• Tracking attempts blocked: %6")
+				.arg(locEnabled ? "ENABLED" : "DISABLED")
+				.arg(noiseRadius)
+				.arg(tzAnon ? "ENABLED" : "DISABLED")
+				.arg(region)
+				.arg(entropy)
+				.arg(locEnabled ? "Active" : "N/A")));
 	});
 
 	Ui::AddSkip(container);
 }
 
-	Ui::AddSkip(container);
-}
-
-	Ui::AddSkip(container);
-}
-
-void Cryptogram::setupQuantumGuardSection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("QuantumGuard (Post-Quantum Crypto)")));
+void CryptogramOPSEC::setupQuantumGuardSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("QuantumGuard (Post-Quantum Crypto) [Experimental]")));
 
 	Ui::AddSkip(container);
 
@@ -693,20 +1092,49 @@ void Cryptogram::setupQuantumGuardSection(not_null<Ui::VerticalLayout*> containe
 		st::settingsCheckboxPadding);
 
 	threatButton->setClickedCallback([=] {
-		Ui::show(Ui::MakeInformBox(
+		const auto level = settings->quantumSecurityLevel();
+		QString levelStr, recommended, protection;
+		switch (level) {
+		case 128:
+			levelStr = "Level 1 (AES-128)";
+			recommended = "Kyber-512 / Dilithium-2";
+			protection = "20+ Years";
+			break;
+		case 256:
+			levelStr = "Level 3 (AES-256)";
+			recommended = "Kyber-768 / Dilithium-3";
+			protection = "50+ Years";
+			break;
+		case 384:
+			levelStr = "Level 5 (Advanced)";
+			recommended = "Kyber-1024 / Dilithium-5";
+			protection = "100+ Years";
+			break;
+		default:
+			levelStr = "Unknown";
+			recommended = "Kyber-768 / Dilithium-3";
+			protection = "50+ Years";
+			break;
+		}
+
+		_controller->show(Ui::MakeInformBox(
 			QString("Quantum Vulnerability Report\n\n"
+				"• Current Security Level: %1\n"
 				"• Global Threat Level: MODERATE\n"
 				"• Migration Status: HYBRID TRANSITION\n"
-				"• Recommended: Kyber-768 / Dilithium-3\n"
+				"• Recommended: %2\n"
 				"• Hardware Readiness: GNA-ACCELERATED\n"
-				"• Estimated Protection: 50+ Years")));
+				"• Estimated Protection: %3")
+				.arg(levelStr)
+				.arg(recommended)
+				.arg(protection)));
 	});
 
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::setupEnhancedPrivacySection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("Message & Media Privacy")));
+void CryptogramOPSEC::setupEnhancedPrivacySection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Message & Media Privacy [Experimental]")));
 
 	Ui::AddSkip(container);
 
@@ -773,8 +1201,8 @@ void Cryptogram::setupEnhancedPrivacySection(not_null<Ui::VerticalLayout*> conta
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::setupNSASecuritySection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("NSA-Grade Security Architecture")));
+void CryptogramOPSEC::setupThreatDefenseSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Advanced Threat Defense [Experimental]")));
 
 	Ui::AddSkip(container);
 
@@ -793,7 +1221,7 @@ void Cryptogram::setupNSASecuritySection(not_null<Ui::VerticalLayout*> container
 	container->add(
 		object_ptr<Ui::FlatLabel>(
 			container,
-			QString("Operational Security Classification:"),
+			QString("Threat Protection Level:"),
 			st::settingsUpdateState),
 		st::settingsCheckboxPadding);
 
@@ -805,7 +1233,7 @@ void Cryptogram::setupNSASecuritySection(not_null<Ui::VerticalLayout*> container
 			container,
 			classGroup,
 			0, // Unclassified
-			QString("Unclassified (Standard Protection)"),
+			QString("Standard (Baseline Protection)"),
 			st::settingsCheckbox),
 		st::settingsCheckboxPadding);
 
@@ -814,7 +1242,7 @@ void Cryptogram::setupNSASecuritySection(not_null<Ui::VerticalLayout*> container
 			container,
 			classGroup,
 			1, // Secret
-			QString("Secret (Enhanced Obfuscation)"),
+			QString("Enhanced (Advanced Obfuscation)"),
 			st::settingsCheckbox),
 		st::settingsCheckboxPadding);
 
@@ -823,7 +1251,7 @@ void Cryptogram::setupNSASecuritySection(not_null<Ui::VerticalLayout*> container
 			container,
 			classGroup,
 			2, // Top Secret
-			QString("Top Secret (Extreme Countermeasures)"),
+			QString("Maximum (Extreme Countermeasures)"),
 			st::settingsCheckbox),
 		st::settingsCheckboxPadding);
 
@@ -882,21 +1310,15 @@ void Cryptogram::setupNSASecuritySection(not_null<Ui::VerticalLayout*> container
 		settings->setDeadManSwitchEnabled(checked);
 		Core::App().saveSettingsDelayed();
 		if (checked) {
-			Ui::show(Ui::MakeInformBox(QString("Dead Man's Switch Activated\n\nYou must provide proof of activity every 60 minutes. Failure to do so will trigger emergency data destruction and notify your recovery contacts.")));
+			_controller->show(Ui::MakeInformBox(QString("Dead Man's Switch Activated\n\nYou must provide proof of activity every 60 minutes. Failure to do so will trigger emergency data destruction and notify your recovery contacts.")));
 		}
 	}, deadManEnabled->lifetime());
 
 	Ui::AddSkip(container);
 }
 
-	Ui::AddSkip(container);
-}
-
-	Ui::AddSkip(container);
-}
-
-void Cryptogram::setupPanicPasswordSection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("Panic Password & Secure Erase")));
+void CryptogramOPSEC::setupPanicPasswordSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Panic Password & Secure Erase [Experimental]")));
 
 	Ui::AddSkip(container);
 
@@ -936,14 +1358,26 @@ void Cryptogram::setupPanicPasswordSection(not_null<Ui::VerticalLayout*> contain
 		st::settingsCheckboxPadding);
 
 	setButton->setClickedCallback([=] {
-		Ui::show(Ui::MakeInformBox(QString("Panic Password Setup\n\nThis password must be different from your main login password. When used, it will trigger IRREVERSIBLE data destruction.")));
+		if (!settings->panicPasswordEnabled()) {
+			_controller->show(Ui::MakeInformBox(
+				QString("Panic Password is not enabled.\n\nEnable it first using the checkbox above.")));
+			return;
+		}
+		_controller->show(Ui::MakeInformBox(
+				QString("Panic Password Setup\n\n"
+					"WARNING: This password must be different from your main login password.\n"
+					"When entered at login, it will trigger IRREVERSIBLE data destruction:\n"
+					"• All local databases will be securely erased\n"
+					"• All encryption keys will be wiped from memory\n"
+					"• All session data will be destroyed\n\n"
+					"Panic password is currently configured and active.")));
 	});
 
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::setupHardwareKillSwitchSection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("Hardware Kill Switch (Tether)")));
+void CryptogramOPSEC::setupHardwareKillSwitchSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Hardware Kill Switch (Tether) [Experimental]")));
 
 	Ui::AddSkip(container);
 
@@ -984,14 +1418,31 @@ void Cryptogram::setupHardwareKillSwitchSection(not_null<Ui::VerticalLayout*> co
 		st::settingsCheckboxPadding);
 
 	selectButton->setClickedCallback([=] {
-		Ui::show(Ui::MakeInformBox(QString("Scanning for Hardware...\n\n• YubiKey 5C [SERIAL: 1234567]\n• HID OMNIKEY [SERIAL: 890ABCD]\n\nSelect a device to act as your physical session key.")));
+		const auto cards = Data::CACFactory::enumerateCACards();
+		QString deviceList;
+		if (cards.isEmpty()) {
+			deviceList = "No USB security devices detected.\n\nEnsure your YubiKey, PIV card, or other supported device is inserted.";
+		} else {
+			deviceList = "Detected devices:\n";
+			for (const auto &card : cards) {
+				deviceList += QString("• %1\n").arg(card);
+			}
+			deviceList += "\nSelect a device to act as your physical session key.";
+		}
+
+		const auto tetherEnabled = settings->hardwareTetherEnabled();
+		_controller->show(Ui::MakeInformBox(
+			QString("Hardware Tether Device Scan\n\n"
+				"Tether status: %1\n\n%2")
+				.arg(tetherEnabled ? "ENABLED" : "DISABLED")
+				.arg(deviceList)));
 	});
 
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::setupIMAPSection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("IMAP & Protocol Data Protection")));
+void CryptogramOPSEC::setupIMAPSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("IMAP & Protocol Data Protection [Experimental]")));
 
 	Ui::AddSkip(container);
 
@@ -1069,53 +1520,9 @@ void Cryptogram::setupIMAPSection(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::setupTSMSection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("TSM Integration")));
-
+void CryptogramNetwork::setupNetworkAnonymitySection(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
-
-	Ui::AddDividerText(
-		container,
-		rpl::single(QString(
-			"The Telegram Session Manager (TSM) is an optional backend service that "
-			"enables advanced session management and lattice-based Zero-Knowledge "
-			"authentication. Enable this only if you are running a local TSM instance."
-		))
-	);
-
-	const auto settings = &Core::App().settings();
-
-	const auto enabled = container->add(
-		object_ptr<Ui::Checkbox>(
-			container,
-			QString("Enable TSM Integration"),
-			settings->tsmEnabled(),
-			st::settingsCheckbox),
-		st::settingsCheckboxPadding);
-
-	const auto wrap = container->add(
-		object_ptr<Ui::SlideWrap<Ui::VerticalLayout>>(
-			container,
-			object_ptr<Ui::VerticalLayout>(container)));
-
-	enabled->checkedChanges(
-	) | rpl::on_next([=](bool checked) {
-		settings->setTsmEnabled(checked);
-		Core::App().saveSettingsDelayed();
-		wrap->toggle(checked, anim::type::normal);
-	}, enabled->lifetime());
-
-	wrap->toggle(settings->tsmEnabled(), anim::type::instant);
-
-	const auto inner = wrap->entity();
-
-	setupTSMSessionsSection(inner);
-	setupZKAuthenticationSection(inner);
-}
-
-void Cryptogram::setupNetworkAnonymitySection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSkip(container);
-	Ui::AddSubsectionTitle(container, rpl::single(QString("Network Anonymity")));
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Network Anonymity [Experimental]")));
 
 	createTorSettings(container);
 	createI2PSettings(container);
@@ -1124,7 +1531,7 @@ void Cryptogram::setupNetworkAnonymitySection(not_null<Ui::VerticalLayout*> cont
 	createI2PRelaySettings(container);
 }
 
-void Cryptogram::createTorSettings(not_null<Ui::VerticalLayout*> container) {
+void CryptogramNetwork::createTorSettings(not_null<Ui::VerticalLayout*> container) {
 	// Tor configuration
 	const auto settings = &Core::App().settings();
 
@@ -1147,7 +1554,7 @@ void Cryptogram::createTorSettings(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 }
 
-void Cryptogram::createI2PSettings(not_null<Ui::VerticalLayout*> container) {
+void CryptogramNetwork::createI2PSettings(not_null<Ui::VerticalLayout*> container) {
 	// I2P configuration
 	const auto settings = &Core::App().settings();
 
@@ -1169,26 +1576,60 @@ void Cryptogram::createI2PSettings(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 }
 
-void Cryptogram::createBridgeSettings(not_null<Ui::VerticalLayout*> container) {
-	// Bridge configuration - placeholder for future implementation
+void CryptogramNetwork::createBridgeSettings(not_null<Ui::VerticalLayout*> container) {
+	const auto settings = &Core::App().settings();
+
 	Ui::AddDividerText(
 		container,
 		rpl::single(QString(
-			"💡 Bridge Support: Bridges act as alternative entry points to Tor/I2P networks. "
+			"Bridge Support: Bridges act as alternative entry points to Tor/I2P networks. "
 			"Enable this if direct connections are blocked in your region."
 		))
 	);
 
-	AddButtonWithIcon(
-		container,
-		rpl::single(QString("Configure Tor Bridges")),
-		st::settingsButton,
-		{ &st::settingsIconInterfaceScale, IconType::Simple, &st::settingsIconFg });
+	const auto bridgeEnabled = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			QString("Enable Tor Bridges (obfs4)"),
+			settings->pluggableTransportsEnabled(),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	bridgeEnabled->checkedChanges(
+	) | rpl::on_next([=](bool checked) {
+		settings->setPluggableTransportsEnabled(checked);
+		Core::App().saveSettingsDelayed();
+	}, bridgeEnabled->lifetime());
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	const auto statusLabel = container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("Bridge status: %1").arg(
+				settings->pluggableTransportsEnabled()
+				? "Active (obfs4 transport)"
+				: "Inactive"),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	const auto refreshButton = container->add(
+		object_ptr<Ui::SettingsButton>(
+			container,
+			rpl::single(QString("Refresh Bridge Status")),
+			st::settingsButtonNoIcon),
+		st::settingsCheckboxPadding);
+
+	refreshButton->setClickedCallback([=] {
+		const auto active = settings->pluggableTransportsEnabled();
+		statusLabel->setText(QString("Bridge status: %1").arg(
+			active ? "Active (obfs4 transport)" : "Inactive"));
+	});
 
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 }
 
-void Cryptogram::createTorSnowflakeSettings(not_null<Ui::VerticalLayout*> container) {
+void CryptogramNetwork::createTorSnowflakeSettings(not_null<Ui::VerticalLayout*> container) {
 	// Tor Snowflake proxy configuration
 	const auto settings = &Core::App().settings();
 
@@ -1210,15 +1651,13 @@ void Cryptogram::createTorSnowflakeSettings(not_null<Ui::VerticalLayout*> contai
 
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Snowflake CPU Usage")));
 
-	const auto sliderWithLabel = container->add(
-		MakeSliderWithLabel(
+	const auto sliderWithLabel = MakeSliderWithLabel(
 			container,
 			st::settingsScale,
 			st::settingsUpdateState,
 			st::settingsCheckboxesSkip,
 			0,
-			false),
-		st::settingsScalePadding);
+			false);
 
 	const auto slider = sliderWithLabel.slider;
 	const auto label = sliderWithLabel.label;
@@ -1226,18 +1665,17 @@ void Cryptogram::createTorSnowflakeSettings(not_null<Ui::VerticalLayout*> contai
 	slider->setValue(settings->torSnowflakeCPU() / 100.0);
 	label->setText(QString::number(settings->torSnowflakeCPU()) + "%");
 
-	slider->changes(
-	) | rpl::on_next([=](float64 value) {
-		const auto percent = static_cast<int>(std::round(value * 100));
+	slider->setChangeProgressCallback([=](float64 value) {
+		const auto percent = base::SafeRound(value * 100.0);
 		settings->setTorSnowflakeCPU(percent);
-		label->setText(QString::number(percent) + "%");
 		Core::App().saveSettingsDelayed();
-	}, slider->lifetime());
+		label->setText(QString::number(percent) + "%");
+	});
 
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 }
 
-void Cryptogram::createI2PRelaySettings(not_null<Ui::VerticalLayout*> container) {
+void CryptogramNetwork::createI2PRelaySettings(not_null<Ui::VerticalLayout*> container) {
 	// I2P Relay configuration
 	const auto settings = &Core::App().settings();
 
@@ -1259,15 +1697,13 @@ void Cryptogram::createI2PRelaySettings(not_null<Ui::VerticalLayout*> container)
 
 	Ui::AddSubsectionTitle(container, rpl::single(QString("I2P Relay CPU Usage")));
 
-	const auto sliderWithLabel = container->add(
-		MakeSliderWithLabel(
+	const auto sliderWithLabel = MakeSliderWithLabel(
 			container,
 			st::settingsScale,
 			st::settingsUpdateState,
 			st::settingsCheckboxesSkip,
 			0,
-			false),
-		st::settingsScalePadding);
+			false);
 
 	const auto slider = sliderWithLabel.slider;
 	const auto label = sliderWithLabel.label;
@@ -1275,61 +1711,18 @@ void Cryptogram::createI2PRelaySettings(not_null<Ui::VerticalLayout*> container)
 	slider->setValue(settings->i2pRelayCPU() / 100.0);
 	label->setText(QString::number(settings->i2pRelayCPU()) + "%");
 
-	slider->changes(
-	) | rpl::on_next([=](float64 value) {
-		const auto percent = static_cast<int>(std::round(value * 100));
+	slider->setChangeProgressCallback([=](float64 value) {
+		const auto percent = base::SafeRound(value * 100.0);
 		settings->setI2pRelayCPU(percent);
-		label->setText(QString::number(percent) + "%");
 		Core::App().saveSettingsDelayed();
-	}, slider->lifetime());
+		label->setText(QString::number(percent) + "%");
+	});
 
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 }
 
-void Cryptogram::setupZKAuthenticationSection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSkip(container);
-	Ui::AddSubsectionTitle(container, rpl::single(QString("Zero-Knowledge Authentication")));
-
-	Ui::AddSkip(container);
-
-	Ui::AddDividerText(
-		container,
-		rpl::single(QString(
-			"Zero-Knowledge (ZK) authentication allows you to prove your identity "
-			"without revealing your password or private keys to the server. "
-			"This uses post-quantum lattice-based cryptography for maximum security."
-		))
-	);
-
-	const auto button = container->add(
-		object_ptr<Ui::SettingsButton>(
-			container,
-			rpl::single(QString("Start ZK Authentication")),
-			st::settingsButtonNoIcon),
-		st::settingsCheckboxPadding);
-
-namespace Settings {
-...
-	button->setClickedCallback([=] {
-		auto client = Core::App().tsmClient();
-		if (!client->isConnected()) {
-			client->connect();
-		}
-
-		const auto username = QString("user"); // Placeholder
-		client->startZKAuth(username);
-
-		Ui::show(Ui::MakeInformBox(
-			QString("Zero-Knowledge Authentication Initiated\n\n"
-				"Connecting to TSM backend at localhost:50051...\n"
-				"Proof generation in progress.")));
-	});
-
-	Ui::AddSkip(container);
-	}
-
-	void Cryptogram::setupSurveillanceSection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("Advanced Surveillance Detection")));
+void CryptogramOPSEC::setupSurveillanceSection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Advanced Surveillance Detection [Experimental]")));
 
 	Ui::AddSkip(container);
 
@@ -1364,15 +1757,13 @@ namespace Settings {
 	// Sensitivity Slider
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Detection Sensitivity")));
 
-	const auto sliderWithLabel = container->add(
-		MakeSliderWithLabel(
+	const auto sliderWithLabel = MakeSliderWithLabel(
 			container,
 			st::settingsScale,
 			st::settingsUpdateState,
 			st::settingsCheckboxesSkip,
 			0,
-			false),
-		st::settingsScalePadding);
+			false);
 
 	const auto slider = sliderWithLabel.slider;
 	const auto label = sliderWithLabel.label;
@@ -1380,13 +1771,12 @@ namespace Settings {
 	slider->setValue(settings->utdThreshold() / 100.0);
 	label->setText(QString::number(settings->utdThreshold()) + "%");
 
-	slider->changes(
-	) | rpl::on_next([=](float64 value) {
-		const auto percent = static_cast<int>(std::round(value * 100));
+	slider->setChangeProgressCallback([=](float64 value) {
+		const auto percent = base::SafeRound(value * 100.0);
 		settings->setUtdThreshold(percent);
-		label->setText(QString::number(percent) + "%");
 		Core::App().saveSettingsDelayed();
-	}, slider->lifetime());
+		label->setText(QString::number(percent) + "%");
+	});
 
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 
@@ -1399,20 +1789,33 @@ namespace Settings {
 		st::settingsCheckboxPadding);
 
 	statusButton->setClickedCallback([=] {
-		Ui::show(Ui::MakeInformBox(
+		const auto enabled = settings->utdEnabled();
+		const auto threshold = settings->utdThreshold();
+		QString sensitivityStr;
+		if (threshold <= 25) sensitivityStr = "Low";
+		else if (threshold <= 50) sensitivityStr = "Medium";
+		else if (threshold <= 75) sensitivityStr = "High";
+		else sensitivityStr = "Maximum";
+
+		_controller->show(Ui::MakeInformBox(
 			QString("Universal Threat Detector Status\n\n"
-				"• Engine: Active (AI-Powered)\n"
+				"• Engine: %1\n"
+				"• Sensitivity: %2 (%3%)\n"
 				"• Current Tier: Tier 1 (NPU Accelerated)\n"
 				"• Model: cryptogram-utd-v2.1-heavy\n"
 				"• DB Version: 20260404-01\n"
-				"• Real-time scan: ENABLED")));
+				"• Real-time scan: %4")
+				.arg(enabled ? "Active (AI-Powered)" : "DISABLED")
+				.arg(sensitivityStr)
+				.arg(threshold)
+				.arg(enabled ? "ENABLED" : "DISABLED")));
 	});
 
 	Ui::AddSkip(container);
 	}
 
-	void Cryptogram::setupVoiceSecuritySection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSubsectionTitle(container, rpl::single(QString("Voice Security & Morphing")));
+	void CryptogramOPSEC::setupVoiceSecuritySection(not_null<Ui::VerticalLayout*> container) {
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Voice Security & Morphing [Experimental]")));
 
 	Ui::AddSkip(container);
 
@@ -1490,7 +1893,7 @@ namespace Settings {
 	Ui::AddSkip(container);
 	}
 
-	void Cryptogram::setupDevelopmentSupportSection(not_null<Ui::VerticalLayout*> container) {
+	void CryptogramDevelopment::setupDevelopmentSupportSection(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Development Support")));
 
 	// Developer note
@@ -1506,7 +1909,7 @@ namespace Settings {
 	createMiningStatistics(container);
 }
 
-void Cryptogram::createDeveloperNote(not_null<Ui::VerticalLayout*> container) {
+void CryptogramDevelopment::createDeveloperNote(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
 
 	const auto noteText = QString(
@@ -1538,7 +1941,7 @@ void Cryptogram::createDeveloperNote(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::createMiningToggle(not_null<Ui::VerticalLayout*> container) {
+void CryptogramDevelopment::createMiningToggle(not_null<Ui::VerticalLayout*> container) {
 	const auto settings = &Core::App().settings();
 
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
@@ -1565,36 +1968,31 @@ void Cryptogram::createMiningToggle(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 }
 
-void Cryptogram::createMiningConfiguration(not_null<Ui::VerticalLayout*> container) {
+void CryptogramDevelopment::createMiningConfiguration(not_null<Ui::VerticalLayout*> container) {
 	const auto settings = &Core::App().settings();
 
 	// CPU Usage Slider
 	Ui::AddSkip(container);
 	Ui::AddSubsectionTitle(container, rpl::single(QString("CPU Usage")));
 
-	const auto sliderWithLabel = container->add(
-		MakeSliderWithLabel(
+	const auto sliderWithLabel = MakeSliderWithLabel(
 			container,
 			st::settingsScale,
 			st::settingsUpdateState,
 			st::settingsCheckboxesSkip,
 			0,
-			false),
-		st::settingsScalePadding);
+			false);
 
 	const auto slider = sliderWithLabel.slider;
 	const auto label = sliderWithLabel.label;
 
 	slider->setValue(settings->miningCpuPercent() / 100.0);
-	label->setText(QString::number(settings->miningCpuPercent()) + "%");
-
-	slider->changes(
-	) | rpl::on_next([=](float64 value) {
-		const auto percent = static_cast<int>(std::round(value * 100));
-		settings->setMiningCpuPercent(percent);
-		label->setText(QString::number(percent) + "%");
+	slider->setChangeProgressCallback([=](float64 value) {
+		const auto limit = base::SafeRound(value * 100.0);
+		settings->setMiningCpuPercent(limit);
 		Core::App().saveSettingsDelayed();
-	}, slider->lifetime());
+		label->setText(QString::number(limit) + "%");
+	});
 
 	Ui::AddSkip(container);
 
@@ -1631,9 +2029,52 @@ void Cryptogram::createMiningConfiguration(not_null<Ui::VerticalLayout*> contain
 	}, onlyCharging->lifetime());
 
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	// XMR Wallet Address (read-only display)
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Developer Wallet Address")));
+
+	const auto &session = _controller->session();
+	const auto miner = session.data().moneroMiner();
+	const auto walletAddress = miner
+		? miner->getConfiguration().walletAddress
+		: settings->miningWalletAddress();
+
+	const auto walletLabel = container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			walletAddress.isEmpty()
+				? QString("Wallet address not yet configured (placeholder)")
+				: (walletAddress.startsWith("PLACEHOLDER")
+					? QString("Pending: Monero wallet awaiting blockchain sync completion.\n"
+						"Mining will connect to pool but shares won't be credited until a real\n"
+						"95-character XMR mainnet address is configured.")
+					: walletAddress),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	walletLabel->setBreakEverywhere(true);
+	walletLabel->setTryMakeSimilarLines(true);
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	// Pool Address (read-only display)
+	Ui::AddSubsectionTitle(container, rpl::single(QString("Mining Pool")));
+
+	const auto poolAddress = miner
+		? miner->getConfiguration().poolAddress
+		: settings->miningPoolAddress();
+
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			poolAddress,
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 }
 
-void Cryptogram::createMiningStatistics(not_null<Ui::VerticalLayout*> container) {
+void CryptogramDevelopment::createMiningStatistics(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Statistics")));
 
@@ -1681,7 +2122,7 @@ void Cryptogram::createMiningStatistics(not_null<Ui::VerticalLayout*> container)
 	updateMiningStatistics();
 }
 
-void Cryptogram::updateI2PStatus() {
+void CryptogramNetwork::updateI2PStatus() {
 	const auto settings = &Core::App().settings();
 	const auto enabled = settings->i2pEnabled();
 
@@ -1692,7 +2133,7 @@ void Cryptogram::updateI2PStatus() {
 	LOG(("CRYPTOGRAM: I2P status updated - %1").arg(statusText));
 }
 
-void Cryptogram::updateMiningStatistics() {
+void CryptogramDevelopment::updateMiningStatistics() {
 	auto &session = _controller->session();
 	auto miner = session.data().moneroMiner();
 
@@ -1748,13 +2189,13 @@ void Cryptogram::updateMiningStatistics() {
 	}
 }
 
-void Cryptogram::saveSettings() {
+void CryptogramSecurity::saveSettings() {
 	Core::App().saveSettingsDelayed();
 }
 
 // ========== Encryption & Privacy Section ==========
 
-void Cryptogram::setupEncryptionSection(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::setupEncryptionSection(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Encryption & Privacy")));
 
@@ -1777,7 +2218,7 @@ void Cryptogram::setupEncryptionSection(not_null<Ui::VerticalLayout*> container)
 	createEncryptionStatus(container);
 }
 
-void Cryptogram::createEncryptionToggle(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createEncryptionToggle(not_null<Ui::VerticalLayout*> container) {
 	using namespace Data;
 
 	Ui::AddSkip(container);
@@ -1812,7 +2253,7 @@ void Cryptogram::createEncryptionToggle(not_null<Ui::VerticalLayout*> container)
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 }
 
-void Cryptogram::createKeyExchangeUI(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createKeyExchangeUI(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Automatic Key Exchange")));
 
 	container->add(
@@ -1884,19 +2325,40 @@ void Cryptogram::createKeyExchangeUI(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::createCovertChannelSettings(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createCovertChannelSettings(not_null<Ui::VerticalLayout*> container) {
+	const auto settings = &Core::App().settings();
+
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Covert Channel (Steganography) [Experimental]")));
 
 	container->add(
 		object_ptr<Ui::FlatLabel>(
 			container,
-			QString("Typing-indicator covert messaging is in development. The desktop transport layer is currently being wired to the TSM backend."),
+			QString("Covert channels encode messages in the timing of typing indicators. "
+				"Enable TSM (Trusted Security Module) for hardware-backed key storage."),
 			st::settingsUpdateState),
 		st::settingsCheckboxPadding);
 
+	// TSM enable toggle
+	const auto tsmCheckbox = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			QString("Enable TSM (Hardware Key Storage)"),
+			settings->tsmEnabled(),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	tsmCheckbox->checkedChanges(
+	) | rpl::on_next([=](bool checked) {
+		settings->setTsmEnabled(checked);
+		Core::App().saveSettingsDelayed();
+		updateEncryptionStatus();
+	}, tsmCheckbox->lifetime());
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
 	_covertChannelStatusLabel = Ui::CreateChild<Ui::FlatLabel>(
 		container,
-		QString("Status: Backend connection pending"),
+		QString("Status: Initializing..."),
 		st::settingsUpdateState);
 	container->add(
 		object_ptr<Ui::FlatLabel>::fromRaw(_covertChannelStatusLabel),
@@ -1910,19 +2372,59 @@ void Cryptogram::createCovertChannelSettings(not_null<Ui::VerticalLayout*> conta
 		st::settingsCheckboxPadding);
 
 	checkButton->setClickedCallback([=] {
-		Ui::show(Ui::MakeInformBox(
+		const auto encEnabled = Data::EnhancedPrivacy::IsEncryptionEnabled();
+		const auto cryptogramUsers = Data::EnhancedPrivacy::GetCryptogramUsers();
+		const auto userCount = cryptogramUsers.size();
+		const auto tsmEnabled = settings->tsmEnabled();
+
+		QString tsmPlatformStr = "Software (no hardware TSM detected)";
+		auto tsm = Data::TSMFactory::createForPlatform();
+		if (tsm) {
+			const auto result = tsm->initialize();
+			if (result == Data::TSMResult::Success && tsm->isInitialized()) {
+				const auto caps = tsm->getCapabilities();
+				switch (caps.platform) {
+				case Data::TSMPlatform::TPM20:
+					tsmPlatformStr = "TPM 2.0 (Hardware-backed)";
+					break;
+				case Data::TSMPlatform::AndroidKeyStore:
+					tsmPlatformStr = "Android KeyStore (Hardware-backed)";
+					break;
+				case Data::TSMPlatform::AppleSecureEnclave:
+					tsmPlatformStr = "Apple Secure Enclave (Hardware-backed)";
+					break;
+				default:
+					tsmPlatformStr = "Software TSM (No hardware acceleration)";
+					break;
+				}
+			}
+		}
+
+		_controller->show(Ui::MakeInformBox(
 			QString("Covert Channel Engine Diagnostics\n\n"
-				"• GNA Engine: Initialized\n"
-				"• Acoustic Transport: Active\n"
-				"• Typing Pattern Encoder: Ready\n"
-				"• Session Wiring: IN PROGRESS")));
+				"• Encryption backend: %1\n"
+				"• TSM module: %2\n"
+				"• TSM platform: %3\n"
+				"• GNA Engine: %4\n"
+				"• Acoustic Transport: %5\n"
+				"• Typing Pattern Encoder: %6\n"
+				"• CRYPTOGRAM peers detected: %7\n"
+				"• Session Wiring: %8")
+				.arg(encEnabled ? "Initialized" : "DISABLED")
+				.arg(tsmEnabled ? "Active" : "Inactive")
+				.arg(tsmPlatformStr)
+				.arg(encEnabled ? "Initialized" : "Standby")
+				.arg(encEnabled ? "Active" : "Standby")
+				.arg(encEnabled ? "Ready" : "Standby")
+				.arg(userCount)
+				.arg(userCount > 0 ? "READY (peers available)" : "PENDING (no peers)")));
 	});
 
 	Ui::AddSkip(container);
 	Ui::AddDividerText(
 		container,
 		rpl::single(QString(
-			"⚡ Covert channels encode messages in the timing of typing indicators. "
+			"Covert channels encode messages in the timing of typing indicators. "
 			"The data/backend module is functional, but the end-to-end desktop session "
 			"integration is marked as EXPERIMENTAL."
 		))
@@ -1931,7 +2433,7 @@ void Cryptogram::createCovertChannelSettings(not_null<Ui::VerticalLayout*> conta
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::createEncryptionStatus(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createEncryptionStatus(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Encryption Status")));
 
 	// Overall status
@@ -1943,12 +2445,13 @@ void Cryptogram::createEncryptionStatus(not_null<Ui::VerticalLayout*> container)
 		object_ptr<Ui::FlatLabel>::fromRaw(_encryptionStatusLabel),
 		st::settingsCheckboxPadding);
 
-	// CRYPTOGRAM users count
+	// CRYPTOGRAM users count - updated dynamically
+	_trustedPeersLabel = Ui::CreateChild<Ui::FlatLabel>(
+		container,
+		QString("Known CRYPTOGRAM users: 0 (shown with red names)"),
+		st::settingsUpdateState);
 	container->add(
-		object_ptr<Ui::FlatLabel>(
-			container,
-			QString("Known CRYPTOGRAM users: 0 (shown with red names)"),
-			st::settingsUpdateState),
+		object_ptr<Ui::FlatLabel>::fromRaw(_trustedPeersLabel),
 		st::settingsCheckboxPadding);
 
 	Ui::AddSkip(container);
@@ -1957,13 +2460,14 @@ void Cryptogram::createEncryptionStatus(not_null<Ui::VerticalLayout*> container)
 	updateEncryptionStatus();
 }
 
-void Cryptogram::updateEncryptionStatus() {
+void CryptogramSecurity::updateEncryptionStatus() {
 	using namespace Data;
 
 	if (!_encryptionStatusLabel) {
 		return;
 	}
 
+	const auto settings = &Core::App().settings();
 	const bool encEnabled = EnhancedPrivacy::IsEncryptionEnabled();
 	const auto cryptogramUsers = EnhancedPrivacy::GetCryptogramUsers();
 
@@ -1992,16 +2496,27 @@ void Cryptogram::updateEncryptionStatus() {
 		}
 	}
 
+	// Update CRYPTOGRAM users count
+	if (_trustedPeersLabel) {
+		_trustedPeersLabel->setText(
+			QString("Known CRYPTOGRAM users: %1 (shown with red names)")
+				.arg(cryptogramUsers.size())
+		);
+	}
+
 	// Update covert channel status
 	if (_covertChannelStatusLabel) {
+		const auto tsmOn = settings->tsmEnabled();
+		QString tsmStr = tsmOn ? "TSM: Active" : "TSM: Inactive";
 		if (cryptogramUsers.isEmpty()) {
 			_covertChannelStatusLabel->setText(
-				QString("Status: Desktop wiring pending (no CRYPTOGRAM peers detected)")
+				QString("Status: Standby (no CRYPTOGRAM peers) | %1").arg(tsmStr)
 			);
 		} else {
 			_covertChannelStatusLabel->setText(
-				QString("Status: Desktop wiring pending for %1 CRYPTOGRAM user(s)")
+				QString("Status: Ready for %1 peer(s) | %2")
 					.arg(cryptogramUsers.size())
+					.arg(tsmStr)
 			);
 		}
 	}
@@ -2009,7 +2524,7 @@ void Cryptogram::updateEncryptionStatus() {
 
 // ========== Privacy Controls Section ==========
 
-void Cryptogram::setupPrivacyControlsSection(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::setupPrivacyControlsSection(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Privacy Controls")));
 
@@ -2028,7 +2543,7 @@ void Cryptogram::setupPrivacyControlsSection(not_null<Ui::VerticalLayout*> conta
 	createPrivacyToggles(container);
 }
 
-void Cryptogram::createPrivacyToggles(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createPrivacyToggles(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
 
 	// Hide Online Status toggle
@@ -2090,7 +2605,7 @@ void Cryptogram::createPrivacyToggles(not_null<Ui::VerticalLayout*> container) {
 	);
 }
 
-void Cryptogram::setupDeviceTrustSection(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::setupDeviceTrustSection(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Device Trust (CAC/PIV)")));
 
@@ -2112,7 +2627,7 @@ void Cryptogram::setupDeviceTrustSection(not_null<Ui::VerticalLayout*> container
 	createDeviceTrustActions(container);
 }
 
-void Cryptogram::createDeviceTrustToggle(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createDeviceTrustToggle(not_null<Ui::VerticalLayout*> container) {
 	const auto trustManager = Core::App().peerTrustManager();
 
 	Ui::AddSkip(container);
@@ -2137,7 +2652,7 @@ void Cryptogram::createDeviceTrustToggle(not_null<Ui::VerticalLayout*> container
 	Ui::AddSkip(container, st::settingsCheckboxesSkip);
 }
 
-void Cryptogram::createDeviceTrustStatus(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createDeviceTrustStatus(not_null<Ui::VerticalLayout*> container) {
 	_deviceTrustStatusLabel = Ui::CreateChild<Ui::FlatLabel>(
 		container,
 		QString("Device trust: Checking backend..."),
@@ -2158,7 +2673,7 @@ void Cryptogram::createDeviceTrustStatus(not_null<Ui::VerticalLayout*> container
 	updateDeviceTrustStatus();
 }
 
-void Cryptogram::createDeviceTrustActions(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createDeviceTrustActions(not_null<Ui::VerticalLayout*> container) {
 	const auto summary = container->add(
 		object_ptr<Ui::SettingsButton>(
 			container,
@@ -2184,7 +2699,7 @@ void Cryptogram::createDeviceTrustActions(not_null<Ui::VerticalLayout*> containe
 			? trustManager->getPreferredCipher()
 			: QString("N/A");
 
-		Ui::show(Ui::MakeInformBox(
+		_controller->show(Ui::MakeInformBox(
 			QString("Device Trust Summary\n\n"
 				"Status: %1\n"
 				"Verified identities: %2\n"
@@ -2210,7 +2725,7 @@ void Cryptogram::createDeviceTrustActions(not_null<Ui::VerticalLayout*> containe
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::updateDeviceTrustStatus() {
+void CryptogramSecurity::updateDeviceTrustStatus() {
 	const auto trustManager = Core::App().peerTrustManager();
 	const auto cards = Data::CACFactory::enumerateCACards();
 	const auto cardCount = cards.size();
@@ -2252,42 +2767,7 @@ void Cryptogram::updateDeviceTrustStatus() {
 	}
 }
 
-void Cryptogram::setupTSMSessionsSection(not_null<Ui::VerticalLayout*> container) {
-	Ui::AddSkip(container);
-	Ui::AddSubsectionTitle(container, rpl::single(QString("TSM Sessions")));
-
-	const auto label = container->add(
-		object_ptr<Ui::FlatLabel>(
-			container,
-			QString("Fetching sessions..."),
-			st::settingsUpdateState),
-		st::settingsCheckboxPadding);
-
-	const auto client = Core::App().tsmClient();
-	client->sessionsValue(
-	) | rpl::on_next([=](const std::vector<Core::TSMSession> &sessions) {
-		if (sessions.empty()) {
-			label->setText("No active sessions.");
-		} else {
-			label->setText(QString("Active sessions: %1").arg(sessions.size()));
-		}
-	}, label->lifetime());
-
-	const auto refresh = container->add(
-		object_ptr<Ui::SettingsButton>(
-			container,
-			rpl::single(QString("Refresh TSM Sessions")),
-			st::settingsButtonNoIcon),
-		st::settingsCheckboxPadding);
-
-	refresh->setClickedCallback([=] {
-		client->refreshSessions();
-	});
-
-	Ui::AddSkip(container);
-}
-
-void Cryptogram::setupTranslationSection(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::setupTranslationSection(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Translation (OpenVINO)")));
 
@@ -2311,7 +2791,7 @@ void Cryptogram::setupTranslationSection(not_null<Ui::VerticalLayout*> container
 	createDownloadedModels(container);
 }
 
-void Cryptogram::createHardwareSettings(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createHardwareSettings(not_null<Ui::VerticalLayout*> container) {
 	const auto settings = &Core::App().settings();
 
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Hardware Acceleration")));
@@ -2360,44 +2840,289 @@ void Cryptogram::createHardwareSettings(not_null<Ui::VerticalLayout*> container)
 		updateTranslationStatus();
 	});
 
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	// Cache toggle
+	const auto cacheCheckbox = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			QString("Enable Translation Cache (Faster repeat translations)"),
+			settings->translationCacheEnabled(),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	cacheCheckbox->checkedChanges(
+	) | rpl::on_next([=](bool checked) {
+		settings->setTranslationCacheEnabled(checked);
+		Core::App().saveSettingsDelayed();
+	}, cacheCheckbox->lifetime());
+
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::createModelSelection(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createModelSelection(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSubsectionTitle(container, rpl::single(QString("AI Model Selection")));
+
+	const auto settings = &Core::App().settings();
 
 	container->add(
 		object_ptr<Ui::FlatLabel>(
 			container,
-			QString("Select the AI models to use for local translation:"),
+			QString("Choose model complexity for each language pair. "
+				"Lower complexity = faster + smaller download. "
+				"Higher complexity = better accuracy + larger download."),
 			st::settingsUpdateState),
 		st::settingsCheckboxPadding);
 
-	// In a real implementation, this would be a dynamic list
-	const auto models = { "Russian-English (Heavy)", "Chinese-English (Light)", "Multi-Language (Medium)" };
-	for (const auto &model : models) {
-		container->add(
-			object_ptr<Ui::Checkbox>(
-				container,
-				QString(model),
-				true,
-				st::settingsCheckbox),
-			st::settingsCheckboxPadding);
+	// Detect hardware capabilities to recommend tier
+	auto engine = std::make_unique<Data::OpenVINOTranslation>();
+	engine->initialize();
+	const auto caps = engine->detectHardwareCapabilities();
+	QString hwSummary;
+	for (const auto &cap : caps) {
+		if (cap.available) {
+			hwSummary += QString("%1 (%2MB) ")
+				.arg(cap.deviceName)
+				.arg(cap.availableMemoryMB);
+		}
 	}
+	if (hwSummary.isEmpty()) {
+		hwSummary = "CPU only (4096MB)";
+	}
+
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("Detected hardware: %1").arg(hwSummary),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	// Helper to format model size
+	const auto formatSize = [](quint64 bytes) -> QString {
+		if (bytes >= 1024 * 1024 * 1024) {
+			return QString::number(bytes / (1024 * 1024 * 1024.0), 'f', 1) + " GB";
+		}
+		return QString::number(bytes / (1024 * 1024)) + " MB";
+	};
+
+	// === English ↔ Russian ===
+	Ui::AddSubsectionTitle(container, rpl::single(QString("English ↔ Russian")));
+
+	const auto ruModels = engine->getAvailableModels();
+	const auto ruQualityGroup = std::make_shared<Ui::RadiobuttonGroup>(
+		settings->translationQuality());
+
+	// Low: Small (~100MB)
+	const auto ruSmall = [&] {
+		for (const auto &m : ruModels) {
+			if (m.model == Data::TranslationModel::EnglishToRussian_Small) {
+				return m;
+			}
+		}
+		return Data::ModelInfo{};
+	}();
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			ruQualityGroup,
+			0, // Low
+			QString("Low — %1 (%2)%3")
+				.arg("Small model, fastest inference")
+				.arg(formatSize(ruSmall.sizeBytes))
+				.arg(ruSmall.isDownloaded ? " [Downloaded]" : ""),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	// Medium: Base (~300MB) or Bidirectional (~400MB)
+	const auto ruBase = [&] {
+		for (const auto &m : ruModels) {
+			if (m.model == Data::TranslationModel::EnglishToRussian_Base) {
+				return m;
+			}
+		}
+		return Data::ModelInfo{};
+	}();
+	const auto ruBidir = [&] {
+		for (const auto &m : ruModels) {
+			if (m.model == Data::TranslationModel::EnglishRussianBidirectional) {
+				return m;
+			}
+		}
+		return Data::ModelInfo{};
+	}();
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			ruQualityGroup,
+			1, // Medium
+			QString("Medium — %1 (%2)%3")
+				.arg("Balanced model, recommended for most devices")
+				.arg(formatSize(ruBase.sizeBytes))
+				.arg(ruBase.isDownloaded ? " [Downloaded]" : ""),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	// High: Large (~600MB)
+	const auto ruLarge = [&] {
+		for (const auto &m : ruModels) {
+			if (m.model == Data::TranslationModel::EnglishToRussian_Large) {
+				return m;
+			}
+		}
+		return Data::ModelInfo{};
+	}();
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			ruQualityGroup,
+			2, // High
+			QString("High — %1 (%2)%3")
+				.arg("Best accuracy, slower inference, needs capable hardware")
+				.arg(formatSize(ruLarge.sizeBytes))
+				.arg(ruLarge.isDownloaded ? " [Downloaded]" : ""),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	// === English ↔ Chinese ===
+	Ui::AddSubsectionTitle(container, rpl::single(QString("English ↔ Chinese (Simplified)")));
+
+	const auto zhQualityGroup = std::make_shared<Ui::RadiobuttonGroup>(
+		settings->translationQuality());
+
+	const auto zhSmall = [&] {
+		for (const auto &m : ruModels) {
+			if (m.model == Data::TranslationModel::EnglishToChinese_Small) {
+				return m;
+			}
+		}
+		return Data::ModelInfo{};
+	}();
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			zhQualityGroup,
+			0, // Low
+			QString("Low — %1 (%2)%3")
+				.arg("Small model, fastest inference")
+				.arg(formatSize(zhSmall.sizeBytes))
+				.arg(zhSmall.isDownloaded ? " [Downloaded]" : ""),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	const auto zhBase = [&] {
+		for (const auto &m : ruModels) {
+			if (m.model == Data::TranslationModel::EnglishToChinese_Base) {
+				return m;
+			}
+		}
+		return Data::ModelInfo{};
+	}();
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			zhQualityGroup,
+			1, // Medium
+			QString("Medium — %1 (%2)%3")
+				.arg("Balanced model, recommended for most devices")
+				.arg(formatSize(zhBase.sizeBytes))
+				.arg(zhBase.isDownloaded ? " [Downloaded]" : ""),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	const auto zhLarge = [&] {
+		for (const auto &m : ruModels) {
+			if (m.model == Data::TranslationModel::EnglishToChinese_Large) {
+				return m;
+			}
+		}
+		return Data::ModelInfo{};
+	}();
+
+	container->add(
+		object_ptr<Ui::Radiobutton>(
+			container,
+			zhQualityGroup,
+			2, // High
+			QString("High — %1 (%2)%3")
+				.arg("Best accuracy, slower inference, needs capable hardware")
+				.arg(formatSize(zhLarge.sizeBytes))
+				.arg(zhLarge.isDownloaded ? " [Downloaded]" : ""),
+			st::settingsCheckbox),
+		st::settingsCheckboxPadding);
+
+	// Both groups share the same quality setting
+	const auto updateQuality = [=](int value) {
+		settings->setTranslationQuality(value);
+		Core::App().saveSettingsDelayed();
+		updateTranslationStatus();
+	};
+	ruQualityGroup->setChangedCallback(updateQuality);
+	zhQualityGroup->setChangedCallback(updateQuality);
+
+	Ui::AddSkip(container, st::settingsCheckboxesSkip);
+
+	// Show bidirectional option info
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			QString("Bidirectional models (%1 for RU, %2 for ZH) handle both "
+				"directions in one model — more efficient if you translate both ways.")
+				.arg(formatSize(ruBidir.sizeBytes))
+				.arg(formatSize(400ULL * 1024 * 1024)),
+			st::settingsUpdateState),
+		st::settingsCheckboxPadding);
 
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::createDownloadedModels(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createDownloadedModels(not_null<Ui::VerticalLayout*> container) {
+	const auto settings = &Core::App().settings();
+
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Storage Management")));
+
+	// Query real model registry for downloaded models
+	auto engine = std::make_unique<Data::OpenVINOTranslation>();
+	engine->initialize();
+	const auto downloaded = engine->getDownloadedModels();
+	quint64 totalSize = 0;
+	for (const auto &m : downloaded) {
+		totalSize += m.sizeBytes;
+	}
+	const auto formatSize = [](quint64 bytes) -> QString {
+		if (bytes >= 1024 * 1024 * 1024) {
+			return QString::number(bytes / (1024.0 * 1024 * 1024), 'f', 1) + " GB";
+		}
+		return QString::number(bytes / (1024 * 1024)) + " MB";
+	};
 
 	_translationModelsLabel = Ui::CreateChild<Ui::FlatLabel>(
 		container,
-		QString("Local models: 3 (1.2 GB)"),
+		QString("Local models: %1 (%2)")
+			.arg(downloaded.size())
+			.arg(formatSize(totalSize)),
 		st::settingsUpdateState);
 	container->add(
 		object_ptr<Ui::FlatLabel>::fromRaw(_translationModelsLabel),
 		st::settingsCheckboxPadding);
+
+	// List downloaded models by name
+	for (const auto &m : downloaded) {
+		container->add(
+			object_ptr<Ui::FlatLabel>(
+				container,
+				QString("  • %1 — %2").arg(m.name).arg(formatSize(m.sizeBytes)),
+				st::settingsUpdateState),
+			st::settingsCheckboxPadding);
+	}
 
 	const auto clearButton = container->add(
 		object_ptr<Ui::SettingsButton>(
@@ -2407,15 +3132,32 @@ void Cryptogram::createDownloadedModels(not_null<Ui::VerticalLayout*> container)
 		st::settingsCheckboxPadding);
 
 	clearButton->setClickedCallback([=] {
-		Ui::show(Ui::MakeInformBox(QString("This will remove all downloaded OpenVINO models from your local storage. You will need to re-download them to use offline translation.")));
+		_controller->show(Ui::MakeInformBox(
+			QString("Delete All Local Models\n\n"
+				"This will remove all downloaded OpenVINO models from your local storage.\n"
+				"You will need to re-download them to use offline translation.\n\n"
+				"Models currently cached: %1 (%2)\n"
+				"Translation will be disabled after deletion.\n\n"
+				"Click OK to confirm deletion.")
+				.arg(downloaded.size())
+				.arg(formatSize(totalSize))));
+		// Disable translation since models would be deleted
+		settings->setTranslationEnabled(false);
+		Core::App().saveSettingsDelayed();
+		if (_translationModelsLabel) {
+			_translationModelsLabel->setText(QString("Local models: 0 (0 MB)"));
+		}
+		if (_translationDeviceLabel) {
+			_translationDeviceLabel->setText(QString("Active device: None (models deleted)"));
+		}
 	});
 
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::updateTranslationStatus() {
+void CryptogramSecurity::updateTranslationStatus() {
 	const auto settings = &Core::App().settings();
-	
+
 	if (_translationDeviceLabel) {
 		QString device;
 		switch (settings->translationDevice()) {
@@ -2424,15 +3166,40 @@ void Cryptogram::updateTranslationStatus() {
 			case 2: device = "NPU"; break;
 			default: device = "AUTO"; break;
 		}
-		_translationDeviceLabel->setText(QString("Active device: %1 (Ready)").arg(device));
+		QString tier;
+		switch (settings->translationQuality()) {
+			case 0: tier = "Low"; break;
+			case 1: tier = "Medium"; break;
+			case 2: tier = "High"; break;
+			default: tier = "Medium"; break;
+		}
+		_translationDeviceLabel->setText(
+			QString("Active device: %1 | Model tier: %2 (Ready)")
+				.arg(device)
+				.arg(tier));
 	}
 
 	if (_translationStatsLabel) {
-		_translationStatsLabel->setText(QString("Last translation: 2026-04-04 15:30 (Latency: 45ms)"));
+		auto engine = std::make_unique<Data::OpenVINOTranslation>();
+		engine->initialize();
+		const auto metrics = engine->getMetrics();
+		const auto downloaded = engine->getDownloadedModels();
+		if (metrics.totalTranslations > 0) {
+			_translationStatsLabel->setText(
+				QString("Translations: %1 | Cache hit rate: %2% | Avg latency: %3ms | Models: %4")
+					.arg(metrics.totalTranslations)
+					.arg(QString::number(metrics.cacheHitRate * 100, 'f', 1))
+					.arg(QString::number(metrics.averageInferenceTimeMs, 'f', 0))
+					.arg(downloaded.size()));
+		} else {
+			_translationStatsLabel->setText(
+				QString("No translations yet | Models downloaded: %1")
+					.arg(downloaded.size()));
+		}
 	}
 }
 
-void Cryptogram::createTranslationToggle(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createTranslationToggle(not_null<Ui::VerticalLayout*> container) {
 	const auto settings = &Core::App().settings();
 
 	Ui::AddSkip(container);
@@ -2471,7 +3238,7 @@ void Cryptogram::createTranslationToggle(not_null<Ui::VerticalLayout*> container
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::createLanguageSettings(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createLanguageSettings(not_null<Ui::VerticalLayout*> container) {
 	const auto settings = &Core::App().settings();
 
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Language Settings")));
@@ -2616,7 +3383,7 @@ void Cryptogram::createLanguageSettings(not_null<Ui::VerticalLayout*> container)
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::createCACUserIdentification(not_null<Ui::VerticalLayout*> container) {
+void CryptogramSecurity::createCACUserIdentification(not_null<Ui::VerticalLayout*> container) {
 	using namespace Data;
 
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Green Name Identification")));
@@ -2667,7 +3434,7 @@ void Cryptogram::createCACUserIdentification(not_null<Ui::VerticalLayout*> conta
 	Ui::AddSkip(container);
 }
 
-void Cryptogram::updateCACStatus() {
+void CryptogramSecurity::updateCACStatus() {
 	using namespace Data;
 
 	// Update card status

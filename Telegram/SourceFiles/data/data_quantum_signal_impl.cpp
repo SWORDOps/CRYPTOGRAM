@@ -884,3 +884,5 @@ void QuantumSignalProtocol::resetQuantumMetrics() {
 }
 
 } // namespace Data
+
+#include "moc_data_signal_quantum.cpp"

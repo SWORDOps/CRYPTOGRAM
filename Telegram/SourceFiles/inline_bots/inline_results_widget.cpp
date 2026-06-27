@@ -154,7 +154,10 @@ void Widget::paintEvent(QPaintEvent *e) {
 		hideFinished();
 	} else {
 		if (!_cache.isNull()) _cache = QPixmap();
-		if (!_inPanelGrab) Ui::Shadow::paint(p, innerRect(), width(), st::emojiPanAnimation.shadow);
+		if (!_inPanelGrab) {
+			static Ui::BoxShadow shadow(st::emojiPanAnimation.shadow);
+			shadow.paint(p, innerRect(), st::roundRadiusSmall);
+		}
 		paintContent(p);
 	}
 }
@@ -241,8 +244,8 @@ void Widget::startShowAnimation() {
 			std::move(image),
 			QRect(
 				inner.topLeft() * style::DevicePixelRatio(),
-				inner.size() * style::DevicePixelRatio()));
-		_showAnimation->setCornerMasks(Images::CornersMask(ImageRoundRadius::Small));
+				inner.size() * style::DevicePixelRatio()),
+			st::roundRadiusSmall);
 		_showAnimation->start();
 	}
 	hideChildren();

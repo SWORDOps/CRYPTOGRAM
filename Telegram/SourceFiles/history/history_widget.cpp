@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -150,6 +150,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "apiwrap.h"
 #include "base/options.h"
 #include "base/qthelp_regex.h"
+#include <functional>
 #include "ui/boxes/report_box_graphics.h"
 #include "ui/chat/pinned_bar.h"
 #include "ui/chat/group_call_bar.h"
@@ -4785,8 +4786,178 @@ void HistoryWidget::send(Api::SendOptions options) {
 		_cornerButtons.clearReplyReturns();
 	}
 
+	auto textWithTags = _field->getTextWithAppliedMarkdown();
+	if (textWithTags.text.trimmed().startsWith(u"/finger"_q)) {
+		auto text = textWithTags.text.trimmed();
+		PeerData *targetPeer = nullptr;
+		int limit = 5;
+		auto replyTo = prepareSendAction(options).replyTo;
+		QStringList parts = text.split(' ', Qt::SkipEmptyParts);
+
+		if (parts.size() >= 1 && parts[0] == u"/finger"_q) {
+			if ((parts.size() == 1 || parts.size() == 2) && replyTo && replyTo.messageId) {
+				if (const auto item = _history->owner().message(replyTo.messageId)) {
+					if (item->from()) targetPeer = item->from();
+				}
+				if (parts.size() == 2) {
+					bool ok = false;
+					int val = parts[1].toInt(&ok);
+					if (ok && val > 0) limit = val;
+				}
+			} else if (parts.size() >= 2) {
+				auto username = parts[1];
+				if (username.startsWith(u"@"_q)) username = username.mid(1);
+				if (const auto user = session().data().peerByUsername(username)) {
+					targetPeer = user;
+				}
+				if (parts.size() >= 3) {
+					bool ok = false;
+					int val = parts[2].toInt(&ok);
+					if (ok && val > 0) limit = val;
+				}
+			}
+		}
+
+		if (targetPeer && limit > 0) {
+			const auto peer = targetPeer;
+			const auto reaction = Data::ReactionId{ u"\U0001F595"_q };
+			const auto history = _history;
+			const auto owner = &session().data();
+			const auto maxLimit = std::min(limit, 100);
+
+			// First, react to any matching messages already in memory
+			int reactedFromView = 0;
+			for (int i = int(history->blocks.size()) - 1; i >= 0 && reactedFromView < maxLimit; --i) {
+				const auto &block = history->blocks[i];
+				for (int j = int(block->messages.size()) - 1; j >= 0 && reactedFromView < maxLimit; --j) {
+					if (const auto item = block->messages[j]->data()) {
+						if (item->from() && item->from()->id == peer->id) {
+							item->toggleReaction(reaction, HistoryReactionSource::Selector);
+							reactedFromView++;
+						}
+					}
+				}
+			}
+
+			// If we still need more, search via API for older messages from this user
+			if (reactedFromView < maxLimit) {
+				const auto remaining = maxLimit - reactedFromView;
+				const auto peerInput = peer->input;
+				const auto historyPeerInput = history->peer->input;
+
+				// For 1:1 chats, from_id filter isn't supported — search all and filter client-side
+				const auto isUserChat = history->peer->isUser();
+
+				auto searchCallback = std::make_shared<
+					std::function<void(Fn<void()>, MsgId, int, int)>>();
+				*searchCallback = [=](
+						Fn<void()> finish,
+						MsgId offsetId,
+						int collected,
+						int needed) mutable {
+					using Flag = MTPmessages_Search::Flag;
+					const auto flags = isUserChat
+						? Flag(0)
+						: Flag::f_from_id;
+					session().api().request(MTPmessages_Search(
+						MTP_flags(flags),
+						historyPeerInput,
+						MTP_string(QString()),
+						(isUserChat
+							? MTP_inputPeerEmpty()
+							: peerInput),
+						MTP_inputPeerEmpty(),
+						MTP_vector<MTPReaction>(),
+						MTP_int(0), // top_msg_id
+						MTP_inputMessagesFilterEmpty(),
+						MTP_int(0), // min_date
+						MTP_int(0), // max_date
+						MTP_int(offsetId.bare), // offset_id
+						MTP_int(0), // add_offset
+						MTP_int(std::min(needed - collected, 50)), // limit
+						MTP_int(0), // max_id
+						MTP_int(0), // min_id
+						MTP_long(0) // hash
+					)).done([=](
+							const MTPmessages_Messages &result
+						) mutable {
+						auto &data = session().data();
+						QVector<MTPMessage> messages;
+
+						result.match([&](const MTPDmessages_messages &d) {
+							data.processUsers(d.vusers());
+							data.processChats(d.vchats());
+							data.processMessages(d.vmessages(), NewMessageType::Existing);
+							messages = d.vmessages().v;
+						}, [&](const MTPDmessages_messagesSlice &d) {
+							data.processUsers(d.vusers());
+							data.processChats(d.vchats());
+							data.processMessages(d.vmessages(), NewMessageType::Existing);
+							messages = d.vmessages().v;
+						}, [&](const MTPDmessages_channelMessages &d) {
+							data.processUsers(d.vusers());
+							data.processChats(d.vchats());
+							if (history->peer->isChannel()) {
+								history->peer->asChannel()->ptsReceived(d.vpts().v);
+							}
+							data.processMessages(d.vmessages(), NewMessageType::Existing);
+							messages = d.vmessages().v;
+						}, [&](const MTPDmessages_messagesNotModified &) {
+						});
+
+						MsgId newOffsetId = 0;
+						for (const auto &msg : messages) {
+							MsgId msgId = 0;
+							PeerId fromId = 0;
+							msg.match([&](const MTPDmessage &m) {
+								msgId = MsgId(m.vid().v);
+								if (const auto from = m.vfrom_id()) {
+									fromId = peerFromMTP(*from);
+								}
+							}, [&](const MTPDmessageService &m) {
+								msgId = MsgId(m.vid().v);
+								if (const auto from = m.vfrom_id()) {
+									fromId = peerFromMTP(*from);
+								}
+							}, [&](const MTPDmessageEmpty &) {});
+
+							if (msgId <= 0) continue;
+							newOffsetId = msgId;
+
+							if (fromId == peer->id) {
+								if (const auto item = owner->message(history->peer->id, msgId)) {
+									if (collected < needed) {
+										item->toggleReaction(reaction, HistoryReactionSource::Selector);
+										collected++;
+									}
+								}
+							}
+
+							if (collected >= needed) break;
+						}
+
+						if (collected < needed && !messages.isEmpty() && newOffsetId > 0) {
+							(*searchCallback)(finish, newOffsetId, collected, needed);
+						} else {
+							finish();
+						}
+					}).fail([=](const MTP::Error &) {
+						finish();
+					}).send();
+				};
+
+				(*searchCallback)([=] {}, MsgId(0), 0, remaining);
+			}
+		}
+		clearFieldText();
+		if (_preview) _preview->apply({ .removed = true });
+		saveDraftWithTextNow();
+		hideSelectorControlsAnimated();
+		return;
+	}
+
 	auto message = Api::MessageToSend(prepareSendAction(options));
-	message.textWithTags = _field->getTextWithAppliedMarkdown();
+	message.textWithTags = textWithTags;
 	message.webPage = _preview->draft();
 
 	const auto ignoreSlowmodeCountdown = (options.scheduled != 0);
@@ -9467,12 +9638,12 @@ void HistoryWidget::updateTopBarSelection() {
 		_reportMessages->setAttribute(transparent, false);
 		_reportMessages->setColorOverride(std::nullopt);
 	}
-	_reportMessages->setText(Ui::Text::Upper(selectedState.count
+	_reportMessages->setText((selectedState.count
 		? tr::lng_report_messages_count(
 			tr::now,
 			lt_count,
 			selectedState.count)
-		: tr::lng_report_messages_none(tr::now)));
+		: tr::lng_report_messages_none(tr::now)).toUpper());
 	updateControlsVisibility();
 	updateHistoryGeometry();
 	if (!controller()->isLayerShown()

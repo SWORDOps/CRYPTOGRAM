@@ -13,8 +13,11 @@
 #include <winscard.h>
 #elif defined(Q_OS_LINUX) || defined(Q_OS_MAC)
 #include <dlfcn.h>
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnonportable-include-path"
 #include <PCSC/winscard.h>
 #include <PCSC/wintypes.h>
+#pragma GCC diagnostic pop
 #endif
 
 namespace Core {
@@ -224,14 +227,14 @@ std::optional<DeviceCredential> CredentialHelper::readToken() {
         return std::nullopt;
     }
 
-    const unsigned char selectPIV[] = {
+    [[maybe_unused]] const unsigned char selectPIV[] = {
         0x00, 0xA4, 0x04, 0x00, 0x09,
         0xA0, 0x00, 0x00, 0x03, 0x08,
         0x00, 0x00, 0x10, 0x00
     };
 
-    unsigned char response[256];
-    DWORD responseLen = sizeof(response);
+    [[maybe_unused]] unsigned char response[256];
+    [[maybe_unused]] DWORD responseLen = sizeof(response);
 
     DeviceCredential cred;
     cred.isValid = true;

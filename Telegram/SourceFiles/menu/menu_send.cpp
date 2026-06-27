@@ -374,7 +374,7 @@ void EffectPreview::setupGeometry(QPoint position) {
 	const auto parent = parentWidget();
 	const auto innerSize = HistoryView::Sticker::MessageEffectSize();
 	const auto shadow = st::previewMenu.shadow;
-	const auto extend = shadow.extend;
+	const auto extend = Ui::BoxShadow::ExtendFor(shadow);
 	_inner = QRect(QPoint(extend.left(), extend.top()), innerSize);
 	_bottom->resizeToWidth(_inner.width());
 	const auto size = _inner.marginsAdded(extend).size()
@@ -469,7 +469,7 @@ void EffectPreview::repaintBackground() {
 
 	const auto &shadow = st::previewMenu.animation.shadow;
 	const auto shadowed = QRect(_inner.topLeft(), inner);
-	Ui::Shadow::paint(p, shadowed, width(), shadow);
+	Ui::BoxShadow(shadow).paint(p, shadowed, st::previewMenu.radius);
 	p.drawImage(_inner.topLeft(), bg);
 }
 

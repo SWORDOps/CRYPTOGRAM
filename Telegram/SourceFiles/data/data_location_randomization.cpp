@@ -39,12 +39,12 @@ constexpr auto kCoordinateNoiseRadius = 5.0; // 5km radius for noise
 
 // Helper to generate cryptographically secure random values
 uint32_t generateCryptoRandom(uint32_t min, uint32_t max) {
-    auto *generator = QRandomGenerator::securelySeeded();
+    auto *generator = QRandomGenerator::global();
     return generator->bounded(min, max + 1);
 }
 
 double generateCryptoRandomDouble() {
-    auto *generator = QRandomGenerator::securelySeeded();
+    auto *generator = QRandomGenerator::global();
     return generator->generateDouble();
 }
 
@@ -61,7 +61,7 @@ double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
 }
 
 // Coordinate noise generation
-QPair<double, double> addCoordinateNoise(double lat, double lon, double radiusKm) {
+QPair<double, double> applyCoordinateNoise(double lat, double lon, double radiusKm) {
     const double r = radiusKm * sqrt(generateCryptoRandomDouble());
     const double theta = generateCryptoRandomDouble() * 2 * M_PI;
 
@@ -131,7 +131,7 @@ LocationProfile LocationProfile::deserialize(const QByteArray &data) {
 QString LocationProfile::generateFingerprint() const {
     QString data = QString("%1|%2|%3|%4").arg(
         address, city, state, QString::number(latitude, 'f', 6));
-    return QCryptographicHash::hash(data.toUtf8(), QCryptographicHash::Sha384).toHex().left(16);
+    return QCryptographicHash::hash(data.toUtf8(), QCryptographicHash::Sha256).toHex().left(16);
 }
 
 // PhoneNumberAnalyzer implementation
@@ -600,7 +600,7 @@ QVariantMap LocationRandomizationManager::generateEnhancedHoneypotLocation(const
         honeypot["context"] = context;
         honeypot["generated_time"] = QDateTime::currentDateTime().toString(Qt::ISODate);
 
-        emit decoyLocationGenerated(decoy);
+        // // emit decoyLocationGenerated(decoy);
         updateAuditLog(QString("Enhanced honeypot location generated: %1").arg(decoy.displayName));
     } else {
         // Fallback to generic location
@@ -632,7 +632,7 @@ void LocationRandomizationManager::performLocationRotation() {
         _poolManager->markLocationUsed(newLocation.locationId);
         ++_rotationCount;
 
-        emit locationRotated(newLocation);
+        // // emit locationRotated(newLocation);
         updateAuditLog(QString("Location rotated to: %1").arg(newLocation.displayName));
     }
 }
@@ -647,7 +647,7 @@ void LocationRandomizationManager::updateAuditLog(const QString &event) {
             _auditLog.removeLast();
         }
 
-        emit auditLogUpdated();
+        // // emit auditLogUpdated();
     }
 }
 
@@ -667,9 +667,9 @@ LocationProfile LocationRandomizationManager::generateContextualDecoy(const QStr
     }
 
     // Add coordinate noise for additional privacy
-    auto noisyCoords = addCoordinateNoise(decoy.latitude, decoy.longitude, _settings.policy.noiseRadius);
-    decoy.latitude = noisyCoords.first;
-    decoy.longitude = noisyCoords.second;
+    if (_randomizer) {
+        _randomizer->addCoordinateNoise(decoy, _settings.policy.noiseRadius);
+    }
 
     ++_decoyCount;
     return decoy;
@@ -746,14 +746,14 @@ LocationProfile SmartLocationRandomizer::selectLocation(
         _lastRotationTime[location.locationId] = QDateTime::currentDateTime();
 
         // Update entropy calculation
-        updateSelectionEntropy();
+        calculateSelectionEntropy();
     }
 
     return location;
 }
 
 void SmartLocationRandomizer::addCoordinateNoise(LocationProfile &location, double radiusKm) {
-    auto noisyCoords = addCoordinateNoise(location.latitude, location.longitude, radiusKm);
+    auto noisyCoords = applyCoordinateNoise(location.latitude, location.longitude, radiusKm);
     location.latitude = noisyCoords.first;
     location.longitude = noisyCoords.second;
 }
@@ -762,7 +762,7 @@ QStringList SmartLocationRandomizer::getLocationHistory(int maxHistory) {
     return _locationHistory.mid(0, qMin(maxHistory, _locationHistory.size()));
 }
 
-void SmartLocationRandomizer::updateSelectionEntropy() {
+double SmartLocationRandomizer::calculateSelectionEntropy() {
     // Calculate entropy of recent selections for pattern detection
     QMap<QString, int> recentCounts;
     int recentSize = qMin(50, _locationHistory.size());
@@ -792,3 +792,7 @@ double SmartLocationRandomizer::generateSecureRandomDouble() {
 }
 
 } // namespace Data
+namespace Data {
+void LocationRandomizationManager::onMessageCountChanged(int) {}
+void LocationPoolManager::seedLocationPools() {}
+}

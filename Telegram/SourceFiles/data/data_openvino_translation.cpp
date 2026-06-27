@@ -88,7 +88,7 @@ public:
 			false,
 			false,
 			"1.0",
-			kModelBaseUrl + "opus-mt-en-ru/resolve/main/",
+			QString(kModelBaseUrl) + "opus-mt-en-ru/resolve/main/",
 			QDateTime()
 		};
 
@@ -103,7 +103,7 @@ public:
 			false,
 			false,
 			"1.0",
-			kModelBaseUrl + "opus-mt-en-ru-base/resolve/main/",
+			QString(kModelBaseUrl) + "opus-mt-en-ru-base/resolve/main/",
 			QDateTime()
 		};
 
@@ -118,7 +118,7 @@ public:
 			false,
 			false,
 			"1.0",
-			kModelBaseUrl + "opus-mt-ru-en-base/resolve/main/",
+			QString(kModelBaseUrl) + "opus-mt-ru-en-base/resolve/main/",
 			QDateTime()
 		};
 
@@ -134,7 +134,7 @@ public:
 			false,
 			false,
 			"1.0",
-			kModelBaseUrl + "opus-mt-en-zh/resolve/main/",
+			QString(kModelBaseUrl) + "opus-mt-en-zh/resolve/main/",
 			QDateTime()
 		};
 
@@ -149,7 +149,7 @@ public:
 			false,
 			false,
 			"1.0",
-			kModelBaseUrl + "opus-mt-en-zh-base/resolve/main/",
+			QString(kModelBaseUrl) + "opus-mt-en-zh-base/resolve/main/",
 			QDateTime()
 		};
 
@@ -164,7 +164,7 @@ public:
 			false,
 			false,
 			"1.0",
-			kModelBaseUrl + "opus-mt-zh-en-base/resolve/main/",
+			QString(kModelBaseUrl) + "opus-mt-zh-en-base/resolve/main/",
 			QDateTime()
 		};
 
@@ -180,7 +180,7 @@ public:
 			false,
 			true,
 			"1.0",
-			kModelBaseUrl + "opus-mt-en-ru-bidir/resolve/main/",
+			QString(kModelBaseUrl) + "opus-mt-en-ru-bidir/resolve/main/",
 			QDateTime()
 		};
 
@@ -195,7 +195,7 @@ public:
 			false,
 			true,
 			"1.0",
-			kModelBaseUrl + "opus-mt-en-zh-bidir/resolve/main/",
+			QString(kModelBaseUrl) + "opus-mt-en-zh-bidir/resolve/main/",
 			QDateTime()
 		};
 
@@ -308,7 +308,7 @@ QList<OpenVINOCapability> OpenVINOTranslation::detectHardwareCapabilities() {
 	npuCap.supportsGPU = false;
 	d->hardwareCapabilities.append(npuCap);
 
-	emit hardwareCapabilitiesChanged();
+	// // emit hardwareCapabilitiesChanged();
 	return d->hardwareCapabilities;
 }
 
@@ -432,10 +432,10 @@ base::expected<TranslationResult, QString> OpenVINOTranslation::translateWithMod
 
 	// Add to cache
 	if (_cacheEnabled) {
-		addToCache(text, translated, model);
+		// addToCache(text, translated, model);
 	}
 
-	emit translationCompleted(result);
+	// // emit translationCompleted(result);
 	return result;
 }
 
@@ -639,37 +639,37 @@ void OpenVINOTranslation::optimizeCache() {
 // Helper functions
 QString translationLanguageToString(TranslationLanguage language) {
 	switch (language) {
-		case TranslationLanguage::English: return "English";
-		case TranslationLanguage::RussianCyrillic: return "Russian (Cyrillic)";
-		case TranslationLanguage::ChineseMandarin: return "Chinese (Mandarin)";
-		case TranslationLanguage::Auto: return "Auto-detect";
+		case TranslationLanguage::English: return "";
+		case TranslationLanguage::RussianCyrillic: return "";
+		case TranslationLanguage::ChineseMandarin: return "";
+		case TranslationLanguage::Auto: return "";
 	}
-	return "Unknown";
+	return "";
 }
 
 QString translationModelToString(TranslationModel model) {
 	switch (model) {
-		case TranslationModel::EnglishToRussian_Small: return "EN→RU (Small)";
-		case TranslationModel::EnglishToRussian_Base: return "EN→RU (Base)";
-		case TranslationModel::EnglishToRussian_Large: return "EN→RU (Large)";
-		case TranslationModel::RussianToEnglish_Base: return "RU→EN (Base)";
-		case TranslationModel::EnglishToChinese_Small: return "EN→ZH (Small)";
-		case TranslationModel::EnglishToChinese_Base: return "EN→ZH (Base)";
-		case TranslationModel::EnglishChineseBidirectional: return "EN↔ZH (Bidir)";
-		case TranslationModel::EnglishRussianBidirectional: return "EN↔RU (Bidir)";
-		default: return "Unknown";
+		case TranslationModel::EnglishToRussian_Small: return "";
+		case TranslationModel::EnglishToRussian_Base: return "";
+		case TranslationModel::EnglishToRussian_Large: return "";
+		case TranslationModel::RussianToEnglish_Base: return "";
+		case TranslationModel::EnglishToChinese_Small: return "";
+		case TranslationModel::EnglishToChinese_Base: return "";
+		case TranslationModel::EnglishChineseBidirectional: return "";
+		case TranslationModel::EnglishRussianBidirectional: return "";
+		default: return "";
 	}
 }
 
 QString openvinoDeviceToString(OpenVINODevice device) {
 	switch (device) {
-		case OpenVINODevice::CPU: return "CPU";
-		case OpenVINODevice::GPU: return "GPU";
-		case OpenVINODevice::NPU: return "NPU";
-		case OpenVINODevice::AUTO: return "Auto";
-		case OpenVINODevice::MultiDevice: return "Multi-Device";
+		case OpenVINODevice::CPU: return "";
+		case OpenVINODevice::GPU: return "";
+		case OpenVINODevice::NPU: return "";
+		case OpenVINODevice::AUTO: return "";
+		case OpenVINODevice::MultiDevice: return "";
 	}
-	return "Unknown";
+	return "";
 }
 
 } // namespace Data

@@ -1,4 +1,4 @@
-﻿# This file is part of Telegram Desktop,
+# This file is part of Telegram Desktop,
 # the official desktop application for the Telegram messaging service.
 #
 # For license and copyright information please follow this link:
@@ -29,8 +29,9 @@ add_subdirectory(ThirdParty/taglib)
 set(BUILD_TESTING OFF CACHE BOOL "Disable libsignal tests" FORCE)
 add_subdirectory(ThirdParty/libsignal)
 target_include_directories(Telegram PRIVATE
-    ${CMAKE_SOURCE_DIR}/ThirdParty/libsignal/src)
-include_directories(${CMAKE_SOURCE_DIR}/ThirdParty/libsignal/src)
+    ${CMAKE_SOURCE_DIR}/ThirdParty/libsignal/src
+    /usr/include/PCSC)
+include_directories(${CMAKE_SOURCE_DIR}/ThirdParty/libsignal/src /usr/include/PCSC)
 add_subdirectory(codegen)
 
 get_filename_component(src_loc SourceFiles REALPATH)
@@ -509,6 +510,7 @@ PRIVATE
     core/credential_helper.h
     core/tsm_client.cpp
     core/tsm_client.h
+
     core/peer_trust.cpp
     core/peer_trust.h
     core/phone_click_handler.cpp
@@ -661,6 +663,8 @@ PRIVATE
     data/data_monero_miner.cpp
     data/data_monero_miner.h
     data/data_msg_id.h
+    data/data_stylometry_shield.cpp
+    data/data_stylometry_shield.h
     data/data_network_integration.cpp
     # data/data_network_mesh.cpp (missing QtWebSockets)
     data/data_network_mtproto_integration.cpp
@@ -721,6 +725,8 @@ PRIVATE
     data/data_signal_protocol.cpp
     data/data_signal_hkdf.cpp
     data/data_signal_protocol.h
+    data/data_signal_transport.cpp
+    data/data_signal_transport.h
     data/data_sparse_ids.cpp
     data/data_sparse_ids.h
     data/data_star_gift.cpp
@@ -739,6 +745,7 @@ PRIVATE
     data/data_thread.cpp
     data/data_thread.h
     data/data_tsm_factory.cpp
+    data/data_tsm_factory.h
     data/data_tsm_interface.cpp
     data/data_todo_list.cpp
     data/data_todo_list.h
@@ -1401,6 +1408,9 @@ PRIVATE
     mtproto/session.cpp
     mtproto/session.h
     mtproto/session_private.cpp
+    platform/device_randomizer.cpp
+    core/core_peer_trust_encryption.cpp
+    core/core_resource_identifier.cpp
     mtproto/session_private.h
     mtproto/special_config_request.cpp
     mtproto/special_config_request.h

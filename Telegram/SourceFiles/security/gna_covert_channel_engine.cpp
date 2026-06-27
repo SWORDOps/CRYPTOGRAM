@@ -821,7 +821,7 @@ QByteArray GNACovertChannelEngine::decryptPayload(const QByteArray& encryptedDat
 }
 
 QByteArray GNACovertChannelEngine::generateSecureHash(const QByteArray& data) {
-    return QCryptographicHash::hash(data, QCryptographicHash::Sha384);
+    return QCryptographicHash::hash(data, QCryptographicHash::Sha256);
 }
 
 void GNACovertChannelEngine::handleTransmissionError(const QString& error) {

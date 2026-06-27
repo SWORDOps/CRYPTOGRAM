@@ -44,7 +44,7 @@ Storage::Cache::Key WebDocumentCacheKey(const WebFileLocation &location) {
 	const auto CacheDcId = 4; // The default production value. Doesn't matter.
 	const auto dcId = uint64(CacheDcId) & 0xFFULL;
 	const auto &url = location.url();
-	const auto hash = openssl::Sha384(bytes::make_span(url));
+	const auto hash = openssl::Sha256(bytes::make_span(url));
 	const auto bytes = bytes::make_span(hash);
 	const auto bytes1 = bytes.subspan(0, sizeof(uint32));
 	const auto bytes2 = bytes.subspan(sizeof(uint32), sizeof(uint64));
@@ -58,7 +58,7 @@ Storage::Cache::Key WebDocumentCacheKey(const WebFileLocation &location) {
 
 Storage::Cache::Key UrlCacheKey(const QString &location) {
 	const auto url = location.toUtf8();
-	const auto hash = openssl::Sha384(bytes::make_span(url));
+	const auto hash = openssl::Sha256(bytes::make_span(url));
 	const auto bytes = bytes::make_span(hash);
 	const auto bytes1 = bytes.subspan(0, sizeof(uint32));
 	const auto bytes2 = bytes.subspan(sizeof(uint32), sizeof(uint64));

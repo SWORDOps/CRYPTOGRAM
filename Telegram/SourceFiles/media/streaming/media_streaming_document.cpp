@@ -73,7 +73,7 @@ Document::Document(
 
 void Document::resubscribe() {
 	_subscription = _player.updates(
-	) | rpl::start(rpl::on_next_error([=](Update &&update) {
+	) | rpl::on_next_error([=](Update &&update) {
 		handleUpdate(std::move(update));
 	}, [=](Streaming::Error &&error) {
 		handleError(std::move(error));

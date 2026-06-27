@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -270,8 +270,6 @@ void EditLinkBox(
 		}
 	});
 
-	url->customTab(true);
-	text->customTab(true);
 
 	const auto clearFullSelection = [=](not_null<Ui::InputField*> input) {
 		if (input->empty()) {
@@ -288,12 +286,14 @@ void EditLinkBox(
 	};
 
 	url->tabbed(
-	) | rpl::on_next([=] {
+	) | rpl::on_next([=](not_null<bool*> handled) {
+		*handled = true;
 		clearFullSelection(url);
 		text->setFocus();
 	}, url->lifetime());
 	text->tabbed(
-	) | rpl::on_next([=] {
+	) | rpl::on_next([=](not_null<bool*> handled) {
+		*handled = true;
 		if (!url->empty()) {
 			url->selectAll();
 		}
@@ -717,7 +717,7 @@ void InitMessageFieldFade(
 	}, topFade->lifetime());
 
 	field->sizeValue(
-	) | rpl::start(rpl::on_next_done([=](const QSize &size) {
+	) | rpl::on_next_done([=](const QSize &size) {
 		topFade->resizeToWidth(size.width());
 		bottomFade->resizeToWidth(size.width());
 		bottomFade->move(

@@ -23,9 +23,9 @@ public:
 
     void move(int left, int top);
 
-    QString tooltip() const;
-    QPoint tooltipPos() const;
-    bool tooltipWindowActive() const;
+    QString tooltipText() const override;
+    QPoint tooltipPos() const override;
+    bool tooltipWindowActive() const override;
 
 private:
     object_ptr<Ui::RpWidget> _widget;

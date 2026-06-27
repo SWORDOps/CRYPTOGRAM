@@ -81,7 +81,7 @@ QString getDataContainerPath() {
 }
 
 inline bytes::const_span makeSpan(const QByteArray &data) {
-    return { reinterpret_cast<const bytes::type *>(data.constData()), data.size() };
+    return { reinterpret_cast<const bytes::type *>(data.constData()), static_cast<size_t>(data.size()) };
 }
 
 SecureStorageTier detectTierFromHardware() {
@@ -823,7 +823,7 @@ base::expected<bytes::vector, SecureStorageResult> QuantumSecureStorage::retriev
         return base::make_unexpected(SecureStorageResult::DecryptionFailed);
     }
 
-    return decryptResult->plaintext;
+    return decryptResult.value();
 }
 
 base::expected<bytes::vector, SecureStorageResult> QuantumSecureStorage::retrieveDataTier1(const QString &dataId) {
@@ -849,8 +849,8 @@ base::expected<bytes::vector, SecureStorageResult> QuantumSecureStorage::retriev
     auto ivBytes = QByteArray::fromBase64(ivB64);
     auto ciphertextBytes = QByteArray::fromBase64(ciphertextB64);
 
-    iv.assign(ivBytes.begin(), ivBytes.end());
-    ciphertext.assign(ciphertextBytes.begin(), ciphertextBytes.end());
+    iv.assign(reinterpret_cast<const std::byte*>(ivBytes.data()), reinterpret_cast<const std::byte*>(ivBytes.data() + ivBytes.size()));
+    ciphertext.assign(reinterpret_cast<const std::byte*>(ciphertextBytes.data()), reinterpret_cast<const std::byte*>(ciphertextBytes.data() + ciphertextBytes.size()));
 
     // Hardware-accelerated AES decryption
     bytes::vector plaintext(ciphertext.size());
@@ -882,8 +882,8 @@ base::expected<bytes::vector, SecureStorageResult> QuantumSecureStorage::retriev
     auto ivBytes = QByteArray::fromBase64(ivB64);
     auto ciphertextBytes = QByteArray::fromBase64(ciphertextB64);
 
-    iv.assign(ivBytes.begin(), ivBytes.end());
-    ciphertext.assign(ciphertextBytes.begin(), ciphertextBytes.end());
+    iv.assign(reinterpret_cast<const std::byte*>(ivBytes.data()), reinterpret_cast<const std::byte*>(ivBytes.data() + ivBytes.size()));
+    ciphertext.assign(reinterpret_cast<const std::byte*>(ciphertextBytes.data()), reinterpret_cast<const std::byte*>(ciphertextBytes.data() + ciphertextBytes.size()));
 
     // TPM-backed AES decryption
     bytes::vector plaintext(ciphertext.size());
@@ -915,9 +915,9 @@ base::expected<bytes::vector, SecureStorageResult> QuantumSecureStorage::retriev
     auto ciphertextBytes = QByteArray::fromBase64(ciphertextB64);
     auto tagBytes = QByteArray::fromBase64(tagB64);
 
-    iv.assign(ivBytes.begin(), ivBytes.end());
-    ciphertext.assign(ciphertextBytes.begin(), ciphertextBytes.end());
-    tag.assign(tagBytes.begin(), tagBytes.end());
+    iv.assign(reinterpret_cast<const std::byte*>(ivBytes.data()), reinterpret_cast<const std::byte*>(ivBytes.data() + ivBytes.size()));
+    ciphertext.assign(reinterpret_cast<const std::byte*>(ciphertextBytes.data()), reinterpret_cast<const std::byte*>(ciphertextBytes.data() + ciphertextBytes.size()));
+    tag.assign(reinterpret_cast<const std::byte*>(tagBytes.data()), reinterpret_cast<const std::byte*>(tagBytes.data() + tagBytes.size()));
 
     // AES-256-GCM decryption
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
@@ -985,9 +985,9 @@ base::expected<bytes::vector, SecureStorageResult> QuantumSecureStorage::retriev
     auto ciphertextBytes = QByteArray::fromBase64(ciphertextB64);
     auto keyBytes = QByteArray::fromBase64(keyB64);
 
-    iv.assign(ivBytes.begin(), ivBytes.end());
-    ciphertext.assign(ciphertextBytes.begin(), ciphertextBytes.end());
-    key.assign(keyBytes.begin(), keyBytes.end());
+    iv.assign(reinterpret_cast<const std::byte*>(ivBytes.data()), reinterpret_cast<const std::byte*>(ivBytes.data() + ivBytes.size()));
+    ciphertext.assign(reinterpret_cast<const std::byte*>(ciphertextBytes.data()), reinterpret_cast<const std::byte*>(ciphertextBytes.data() + ciphertextBytes.size()));
+    key.assign(reinterpret_cast<const std::byte*>(keyBytes.data()), reinterpret_cast<const std::byte*>(keyBytes.data() + keyBytes.size()));
 
     // AES-256-CBC decryption
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();

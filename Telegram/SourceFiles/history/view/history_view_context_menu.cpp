@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -1567,22 +1567,20 @@ void AddCanaryActions(
 		return;
 	}
 
-	const auto submenu = menu->addAction(
-		QString("OPSEC: Canary & Honeypot"),
-		{ &st::menuIconPermissions, IconType::Simple, &st::menuIconFg })->createMenu();
+	auto submenuPtr = std::make_unique<Ui::PopupMenu>(list, st::popupMenuWithIcons);
+	auto submenu = submenuPtr.get();
+	menu->addAction(QString("OPSEC: Canary & Honeypot"), std::move(submenuPtr), &st::menuIconPermissions);
 
 	submenu->addAction(QString("Deploy Canary Link"), [=] {
-		Ui::show(Ui::MakeInformBox(
-			QString("Canary Token Deployed\n\n"
+		Ui::Toast::Show(QString("Canary Token Deployed\n\n"
 				"A unique tracking URL has been embedded. You will receive a "
-				"notification if this link is accessed by an unauthorized party.")));
+				"notification if this link is accessed by an unauthorized party."));
 	}, &st::menuIconLink);
 
 	submenu->addAction(QString("Create Chat Honeypot"), [=] {
-		Ui::show(Ui::MakeInformBox(
-			QString("Honeypot Initialized\n\n"
+		Ui::Toast::Show(QString("Honeypot Initialized\n\n"
 				"Believable decoy data has been generated for this chat. "
-				"The system will monitor for suspicious access patterns.")));
+				"The system will monitor for suspicious access patterns."));
 	}, &st::menuIconInvite);
 }
 
@@ -2343,7 +2341,7 @@ void AddEmojiPacksAction(
 		st::historyHasCustomEmojiPosition,
 		std::move(text));
 	const auto weak = base::make_weak(controller);
-	button->setClickedCallback([=] {
+	button->setActionTriggered([=] {
 		const auto strong = weak.get();
 		if (!strong) {
 			return;

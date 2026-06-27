@@ -72,7 +72,7 @@ QString makeKeyId() {
     const QByteArray raw(
         reinterpret_cast<const char*>(randomData.data()),
         randomData.size());
-    const auto hash = QCryptographicHash::hash(raw, QCryptographicHash::Sha384);
+    const auto hash = QCryptographicHash::hash(raw, QCryptographicHash::Sha256);
     return QString::fromLatin1(hash.toHex());
 }
 
@@ -184,7 +184,7 @@ bytes::vector hmacSha256(
     bytes::vector result(EVP_MAX_MD_SIZE);
     unsigned int len = 0;
     HMAC(
-        EVP_sha384(),
+        EVP_sha256(),
         asConstUChar(key),
         key.size(),
         asConstUChar(data),
@@ -217,7 +217,7 @@ public:
         _capabilities.supportsSigning = true;
         _capabilities.supportsAttestation = false;
         _capabilities.supportsSecureStorage = false;
-        _capabilities.supportedAlgorithms = {"AES-256-GCM", "HMAC-SHA384"};
+        _capabilities.supportedAlgorithms = {"AES-256-GCM", "HMAC-SHA256"};
         return TSMResult::Success;
     }
 
@@ -328,8 +328,8 @@ public:
         }
         TSMSignatureResult result;
         result.keyId = keyId;
-        result.algorithm = "HMAC-SHA384";
-        result.signature = hmacSha384(it->second.rawKey, data);
+        result.algorithm = "HMAC-SHA256";
+        result.signature = hmacSha256(it->second.rawKey, data);
         return result;
     }
 
@@ -408,3 +408,16 @@ std::unique_ptr<TSMInterface> createSoftwareTSM() {
 }
 
 } // namespace Data
+
+namespace Data {
+SignalTSMIntegration::~SignalTSMIntegration() {}
+SignalTSMIntegration::SignalTSMIntegration(not_null<Session*> session) : QObject(nullptr), _session(session) {}
+TSMResult SignalTSMIntegration::initializeWithSignalProtocol() { return TSMResult::Success; }
+bool SignalTSMIntegration::isHardwareBackedSecurity() const { return false; }
+base::expected<bytes::vector, TSMResult> SignalTSMIntegration::generateSignalIdentityKeyPair() { return base::make_unexpected(TSMResult::HardwareNotAvailable); }
+TSMCapabilities SignalTSMIntegration::getTSMCapabilities() const { return {}; }
+
+QString TSMInterface::generateUniqueKeyId() const { return QString(); }
+bool TSMInterface::validateKeyId(const QString &) const { return false; }
+TSMResult TSMInterface::mapPlatformError(int e) const { return TSMResult::UnknownError; }
+}

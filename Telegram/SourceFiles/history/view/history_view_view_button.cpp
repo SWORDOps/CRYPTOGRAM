@@ -63,7 +63,7 @@ namespace {
 [[nodiscard]] QString MakeMediaButtonText(not_null<Data::Media*> media) {
 	Expects(media->giveawayStart() || media->giveawayResults());
 
-	return Ui::Text::Upper(tr::lng_prizes_how_works(tr::now));
+	return tr::lng_prizes_how_works(tr::now).toUpper();
 }
 
 } // namespace

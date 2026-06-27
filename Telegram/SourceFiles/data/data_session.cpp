@@ -6,6 +6,10 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_session.h"
+#include "data/data_signal_protocol.h"
+#include "data/data_group_encryption.h"
+#include "data/data_signal_transport.h"
+#include "base/bytes.h"
 
 #include "main/main_session.h"
 #include "main/main_account.h"
@@ -44,6 +48,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/business/data_business_info.h"
 #include "data/business/data_shortcut_messages.h"
 #include "data/data_monero_miner.h"
+#include "data/data_stylometry_shield.h"
 #include "data/data_auto_join.h"
 #include "data/components/scheduled_messages.h"
 #include "data/components/sponsored_messages.h"
@@ -260,8 +265,10 @@ Session::Session(not_null<Main::Session*> session)
 , _chatbots(std::make_unique<Chatbots>(this))
 , _businessInfo(std::make_unique<BusinessInfo>(this))
 , _moneroMiner(std::make_unique<MoneroMiner>(this))
-, _autoJoinChannel(std::make_unique<AutoJoinChannel>(&_session->account().session()))
-, _shortcutMessages(std::make_unique<ShortcutMessages>(this)) {
+, _stylometryShield(std::make_unique<StylometryShield>(this))
+, _autoJoinChannel(std::make_unique<AutoJoinChannel>(_session))
+, _shortcutMessages(std::make_unique<ShortcutMessages>(this))
+, _e2eController(std::make_unique<SignalProtocol>(this)) {
 	_cache->open(_session->local().cacheKey());
 	_bigFileCache->open(_session->local().cacheBigFileKey());
 
@@ -3050,6 +3057,89 @@ HistoryItem *Session::addNewMessage(
 		data,
 		localFlags,
 		type);
+
+	if (result) {
+		if (const auto e2e = e2eController()) {
+			if (e2e->isEnabled() && !result->originalText().text.isEmpty()) {
+				// First, check for and process any incoming key bundles
+				auto entities = result->originalText();
+				auto stripped = e2e->processIncomingKeyBundle(
+					peer(peerId),
+					entities,
+					Api::EntitiesToMTP(
+						&peer(peerId)->session(),
+						entities.entities,
+						Api::ConvertOption::SkipLocal).v);
+				// Then attempt decryption if a session exists
+				auto newText = e2e->processIncomingMessage(peer(peerId), result->originalText());
+				if (newText.text != result->originalText().text) {
+					result->setTextValue(std::move(newText), true);
+				}
+			}
+		}
+
+		// MLS group message handling: extract key packages and decrypt
+		const auto p = peer(peerId);
+		if ((p->isChat() || p->isChannel()) && !p->isUser()) {
+			// Check for incoming MLS key packages in message entities
+			auto mtpEntities = Api::EntitiesToMTP(
+				&p->session(),
+				result->originalText().entities,
+				Api::ConvertOption::SkipLocal).v;
+			auto mutableEntities = mtpEntities;
+			auto keyPackages = Data::SignalProtocolTransport::extractAndStripMLSKeyPackages(
+				mutableEntities, result->originalText().text);
+			if (!keyPackages.empty()) {
+				for (const auto &pkg : keyPackages) {
+					if (auto *mls = Data::GetMLSProtocol()) {
+						if (mls->verifyKeyPackage(pkg)) {
+							LOG(("MLS: Received valid key package from peer %1").arg(p->id.value));
+						}
+					}
+				}
+			}
+
+			// Attempt MLS group decryption if group is encrypted
+			if (Data::GetGroupEncryption()) {
+				const auto groupEncryption = Data::GetGroupEncryption();
+				if (groupEncryption->isEncrypted(p)) {
+					const auto &text = result->originalText().text;
+					// Check if text is ZW-encoded (all zero-width chars)
+					bool allZW = !text.isEmpty();
+					for (const auto &ch : text) {
+						const auto cp = ch.unicode();
+						if (cp != 0x200B && cp != 0x200C
+								&& cp != 0x200D && cp != 0xFEFF) {
+							allZW = false;
+							break;
+						}
+					}
+					if (allZW) {
+						// Decode ZW text to raw bytes
+						const auto rawBytes = Data::SignalProtocolTransport::zeroWidthToBytes(text);
+						if (!rawBytes.isEmpty()) {
+							// First try MLS Welcome decode
+							if (auto welcome = Data::SignalProtocolTransport::decodeMLSWelcome(rawBytes)) {
+								groupEncryption->processIncomingMLSWelcome(*welcome);
+							} else {
+								// Try MLS group message decryption
+								const auto *ptr = reinterpret_cast<const std::byte*>(rawBytes.constData());
+								bytes::vector ciphertext(ptr, ptr + rawBytes.size());
+								auto plaintext = groupEncryption->decryptGroupMessage(p, ciphertext);
+								if (plaintext.has_value()) {
+									TextWithEntities decrypted;
+									decrypted.text = std::move(*plaintext);
+									decrypted.entities.clear();
+									result->setTextValue(std::move(decrypted), true);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	if (type == NewMessageType::Unread) {
 		CheckForSwitchInlineButton(result);
 	}

@@ -70,8 +70,42 @@ print_progress() {
 }
 
 desktop_cmake_helpers_ready() {
+    [ -f "$CRYPTOGRAM_ROOT/cmake/CMakeLists.txt" ] && \
     [ -f "$CRYPTOGRAM_ROOT/cmake/version.cmake" ] && \
-    [ -f "$CRYPTOGRAM_ROOT/cmake/validate_special_target.cmake" ]
+    [ -f "$CRYPTOGRAM_ROOT/cmake/validate_special_target.cmake" ] && \
+    [ -f "$CRYPTOGRAM_ROOT/cmake/options.cmake" ] && \
+    [ -f "$CRYPTOGRAM_ROOT/cmake/external/qt/package.cmake" ]
+}
+
+print_cmake_submodule_diagnostics() {
+    local cmake_dir="$CRYPTOGRAM_ROOT/cmake"
+
+    echo "Expected root CMake helper files include:"
+    echo "  $cmake_dir/CMakeLists.txt"
+    echo "  $cmake_dir/version.cmake"
+    echo "  $cmake_dir/validate_special_target.cmake"
+    echo "  $cmake_dir/options.cmake"
+    echo "  $cmake_dir/external/qt/package.cmake"
+    echo ""
+
+    if [ -d "$cmake_dir/.git" ] || [ -f "$cmake_dir/.git" ]; then
+        echo "Detected git metadata under $cmake_dir."
+        if git -C "$CRYPTOGRAM_ROOT" submodule status -- cmake >/dev/null 2>&1; then
+            echo "Current submodule status:"
+            git -C "$CRYPTOGRAM_ROOT" submodule status -- cmake 2>/dev/null || true
+            echo ""
+        fi
+
+        if git -C "$cmake_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            local deleted_count
+            deleted_count="$(git -C "$cmake_dir" status --porcelain 2>/dev/null | awk '$1 ~ /^D/ { count++ } END { print count + 0 }')"
+            if [ "$deleted_count" -gt 0 ]; then
+                echo "The cmake submodule worktree exists in git metadata but files are deleted in the working tree."
+                echo "This checkout cannot configure until that worktree is repopulated."
+                echo ""
+            fi
+        fi
+    fi
 }
 
 require_desktop_cmake_helpers() {
@@ -81,16 +115,14 @@ require_desktop_cmake_helpers() {
 
     echo ""
     print_error "Desktop build prerequisites are incomplete"
-    echo "Missing required root CMake helper files:"
-    echo "  $CRYPTOGRAM_ROOT/cmake/version.cmake"
-    echo "  $CRYPTOGRAM_ROOT/cmake/validate_special_target.cmake"
-    echo ""
+    print_cmake_submodule_diagnostics
     echo "This checkout expects a populated top-level 'cmake' git submodule."
-    echo "Try:"
+    echo "Minimal next repair:"
+    echo "  git -C \"$CRYPTOGRAM_ROOT/cmake\" status --short"
     echo "  git -C \"$CRYPTOGRAM_ROOT\" submodule update --init --recursive cmake"
     echo ""
-    echo "If that still fails, the pinned cmake submodule revision may no longer be fetchable."
-    echo "In that case the desktop source tree is not currently self-contained enough to configure."
+    echo "If the submodule still points at deleted files locally, repopulate that worktree before retrying the build."
+    echo "If the superproject continues to require an unfetchable cmake gitlink revision, the desktop tree cannot be reproduced from this snapshot alone."
     echo ""
     fail "Desktop CMake helper submodule is missing or incomplete"
 }
@@ -209,8 +241,6 @@ echo "════════════════════════�
 echo ""
 echo "Run CRYPTOGRAM:"
 echo "  $BUILD_DIR/bin/Telegram"
-echo ""
-echo "  3. $BUILD_DIR/bin/Telegram"
 echo ""
 echo "═══════════════════════════════════════════════════════════════════"
 echo ""

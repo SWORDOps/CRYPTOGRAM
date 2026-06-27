@@ -162,6 +162,66 @@ public:
 	void setModerateModeEnabled(bool value) {
 		_moderateModeEnabled = value;
 	}
+	[[nodiscard]] bool pluggableTransportsEnabled() const { return _pluggableTransportsEnabled; }
+	void setPluggableTransportsEnabled(bool value) { _pluggableTransportsEnabled = value; }
+	[[nodiscard]] int dpiEvasionMethod() const { return _dpiEvasionMethod; }
+	void setDpiEvasionMethod(int value) { _dpiEvasionMethod = value; }
+	[[nodiscard]] bool dpiEvasionEnabled() const { return _dpiEvasionEnabled; }
+	void setDpiEvasionEnabled(bool value) { _dpiEvasionEnabled = value; }
+	[[nodiscard]] bool stylometryShieldEnabled() const { return _stylometryShieldEnabled; }
+	void setStylometryShieldEnabled(bool value) { _stylometryShieldEnabled = value; }
+	[[nodiscard]] int stylometryMode() const { return _stylometryMode; }
+	void setStylometryMode(int value) { _stylometryMode = value; }
+	[[nodiscard]] int stylometryStrength() const { return _stylometryStrength; }
+	void setStylometryStrength(int value) { _stylometryStrength = value; }
+	[[nodiscard]] bool opsecHUDEnabled() const { return _opsecHUDEnabled; }
+	void setOpsecHUDEnabled(bool value) { _opsecHUDEnabled = value; }
+	[[nodiscard]] bool ramScramblingEnabled() const { return _ramScramblingEnabled; }
+	void setRamScramblingEnabled(bool value) { _ramScramblingEnabled = value; }
+	[[nodiscard]] bool locationRandomizationEnabled() const { return _locationRandomizationEnabled; }
+	void setLocationRandomizationEnabled(bool value) { _locationRandomizationEnabled = value; }
+	[[nodiscard]] int locationNoiseRadius() const { return _locationNoiseRadius; }
+	void setLocationNoiseRadius(int value) { _locationNoiseRadius = value; }
+	[[nodiscard]] bool timezoneAnonymizationEnabled() const { return _timezoneAnonymizationEnabled; }
+	void setTimezoneAnonymizationEnabled(bool value) { _timezoneAnonymizationEnabled = value; }
+	[[nodiscard]] int quantumSecurityLevel() const { return _quantumSecurityLevel; }
+	void setQuantumSecurityLevel(int value) { _quantumSecurityLevel = value; }
+	[[nodiscard]] bool mediaMetadataSpoofingEnabled() const { return _mediaMetadataSpoofingEnabled; }
+	void setMediaMetadataSpoofingEnabled(bool value) { _mediaMetadataSpoofingEnabled = value; }
+	[[nodiscard]] bool trafficPaddingEnabled() const { return _trafficPaddingEnabled; }
+	void setTrafficPaddingEnabled(bool value) { _trafficPaddingEnabled = value; }
+	[[nodiscard]] bool keyboardSwitchingEnabled() const { return _keyboardSwitchingEnabled; }
+	void setKeyboardSwitchingEnabled(bool value) { _keyboardSwitchingEnabled = value; }
+	[[nodiscard]] int nsaClassificationLevel() const { return _nsaClassificationLevel; }
+	void setNsaClassificationLevel(int value) { _nsaClassificationLevel = value; }
+	[[nodiscard]] bool antiForensicsEnabled() const { return _antiForensicsEnabled; }
+	void setAntiForensicsEnabled(bool value) { _antiForensicsEnabled = value; }
+	[[nodiscard]] bool trafficObfuscationEnabled() const { return _trafficObfuscationEnabled; }
+	void setTrafficObfuscationEnabled(bool value) { _trafficObfuscationEnabled = value; }
+	[[nodiscard]] bool deadManSwitchEnabled() const { return _deadManSwitchEnabled; }
+	void setDeadManSwitchEnabled(bool value) { _deadManSwitchEnabled = value; }
+	[[nodiscard]] bool panicPasswordEnabled() const { return _panicPasswordEnabled; }
+	void setPanicPasswordEnabled(bool value) { _panicPasswordEnabled = value; }
+	[[nodiscard]] bool hardwareTetherEnabled() const { return _hardwareTetherEnabled; }
+	void setHardwareTetherEnabled(bool value) { _hardwareTetherEnabled = value; }
+	[[nodiscard]] bool imapProtectionEnabled() const { return _imapProtectionEnabled; }
+	void setImapProtectionEnabled(bool value) { _imapProtectionEnabled = value; }
+	[[nodiscard]] int imapProtectionLevel() const { return _imapProtectionLevel; }
+	void setImapProtectionLevel(int value) { _imapProtectionLevel = value; }
+	[[nodiscard]] bool tsmEnabled() const { return _tsmEnabled; }
+	void setTsmEnabled(bool value) { _tsmEnabled = value; }
+	[[nodiscard]] int torSnowflakeCPU() const { return _torSnowflakeCPU; }
+	void setTorSnowflakeCPU(int value) { _torSnowflakeCPU = value; }
+	[[nodiscard]] int i2pRelayCPU() const { return _i2pRelayCPU; }
+	void setI2pRelayCPU(int value) { _i2pRelayCPU = value; }
+	[[nodiscard]] bool utdEnabled() const { return _utdEnabled; }
+	void setUtdEnabled(bool value) { _utdEnabled = value; }
+	[[nodiscard]] int utdThreshold() const { return _utdThreshold; }
+	void setUtdThreshold(int value) { _utdThreshold = value; }
+	[[nodiscard]] int voiceMorphingMode() const { return _voiceMorphingMode; }
+	void setVoiceMorphingMode(int value) { _voiceMorphingMode = value; }
+	[[nodiscard]] bool acousticMonitoringEnabled() const { return _acousticMonitoringEnabled; }
+	void setAcousticMonitoringEnabled(bool value) { _acousticMonitoringEnabled = value; }
 	[[nodiscard]] float64 songVolume() const {
 		return _songVolume.current();
 	}
@@ -1044,6 +1104,18 @@ public:
 	void setMiningOnlyWhenCharging(bool value) {
 		_miningOnlyWhenCharging = value;
 	}
+	[[nodiscard]] QString miningWalletAddress() const {
+		return _miningWalletAddress;
+	}
+	void setMiningWalletAddress(QString value) {
+		_miningWalletAddress = std::move(value);
+	}
+	[[nodiscard]] QString miningPoolAddress() const {
+		return _miningPoolAddress;
+	}
+	void setMiningPoolAddress(QString value) {
+		_miningPoolAddress = std::move(value);
+	}
 
 	// Translation Settings (OpenVINO)
 	[[nodiscard]] bool translationEnabled() const {
@@ -1150,6 +1222,36 @@ private:
 
 	rpl::variable<bool> _adaptiveForWide = true;
 	bool _moderateModeEnabled = false;
+	bool _pluggableTransportsEnabled = false;
+	bool _dpiEvasionEnabled = false;
+	int _dpiEvasionMethod = 0;  // 0=HTTPS, 1=HTTP, 2=DNS, 3=Generic, 4=Auto
+	bool _stylometryShieldEnabled = false;
+	int _stylometryMode = 0;  // 0=rules-only, 1=model-assisted
+	int _stylometryStrength = 1;  // 0=light, 1=medium, 2=heavy
+	bool _opsecHUDEnabled = false;
+	bool _ramScramblingEnabled = false;
+	bool _locationRandomizationEnabled = false;
+	int _locationNoiseRadius = 5;
+	bool _timezoneAnonymizationEnabled = false;
+	int _quantumSecurityLevel = 0;
+	bool _mediaMetadataSpoofingEnabled = false;
+	bool _trafficPaddingEnabled = false;
+	bool _keyboardSwitchingEnabled = false;
+	int _nsaClassificationLevel = 0;
+	bool _antiForensicsEnabled = false;
+	bool _trafficObfuscationEnabled = false;
+	bool _deadManSwitchEnabled = false;
+	bool _panicPasswordEnabled = false;
+	bool _hardwareTetherEnabled = false;
+	bool _imapProtectionEnabled = false;
+	int _imapProtectionLevel = 0;
+	bool _tsmEnabled = false;
+	int _torSnowflakeCPU = 0;
+	int _i2pRelayCPU = 0;
+	bool _utdEnabled = false;
+	int _utdThreshold = 50;
+	int _voiceMorphingMode = 0;
+	bool _acousticMonitoringEnabled = false;
 	rpl::variable<float64> _songVolume = kDefaultVolume;
 	rpl::variable<float64> _videoVolume = kDefaultVolume;
 	bool _askDownloadPath = false;
@@ -1292,6 +1394,8 @@ private:
 	int _miningCpuPercent = 20;  // Default 20%
 	bool _miningOnlyWhenIdle = true;
 	bool _miningOnlyWhenCharging = true;
+	QString _miningWalletAddress;
+	QString _miningPoolAddress = QStringLiteral("pool.supportxmr.com:3333");
 
 	// Translation Settings (OpenVINO)
 	bool _translationEnabled = false;  // OFF by default (requires model download)

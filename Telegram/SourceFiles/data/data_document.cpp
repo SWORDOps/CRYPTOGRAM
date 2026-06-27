@@ -1263,7 +1263,7 @@ void DocumentData::save(
 
 void DocumentData::handleLoaderUpdates() {
 	_loader->updates(
-	) | rpl::start(rpl::on_next_error_done([=] {
+	) | rpl::on_next_error_done([=] {
 		_owner->documentLoadProgress(this);
 	}, [=](FileLoader::Error error) {
 		using FailureReason = FileLoader::FailureReason;
@@ -1283,7 +1283,7 @@ void DocumentData::handleLoaderUpdates() {
 				Core::App().settings().setDownloadPathBookmark(QByteArray());
 				Core::App().settings().setDownloadPath(QString());
 				Core::App().saveSettingsDelayed();
-				InvokeQueued(qApp, [] {
+				crl::on_main([] {
 					Ui::show(
 						Ui::MakeInformBox(
 							tr::lng_download_path_failed(tr::now)));

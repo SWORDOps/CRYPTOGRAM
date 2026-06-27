@@ -693,7 +693,7 @@ struct VideoPreviewDocument {
 		}
 	};
 	state->instance.player().updates(
-	) | rpl::start(rpl::on_next_error([=](Media::Streaming::Update &&update) {
+	) | rpl::on_next_error([=](Media::Streaming::Update &&update) {
 		if (v::is<Media::Streaming::Information>(update.data)
 			|| v::is<Media::Streaming::UpdateVideo>(update.data)) {
 			if (!state->readyInvoked && readyCallback) {

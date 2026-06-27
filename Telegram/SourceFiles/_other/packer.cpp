@@ -55,8 +55,8 @@ inline auto makeBIO(const void *buf, int len) {
 
 } // namespace
 
-int32 *hashSha384(const void *data, uint32 len, void *dest) {
-	SHA384((const uchar*)data, size_t(len), (uchar*)dest);
+int32 *hashSha256(const void *data, uint32 len, void *dest) {
+	SHA256((const uchar*)data, size_t(len), (uchar*)dest);
 	return (int32*)dest;
 }
 
@@ -366,8 +366,8 @@ int main(int argc, char *argv[])
 
 	cout << "Counting SHA-384 hash..\n";
 
-	uchar shaBuffer[48];
-	memcpy(compressed.data() + hSigLen, hashSha384(compressed.constData() + hSigLen + hShaLen, uint32(compressedLen + hPropsLen + hOriginalSizeLen), shaBuffer), hShaLen); // count sha384
+	uchar shaBuffer[32];
+	memcpy(compressed.data() + hSigLen, hashSha256(compressed.constData() + hSigLen + hShaLen, uint32(compressedLen + hPropsLen + hOriginalSizeLen), shaBuffer), hShaLen); // count sha384
 
 	uint32 siglen = 0;
 
@@ -391,7 +391,7 @@ int main(int argc, char *argv[])
 	auto ctx = EVP_PKEY_CTX_new(prKey, nullptr);
 	if (ctx) {
 		if (EVP_PKEY_sign_init(ctx) > 0 &&
-			EVP_PKEY_CTX_set_signature_md(ctx, EVP_sha384()) > 0) {
+			EVP_PKEY_CTX_set_signature_md(ctx, EVP_sha256()) > 0) {
 			if (EVP_PKEY_sign(ctx, nullptr, &siglen_t, (const uchar*)shaBuffer, hShaLen) > 0) {
 				if (siglen_t == hSigLen) { // Ensure signature fits
 					if (EVP_PKEY_sign(ctx, (uchar*)compressed.data(), &siglen_t, (const uchar*)shaBuffer, hShaLen) > 0) {
@@ -436,7 +436,7 @@ int main(int argc, char *argv[])
 	ctx = EVP_PKEY_CTX_new(pbKey, nullptr);
 	if (ctx) {
 		if (EVP_PKEY_verify_init(ctx) > 0 &&
-			EVP_PKEY_CTX_set_signature_md(ctx, EVP_sha384()) > 0) {
+			EVP_PKEY_CTX_set_signature_md(ctx, EVP_sha256()) > 0) {
 			if (EVP_PKEY_verify(ctx, (const uchar*)compressed.constData(), hSigLen, (const uchar*)(compressed.constData() + hSigLen), hShaLen) == 1) {
 				verifySuccess = true;
 			}
@@ -481,10 +481,10 @@ QString countAlphaVersionSignature(quint64 version) { // duplicated in autoupdat
 
 	QByteArray signedData = (QLatin1String("TelegramBeta_") + QString::number(version, 16).toLower()).toUtf8();
 
-	static const int32 shaSize = 48, keySize = 128;
+	static const int32 shaSize = 32, keySize = 128;
 
 	uchar shaBuffer[shaSize];
-	hashSha384(signedData.constData(), signedData.size(), shaBuffer); // count sha384
+	hashSha256(signedData.constData(), signedData.size(), shaBuffer); // count sha384
 
 	uint32 siglen = 0;
 
@@ -505,7 +505,7 @@ QString countAlphaVersionSignature(quint64 version) { // duplicated in autoupdat
 	auto ctx = EVP_PKEY_CTX_new(prKey, nullptr);
 	if (ctx) {
 		if (EVP_PKEY_sign_init(ctx) > 0 &&
-			EVP_PKEY_CTX_set_signature_md(ctx, EVP_sha384()) > 0) {
+			EVP_PKEY_CTX_set_signature_md(ctx, EVP_sha256()) > 0) {
 			if (EVP_PKEY_sign(ctx, nullptr, &siglen_t, (const uchar*)shaBuffer, shaSize) > 0) {
 				signature.resize(siglen_t);
 				if (EVP_PKEY_sign(ctx, (uchar*)signature.data(), &siglen_t, (const uchar*)shaBuffer, shaSize) > 0) {

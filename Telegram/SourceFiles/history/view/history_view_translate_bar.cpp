@@ -98,8 +98,8 @@ TwoTextAction::TwoTextAction(
 	+ _st.itemStyle.font->height
 	+ st::ttlItemTimerFont->height
 	+ st::ttlItemPadding.bottom()) {
-	initResizeHook(parent->sizeValue());
-	setClickedCallback(std::move(callback));
+	fitToMenuWidth();
+	setActionTriggered(std::move(callback));
 
 	paintRequest(
 	) | rpl::on_next([=] {

@@ -1551,7 +1551,7 @@ void ListWidget::deleteItems(SelectedItems &&items, Fn<void()> confirmed) {
 void ListWidget::setActionBoxWeak(base::weak_qptr<Ui::BoxContent> box) {
 	if ((_actionBoxWeak = box)) {
 		_actionBoxWeakLifetime = _actionBoxWeak->alive(
-		) | rpl::start(rpl::on_done([weak = base::make_weak(this)]{
+		) | rpl::on_done([weak = base::make_weak(this)]{
 			if (weak) {
 				weak->_checkForHide.fire({});
 			}

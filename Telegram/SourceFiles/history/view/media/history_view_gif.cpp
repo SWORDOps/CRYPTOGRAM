@@ -2035,7 +2035,7 @@ void Gif::createStreamedPlayer() {
 		[=] { repaintStreamedContent(); }));
 
 	_streamed->instance.player().updates(
-	) | rpl::start(rpl::on_next_error([=](::Media::Streaming::Update &&update) {
+	) | rpl::on_next_error([=](::Media::Streaming::Update &&update) {
 		handleStreamingUpdate(std::move(update));
 	}, [=](::Media::Streaming::Error &&error) {
 		handleStreamingError(std::move(error));

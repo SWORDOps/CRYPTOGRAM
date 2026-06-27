@@ -79,7 +79,7 @@ void Downloads::load(
 	applyProgress(botId, id, 0, 0);
 
 	loader.loader->updates(
-	) | rpl::start(rpl::on_next_error_done([=] {
+	) | rpl::on_next_error_done([=] {
 		progress(botId, id);
 	}, [=](FileLoader::Error) {
 		fail(botId, id);

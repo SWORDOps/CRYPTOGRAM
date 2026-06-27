@@ -1863,14 +1863,14 @@ void VoiceRecordBar::startRecording() {
 				: nullptr);
 		}
 		instance()->updated(
-		) | rpl::start(rpl::on_next_error([=](const Update &update) {
+		) | rpl::on_next_error([=](const Update &update) {
 			recordUpdated(update.level, update.samples);
 		}, [=] {
 			stop(false);
 		}, _recordingLifetime);
 		if (_videoRecorder) {
 			_videoRecorder->updated(
-			) | rpl::start(rpl::on_next_error([=](const Update &update) {
+			) | rpl::on_next_error([=](const Update &update) {
 				recordUpdated(update.level, update.samples);
 				if (update.finished) {
 					_fullRecord = true;

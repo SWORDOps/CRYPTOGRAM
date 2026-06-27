@@ -145,7 +145,7 @@ GroupCallBar::GroupCallBar(
 		copy
 	) | rpl::map([=](const GroupCallBarContent &content) {
 		return !content.shown;
-	}) | rpl::start(rpl::on_next_done([=](bool hidden) {
+	}) | rpl::on_next_done([=](bool hidden) {
 		_shouldBeShown = !hidden;
 		if (!_forceHidden) {
 			_wrap.toggle(_shouldBeShown, anim::type::normal);
@@ -153,7 +153,7 @@ GroupCallBar::GroupCallBar(
 	}, [=] {
 		_forceHidden = true;
 		_wrap.toggle(false, anim::type::normal);
-	}, lifetime()));
+	}, lifetime());
 
 	setupInner();
 }

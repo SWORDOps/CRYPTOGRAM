@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_text_entities.h"
 #include "api/api_sending.h"
 #include "data/data_document.h"
+#include "data/data_enhanced_privacy.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
 #include "core/file_utilities.h"
@@ -182,28 +183,28 @@ struct PreparedFileThumbnail {
 		QImage &full,
 		const QByteArray &bytes,
 		const QByteArray &format) {
+	QByteArray result;
 	if (!bytes.isEmpty()
 		&& (bytes.size()
 			<= full.width() * full.height() * kRecompressAfterBpp / 8)
 		&& (format == u"jpeg"_q)) {
 		if (!Images::IsProgressiveJpeg(bytes)) {
-			if (const auto result = Images::MakeProgressiveJpeg(bytes)
-				; !result.isEmpty()) {
-				return result;
-			}
+			result = Images::MakeProgressiveJpeg(bytes);
 		} else {
-			return bytes;
+			result = bytes;
 		}
 	}
 
-	auto result = QByteArray();
-	QBuffer buffer(&result);
-	QImageWriter writer(&buffer, "JPEG");
-	writer.setQuality(87);
-	writer.setProgressiveScanWrite(true);
-	writer.write(full);
-	buffer.close();
+	if (result.isEmpty()) {
+		QBuffer buffer(&result);
+		QImageWriter writer(&buffer, "JPEG");
+		writer.setQuality(87);
+		writer.setProgressiveScanWrite(true);
+		writer.write(full);
+		buffer.close();
+	}
 
+	Data::EnhancedPrivacy::SpoofMediaMetadata(full, result, "jpeg");
 	return result;
 }
 

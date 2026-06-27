@@ -478,7 +478,7 @@ void PeerShortInfoCover::applyUserpic(PeerShortInfoUserpic &&value) {
 		_videoStartPosition = value.videoStartPosition;
 		_videoInstance->lockPlayer();
 		_videoInstance->player().updates(
-		) | rpl::start(rpl::on_next_error([=](Update &&update) {
+		) | rpl::on_next_error([=](Update &&update) {
 			handleStreamingUpdate(std::move(update));
 		}, [=](Error &&error) {
 			handleStreamingError(std::move(error));

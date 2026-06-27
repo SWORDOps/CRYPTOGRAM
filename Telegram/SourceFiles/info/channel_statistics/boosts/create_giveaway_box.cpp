@@ -1512,7 +1512,7 @@ void CreateGiveawayBox(
 				state->apiOptions.applyPrepaid(
 					invoice,
 					prepaid->id
-				) | rpl::start(rpl::on_error_done([=](const QString &error) {
+				) | rpl::on_error_done([=](const QString &error) {
 					if (const auto window = weakWindow.get()) {
 						window->uiShow()->showToast(error);
 						close();
@@ -1566,7 +1566,7 @@ void CreateGiveawayBox(
 		const auto receivedOptions = [=] {
 			state->lifetimeApi.destroy();
 			state->lifetimeApi = state->apiCreditsOptions.request(
-			) | rpl::start(rpl::on_error_done([=](const QString &error) {
+			) | rpl::on_error_done([=](const QString &error) {
 				box->uiShow()->showToast(error);
 				box->closeBox();
 			}, done);
@@ -1575,7 +1575,7 @@ void CreateGiveawayBox(
 			return done();
 		}
 		state->lifetimeApi = state->apiOptions.request(
-		) | rpl::start(rpl::on_error_done([=](const QString &error) {
+		) | rpl::on_error_done([=](const QString &error) {
 			box->uiShow()->showToast(error);
 			box->closeBox();
 		}, receivedOptions);

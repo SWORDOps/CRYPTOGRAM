@@ -10,6 +10,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/image/image.h"
 #include "data/data_file_origin.h"
 
+#include "core/application.h"
+#include "core/core_settings.h"
+#include "data/data_location_randomization.h"
+
 namespace Data {
 namespace {
 
@@ -40,6 +44,7 @@ QString LocationPoint::lonAsString() const {
 }
 
 MTPGeoPoint LocationPoint::toMTP() const {
+	
 	return MTP_geoPoint(
 		MTP_flags(0),
 		MTP_double(_lon),

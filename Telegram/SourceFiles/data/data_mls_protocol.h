@@ -183,7 +183,9 @@ struct MLSGroupMember {
 // MLS Group State
 // Represents the current state of an MLS group
 class MLSGroupState {
+	friend class MLSProtocol;
 public:
+	MLSGroupState() = default;
 	MLSGroupState(const MLSGroupId &groupId, MLSCiphersuite ciphersuite);
 
 	// Group identification

@@ -303,7 +303,7 @@ void Input::setupContent() {
 			}
 			if (state->hasRecovery) {
 				_requestLifetime = cloudPassword().requestPasswordRecovery(
-				) | rpl::start(rpl::on_next_error([=](const QString &pattern) {
+				) | rpl::on_next_error([=](const QString &pattern) {
 					_requestLifetime.destroy();
 
 					auto data = stepData();
@@ -328,7 +328,7 @@ void Input::setupContent() {
 					}
 					close();
 					_requestLifetime = cloudPassword().resetPassword(
-					) | rpl::start(rpl::on_next_error_done([=](
+					) | rpl::on_next_error_done([=](
 							Api::CloudPassword::ResetRetryDate retryDate) {
 						_requestLifetime.destroy();
 						const auto left = std::max(
@@ -381,7 +381,7 @@ void Input::setupContent() {
 				currentStepProcessRecover.checkedCode,
 				QString(),
 				QString()
-			) | rpl::start(rpl::on_error_done([=](const QString &type) {
+			) | rpl::on_error_done([=](const QString &type) {
 				_requestLifetime.destroy();
 
 				error->show();
@@ -414,7 +414,7 @@ void Input::setupContent() {
 		}
 		_requestLifetime = cloudPassword().check(
 			pass
-		) | rpl::start(rpl::on_error_done([=](const QString &type) {
+		) | rpl::on_error_done([=](const QString &type) {
 			_requestLifetime.destroy();
 
 			newInput->setFocus();
@@ -611,7 +611,7 @@ void Input::setupRecoverButton(
 				}
 				close();
 				_requestLifetime = cloudPassword().cancelResetPassword(
-				) | rpl::start(rpl::on_error_done([=](const QString &error) {
+				) | rpl::on_error_done([=](const QString &error) {
 					_requestLifetime.destroy();
 				}, [=] {
 					_requestLifetime.destroy();
@@ -625,7 +625,7 @@ void Input::setupRecoverButton(
 			}));
 		} else if (suggest == Status::SuggestAction::Reset) {
 			_requestLifetime = cloudPassword().resetPassword(
-			) | rpl::start(rpl::on_next_error_done([=](
+			) | rpl::on_next_error_done([=](
 					Api::CloudPassword::ResetRetryDate retryDate) {
 				_requestLifetime.destroy();
 				const auto left = std::max(

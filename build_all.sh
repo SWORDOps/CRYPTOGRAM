@@ -200,6 +200,59 @@ desktop_cmake_helpers_ready() {
     [ -f "$CRYPTOGRAM_ROOT/cmake/validate_special_target.cmake" ]
 }
 
+restore_submodule_worktree() {
+    local relative_path="$1"
+    local expected_file="$2"
+    local submodule_path="${CRYPTOGRAM_ROOT}/${relative_path}"
+    local submodule_gitdir
+
+    [ -f "${submodule_path}/${expected_file}" ] && return 0
+
+    submodule_gitdir="$(git -C "$CRYPTOGRAM_ROOT" rev-parse --git-path "modules/${relative_path}" 2>/dev/null || true)"
+    if [ -z "$submodule_gitdir" ] || [ ! -d "$submodule_gitdir" ]; then
+        return 1
+    fi
+
+    print_progress "Restoring ${relative_path} worktree from submodule gitdir..."
+    if run_cmd_verbose "git --git-dir='${submodule_gitdir}' --work-tree='${submodule_path}' checkout -f HEAD -- ."; then
+        [ -f "${submodule_path}/${expected_file}" ] && print_info "${relative_path} worktree restored"
+    fi
+
+    [ -f "${submodule_path}/${expected_file}" ]
+}
+
+ensure_desktop_component_submodules() {
+    local missing=()
+    local components=(
+        "Telegram/lib_rpl:CMakeLists.txt"
+        "Telegram/lib_crl:CMakeLists.txt"
+        "Telegram/lib_tl:CMakeLists.txt"
+        "Telegram/lib_lottie:CMakeLists.txt"
+        "Telegram/lib_qr:CMakeLists.txt"
+        "Telegram/lib_webview:CMakeLists.txt"
+    )
+    local entry path expected
+
+    for entry in "${components[@]}"; do
+        path="${entry%%:*}"
+        expected="${entry#*:}"
+        if [ ! -f "${CRYPTOGRAM_ROOT}/${path}/${expected}" ]; then
+            restore_submodule_worktree "$path" "$expected" || true
+        fi
+        if [ ! -f "${CRYPTOGRAM_ROOT}/${path}/${expected}" ]; then
+            missing+=("$path")
+        fi
+    done
+
+    if [ "${#missing[@]}" -gt 0 ]; then
+        print_error "Desktop component submodules are still incomplete"
+        echo "Missing worktrees:"
+        printf '  %s\n' "${missing[@]}"
+        log "ERROR" "Desktop component submodules missing: ${missing[*]}"
+        fail "Desktop component submodules are missing or incomplete"
+    fi
+}
+
 ensure_desktop_cmake_helpers() {
     if desktop_cmake_helpers_ready; then
         print_info "Desktop CMake helper submodule is populated"
@@ -317,15 +370,31 @@ ensure_system_dependencies() {
 ensure_tg_owt_from_source() {
     print_progress "Ensuring tg_owt library is installed"
 
-    # Check if already built locally
-    local tg_src="${CRYPTOGRAM_ROOT}/Telegram/tg_owt"
-    local tg_build="$tg_src/out/Release"
-    if [ -f "$tg_build/libtg_owt.a" ]; then
-        print_info "tg_owt already built at $tg_build/libtg_owt.a"
+    local tg_install_prefix="${HOME}/.local"
+    local tg_package_config="${tg_install_prefix}/lib/cmake/tg_owt/tg_owtConfig.cmake"
+
+    # Check if already installed into the packaged prefix Desktop CMake searches.
+    if [ -f "$tg_package_config" ]; then
+        print_info "tg_owt package already installed at $tg_package_config"
         return 0
     fi
 
-    # Skip tg_owt if directory is empty or doesn't have CMakeLists.txt
+    # Check if already built locally
+    local tg_src="${CRYPTOGRAM_ROOT}/Telegram/tg_owt"
+    local tg_build="$tg_src/out/Release"
+
+    # Repopulate an empty submodule worktree from the existing gitdir before giving up.
+    if [ -d "$tg_src" ] && [ ! -f "$tg_src/CMakeLists.txt" ]; then
+        local tg_gitdir
+        tg_gitdir="$(git -C "$CRYPTOGRAM_ROOT" rev-parse --git-path modules/Telegram/tg_owt 2>/dev/null || true)"
+        if [ -n "$tg_gitdir" ] && [ -d "$tg_gitdir" ]; then
+            print_progress "Restoring tg_owt worktree from submodule gitdir..."
+            if run_cmd_verbose "git --git-dir='$tg_gitdir' --work-tree='$tg_src' checkout -f HEAD -- ."; then
+                print_info "tg_owt worktree restored"
+            fi
+        fi
+    fi
+
     if [ -d "$tg_src" ] && [ ! -f "$tg_src/CMakeLists.txt" ]; then
         print_warning "tg_owt directory exists but is empty or not initialized, skipping tg_owt build"
         log "WARN" "tg_owt not initialized, skipping"
@@ -372,11 +441,11 @@ ensure_tg_owt_from_source() {
     print_progress "Configuring tg_owt with CMake..."
     # Note: TG_OWT_PACKAGED_BUILD=OFF forces internal dependency compilation
     # Including CRC32C which will be built from source as a git submodule
-    if ! run_cmd_verbose "cmake -DCMAKE_BUILD_TYPE=Release -DTG_OWT_PACKAGED_BUILD=OFF -DENABLE_CRCUTIL=ON -G Ninja ../.."; then
+    if ! run_cmd_verbose "cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX='$tg_install_prefix' -DTG_OWT_PACKAGED_BUILD=OFF -DENABLE_CRCUTIL=ON -G Ninja ../.."; then
         print_warning "CMake configuration attempt 1 failed, retrying with alternative flags..."
         rm -rf CMakeCache.txt CMakeFiles/
         # Retry with explicit CRC32C handling
-        if ! run_cmd_verbose "cmake -DCMAKE_BUILD_TYPE=Release -DTG_OWT_PACKAGED_BUILD=OFF -G Ninja ../.."; then
+        if ! run_cmd_verbose "cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX='$tg_install_prefix' -DTG_OWT_PACKAGED_BUILD=OFF -G Ninja ../.."; then
             fail "Configuring tg_owt failed even after retry"
         fi
     fi
@@ -390,8 +459,34 @@ ensure_tg_owt_from_source() {
         fail "tg_owt library not created at expected location: $tg_build/libtg_owt.a"
     fi
 
+    print_progress "Installing tg_owt package metadata into $tg_install_prefix..."
+    if ! run_cmd_verbose "ninja install"; then
+        fail "Installing tg_owt failed"
+    fi
+
+    if [ ! -f "$tg_package_config" ]; then
+        fail "tg_owt package config not created at expected location: $tg_package_config"
+    fi
+
     cd / || true
-    print_info "tg_owt successfully built at $tg_build/libtg_owt.a ($(ls -lh $tg_build/libtg_owt.a | awk '{print $5}'))"
+    print_info "tg_owt successfully built and installed ($(ls -lh $tg_build/libtg_owt.a | awk '{print $5}'))"
+}
+
+ensure_telegram_version_file() {
+    local version_dir="${CRYPTOGRAM_ROOT}/Telegram/build"
+    local version_file="${version_dir}/version"
+
+    if [ -f "$version_file" ]; then
+        return 0
+    fi
+
+    print_progress "Creating Telegram/build/version..."
+    mkdir -p "$version_dir" || fail "Cannot create ${version_dir}"
+    cat > "$version_file" <<'EOF'
+AppVersion 1.0.0
+AppVersionOriginal 1.0.0
+EOF
+    print_info "Created fallback version file at $version_file"
 }
 
 ensure_openal_from_source() {
@@ -608,7 +703,7 @@ ensure_rlottie_from_source() {
     mkdir -p build && cd build || fail "Cannot create rlottie build directory"
 
     print_progress "Configuring rlottie build..."
-    if ! run_cmd_verbose "cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX='$INSTALL_PREFIX' -DBUILD_SHARED_LIBS=ON"; then
+    if ! run_cmd_verbose "cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX='$INSTALL_PREFIX' -DLIB_INSTALL_DIR='$INSTALL_PREFIX/lib' -DBUILD_SHARED_LIBS=ON"; then
         fail "Configuring rlottie failed"
     fi
 
@@ -1011,9 +1106,15 @@ save_state() {
 }
 
 load_state() {
-    if [ -f "$STATE_FILE" ] && [ "$RESUME_BUILD" -eq 1 ]; then
+    local state_file_to_load="$STATE_FILE"
+
+    if [ "$RESUME_BUILD" -eq 1 ] && [ ! -f "$state_file_to_load" ]; then
+        state_file_to_load="$(ls -1 "$LOG_DIR"/state_*.json 2>/dev/null | sort | tail -n 1 || true)"
+    fi
+
+    if [ -f "$state_file_to_load" ] && [ "$RESUME_BUILD" -eq 1 ]; then
         print_info "Loading previous build state..."
-        log "STATE" "Attempting to load state from $STATE_FILE"
+        log "STATE" "Attempting to load state from $state_file_to_load"
 
         # Simple state restoration
         local loaded=0
@@ -1023,7 +1124,7 @@ load_state() {
                 print_debug "Restored: $key=$value"
                 ((loaded++))
             fi
-        done < <(grep -oP '"\K[^"]+(?=":)|(?<=":)\s*\K[01](?=\s*[,}])' "$STATE_FILE" 2>/dev/null | paste -d= - - 2>/dev/null)
+        done < <(grep -oP '"\K[^"]+(?=":)|(?<=":)\s*\K[01](?=\s*[,}])' "$state_file_to_load" 2>/dev/null | paste -d= - - 2>/dev/null)
 
         if [ $loaded -gt 0 ]; then
             print_info "Restored $loaded state values"
@@ -1423,6 +1524,7 @@ check_submodules() {
     ) || print_warning "Submodule initialization had issues, continuing anyway"
 
     ensure_desktop_cmake_helpers
+    ensure_desktop_component_submodules
 
     BUILD_STATE["submodules_initialized"]=1
     save_state
@@ -1438,10 +1540,22 @@ configure_compiler() {
     print_progress "Detecting compilers..."
     log "COMPILER" "Starting compiler detection"
 
+    local require_clang=0
+    if [ "$(uname -s)" = "Linux" ] && [ -d "$CRYPTOGRAM_ROOT/Telegram/ThirdParty/dispatch" ]; then
+        require_clang=1
+        log "COMPILER" "Linux desktop build detected with dispatch dependency; preferring Clang toolchain"
+    fi
+
     # C Compiler
     CC=""
     local tried_cc=()
-    for cc in gcc-13 gcc-12 gcc-11 gcc clang; do
+    local cc_candidates=()
+    if [ "$require_clang" -eq 1 ]; then
+        cc_candidates=(clang gcc-13 gcc-12 gcc-11 gcc)
+    else
+        cc_candidates=(gcc-13 gcc-12 gcc-11 gcc clang)
+    fi
+    for cc in "${cc_candidates[@]}"; do
         tried_cc+=("$cc")
         if command -v "$cc" >/dev/null 2>&1; then
             CC="$(command -v "$cc")"
@@ -1453,7 +1567,13 @@ configure_compiler() {
     # C++ Compiler
     CXX=""
     local tried_cxx=()
-    for cxx in g++-13 g++-12 g++-11 g++ clang++; do
+    local cxx_candidates=()
+    if [ "$require_clang" -eq 1 ]; then
+        cxx_candidates=(clang++ g++-13 g++-12 g++-11 g++)
+    else
+        cxx_candidates=(g++-13 g++-12 g++-11 g++ clang++)
+    fi
+    for cxx in "${cxx_candidates[@]}"; do
         tried_cxx+=("$cxx")
         if command -v "$cxx" >/dev/null 2>&1; then
             CXX="$(command -v "$cxx")"
@@ -1489,6 +1609,25 @@ configure_compiler() {
         echo ""
         log "ERROR" "No C++ compiler found. Tried: ${tried_cxx[*]}"
         fail "No C++ compiler found"
+    fi
+
+    if [ "$require_clang" -eq 1 ] && { [[ "$(basename "$CC")" != clang* ]] || [[ "$(basename "$CXX")" != clang++* ]]; }; then
+        print_error "Linux desktop bootstrap requires Clang for the dispatch dependency"
+        echo ""
+        echo "Detected compiler pair:"
+        echo "  CC=$CC"
+        echo "  CXX=$CXX"
+        echo ""
+        echo "Current blocker:"
+        echo "  swift-corelibs-libdispatch is built during desktop configure and uses Clang-only flags"
+        echo "  such as -fblocks and -fmodule-map-file. GCC fails in that stage."
+        echo ""
+        echo "Remediation:"
+        echo "  Debian/Ubuntu: sudo apt-get install clang"
+        echo "  Then rerun: ./build_all.sh"
+        echo ""
+        log "ERROR" "Clang toolchain required for Linux desktop configure because dispatch uses Clang-only flags"
+        fail "Clang is required for the Linux desktop bootstrap path"
     fi
 
     export CC
@@ -1691,26 +1830,13 @@ build_protobuf() {
     print_progress "Cloning Protobuf repository..."
     run_cmd "rm -rf '$protobuf_dir'"
 
-    if ! run_cmd_verbose "git clone --depth 1 https://github.com/protocolbuffers/protobuf.git '$protobuf_dir'"; then
+    if ! run_cmd_verbose "git clone --depth 1 -b v21.12 https://github.com/protocolbuffers/protobuf.git '$protobuf_dir'"; then
         print_error "Failed to clone Protobuf repository"
-        echo ""
-        echo "Possible issues:"
-        echo "  - Network connectivity problems"
-        echo "  - Git not configured properly"
-        echo "  - GitHub access issues"
-        echo ""
         fail "Failed to clone Protobuf repository"
     fi
 
     BUILD_STATE["protobuf_cloned"]=1
     save_state
-
-    if [ "$DRY_RUN" -eq 1 ]; then
-        print_info "[DRY RUN] Skipping Protobuf configure/build/install steps"
-        print_step_complete "7/9"
-        echo ""
-        return 0
-    fi
 
     print_progress "Configuring Protobuf build..."
     cd "$protobuf_dir" || fail "Cannot change to Protobuf directory"
@@ -1718,26 +1844,13 @@ build_protobuf() {
     cd build || fail "Cannot change to Protobuf build directory"
 
     log "BUILD" "Configuring Protobuf with CMake"
-    if ! run_cmd_verbose "cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX='$INSTALL_PREFIX' -Dprotobuf_BUILD_TESTS=OFF"; then
+    if ! run_cmd_verbose "cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX='$INSTALL_PREFIX' -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_CXX_STANDARD=17 -Dprotobuf_ABSL_PROVIDER=package"; then
         print_error "Protobuf CMake configuration failed"
         fail "Protobuf CMake configuration failed"
     fi
 
     print_progress "Building Protobuf (this may take 10-20 minutes)..."
-    print_info "This is the longest build step - please be patient"
-    log "BUILD" "Building Protobuf with $PARALLEL_JOBS parallel jobs"
-
     if ! run_cmd_verbose "cmake --build . --config Release -j$PARALLEL_JOBS"; then
-        print_error "Protobuf build failed"
-        echo ""
-        echo "Protobuf build can fail due to:"
-        echo "  - Insufficient memory (requires 4GB+ RAM)"
-        echo "  - Compilation errors"
-        echo "  - Disk space issues"
-        echo ""
-        echo "Check the log file for detailed error messages:"
-        echo "  $LOG_FILE"
-        echo ""
         fail "Protobuf build compilation failed"
     fi
 
@@ -1745,108 +1858,19 @@ build_protobuf() {
     save_state
 
     print_progress "Installing Protobuf..."
-    log "BUILD" "Installing Protobuf to $INSTALL_PREFIX"
-
     if ! run_cmd_verbose "cmake --install . --prefix '$INSTALL_PREFIX'"; then
-        print_warning "Protobuf installation command had errors"
         log "WARN" "Protobuf installation command returned non-zero"
     fi
-    print_info "Protobuf installation command completed"
 
-    # Comprehensive verification
-    echo ""
-    print_progress "Verifying Protobuf installation..."
-    log "BUILD" "Verifying Protobuf installation"
+    BUILD_STATE["protobuf_installed"]=1
+    save_state
 
-    # Show what was installed (debug mode)
-    if [ "$VERBOSE_MODE" -eq 1 ]; then
-        print_debug "Checking $INSTALL_PREFIX/lib for Protobuf libraries..."
-        if ls -lh "$INSTALL_PREFIX"/lib/libprotobuf*.* 2>/dev/null; then
-            print_debug "Files listed above"
-        else
-            print_debug "No files found in $INSTALL_PREFIX/lib"
-        fi
-    fi
-
-    # Check if libraries exist
-    local protobuf_found=0
-
-    # Check for shared libraries
-    if ls "$INSTALL_PREFIX"/lib/libprotobuf.so* >/dev/null 2>&1; then
-        protobuf_found=1
-        print_debug "Found Protobuf shared libraries"
-    fi
-
-    # Check for static libraries
-    if ls "$INSTALL_PREFIX"/lib/libprotobuf.a* >/dev/null 2>&1; then
-        protobuf_found=1
-        print_debug "Found Protobuf static libraries"
-    fi
-
-    # Check for any libprotobuf files
-    if ls "$INSTALL_PREFIX"/lib/libprotobuf.* >/dev/null 2>&1; then
-        protobuf_found=1
-    fi
-
-    if [ $protobuf_found -eq 1 ]; then
-        print_info "Protobuf verification PASSED"
-        print_info "Libraries installed to: $INSTALL_PREFIX/lib"
-        log "BUILD" "Protobuf verification passed"
-
-        # Check for protoc compiler
-        if command -v protoc >/dev/null 2>&1; then
-            local protoc_version
-            protoc_version=$(protoc --version 2>/dev/null || echo "unknown")
-            print_debug "Protocol buffer compiler: $protoc_version"
-            log "BUILD" "protoc version: $protoc_version"
-        fi
-
-        BUILD_STATE["protobuf_installed"]=1
-        save_state
-    else
-        # Check system paths as fallback
-        print_warning "Protobuf libraries not found in $INSTALL_PREFIX/lib"
-        log "WARN" "Protobuf not found in install prefix, checking system paths"
-
-        SYSTEM_PROTO=$(find /usr -name 'libprotobuf.so*' -o -name 'libprotobuf.a' 2>/dev/null | head -n1)
-        if [ -n "$SYSTEM_PROTO" ]; then
-            print_warning "Found system Protobuf at: $SYSTEM_PROTO"
-            print_warning "Using system Protobuf instead of locally built version"
-            log "WARN" "Using system Protobuf: $SYSTEM_PROTO"
-            BUILD_STATE["protobuf_installed"]=1
-            save_state
-        else
-            print_error "Protobuf installation verification FAILED"
-            echo ""
-            echo "Diagnostics:"
-            echo "  Expected location: $INSTALL_PREFIX/lib/libprotobuf.*"
-            echo "  Permissions on $INSTALL_PREFIX/lib:"
-            # shellcheck disable=SC2012
-            ls -ld "$INSTALL_PREFIX/lib" 2>&1 | sed 's/^/    /'
-            echo "  Contents of $INSTALL_PREFIX/lib (first 20 files):"
-            # shellcheck disable=SC2012
-            ls -lA "$INSTALL_PREFIX/lib" 2>&1 | head -20 | sed 's/^/    /'
-            echo ""
-            echo "Possible solutions:"
-            echo "  1. Check if installation completed without errors above"
-            echo "  2. Verify write permissions to $INSTALL_PREFIX"
-            echo "  3. Try installing to user directory: $0 --prefix=$USER_PREFIX"
-            echo ""
-            log "ERROR" "Protobuf verification failed - no libraries found"
-            fail "Protobuf installation verification failed - no libraries found"
-        fi
-    fi
-
-    # Cleanup
     cd / || true
-    rm -rf "$protobuf_dir" 2>/dev/null || print_warning "Could not remove temporary Protobuf directory"
+    rm -rf "$protobuf_dir" 2>/dev/null || true
 
     local elapsed
     elapsed=$(($(date +%s) - start_time))
     COMPONENT_TIMES["protobuf"]=$elapsed
-    print_info "Protobuf built and installed in $(format_time "$elapsed")"
-    log "BUILD" "Protobuf build completed in $(format_time "$elapsed")"
-
     print_step_complete "7/9"
     echo ""
 }
@@ -1885,17 +1909,24 @@ configure_cryptogram() {
     print_progress "Running CMake configuration..."
     log "BUILD" "Running CMake with Release configuration"
     ensure_desktop_cmake_helpers
+    ensure_telegram_version_file
 
     # Set PKG_CONFIG_PATH to help find installed libraries
     export PKG_CONFIG_PATH="${INSTALL_PREFIX}/lib/pkgconfig:${INSTALL_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
     print_debug "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
     log "BUILD" "PKG_CONFIG_PATH set to: $PKG_CONFIG_PATH"
 
+    local cmake_prefix_path="$INSTALL_PREFIX"
+    if [ "$USER_PREFIX" != "$INSTALL_PREFIX" ]; then
+        cmake_prefix_path="${cmake_prefix_path};${USER_PREFIX}"
+    fi
+
     if [ "$DRY_RUN" -eq 1 ]; then
         print_info "[DRY RUN] Would run CMake configuration for CRYPTOGRAM"
     else
         if ! run_cmd_verbose "cmake -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_PREFIX_PATH='$INSTALL_PREFIX' \
+        -DCMAKE_PREFIX_PATH='$cmake_prefix_path' \
+        -DTG_OWT_DIR='${USER_PREFIX}/lib/cmake/tg_owt' \
         -DDESKTOP_APP_DISABLE_AUTOUPDATE=ON \
         -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON \
         -DDESKTOP_APP_USE_PACKAGED=ON \

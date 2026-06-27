@@ -384,7 +384,7 @@ MainMenu::MainMenu(
 	parentResized();
 
 	_telegram->setMarkedText(Ui::Text::Link(
-		u"64Gram Desktop"_q,
+		u"Cryptogram"_q,
 		u"https://github.com/TDesktop-x64/tdesktop"_q));
 	_telegram->setLinksTrusted();
 	_version->setMarkedText(

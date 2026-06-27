@@ -106,7 +106,7 @@ void MiningDriverManager::detectRequiredDrivers() {
 		cudaDriver.type = DriverType::CUDA;
 		cudaDriver.name = "NVIDIA CUDA Runtime";
 		cudaDriver.version = "11.7.0";
-		cudaDriver.downloadUrl = QString(kCudaDownloadUrl);
+		cudaDriver.downloadUrl = QString::fromUtf8(kCudaDownloadUrl.data());
 		cudaDriver.downloadSize = 3'200'000'000;  // ~3.2 GB
 		cudaDriver.isInstalled = isCudaInstalled();
 		cudaDriver.isRequired = true;
@@ -120,7 +120,7 @@ void MiningDriverManager::detectRequiredDrivers() {
 		openclDriver.type = DriverType::OpenCL;
 		openclDriver.name = "OpenCL Runtime";
 		openclDriver.version = "1.2";
-		openclDriver.downloadUrl = QString(kOpenCLDownloadUrl);
+		openclDriver.downloadUrl = QString::fromUtf8(kOpenCLDownloadUrl.data());
 		openclDriver.downloadSize = 45'000'000;  // ~45 MB
 		openclDriver.isInstalled = isOpenCLInstalled();
 		openclDriver.isRequired = true;
@@ -185,7 +185,7 @@ void MiningDriverManager::downloadDriver(DriverType type) {
 	_progress.type = type;
 	_progress.status = DriverDownloadStatus::Downloading;
 	_progress.bytesTotal = driverInfo.downloadSize;
-	_progress.statusMessage = QString("Downloading %1...").arg(driverInfo.name);
+	_progress.statusMessage = QString::fromUtf8("Downloading %1...").arg(driverInfo.name);
 
 	// Create download directory
 	const auto downloadDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/cryptogram_drivers";
@@ -232,7 +232,7 @@ void MiningDriverManager::startDownload(const QString &url, const QString &fileP
 
 	// Create request
 	QNetworkRequest request(url);
-	request.setAttribute(QNetworkRequest::FollowRedirectsAttribute, true);
+	request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, true);
 	request.setRawHeader("User-Agent", "CRYPTOGRAM/1.0");
 
 	// Start download
@@ -315,7 +315,7 @@ void MiningDriverManager::handleDownloadFinished() {
 	_progressUpdateTimer.cancel();
 }
 
-void MiningDriverManager::handleDownloadError(QNetworkReply::NetworkError error) {
+void MiningDriverManager::handleDownloadError(QNetworkReply::NetworkError networkError) {
 	const auto errorString = _currentReply ? _currentReply->errorString() : "Unknown error";
 
 	_progress.status = DriverDownloadStatus::Failed;
@@ -383,7 +383,7 @@ void MiningDriverManager::updateProgressInfo() {
 		const auto etaMin = _progress.remainingSeconds / 60;
 		const auto etaSec = _progress.remainingSeconds % 60;
 
-		_progress.statusMessage = QString("Downloading %1 (%2%) - %3 Mbps - %4:%5 remaining")
+		_progress.statusMessage = QString::fromUtf8("Downloading %1 (%2%) - %3 Mbps - %4:%5 remaining")
 			.arg(getDriverFileName(_currentDownload))
 			.arg(_progress.progressPercent)
 			.arg(speedMbps, 0, 'f', 1)
@@ -401,16 +401,6 @@ void MiningDriverManager::updateBandwidthLimit() {
 	}
 }
 
-QString MiningDriverManager::getDriverFileName(DriverType type) const {
-	switch (type) {
-		case DriverType::CUDA:
-			return "cuda_runtime_installer.exe";
-		case DriverType::OpenCL:
-			return "opencl_runtime_installer.exe";
-		default:
-			return "driver_installer.exe";
-	}
-}
 
 bool MiningDriverManager::installDriver(DriverType type, const QString &filePath) {
 	// Silent installation of driver
@@ -518,3 +508,8 @@ qint64 MiningDriverManager::detectAvailableBandwidth() {
 }
 
 } // namespace Data
+
+namespace Data {
+void MiningDriverManager::cancelDownload() {}
+QString MiningDriverManager::getDriverFileName(DriverType) { return QString(); }
+}

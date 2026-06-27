@@ -11,15 +11,22 @@ This project does not use the old external `tdesktop` clone flow for primary bui
 ## Prerequisites
 
 - Linux environment with standard build tooling.
-- Top-level `cmake` submodule helper files present:
+- Top-level `cmake` submodule populated as a real worktree, not just git metadata.
+- Required files include:
+  - `cmake/CMakeLists.txt`
   - `cmake/version.cmake`
   - `cmake/validate_special_target.cmake`
+  - `cmake/options.cmake`
+  - `cmake/external/qt/package.cmake`
 
 If these are missing:
 
 ```bash
+git -C cmake status --short
 git submodule update --init --recursive cmake
 ```
+
+If `git -C cmake status --short` shows mass `D` entries, the submodule git metadata exists but its worktree is empty; repopulate that worktree before retrying `./build_linux.sh`.
 
 If the pinned submodule revision is unavailable upstream, desktop configure cannot proceed from this snapshot alone.
 

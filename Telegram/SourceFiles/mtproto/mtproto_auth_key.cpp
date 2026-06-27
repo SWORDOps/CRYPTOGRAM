@@ -154,9 +154,9 @@ void AuthKey::FillData(Data &authKey, bytes::const_span computedAuthKey) {
 }
 
 void AuthKey::countKeyId() {
-	const auto hash = openssl::Sha384(_key);
+	const auto hash = openssl::Sha1(_key);
 
-	// Lower 64 bits = 8 bytes of 48 byte SHA384 hash.
+	// Lower 64 bits = 8 bytes of 20 byte SHA1 hash.
 	_keyId = *reinterpret_cast<const KeyId*>(hash.data() + 12);
 }
 

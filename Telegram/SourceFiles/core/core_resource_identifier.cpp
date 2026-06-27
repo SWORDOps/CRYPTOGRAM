@@ -124,3 +124,4 @@ bool validateResourceIdentifier(const QString &identifier) {
 
 } // namespace ResourceIdentifier
 } // namespace Core
+

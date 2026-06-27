@@ -1036,7 +1036,7 @@ rpl::producer<CreditsAmount> AddCurrencyAction(
 				currencyLoadLifetime->destroy();
 			}
 		};
-		currencyLoad->request() | rpl::start(rpl::on_error_done(
+		currencyLoad->request() | rpl::on_error_done(
 			[=](const QString &error) {
 				done(CreditsAmount(0, CreditsType::Ton));
 			},

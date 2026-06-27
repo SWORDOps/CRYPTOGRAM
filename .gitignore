@@ -74,3 +74,26 @@ SpyGram-main/
 SpyGram-main.7z.*
 
 /build_m1/
+
+# Temp build/test artifacts
+build_test/
+temp_test_dir/
+
+# Backup files
+*.bak
+*.orig
+
+# Memory bank / AI session artifacts
+memory-bank/
+
+# Temp progress/handover files
+progress_handover.md
+missing.txt
+
+# Debian packaging build artifacts
+debian/.debhelper/
+debian/cryptogram-desktop/
+debian/*.debhelper.log
+debian/debhelper-build-stamp
+debian/files
+debian/*.substvars

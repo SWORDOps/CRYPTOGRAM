@@ -756,7 +756,7 @@ void Credits::setupContent() {
 		const auto apiLifetime = wrap->lifetime().make_state<rpl::lifetime>();
 		const auto api = apiLifetime->make_state<Api::EarnStatistics>(self);
 		wrap->toggle(false, anim::type::instant);
-		api->request() | rpl::start(rpl::on_error_done([] {
+		api->request() | rpl::on_error_done([] {
 		}, [=] {
 			if (!api->data().availableBalance.empty()) {
 				wrap->toggle(true, anim::type::normal);
@@ -999,7 +999,7 @@ Fn<void()> BuyStarsHandler::handler(
 			const auto user = show->session().user();
 			_api = std::make_unique<Api::CreditsTopupOptions>(user);
 			_api->request(
-			) | rpl::start(rpl::on_error_done([=](const QString &error) {
+			) | rpl::on_error_done([=](const QString &error) {
 				_loading = false;
 				show->showToast(error);
 			}, [=] {

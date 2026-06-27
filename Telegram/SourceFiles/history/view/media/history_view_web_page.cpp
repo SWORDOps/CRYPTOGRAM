@@ -192,7 +192,7 @@ constexpr auto kSponsoredUserpicLines = 2;
 
 [[nodiscard]] TextWithEntities PageToPhrase(not_null<WebPageData*> page) {
 	const auto type = page->type;
-	const auto text = Ui::Text::Upper(page->iv
+	const auto text = (page->iv
 		? tr::lng_view_button_iv(tr::now)
 		: page->uniqueGift
 		? tr::lng_view_button_collectible(tr::now)
@@ -236,7 +236,7 @@ constexpr auto kSponsoredUserpicLines = 2;
 		? tr::lng_view_button_storyalbum(tr::now)
 		: (type == WebPageType::GiftCollection)
 		? tr::lng_view_button_collection(tr::now)
-		: QString());
+		: QString()).toUpper();
 	if (page->iv) {
 		return Ui::Text::IconEmoji(&st::historyIvIcon).append(text);
 	}
@@ -395,7 +395,7 @@ QSize WebPage::countOptimalSize() {
 	} else if (sponsored && !sponsored->buttonText.isEmpty()) {
 		_openButton.setText(
 			st::semiboldTextStyle,
-			Ui::Text::Upper(sponsored->buttonText));
+			sponsored->buttonText.toUpper());
 	}
 
 	const auto padding = inBubblePadding() + innerMargin();

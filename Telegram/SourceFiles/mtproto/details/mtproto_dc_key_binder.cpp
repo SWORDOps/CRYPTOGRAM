@@ -45,18 +45,10 @@ namespace {
 		0,
 		kMsgIdPosition * sizeof(mtpPrime)));
 
-	// Use SHA-384 for message key generation (truncated to 16 bytes/128 bits for msg_key)
-	const auto hashFull = openssl::Sha384(bytes::make_span(*serialized).subspan(
+	const auto hashFull = openssl::Sha1(bytes::make_span(*serialized).subspan(
 		0,
 		sizeInBytes - padding));
-	// msg_key is 128 bits (16 bytes) usually, taken from middle of SHA-384 or similar in old MTProto.
-	// Here we take middle 16 bytes of SHA-384 to be consistent with "middle" logic or just first/last?
-	// Original code: openssl::Sha384(data).subspan(8) -> 48 bytes total, take 16 bytes starting at offset 8.
-	// 48 - 8 = 40 bytes.
-	// For SHA-384 (48 bytes), let's take 16 bytes from offset 8 (similar ratio? or just use first 16).
-	// To be safe and cryptographically sound, taking any 16 bytes is fine. 
-	// Let's take bytes 8..24.
-	const auto hash = bytes::make_span(hashFull).subspan(8, 16);
+	const auto hash = bytes::make_span(hashFull).subspan(4, 16);
 	
 	auto msgKey = MTPint128();
 	bytes::copy(

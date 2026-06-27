@@ -21,6 +21,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/openssl_help.h"
 #include "base/unixtime.h"
 #include "base/platform/base_platform_info.h"
+#include "data/data_signal_protocol.h"
+#include "data/data_mls_protocol.h"
+#include "data/data_signal_transport.h"
 
 #include <ksandbox.h>
 #include <zlib.h>
@@ -562,11 +565,13 @@ MTPVector<MTPJSONObjectValue> SessionPrivate::prepareInitParams() {
 	const auto rounded = base::SafeRound(std::abs(sliced) / 900.)
 		* 900
 		* sign;
-	return MTP_vector<MTPJSONObjectValue>(
-		1,
-		MTP_jsonObjectValue(
-			MTP_string("tz_offset"),
-			MTP_jsonNumber(MTP_double(rounded))));
+
+	auto params = std::vector<MTPJSONObjectValue>();
+	params.push_back(MTP_jsonObjectValue(
+		MTP_string("tz_offset"),
+		MTP_jsonNumber(MTP_double(rounded))));
+
+	return MTP_vector<MTPJSONObjectValue>(QVector<MTPJSONObjectValue>(params.begin(), params.end()));
 }
 
 void SessionPrivate::tryToSend() {
@@ -1314,17 +1319,17 @@ void SessionPrivate::handleReceived() {
 		// Can underflow, but it is an unsigned type, so we just check the range later.
 		auto paddingSize = static_cast<uint32>(encryptedBytesCount) - static_cast<uint32>(fullDataLength);
 
-		std::array<uchar, 48> shaBuffer = { { 0 } };
+		std::array<uchar, 32> shaBuffer = { { 0 } };
 
-		SHA512_CTX msgKeyLargeContext;
-		SHA384_Init(&msgKeyLargeContext);
-		SHA384_Update(&msgKeyLargeContext, _encryptionKey->partForMsgKey(false), 32);
-		SHA384_Update(&msgKeyLargeContext, decryptedInts, encryptedBytesCount);
-		SHA384_Final(shaBuffer.data(), &msgKeyLargeContext);
+		SHA256_CTX msgKeyLargeContext;
+		SHA256_Init(&msgKeyLargeContext);
+		SHA256_Update(&msgKeyLargeContext, _encryptionKey->partForMsgKey(false), 32);
+		SHA256_Update(&msgKeyLargeContext, decryptedInts, encryptedBytesCount);
+		SHA256_Final(shaBuffer.data(), &msgKeyLargeContext);
 
 		constexpr auto kMsgKeyShift = 8U;
 		if (ConstTimeIsDifferent(&msgKey, shaBuffer.data() + kMsgKeyShift, sizeof(msgKey))) {
-			LOG(("TCP Error: bad SHA384 hash after aesDecrypt in message"));
+			LOG(("TCP Error: bad SHA256 hash after aesDecrypt in message"));
 			return restart();
 		}
 

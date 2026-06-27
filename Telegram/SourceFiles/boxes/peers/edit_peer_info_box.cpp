@@ -1892,7 +1892,7 @@ void Controller::fillBotCurrencyButton() {
 		const auto currencyLoad
 			= button->lifetime().make_state<Api::EarnStatistics>(_peer);
 		currencyLoad->request(
-		) | rpl::start(rpl::on_error_done([=](const QString &error) {
+		) | rpl::on_error_done([=](const QString &error) {
 		}, [=] {
 			const auto balance = currencyLoad->data().currentBalance;
 			if (balance) {
@@ -2313,7 +2313,7 @@ void Controller::saveUsernamesOrder() {
 		_peer->session().api().usernames().reorder(
 			_peer,
 			newUsernames
-		) | rpl::start(rpl::on_done([=] {
+		) | rpl::on_done([=] {
 			channel->setUsernames(ranges::views::all(
 				newUsernames
 			) | ranges::views::transform([&](QString username) {

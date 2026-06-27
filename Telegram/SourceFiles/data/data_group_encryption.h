@@ -51,6 +51,17 @@ public:
 	std::optional<MLSGroupState> getGroupState(not_null<PeerData*> group) const;
 	MLSEpoch getCurrentEpoch(not_null<PeerData*> group) const;
 
+	// MLS Welcome message transport via message entities
+	// Builds a ZW-encoded Welcome payload for a new member.
+	// Returns the ZW text; caller appends MTP entity covering it.
+	[[nodiscard]] QString buildOutgoingMLSWelcome(
+		not_null<PeerData*> group,
+		not_null<UserData*> newMember);
+
+	// Processes an incoming MLS Welcome message.
+	// Initializes local group state from the welcome.
+	bool processIncomingMLSWelcome(const MLSWelcome &welcome);
+
 	// Status
 	bool isReady() const { return _mlsProtocol != nullptr; }
 	int totalEncryptedGroups() const { return _groupToMLS.size(); }

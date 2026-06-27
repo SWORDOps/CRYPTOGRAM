@@ -118,7 +118,7 @@ const auto kCurrentPositionItemIdentifier = Format(@"currentPosition");
 				: mediaPlayer->previous(kSongType); });
 		rpl::duplicate(
 			_trackState
-		) | rpl::start(rpl::on_next([=] {
+		) | rpl::on_next([=] {
 			const auto newValue = isNext
 				? mediaPlayer->nextAvailable(kSongType)
 				: mediaPlayer->previousAvailable(kSongType);

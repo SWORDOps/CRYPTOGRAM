@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "mtproto/connection_tcp.h"
 
 #include "mtproto/details/mtproto_abstract_socket.h"
+#include "data/data_network_security.h"
 #include "base/bytes.h"
 #include "base/openssl_help.h"
 #include "base/random.h"
@@ -158,14 +159,8 @@ void TcpConnection::Protocol::Version1::prepareKey(
 		bytes::span key,
 		bytes::const_span source) {
 	const auto payload = bytes::concatenate(source, _secret);
-	// Use SHA-384 but truncate to 32 bytes for protocol compatibility if needed, 
-	// or assume the key span is large enough. 
-	// TcpConnection::Protocol::Version1 seems to use SHA-256 to generate a key.
-	// We need to check the expected key size. 
-	// Usually AES-256 key is 32 bytes.
-	// openssl::Sha384 returns 48 bytes.
-	auto sha384 = openssl::Sha384(payload);
-	bytes::copy(key, bytes::make_span(sha384).subspan(0, key.size()));
+	auto sha256 = openssl::Sha256(payload);
+	bytes::copy(key, bytes::make_span(sha256).subspan(0, key.size()));
 }
 
 QString TcpConnection::Protocol::Version1::debugPostfix() const {
@@ -447,7 +442,21 @@ void TcpConnection::sendData(mtpBuffer &&buffer) {
 	CONNECTION_LOG_INFO(u"TCP Info: write packet %1 bytes."_q
 		.arg(bytes.size()));
 	aesCtrEncrypt(bytes, _sendKey, &_sendState);
-	_socket->write(connectionStartPrefix, bytes);
+
+	// Apply DPI evasion wrapping if active
+	const auto writeBytes = [&]() -> QByteArray {
+		const auto raw = QByteArray(
+			reinterpret_cast<const char*>(bytes.data()),
+			bytes.size());
+		if (Data::IsGlobalDPIEvasionActive()) {
+			return Data::ApplyGlobalDPIEvasion(raw);
+		}
+		return raw;
+	}();
+
+	_socket->write(connectionStartPrefix, bytes::make_span(
+		reinterpret_cast<const char*>(writeBytes.constData()),
+		writeBytes.size()));
 }
 
 bytes::const_span TcpConnection::prepareConnectionStartPrefix(
