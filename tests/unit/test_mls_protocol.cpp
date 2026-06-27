@@ -60,3 +60,49 @@ TEST_CASE("MLS basic group messaging works on supported ciphersuite", "[mls][uni
 	const auto tamperedDecrypt = protocol.decryptMessage(groupId, tamperedCiphertext);
 	REQUIRE_FALSE(tamperedDecrypt.has_value());
 }
+
+TEST_CASE("MLS proposal processing modifies group state", "[mls][unit]") {
+	MLSProtocol protocol;
+	const QVector<UserId> members = {
+		UserId(static_cast<uint64>(101)),
+		UserId(static_cast<uint64>(202)),
+	};
+
+	const auto groupId = protocol.createGroup(
+		members,
+		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+
+	REQUIRE(protocol.hasGroup(groupId));
+
+	auto state = protocol.getGroupState(groupId);
+	REQUIRE(state.has_value());
+	REQUIRE(state->memberCount() == 2);
+
+	// Add a new member via proposal
+	MLSProposal addProposal;
+	addProposal.type = MLSProposalType::Add;
+	addProposal.sender = UserId(static_cast<uint64>(303));
+	addProposal.addKeyPackage = protocol.generateKeyPackage(
+		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+	addProposal.timestamp = QDateTime::currentDateTime();
+
+	REQUIRE(protocol.processProposal(groupId, addProposal));
+
+	state = protocol.getGroupState(groupId);
+	REQUIRE(state.has_value());
+	REQUIRE(state->memberCount() == 3);
+	REQUIRE(state->isMember(UserId(static_cast<uint64>(303))));
+
+	// Remove a member via proposal
+	MLSProposal removeProposal;
+	removeProposal.type = MLSProposalType::Remove;
+	removeProposal.sender = UserId(static_cast<uint64>(101));
+	removeProposal.removeLeaf = MLSLeafIndex(0);
+	removeProposal.timestamp = QDateTime::currentDateTime();
+
+	REQUIRE(protocol.processProposal(groupId, removeProposal));
+
+	state = protocol.getGroupState(groupId);
+	REQUIRE(state.has_value());
+	REQUIRE_FALSE(state->isMember(UserId(static_cast<uint64>(101))));
+}

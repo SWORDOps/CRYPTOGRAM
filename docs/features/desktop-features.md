@@ -15,7 +15,7 @@ Status terms used here:
 | # | Feature | Linux build status | Runtime status |
 | --- | --- | --- | --- |
 | 1 | Signal Protocol / Double Ratchet | included | partial — X3DH, Double Ratchet, AES-256-GCM wired; key bundle transport via MTProto init params + ZW message entities |
-| 2 | MLS Protocol | included | partial — key package encode/decode, group encryption/decryption, Welcome transport via ZW entities; MLS key packages advertised in init params |
+| 2 | MLS Protocol | included | partial — key package encode/decode, group encryption/decryption with AES-256-GCM, real X25519 key generation, Ed25519 signing, proper HKDF; Welcome transport via ZW entities; MLS key packages advertised in init params |
 | 3 | Post-Quantum Cryptography | included | partial (hybrid plumbing present) |
 | 4 | Audio Steganography and GNA | included | partial, experimental |
 | 5 | Surveillance Detection | source-only | source-only/not shipped by default |

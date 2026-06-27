@@ -279,6 +279,12 @@ warn_grep 'placeholder implementation|placeholder packages|placeholder group ID'
 warn_grep 'HPKE encryption would be used here|Current implementation passes the secret through until HPKE path encryption lands|return the secret \(placeholder\)' \
     "telegram-android/TMessagesProj/jni/cryptogram/data/data_mls_protocol.cpp" \
     "MLS dormant UpdatePath helper still contains non-HPKE placeholder path-secret handling"
+warn_grep 'Simple XOR|simple XOR|placeholder implementation|return the secret \(placeholder\)|HPKE encryption would be used here' \
+    "Telegram/SourceFiles/data/data_mls_protocol.cpp" \
+    "Desktop MLS still contains placeholder crypto paths"
+warn_grep 'RAND_bytes.*privateKey|RAND_bytes.*publicKey|placeholder.*signature|placeholder.*verification' \
+    "Telegram/SourceFiles/data/data_mls_protocol.cpp" \
+    "Desktop MLS still uses random bytes instead of real key generation"
 
 echo
 echo "Summary"

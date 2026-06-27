@@ -20,7 +20,7 @@ Feature claims in docs should not exceed the state shown here.
 | Feature | Linux build status | Runtime wired | User-visible status | Evidence path |
 | --- | --- | --- | --- | --- |
 | Signal Protocol (Double Ratchet) | included | partial | experimental | `Telegram/SourceFiles/data/data_signal_protocol.cpp`, `Telegram/CMakeLists.txt` |
-| MLS Protocol (desktop) | included | partial | experimental | `Telegram/SourceFiles/data/data_mls_protocol.cpp`, `Telegram/CMakeLists.txt` |
+| MLS Protocol (desktop) | included | wired | experimental | `Telegram/SourceFiles/data/data_mls_protocol.cpp`, `Telegram/CMakeLists.txt` |
 | Enhanced Privacy | included | partial | partial | `Telegram/SourceFiles/data/data_enhanced_privacy.cpp`, `Telegram/CMakeLists.txt` |
 | Group Encryption | included | partial | partial | `Telegram/SourceFiles/data/data_group_encryption.cpp`, `Telegram/CMakeLists.txt` |
 | Covert Channel | included | partial | experimental | `Telegram/SourceFiles/data/data_covert_channel.cpp`, `Telegram/SourceFiles/settings/settings_cryptogram.cpp` |
