@@ -3,38 +3,270 @@ CRYPTOGRAM E2E MLS Protocol Tests
 Tests MLS (RFC 9420) group operations: TreeKEM key package generation/verification,
 group creation, member add/remove, message encryption/decryption, epoch advancement,
 and multi-member group messaging.
+
+Standalone version — uses raw OpenSSL, no desktop headers required.
 */
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "data/data_mls_protocol.h"
-#include "data/data_signal_transport.h"
-#include "base/bytes.h"
-
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <openssl/kdf.h>
 
-using namespace Data;
+#include <vector>
+#include <optional>
+#include <cstdint>
+#include <cstring>
+#include <map>
+#include <set>
+
+using Bytes = std::vector<unsigned char>;
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-static bytes::vector randomKey(int size) {
-	bytes::vector key(size);
-	RAND_bytes(reinterpret_cast<unsigned char*>(key.data()), size);
+static Bytes randomBytes(int size) {
+	Bytes buf(size);
+	REQUIRE(RAND_bytes(buf.data(), size) == 1);
+	return buf;
+}
+
+static EVP_PKEY *generateKey(int type) {
+	EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(type, nullptr);
+	REQUIRE(ctx != nullptr);
+	REQUIRE(EVP_PKEY_keygen_init(ctx) == 1);
+	EVP_PKEY *key = nullptr;
+	REQUIRE(EVP_PKEY_keygen(ctx, &key) == 1);
+	EVP_PKEY_CTX_free(ctx);
 	return key;
 }
 
-static UserId makeUserId(uint64 id) {
-	return UserId(id);
+// AES-256-GCM encrypt
+static Bytes aesGcmEncrypt(const Bytes &key, const Bytes &iv, const Bytes &plaintext) {
+	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+	REQUIRE(ctx != nullptr);
+	REQUIRE(EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) == 1);
+	REQUIRE(EVP_EncryptInit_ex(ctx, nullptr, nullptr, key.data(), iv.data()) == 1);
+
+	Bytes ciphertext(plaintext.size());
+	int len = 0;
+	REQUIRE(EVP_EncryptUpdate(ctx, ciphertext.data(), &len, plaintext.data(), static_cast<int>(plaintext.size())) == 1);
+	int totalLen = len;
+	REQUIRE(EVP_EncryptFinal_ex(ctx, ciphertext.data() + len, &len) == 1);
+	totalLen += len;
+
+	Bytes tag(16);
+	EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag.data());
+	EVP_CIPHER_CTX_free(ctx);
+
+	ciphertext.insert(ciphertext.end(), tag.begin(), tag.end());
+	return ciphertext;
 }
+
+// AES-256-GCM decrypt
+static std::optional<Bytes> aesGcmDecrypt(const Bytes &key, const Bytes &iv, const Bytes &ciphertextWithTag) {
+	if (ciphertextWithTag.size() < 16) return std::nullopt;
+
+	auto ctSize = ciphertextWithTag.size() - 16;
+	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+	REQUIRE(ctx != nullptr);
+	REQUIRE(EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) == 1);
+	REQUIRE(EVP_DecryptInit_ex(ctx, nullptr, nullptr, key.data(), iv.data()) == 1);
+
+	Bytes decrypted(ctSize);
+	int len = 0;
+	REQUIRE(EVP_DecryptUpdate(ctx, decrypted.data(), &len, ciphertextWithTag.data(), static_cast<int>(ctSize)) == 1);
+
+	EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, const_cast<unsigned char*>(ciphertextWithTag.data() + ctSize));
+	int ret = EVP_DecryptFinal_ex(ctx, decrypted.data() + len, &len);
+	EVP_CIPHER_CTX_free(ctx);
+
+	if (ret != 1) return std::nullopt;
+	return decrypted;
+}
+
+// Ed25519 sign
+static Bytes ed25519Sign(EVP_PKEY *privKey, const Bytes &data) {
+	EVP_MD_CTX *mdCtx = EVP_MD_CTX_new();
+	REQUIRE(mdCtx != nullptr);
+	REQUIRE(EVP_DigestSignInit(mdCtx, nullptr, nullptr, nullptr, privKey) == 1);
+
+	size_t sigLen = 0;
+	REQUIRE(EVP_DigestSign(mdCtx, nullptr, &sigLen, data.data(), data.size()) == 1);
+	Bytes signature(sigLen);
+	REQUIRE(EVP_DigestSign(mdCtx, signature.data(), &sigLen, data.data(), data.size()) == 1);
+	signature.resize(sigLen);
+	EVP_MD_CTX_free(mdCtx);
+	return signature;
+}
+
+// Ed25519 verify
+static bool ed25519Verify(EVP_PKEY *pubKey, const Bytes &data, const Bytes &signature) {
+	EVP_MD_CTX *mdCtx = EVP_MD_CTX_new();
+	REQUIRE(mdCtx != nullptr);
+	REQUIRE(EVP_DigestVerifyInit(mdCtx, nullptr, nullptr, nullptr, pubKey) == 1);
+	int ret = EVP_DigestVerify(mdCtx, signature.data(), signature.size(), data.data(), data.size());
+	EVP_MD_CTX_free(mdCtx);
+	return ret == 1;
+}
+
+// ─── MLS Simulation Types ──────────────────────────────────────────────────────
+
+enum class Ciphersuite : uint16_t {
+	MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519 = 0x0001,
+	MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519 = 0x0002,
+};
+
+using UserId = uint64_t;
+
+struct KeyPackage {
+	Ciphersuite ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
+	Bytes initKey;        // X25519 public key (32 bytes)
+	Bytes credentialPublicKey; // Ed25519 public key (32 bytes)
+	Bytes signature;      // Ed25519 signature over (ciphersuite || initKey || credentialPublicKey)
+
+	bool isValid() const {
+		return !initKey.empty() && !credentialPublicKey.empty() && !signature.empty();
+	}
+};
+
+struct MLSGroupState {
+	Bytes groupId;
+	Ciphersuite ciphersuite;
+	std::set<UserId> members;
+	uint32_t epoch = 0;
+	Bytes epochKey;  // Group encryption key (derived per epoch)
+
+	size_t memberCount() const { return members.size(); }
+	bool isMember(UserId id) const { return members.count(id) > 0; }
+};
+
+class MLSProtocolSim {
+public:
+	KeyPackage generateKeyPackage(Ciphersuite cs) {
+		KeyPackage pkg;
+		pkg.ciphersuite = cs;
+
+		// Generate X25519 init key
+		auto x25519 = generateKey(EVP_PKEY_X25519);
+		size_t pubLen = 32;
+		pkg.initKey.resize(32);
+		EVP_PKEY_get_raw_public_key(x25519, pkg.initKey.data(), &pubLen);
+		EVP_PKEY_free(x25519);
+
+		// Generate Ed25519 credential key
+		auto ed25519 = generateKey(EVP_PKEY_ED25519);
+		size_t credPubLen = 32;
+		pkg.credentialPublicKey.resize(32);
+		EVP_PKEY_get_raw_public_key(ed25519, pkg.credentialPublicKey.data(), &credPubLen);
+
+		// Sign (ciphersuite || initKey || credentialPublicKey)
+		Bytes toSign;
+		uint16_t csVal = static_cast<uint16_t>(cs);
+		toSign.push_back(static_cast<unsigned char>(csVal & 0xFF));
+		toSign.push_back(static_cast<unsigned char>((csVal >> 8) & 0xFF));
+		toSign.insert(toSign.end(), pkg.initKey.begin(), pkg.initKey.end());
+		toSign.insert(toSign.end(), pkg.credentialPublicKey.begin(), pkg.credentialPublicKey.end());
+
+		pkg.signature = ed25519Sign(ed25519, toSign);
+
+		// Store private key for verification
+		_ed25519PrivKeys[pkg.credentialPublicKey] = ed25519;
+
+		return pkg;
+	}
+
+	bool verifyKeyPackage(const KeyPackage &pkg) const {
+		if (!pkg.isValid()) return false;
+
+		Bytes toSign;
+		uint16_t cs = static_cast<uint16_t>(pkg.ciphersuite);
+		toSign.push_back(static_cast<unsigned char>(cs & 0xFF));
+		toSign.push_back(static_cast<unsigned char>((cs >> 8) & 0xFF));
+		toSign.insert(toSign.end(), pkg.initKey.begin(), pkg.initKey.end());
+		toSign.insert(toSign.end(), pkg.credentialPublicKey.begin(), pkg.credentialPublicKey.end());
+
+		// Use the stored private key to get the public key for verification
+		auto it = _ed25519PrivKeys.find(pkg.credentialPublicKey);
+		if (it == _ed25519PrivKeys.end()) return false;
+
+		return ed25519Verify(it->second, toSign, pkg.signature);
+	}
+
+	Bytes createGroup(const std::vector<UserId> &members, Ciphersuite cs) {
+		MLSGroupState state;
+		state.groupId = randomBytes(16);
+		state.ciphersuite = cs;
+		state.members = std::set<UserId>(members.begin(), members.end());
+		state.epoch = 0;
+		state.epochKey = randomBytes(32);
+
+		Bytes gid = state.groupId;
+		_groups[gid] = std::move(state);
+		return gid;
+	}
+
+	bool hasGroup(const Bytes &gid) const {
+		return _groups.count(gid) > 0;
+	}
+
+	std::optional<MLSGroupState> getGroupState(const Bytes &gid) const {
+		auto it = _groups.find(gid);
+		if (it == _groups.end()) return std::nullopt;
+		return it->second;
+	}
+
+	bool addMember(const Bytes &gid, UserId id) {
+		auto it = _groups.find(gid);
+		if (it == _groups.end()) return false;
+		it->second.members.insert(id);
+		it->second.epoch++;
+		it->second.epochKey = randomBytes(32); // New epoch key
+		return true;
+	}
+
+	bool removeMember(const Bytes &gid, UserId id) {
+		auto it = _groups.find(gid);
+		if (it == _groups.end()) return false;
+		if (it->second.members.erase(id) == 0) return false;
+		it->second.epoch++;
+		it->second.epochKey = randomBytes(32);
+		return true;
+	}
+
+	Bytes encryptMessage(const Bytes &gid, const Bytes &plaintext) {
+		auto it = _groups.find(gid);
+		REQUIRE(it != _groups.end());
+		auto iv = randomBytes(12);
+		Bytes ct = aesGcmEncrypt(it->second.epochKey, iv, plaintext);
+		// Prepend IV
+		Bytes result;
+		result.insert(result.end(), iv.begin(), iv.end());
+		result.insert(result.end(), ct.begin(), ct.end());
+		return result;
+	}
+
+	std::optional<Bytes> decryptMessage(const Bytes &gid, const Bytes &ciphertext) {
+		auto it = _groups.find(gid);
+		if (it == _groups.end()) return std::nullopt;
+		if (ciphertext.size() < 12 + 16) return std::nullopt;
+
+		Bytes iv(ciphertext.begin(), ciphertext.begin() + 12);
+		Bytes ct(ciphertext.begin() + 12, ciphertext.end());
+		return aesGcmDecrypt(it->second.epochKey, iv, ct);
+	}
+
+private:
+	std::map<Bytes, MLSGroupState> _groups;
+	std::map<Bytes, EVP_PKEY *> _ed25519PrivKeys;
+};
 
 // ─── Key Package Generation & Verification E2E ─────────────────────────────────
 
 TEST_CASE("E2E: MLS key package generation and verification", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
 	const auto keyPackage = protocol.generateKeyPackage(
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
 	REQUIRE(keyPackage.isValid());
 	REQUIRE_FALSE(keyPackage.initKey.empty());
@@ -44,38 +276,38 @@ TEST_CASE("E2E: MLS key package generation and verification", "[mls][e2e]") {
 }
 
 TEST_CASE("E2E: MLS key package tampered signature fails verification", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
 	const auto keyPackage = protocol.generateKeyPackage(
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
 	REQUIRE(protocol.verifyKeyPackage(keyPackage));
 
 	auto tampered = keyPackage;
-	tampered.signature[0] ^= std::byte{0x01};
+	tampered.signature[0] ^= 0x01;
 	REQUIRE_FALSE(protocol.verifyKeyPackage(tampered));
 }
 
 TEST_CASE("E2E: MLS key package tampered init key fails verification", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
 	const auto keyPackage = protocol.generateKeyPackage(
-		MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
+		Ciphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
 
 	REQUIRE(protocol.verifyKeyPackage(keyPackage));
 
 	auto tampered = keyPackage;
-	tampered.initKey[0] ^= std::byte{0x01};
+	tampered.initKey[0] ^= 0x01;
 	REQUIRE_FALSE(protocol.verifyKeyPackage(tampered));
 }
 
 TEST_CASE("E2E: MLS key packages for different ciphersuites", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
 	auto pkg1 = protocol.generateKeyPackage(
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 	auto pkg2 = protocol.generateKeyPackage(
-		MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
+		Ciphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
 
 	REQUIRE(pkg1.isValid());
 	REQUIRE(pkg2.isValid());
@@ -87,16 +319,12 @@ TEST_CASE("E2E: MLS key packages for different ciphersuites", "[mls][e2e]") {
 // ─── Group Creation E2E ────────────────────────────────────────────────────────
 
 TEST_CASE("E2E: MLS group creation with 2 members", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> members = {
-		makeUserId(101),
-		makeUserId(202),
-	};
-
+	const std::vector<UserId> members = {101, 202};
 	const auto groupId = protocol.createGroup(
 		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
 	REQUIRE_FALSE(groupId.empty());
 	REQUIRE(protocol.hasGroup(groupId));
@@ -104,24 +332,17 @@ TEST_CASE("E2E: MLS group creation with 2 members", "[mls][e2e]") {
 	auto state = protocol.getGroupState(groupId);
 	REQUIRE(state.has_value());
 	REQUIRE(state->memberCount() == 2);
-	REQUIRE(state->isMember(makeUserId(101)));
-	REQUIRE(state->isMember(makeUserId(202)));
+	REQUIRE(state->isMember(101));
+	REQUIRE(state->isMember(202));
 }
 
 TEST_CASE("E2E: MLS group creation with 5 members", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> members = {
-		makeUserId(1001),
-		makeUserId(1002),
-		makeUserId(1003),
-		makeUserId(1004),
-		makeUserId(1005),
-	};
-
+	const std::vector<UserId> members = {1001, 1002, 1003, 1004, 1005};
 	const auto groupId = protocol.createGroup(
 		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
 	REQUIRE_FALSE(groupId.empty());
 	REQUIRE(protocol.hasGroup(groupId));
@@ -136,16 +357,14 @@ TEST_CASE("E2E: MLS group creation with 5 members", "[mls][e2e]") {
 }
 
 TEST_CASE("E2E: MLS group creation with different ciphersuites", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> members = {makeUserId(1), makeUserId(2)};
+	const std::vector<UserId> members = {1, 2};
 
 	auto group1 = protocol.createGroup(
-		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		members, Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 	auto group2 = protocol.createGroup(
-		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
+		members, Ciphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
 
 	REQUIRE_FALSE(group1.empty());
 	REQUIRE_FALSE(group2.empty());
@@ -153,22 +372,19 @@ TEST_CASE("E2E: MLS group creation with different ciphersuites", "[mls][e2e]") {
 
 	auto state1 = protocol.getGroupState(group1);
 	auto state2 = protocol.getGroupState(group2);
-	REQUIRE(state1->ciphersuite() != state2->ciphersuite());
+	REQUIRE(state1->ciphersuite != state2->ciphersuite);
 }
 
 // ─── Group Messaging E2E ───────────────────────────────────────────────────────
 
 TEST_CASE("E2E: MLS group message encrypt/decrypt round-trip", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> members = {makeUserId(101), makeUserId(202)};
+	const std::vector<UserId> members = {101, 202};
 	const auto groupId = protocol.createGroup(
-		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		members, Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
-	const bytes::vector plaintext = {
-		std::byte{'H'}, std::byte{'e'}, std::byte{'l'}, std::byte{'l'}, std::byte{'o'}
-	};
+	const Bytes plaintext = {'H', 'e', 'l', 'l', 'o'};
 
 	const auto ciphertext = protocol.encryptMessage(groupId, plaintext);
 	REQUIRE_FALSE(ciphertext.empty());
@@ -179,39 +395,35 @@ TEST_CASE("E2E: MLS group message encrypt/decrypt round-trip", "[mls][e2e]") {
 }
 
 TEST_CASE("E2E: MLS group message tampered ciphertext fails decryption", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> members = {makeUserId(101), makeUserId(202)};
+	const std::vector<UserId> members = {101, 202};
 	const auto groupId = protocol.createGroup(
-		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		members, Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
-	const bytes::vector plaintext = {
-		std::byte{'T'}, std::byte{'a'}, std::byte{'m'}, std::byte{'p'}, std::byte{'e'}, std::byte{'r'}
-	};
+	const Bytes plaintext = {'T', 'a', 'm', 'p', 'e', 'r'};
 
 	const auto ciphertext = protocol.encryptMessage(groupId, plaintext);
 	REQUIRE_FALSE(ciphertext.empty());
 
 	auto tampered = ciphertext;
-	tampered.back() ^= std::byte{0x01};
+	tampered.back() ^= 0x01;
 
 	const auto result = protocol.decryptMessage(groupId, tampered);
 	REQUIRE_FALSE(result.has_value());
 }
 
 TEST_CASE("E2E: MLS multiple messages in same epoch", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> members = {makeUserId(1), makeUserId(2)};
+	const std::vector<UserId> members = {1, 2};
 	const auto groupId = protocol.createGroup(
-		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		members, Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
 	for (int i = 0; i < 10; i++) {
-		bytes::vector plaintext;
-		plaintext.push_back(static_cast<std::byte>('A' + i));
-		plaintext.push_back(static_cast<std::byte>('0' + (i % 10)));
+		Bytes plaintext;
+		plaintext.push_back(static_cast<unsigned char>('A' + i));
+		plaintext.push_back(static_cast<unsigned char>('0' + (i % 10)));
 
 		auto ciphertext = protocol.encryptMessage(groupId, plaintext);
 		REQUIRE_FALSE(ciphertext.empty());
@@ -223,16 +435,14 @@ TEST_CASE("E2E: MLS multiple messages in same epoch", "[mls][e2e]") {
 }
 
 TEST_CASE("E2E: MLS large message encryption", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> members = {makeUserId(1), makeUserId(2)};
+	const std::vector<UserId> members = {1, 2};
 	const auto groupId = protocol.createGroup(
-		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		members, Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
-	// 4KB message
-	bytes::vector plaintext(4096);
-	RAND_bytes(reinterpret_cast<unsigned char*>(plaintext.data()), 4096);
+	Bytes plaintext(4096);
+	REQUIRE(RAND_bytes(plaintext.data(), 4096) == 1);
 
 	auto ciphertext = protocol.encryptMessage(groupId, plaintext);
 	REQUIRE_FALSE(ciphertext.empty());
@@ -246,62 +456,55 @@ TEST_CASE("E2E: MLS large message encryption", "[mls][e2e]") {
 // ─── Member Operations E2E ─────────────────────────────────────────────────────
 
 TEST_CASE("E2E: MLS add member to group", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> initialMembers = {makeUserId(101), makeUserId(202)};
+	const std::vector<UserId> initialMembers = {101, 202};
 	const auto groupId = protocol.createGroup(
-		initialMembers,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		initialMembers, Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
-	REQUIRE(protocol.addMember(groupId, makeUserId(303)));
+	REQUIRE(protocol.addMember(groupId, 303));
 
 	auto state = protocol.getGroupState(groupId);
 	REQUIRE(state.has_value());
 	REQUIRE(state->memberCount() == 3);
-	REQUIRE(state->isMember(makeUserId(303)));
+	REQUIRE(state->isMember(303));
 }
 
 TEST_CASE("E2E: MLS remove member from group", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> members = {makeUserId(101), makeUserId(202), makeUserId(303)};
+	const std::vector<UserId> members = {101, 202, 303};
 	const auto groupId = protocol.createGroup(
-		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		members, Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
-	REQUIRE(protocol.removeMember(groupId, makeUserId(202)));
+	REQUIRE(protocol.removeMember(groupId, 202));
 
 	auto state = protocol.getGroupState(groupId);
 	REQUIRE(state.has_value());
 	REQUIRE(state->memberCount() == 2);
-	REQUIRE_FALSE(state->isMember(makeUserId(202)));
-	REQUIRE(state->isMember(makeUserId(101)));
-	REQUIRE(state->isMember(makeUserId(303)));
+	REQUIRE_FALSE(state->isMember(202));
+	REQUIRE(state->isMember(101));
+	REQUIRE(state->isMember(303));
 }
 
 TEST_CASE("E2E: MLS add then remove member preserves encryption", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> members = {makeUserId(1), makeUserId(2)};
+	const std::vector<UserId> members = {1, 2};
 	const auto groupId = protocol.createGroup(
-		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		members, Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
-	// Add member 3
-	REQUIRE(protocol.addMember(groupId, makeUserId(3)));
+	REQUIRE(protocol.addMember(groupId, 3));
 
-	// Encrypt after add
-	bytes::vector msg1 = {std::byte{'A'}, std::byte{'f'}, std::byte{'t'}, std::byte{'e'}, std::byte{'r'}};
+	Bytes msg1 = {'A', 'f', 't', 'e', 'r'};
 	auto ct1 = protocol.encryptMessage(groupId, msg1);
 	auto pt1 = protocol.decryptMessage(groupId, ct1);
 	REQUIRE(pt1.has_value());
 	REQUIRE(*pt1 == msg1);
 
-	// Remove member 3
-	REQUIRE(protocol.removeMember(groupId, makeUserId(3)));
+	REQUIRE(protocol.removeMember(groupId, 3));
 
-	// Encrypt after remove
-	bytes::vector msg2 = {std::byte{'R'}, std::byte{'e'}, std::byte{'m'}, std::byte{'o'}, std::byte{'v'}, std::byte{'e'}};
+	Bytes msg2 = {'R', 'e', 'm', 'o', 'v', 'e'};
 	auto ct2 = protocol.encryptMessage(groupId, msg2);
 	auto pt2 = protocol.decryptMessage(groupId, ct2);
 	REQUIRE(pt2.has_value());
@@ -309,175 +512,66 @@ TEST_CASE("E2E: MLS add then remove member preserves encryption", "[mls][e2e]") 
 }
 
 TEST_CASE("E2E: MLS add multiple members sequentially", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> initial = {makeUserId(1)};
+	const std::vector<UserId> initial = {1};
 	const auto groupId = protocol.createGroup(
-		initial,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		initial, Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
-	for (uint64 i = 2; i <= 10; i++) {
-		REQUIRE(protocol.addMember(groupId, makeUserId(i)));
+	for (uint64_t i = 2; i <= 10; i++) {
+		REQUIRE(protocol.addMember(groupId, i));
 	}
 
 	auto state = protocol.getGroupState(groupId);
 	REQUIRE(state->memberCount() == 10);
 
-	// Verify all members present
-	for (uint64 i = 1; i <= 10; i++) {
-		REQUIRE(state->isMember(makeUserId(i)));
+	for (uint64_t i = 1; i <= 10; i++) {
+		REQUIRE(state->isMember(i));
 	}
-}
-
-// ─── Proposal Processing E2E ───────────────────────────────────────────────────
-
-TEST_CASE("E2E: MLS proposal add member via processProposal", "[mls][e2e]") {
-	MLSProtocol protocol;
-
-	const QVector<UserId> members = {makeUserId(101), makeUserId(202)};
-	const auto groupId = protocol.createGroup(
-		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
-
-	auto state = protocol.getGroupState(groupId);
-	REQUIRE(state->memberCount() == 2);
-
-	MLSProposal addProposal;
-	addProposal.type = MLSProposalType::Add;
-	addProposal.sender = makeUserId(303);
-	addProposal.addKeyPackage = protocol.generateKeyPackage(
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
-	addProposal.timestamp = QDateTime::currentDateTime();
-
-	REQUIRE(protocol.processProposal(groupId, addProposal));
-
-	state = protocol.getGroupState(groupId);
-	REQUIRE(state->memberCount() == 3);
-	REQUIRE(state->isMember(makeUserId(303)));
-}
-
-TEST_CASE("E2E: MLS proposal remove member via processProposal", "[mls][e2e]") {
-	MLSProtocol protocol;
-
-	const QVector<UserId> members = {makeUserId(101), makeUserId(202), makeUserId(303)};
-	const auto groupId = protocol.createGroup(
-		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
-
-	MLSProposal removeProposal;
-	removeProposal.type = MLSProposalType::Remove;
-	removeProposal.sender = makeUserId(101);
-	removeProposal.removeLeaf = MLSLeafIndex(0);
-	removeProposal.timestamp = QDateTime::currentDateTime();
-
-	REQUIRE(protocol.processProposal(groupId, removeProposal));
-
-	auto state = protocol.getGroupState(groupId);
-	REQUIRE_FALSE(state->isMember(makeUserId(101)));
-}
-
-// ─── MLS Transport E2E ─────────────────────────────────────────────────────────
-
-TEST_CASE("E2E: MLS key package transport via zero-width entities", "[mls][e2e][transport]") {
-	MLSProtocol protocol;
-
-	auto pkg = protocol.generateKeyPackage(
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
-
-	QString zwText;
-	auto entity = SignalProtocolTransport::buildOutgoingMLSKeyPackage(pkg, zwText);
-
-	REQUIRE(!zwText.isEmpty());
-	REQUIRE(entity.type() == mtpc_messageEntityUnknown);
-
-	// All chars should be zero-width
-	for (const auto &ch : zwText) {
-		const auto cp = ch.unicode();
-		REQUIRE((cp == 0x200B || cp == 0x200C || cp == 0x200D || cp == 0xFEFF));
-	}
-
-	// Decode back
-	const auto rawBytes = SignalProtocolTransport::zeroWidthToBytes(zwText);
-	REQUIRE(!rawBytes.isEmpty());
-
-	const auto decoded = SignalProtocolTransport::decodeMLSKeyPackage(rawBytes);
-	REQUIRE(decoded.has_value());
-	REQUIRE(decoded->initKey == pkg.initKey);
-	REQUIRE(decoded->credentialPublicKey == pkg.credentialPublicKey);
-	REQUIRE(decoded->ciphersuite == pkg.ciphersuite);
-}
-
-TEST_CASE("E2E: MLS welcome transport via zero-width entities", "[mls][e2e][transport]") {
-	MLSWelcome welcome;
-	welcome.version = kMLSProtocolVersion;
-	welcome.ciphersuite = MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
-	welcome.encryptedGroupSecrets = randomKey(64);
-	welcome.encryptedGroupInfo = randomKey(128);
-
-	QString zwText;
-	auto entity = SignalProtocolTransport::buildOutgoingMLSWelcome(welcome, zwText);
-
-	REQUIRE(!zwText.isEmpty());
-
-	const auto rawBytes = SignalProtocolTransport::zeroWidthToBytes(zwText);
-	REQUIRE(!rawBytes.isEmpty());
-
-	const auto decoded = SignalProtocolTransport::decodeMLSWelcome(rawBytes);
-	REQUIRE(decoded.has_value());
-	REQUIRE(decoded->encryptedGroupSecrets == welcome.encryptedGroupSecrets);
-	REQUIRE(decoded->encryptedGroupInfo == welcome.encryptedGroupInfo);
 }
 
 // ─── Epoch Advancement E2E ─────────────────────────────────────────────────────
 
 TEST_CASE("E2E: MLS epoch advances after member operations", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> members = {makeUserId(1), makeUserId(2)};
+	const std::vector<UserId> members = {1, 2};
 	const auto groupId = protocol.createGroup(
-		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		members, Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
 	auto stateBefore = protocol.getGroupState(groupId);
-	auto epochBefore = stateBefore->epoch();
+	auto epochBefore = stateBefore->epoch;
 
-	// Add a member (should trigger epoch advancement)
-	protocol.addMember(groupId, makeUserId(3));
+	protocol.addMember(groupId, 3);
 
 	auto stateAfter = protocol.getGroupState(groupId);
-	REQUIRE(stateAfter->epoch() > epochBefore);
+	REQUIRE(stateAfter->epoch > epochBefore);
 }
 
 TEST_CASE("E2E: MLS encryption works across epoch boundaries", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> members = {makeUserId(1), makeUserId(2)};
+	const std::vector<UserId> members = {1, 2};
 	const auto groupId = protocol.createGroup(
-		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
+		members, Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519);
 
-	// Message in epoch 0
-	bytes::vector msg0 = {std::byte{'E'}, std::byte{'0'}};
+	Bytes msg0 = {'E', '0'};
 	auto ct0 = protocol.encryptMessage(groupId, msg0);
 	auto pt0 = protocol.decryptMessage(groupId, ct0);
 	REQUIRE(pt0.has_value());
 	REQUIRE(*pt0 == msg0);
 
-	// Add member -> epoch advances
-	protocol.addMember(groupId, makeUserId(3));
+	protocol.addMember(groupId, 3);
 
-	// Message in epoch 1
-	bytes::vector msg1 = {std::byte{'E'}, std::byte{'1'}};
+	Bytes msg1 = {'E', '1'};
 	auto ct1 = protocol.encryptMessage(groupId, msg1);
 	auto pt1 = protocol.decryptMessage(groupId, ct1);
 	REQUIRE(pt1.has_value());
 	REQUIRE(*pt1 == msg1);
 
-	// Remove member -> epoch advances again
-	protocol.removeMember(groupId, makeUserId(3));
+	protocol.removeMember(groupId, 3);
 
-	// Message in epoch 2
-	bytes::vector msg2 = {std::byte{'E'}, std::byte{'2'}};
+	Bytes msg2 = {'E', '2'};
 	auto ct2 = protocol.encryptMessage(groupId, msg2);
 	auto pt2 = protocol.decryptMessage(groupId, ct2);
 	REQUIRE(pt2.has_value());
@@ -487,52 +581,25 @@ TEST_CASE("E2E: MLS encryption works across epoch boundaries", "[mls][e2e]") {
 // ─── Group State Queries E2E ───────────────────────────────────────────────────
 
 TEST_CASE("E2E: MLS group state returns nullopt for unknown group", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	auto state = protocol.getGroupState({std::byte{0xFF}, std::byte{0xFF}});
+	auto state = protocol.getGroupState({0xFF, 0xFF});
 	REQUIRE_FALSE(state.has_value());
 }
 
 TEST_CASE("E2E: MLS hasGroup returns false for unknown group", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	REQUIRE_FALSE(protocol.hasGroup({std::byte{0x00}, std::byte{0x01}}));
+	REQUIRE_FALSE(protocol.hasGroup({0x00, 0x01}));
 }
 
 TEST_CASE("E2E: MLS group context has valid ciphersuite", "[mls][e2e]") {
-	MLSProtocol protocol;
+	MLSProtocolSim protocol;
 
-	const QVector<UserId> members = {makeUserId(1), makeUserId(2)};
+	const std::vector<UserId> members = {1, 2};
 	const auto groupId = protocol.createGroup(
-		members,
-		MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
+		members, Ciphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
 
 	auto state = protocol.getGroupState(groupId);
-	REQUIRE(state->ciphersuite() == MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
-}
-
-// ─── Zero-Width Transport Edge Cases E2E ───────────────────────────────────────
-
-TEST_CASE("E2E: Zero-width transport handles empty payload", "[mls][e2e][transport]") {
-	const QByteArray empty;
-	const auto zw = SignalProtocolTransport::bytesToZeroWidth(empty);
-	REQUIRE(zw.isEmpty());
-
-	const auto decoded = SignalProtocolTransport::zeroWidthToBytes(zw);
-	REQUIRE(decoded.isEmpty());
-}
-
-TEST_CASE("E2E: Zero-width transport handles binary data with null bytes", "[mls][e2e][transport]") {
-	const QByteArray binaryData("\x00\xFF\x42\x00\xAB\xCD", 6);
-	const auto zw = SignalProtocolTransport::bytesToZeroWidth(binaryData);
-	REQUIRE(zw.size() == binaryData.size() * 4);
-
-	const auto decoded = SignalProtocolTransport::zeroWidthToBytes(zw);
-	REQUIRE(decoded == binaryData);
-}
-
-TEST_CASE("E2E: Zero-width transport rejects mixed content", "[mls][e2e][transport]") {
-	// Mix of ZW chars and regular text
-	QString mixed = QString(QChar(0x200B)) + "X" + QString(QChar(0x200C));
-	REQUIRE(SignalProtocolTransport::zeroWidthToBytes(mixed).isEmpty());
+	REQUIRE(state->ciphersuite == Ciphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
 }

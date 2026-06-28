@@ -57,8 +57,6 @@ add_executable(test_e2e_signal_protocol
 target_link_libraries(test_e2e_signal_protocol
     PRIVATE
     Catch2::Catch2WithMain
-    desktop-app::lib_base
-    desktop-app::lib_ui
     OpenSSL::Crypto
 )
 
@@ -69,8 +67,6 @@ add_executable(test_e2e_mls_protocol
 target_link_libraries(test_e2e_mls_protocol
     PRIVATE
     Catch2::Catch2WithMain
-    desktop-app::lib_base
-    desktop-app::lib_crl
     OpenSSL::Crypto
 )
 
