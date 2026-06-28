@@ -15,7 +15,7 @@ namespace Menu {
 void ItemWithCheck::init(bool checked) {
 	enableMouseSelecting();
 
-	AbstractButton::setDisabled(true);
+	ItemBase::setPreventClose(true);
 
 	_checkView = std::make_unique<Ui::CheckView>(st::defaultCheck, false);
 	_checkView->checkedChanges(

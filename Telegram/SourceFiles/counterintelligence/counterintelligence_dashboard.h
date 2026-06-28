@@ -15,15 +15,19 @@
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QGroupBox>
 #include <QtWidgets/QFrame>
-#include <QtWidgets/QTimer>
+#include <QtCore/QTimer>
 #include <QtCore/QPropertyAnimation>
+#ifdef __has_include
+#if __has_include(<QtCharts/QChart>)
 #include <QtCharts/QChart>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
 #include <QtCharts/QValueAxis>
-#include <memory>
-
 QT_CHARTS_USE_NAMESPACE
+#define CRYPTOGRAM_HAVE_QTCHARTS 1
+#endif
+#endif
+#include <memory>
 
 namespace SpyGram::Counterintelligence {
 
@@ -53,12 +57,12 @@ public:
     void setGovernmentMode(bool enabled);
     void setExpertMode(bool enabled);
 
-public slots:
+public Q_SLOTS:
     void showDashboard();
     void hideDashboard();
     void toggleDashboard();
 
-private slots:
+private Q_SLOTS:
     // Threat monitoring
     void onThreatDetected(const ThreatAssessment &threat);
     void onThreatLevelChanged(ThreatLevel newLevel, ThreatLevel oldLevel);
@@ -133,12 +137,14 @@ private:
     QFrame *_threat_alert_frame;
 
     // Real-time threat chart
+#ifdef CRYPTOGRAM_HAVE_QTCHARTS
     QChart *_threat_chart;
     QChartView *_threat_chart_view;
     QLineSeries *_threat_level_series;
     QLineSeries *_confidence_series;
     QValueAxis *_time_axis;
     QValueAxis *_level_axis;
+#endif
 
     // Countermeasure control section
     QGroupBox *_countermeasure_section;
@@ -168,9 +174,11 @@ private:
     QProgressBar *_system_load_bar;
 
     // Effectiveness chart
+#ifdef CRYPTOGRAM_HAVE_QTCHARTS
     QChart *_effectiveness_chart;
     QChartView *_effectiveness_chart_view;
     QHash<CountermeasureType, QLineSeries*> _effectiveness_series;
+#endif
 
     // Government mode section
     QGroupBox *_government_section;

@@ -1,5 +1,5 @@
 /*
-This file is part of 64Gram Desktop,
+This file is part of CRYPTOGRAM Desktop,
 the unofficial app based on Telegram Desktop.
 For license and copyright information please follow this link:
 https://github.com/TDesktop-x64/tdesktop/blob/dev/LEGAL
@@ -281,7 +281,7 @@ namespace EnhancedSettings {
 			return;
 		}
 		const char *defaultHeader = R"HEADER(
-// This is a list of default options for 64Gram Desktop
+// This is a list of default options for CRYPTOGRAM Desktop
 // Please don't modify it, its content is not used in any way
 // You can place your own options in the 'enhanced-settings-custom.json' file
 )HEADER";
@@ -316,7 +316,6 @@ namespace EnhancedSettings {
 		settings.insert(qsl("hide_counter"), false);
 		settings.insert(qsl("translate_to_tc"), false);
 		settings.insert(qsl("hide_stories"), false);
-		settings.insert(qsl("recent_display_limit"), 20);
 		settings.insert(qsl("screenshot_mode"), false);
 		settings.insert(qsl("update_url"), "");
 
@@ -371,7 +370,6 @@ namespace EnhancedSettings {
 		settings.insert(qsl("hide_counter"), GetEnhancedBool("hide_counter"));
 		settings.insert(qsl("translate_to_tc"), GetEnhancedBool("translate_to_tc"));
 		settings.insert(qsl("hide_stories"), GetEnhancedBool("hide_stories"));
-		settings.insert(qsl("recent_display_limit"), GetEnhancedInt("recent_display_limit"));
 		settings.insert(qsl("screenshot_mode"), GetEnhancedBool("screenshot_mode"));
 		settings.insert(qsl("update_url"), GetEnhancedString("update_url"));
 

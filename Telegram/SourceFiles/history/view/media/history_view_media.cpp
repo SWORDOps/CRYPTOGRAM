@@ -131,9 +131,9 @@ TextWithEntities AddTimestampLinks(
 		return text;
 	}
 	static const auto expression = QRegularExpression(
-		"(?<![^\\s\\(\\)\"\\,\\.\\-])"
+		"(?<![^\\s\\(\\)\\[\\]\"\\,\\.\\-])"
 		"(?:(?:(\\d{1,2}):)?(\\d))?(\\d):(\\d\\d)"
-		"(?![^\\s\\(\\)\",\\.\\-\\+])");
+		"(?![^\\s\\(\\)\\[\\]\",\\.\\-\\+])");
 	const auto &string = text.text;
 	auto offset = 0;
 	while (true) {
@@ -409,7 +409,7 @@ void Media::drawSpoilerTag(
 					tr::now,
 					lt_price,
 					price,
-					Ui::Text::WithEntities),
+					tr::marked),
 				kMarkupTextOptions);
 		}
 		const auto width = iconSkip + text.maxWidth();

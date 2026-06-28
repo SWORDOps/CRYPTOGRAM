@@ -83,6 +83,7 @@ ActionWithTimer::ActionWithTimer(
 		+ st::ttlItemTimerFont->height
 		+ st::ttlItemPadding.bottom()) {
 	setAcceptBoth(true);
+	fitToMenuWidth();
 	setActionTriggered(std::move(callback));
 
 	paintRequest(

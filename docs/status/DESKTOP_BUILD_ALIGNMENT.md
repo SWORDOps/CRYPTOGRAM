@@ -31,7 +31,7 @@ Feature claims in docs should not exceed the state shown here.
 | OpenVINO Translation | excluded | n/a | not shipped by default | `Telegram/CMakeLists.txt`, `Telegram/SourceFiles/data/data_openvino_translation.cpp` |
 | Location Randomization | included | wired | shipped by default | `Telegram/CMakeLists.txt`, `Telegram/SourceFiles/data/data_location_randomization.cpp`, `Telegram/SourceFiles/data/data_location.cpp` |
 | Quantum Storage | excluded | n/a | not shipped by default | `Telegram/CMakeLists.txt`, `Telegram/SourceFiles/data/data_quantum_storage.cpp` |
-| Surveillance Detector module | source-only | n/a | source-only | `Telegram/SourceFiles/counterintelligence/surveillance_detector.cpp` |
+| Surveillance Detector module | included | partial | experimental | `Telegram/SourceFiles/counterintelligence/surveillance_detector.cpp`, `Telegram/CMakeLists.txt` |
 
 ## Build command alignment
 

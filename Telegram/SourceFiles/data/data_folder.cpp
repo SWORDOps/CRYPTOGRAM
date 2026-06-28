@@ -93,7 +93,7 @@ constexpr auto kShowChatNamesCount = 8;
 				result,
 				lt_chat,
 				wrapName(*i),
-				Ui::Text::WithEntities);
+				tr::marked);
 		}
 		return result;
 	}();
@@ -104,7 +104,7 @@ constexpr auto kShowChatNamesCount = 8;
 			(count - shown),
 			lt_chats,
 			accumulated,
-			Ui::Text::WithEntities)
+			tr::marked)
 		: accumulated;
 }
 
@@ -387,7 +387,11 @@ Dialogs::BadgesState Folder::chatListBadgesState() const {
 		chatListUnreadState(),
 		Dialogs::CountInBadge::Chats,
 		Dialogs::IncludeInBadge::All);
-	result.unreadMuted = result.mentionMuted = result.reactionMuted = true;
+	result.unreadMuted
+		= result.mentionMuted
+		= result.reactionMuted
+		= result.pollMuted
+		= true;
 	if (result.unread && !result.unreadCounter) {
 		result.unreadCounter = 1;
 	}

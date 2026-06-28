@@ -14,9 +14,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "apiwrap.h"
 #include "base/call_delayed.h"
 #include "boxes/star_gift_box.h" // ShowStarGiftBox.
+#include "boxes/star_gift_auction_box.h"
 #include "core/application.h"
 #include "core/click_handler_types.h"
 #include "core/ui_integration.h"
+#include "data/components/gift_auctions.h"
 #include "data/components/promo_suggestions.h"
 #include "data/data_birthday.h"
 #include "data/data_changes.h"
@@ -28,9 +30,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "info/profile/info_profile_values.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
-#include "settings/settings_active_sessions.h"
+#include "settings/sections/settings_active_sessions.h"
 #include "settings/settings_credits_graphics.h"
-#include "settings/settings_premium.h"
+#include "settings/sections/settings_premium.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/controls/userpic_button.h"
 #include "ui/effects/credits_graphics.h"
@@ -88,14 +90,14 @@ void ShowAuthToast(
 		auto text = tr::lng_unconfirmed_auth_confirmed_message(
 			tr::now,
 			lt_link,
-			Ui::Text::Link(tr::lng_settings_sessions_title(tr::now)),
-			Ui::Text::RichLangValue);
+			tr::link(tr::lng_settings_sessions_title(tr::now)),
+			tr::rich);
 		auto filter = [=](
 				ClickHandlerPtr handler,
 				Qt::MouseButton button) {
 			if (const auto controller = FindSessionController(parent)) {
 				session->api().authorizations().reload();
-				controller->showSettings(Settings::Sessions::Id());
+				controller->showSettings(Settings::SessionsId());
 				return false;
 			}
 			return true;
@@ -128,21 +130,7 @@ void ShowAuthToast(
 		}
 		if (const auto controller = FindSessionController(parent)) {
 			const auto count = float64(list.size());
-			controller->show(Box([=](not_null<Ui::GenericBox*> box) {
-				box->setTitle(tr::lng_unconfirmed_auth_denied_title(
-					lt_count,
-					rpl::single(count)));
-				Ui::InformBox(box, {
-					.text = TextWithEntities()
-						.append(messageText)
-						.append('\n')
-						.append(
-							tr::lng_unconfirmed_auth_denied_warning(
-								tr::now,
-								Ui::Text::Bold)),
-					.confirmText = tr::lng_archive_hint_button(tr::now),
-				});
-			}));
+			controller->show(Box(ShowAuthDeniedBox, count, messageText));
 		}
 	}
 }
@@ -184,6 +172,7 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 			rpl::lifetime userpicLifetime;
 			rpl::lifetime giftsLifetime;
 			rpl::lifetime creditsLifetime;
+			rpl::lifetime auctionsLifetime;
 			std::unique_ptr<Api::CreditsHistory> creditsHistory;
 		};
 
@@ -193,8 +182,11 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 			rpl::single(st::dialogsTopBarLeftPadding));
 		const auto ensureContent = [=] {
 			if (!state->content) {
+				const auto window = FindSessionController(parent);
 				state->content = Ui::CreateChild<TopBarSuggestionContent>(
-					parent);
+					parent,
+					[=] { return window->isGifPausedAtLeastFor(
+						Window::GifPauseReason::Layer); });
 				rpl::combine(
 					parent->widthValue(),
 					state->content->desiredHeightValue()
@@ -229,6 +221,7 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 			state->userpicLifetime.destroy();
 			state->giftsLifetime.destroy();
 			state->creditsLifetime.destroy();
+			state->auctionsLifetime.destroy();
 
 			if (!session->api().authorizations().unreviewed().empty()) {
 				state->content = nullptr;
@@ -273,7 +266,50 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 			const auto wrap = state->wrap.get();
 			using RightIcon = TopBarSuggestionContent::RightIcon;
 			const auto promo = &session->promoSuggestions();
-			if (const auto custom = promo->custom()) {
+			const auto auctions = &session->giftAuctions();
+			if (auctions->hasActive()) {
+				using namespace Data;
+				struct Button {
+					rpl::variable<TextWithEntities> text;
+					Fn<void()> callback;
+					base::has_weak_ptr guard;
+				};
+				auto &lifetime = state->auctionsLifetime;
+				const auto button = lifetime.template make_state<Button>();
+				const auto window = FindSessionController(parent);
+				auctions->active(
+				) | rpl::on_next([=](ActiveAuctions &&active) {
+					const auto empty = active.list.empty();
+					state->desiredWrapToggle.force_assign(
+						Toggle{ !empty, anim::type::normal });
+					if (empty) {
+						return;
+					}
+
+					auto text = Ui::ActiveAuctionsState(active);
+					const auto textColorOverride = text.someOutbid
+						? st::attentionButtonFg->c
+						: std::optional<QColor>();
+					content->setContent(
+						Ui::ActiveAuctionsTitle(active),
+						std::move(text.text),
+						Core::TextContext({ .session = session }),
+						textColorOverride);
+					button->text = Ui::ActiveAuctionsButton(active);
+					button->callback = Ui::ActiveAuctionsCallback(
+						window,
+						active);
+				}, state->auctionsLifetime);
+				const auto callback = crl::guard(&button->guard, [=] {
+					button->callback();
+				});
+				content->setRightButton(button->text.value(), callback);
+				content->setClickedCallback(callback);
+				content->setLeftPadding(state->leftPadding.value());
+				state->desiredWrapToggle.force_assign(
+					Toggle{ true, anim::type::normal });
+				return;
+			} else if (const auto custom = promo->custom()) {
 				content->setRightIcon(RightIcon::Close);
 				content->setLeftPadding(state->leftPadding.value());
 				content->setClickedCallback([=] {
@@ -315,7 +351,7 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 				content->setContent(
 					tr::lng_dialogs_suggestions_premium_grace_title(
 						tr::now,
-						Ui::Text::Bold),
+						tr::bold),
 					tr::lng_dialogs_suggestions_premium_grace_about(
 						tr::now,
 						TextWithEntities::Simple));
@@ -363,7 +399,7 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 							Ui::MakeCreditsIconEntity(),
 							lt_channels,
 							{ peers },
-							Ui::Text::Bold),
+							tr::bold),
 						tr::lng_dialogs_suggestions_credits_sub_low_about(
 							tr::now,
 							TextWithEntities::Simple),
@@ -433,12 +469,12 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 							tr::now,
 							lt_text,
 							{ first->shortName() },
-							Ui::Text::RichLangValue)
+							tr::rich)
 						: tr::lng_dialogs_suggestions_birthday_contacts_title(
 							tr::now,
 							lt_count,
 							users.size(),
-							Ui::Text::RichLangValue);
+							tr::rich);
 					auto text = isSingle
 						? tr::lng_dialogs_suggestions_birthday_contact_about(
 							tr::now,
@@ -469,26 +505,18 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 							widget->raise();
 						}, widget->lifetime());
 						for (const auto &id : users) {
+							if (s->inRow.size() >= 3) {
+								break;
+							}
 							if (const auto user = session->data().user(id)) {
 								s->inRow.push_back({ .peer = user });
 							}
 						}
 						widget->paintRequest() | rpl::on_next([=] {
 							auto p = QPainter(widget);
-							const auto regenerate = [&] {
-								if (s->userpics.isNull()) {
-									return true;
-								}
-								for (auto &entry : s->inRow) {
-									if (entry.uniqueKey
-										!= entry.peer->userpicUniqueKey(
-											entry.view)) {
-										return true;
-									}
-								}
-								return false;
-							}();
-							if (regenerate) {
+							if (HistoryView::NeedRegenerateUserpics(
+									s->userpics,
+									s->inRow)) {
 								const auto &st = st::historyCommentsUserpics;
 								HistoryView::GenerateUserpicsInRow(
 									s->userpics,
@@ -566,7 +594,7 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 				content->setContent(
 					tr::lng_dialogs_suggestions_birthday_title(
 						tr::now,
-						Ui::Text::Bold),
+						tr::bold),
 					tr::lng_dialogs_suggestions_birthday_about(
 						tr::now,
 						TextWithEntities::Simple));
@@ -598,7 +626,7 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 							tr::now,
 							lt_text,
 							{ discount.replace(kMinus, QChar()) },
-							Ui::Text::Bold),
+							tr::bold),
 						description(tr::now, TextWithEntities::Simple));
 					content->setClickedCallback([=] {
 						const auto controller = FindSessionController(parent);
@@ -692,7 +720,7 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 				content->setContent(
 					tr::lng_dialogs_suggestions_userpics_title(
 						tr::now,
-						Ui::Text::Bold),
+						tr::bold),
 					tr::lng_dialogs_suggestions_userpics_about(
 						tr::now,
 						TextWithEntities::Simple));
@@ -736,9 +764,10 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 			Data::AmPremiumValue(session) | rpl::skip(1) | rpl::to_empty
 		) | rpl::on_next([=] {
 			const auto was = state->wrap.get();
+			const auto weak = base::make_weak(was);
 			processCurrentSuggestion(processCurrentSuggestion);
-			if (was != state->wrap) {
-				consumer.put_next_copy(state->wrap);
+			if (was != state->wrap || (was && !weak)) {
+				consumer.put_next_copy(state->wrap.get());
 			}
 		}, lifetime);
 

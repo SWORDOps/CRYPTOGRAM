@@ -146,6 +146,7 @@ void AddRecipient(not_null<Ui::GenericBox*> box, const TextWithEntities &t) {
 			rpl::single(QString()),
 			st::channelEarnHistoryRecipientButton),
 		style::al_top);
+	container->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
 	const auto label = Ui::CreateChild<Ui::FlatLabel>(
 		container,
 		rpl::single(t),
@@ -357,8 +358,8 @@ void InnerWidget::fill() {
 		const auto empty = container->add(object_ptr<Dialogs::SearchEmpty>(
 			container,
 			Dialogs::SearchEmptyIcon::NoResults,
-			tr::lng_search_tab_no_results(Ui::Text::Bold)));
-		empty->setMinimalHeight(st::changePhoneIconSize);
+			tr::lng_search_tab_no_results(tr::bold)));
+		empty->setMinimalHeight(st::normalBoxLottieSize.height());
 		empty->animate();
 		return;
 	}
@@ -419,11 +420,11 @@ void InnerWidget::fill() {
 				tr::lng_channel_earn_about_link(
 					lt_emoji,
 					rpl::single(Ui::Text::IconEmoji(&st::textMoreIconEmoji)),
-					Ui::Text::RichLangValue
+					tr::rich
 				) | rpl::map([](TextWithEntities text) {
-					return Ui::Text::Link(std::move(text), 1);
+					return tr::link(std::move(text), 1);
 				}),
-				Ui::Text::RichLangValue),
+				tr::rich),
 			st::boxDividerLabel);
 		label->setLink(1, std::make_shared<LambdaClickHandler>([=] {
 			_show->showBox(Box([=](not_null<Ui::GenericBox*> box) {
@@ -542,8 +543,8 @@ void InnerWidget::fill() {
 							tr::lng_channel_earn_learn_coin_title(
 								lt_emoji,
 								rpl::single(
-									Ui::Text::Link(bigCurrencyIcon, 1)),
-								Ui::Text::RichLangValue),
+									tr::link(bigCurrencyIcon, 1)),
+								tr::rich),
 							st::boxTitle,
 							st::defaultPopupMenu,
 							emojiHelper.context()),
@@ -571,11 +572,11 @@ void InnerWidget::fill() {
 									lt_emoji,
 									rpl::single(Ui::Text::IconEmoji(
 										&st::textMoreIconEmoji)),
-									Ui::Text::RichLangValue
+									tr::rich
 								) | rpl::map([](TextWithEntities text) {
-									return Ui::Text::Link(std::move(text), 1);
+									return tr::link(std::move(text), 1);
 								}),
-								Ui::Text::RichLangValue),
+								tr::rich),
 							st::channelEarnLearnDescription));
 					label->resizeToWidth(box->width()
 						- rect::m::sum::h(st::boxRowPadding));
@@ -667,6 +668,7 @@ void InnerWidget::fill() {
 			}(), Type::StackBar);
 			widget->setTitle(tr::lng_bot_earn_chart_revenue());
 		}
+		Statistic::FixCacheForHighDPIChartWidget(container);
 	}
 	if (data.topHoursGraph.chart
 		|| data.revenueGraph.chart
@@ -766,13 +768,13 @@ void InnerWidget::fill() {
 				creditsSecondLabel->resizeToWidth(
 					available - creditsSecondLabel->pos().x());
 				if (!showCredits) {
-					const auto x = std::numeric_limits<int>::max();
+					const auto x = std::numeric_limits<int>::max() / 2;
 					icon->moveToLeft(x, 0);
 					creditsLabel->moveToLeft(x, 0);
 					creditsSecondLabel->moveToLeft(x, 0);
 				}
 				if (!showCurrency) {
-					const auto x = std::numeric_limits<int>::max();
+					const auto x = std::numeric_limits<int>::max() / 2;
 					majorLabel->moveToLeft(x, 0);
 					minorLabel->moveToLeft(x, 0);
 					secondMinorLabel->moveToLeft(x, 0);
@@ -888,6 +890,7 @@ void InnerWidget::fill() {
 				stButton),
 			st::boxRowPadding,
 			style::al_justify);
+		button->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
 
 		const auto label = Ui::CreateChild<Ui::FlatLabel>(
 			button,
@@ -1238,6 +1241,7 @@ void InnerWidget::fill() {
 								? tr::lng_channel_earn_history_out_button()
 								: tr::lng_box_ok(),
 							st::defaultActiveButton);
+						button->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
 						button->resizeToWidth(box->width()
 							- st.buttonPadding.left()
 							- st.buttonPadding.left());
@@ -1503,19 +1507,23 @@ void AddEmojiToMajor(
 		value
 	) | rpl::on_next([=](CreditsAmount v) {
 		auto helper = Ui::Text::CustomEmojiHelper();
-		auto icon = helper.paletteDependent({ .factory = [=] {
-			return Ui::Earn::IconCurrencyColored(
-				st.style.font,
-				!isIn
-				? st::currencyFg->c
-				: (*isIn)
-				? st::boxTextFgGood->c
-				: st::menuIconAttentionColor->c);
-			}, .margin = margins
+		auto icon = helper.paletteDependent({
+			.factory = [=] {
+				return Ui::Earn::IconCurrencyColored(
+					st.style.font,
+					!isIn
+					? st::currencyFg->c
+					: (*isIn)
+					? st::boxTextFgGood->c
+					: st::menuIconAttentionColor->c);
+				},
+			.margin = margins
 				? *margins
-				: st::channelEarnCurrencyCommonMargins });
+				: st::channelEarnCurrencyCommonMargins
+		});
+		auto value = MajorPart(v.abs());
 		label->setMarkedText(
-			base::duplicate(prepended).append(icon).append(MajorPart(v)),
+			base::duplicate(prepended).append(icon).append(value),
 			helper.context());
 	}, label->lifetime());
 }

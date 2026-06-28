@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Ui {
 class RpWidget;
 class VerticalLayout;
+class MultiSlideTracker;
 } // namespace Ui
 
 namespace Data {
@@ -28,19 +29,26 @@ namespace Info::Profile {
 extern const char kOptionShowPeerIdBelowAbout[];
 extern const char kOptionShowChannelJoinedBelowAbout[];
 
-class Cover;
 struct Origin;
 
 object_ptr<Ui::RpWidget> SetupDetails(
 	not_null<Controller*> controller,
 	not_null<Ui::RpWidget*> parent,
 	not_null<PeerData*> peer,
-	Origin origin);
+	Origin origin,
+	Ui::MultiSlideTracker &mainTracker);
 
 object_ptr<Ui::RpWidget> SetupDetails(
 	not_null<Controller*> controller,
 	not_null<Ui::RpWidget*> parent,
-	not_null<Data::ForumTopic*> topic);
+	not_null<Data::ForumTopic*> topic,
+	Ui::MultiSlideTracker &mainTracker);
+
+object_ptr<Ui::RpWidget> SetupDetails(
+	not_null<Controller*> controller,
+	not_null<Ui::RpWidget*> parent,
+	not_null<Data::SavedSublist*> sublist,
+	Ui::MultiSlideTracker &mainTracker);
 
 object_ptr<Ui::RpWidget> SetupActions(
 	not_null<Controller*> controller,
@@ -52,19 +60,15 @@ object_ptr<Ui::RpWidget> SetupChannelMembersAndManage(
 	not_null<Ui::RpWidget*> parent,
 	not_null<PeerData*> peer);
 
-Cover *AddCover(
-	not_null<Ui::VerticalLayout*> container,
-	not_null<Controller*> controller,
-	not_null<PeerData*> peer,
-	Data::ForumTopic *topic,
-	Data::SavedSublist *sublist);
 void AddDetails(
 	not_null<Ui::VerticalLayout*> container,
 	not_null<Controller*> controller,
 	not_null<PeerData*> peer,
 	Data::ForumTopic *topic,
 	Data::SavedSublist *sublist,
-	Origin origin);
+	Origin origin,
+	Ui::MultiSlideTracker &mainTracker,
+	rpl::variable<bool> &dividerOverridden);
 
 } // namespace Info::Profile
 

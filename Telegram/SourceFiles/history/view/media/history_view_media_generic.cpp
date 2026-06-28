@@ -62,9 +62,11 @@ MediaGeneric::MediaGeneric(
 		Fn<void(std::unique_ptr<Part>)>)> generate,
 	MediaGenericDescriptor &&descriptor)
 : Media(parent)
-, _paintBg(std::move(descriptor.paintBg))
+, _paintBgFactory(std::move(descriptor.paintBgFactory))
+, _paintBg(_paintBgFactory ? _paintBgFactory() : nullptr)
 , _fullAreaLink(descriptor.fullAreaLink)
 , _maxWidthCap(descriptor.maxWidth)
+, _expandCurrentWidth(descriptor.expandCurrentWidth)
 , _service(descriptor.service)
 , _hideServiceText(descriptor.hideServiceText) {
 	generate(this, [&](std::unique_ptr<Part> part) {
@@ -96,7 +98,7 @@ QSize MediaGeneric::countOptimalSize() {
 }
 
 QSize MediaGeneric::countCurrentSize(int newWidth) {
-	if (newWidth > maxWidth()) {
+	if (!_expandCurrentWidth && newWidth > maxWidth()) {
 		newWidth = maxWidth();
 	}
 	auto top = 0;
@@ -110,7 +112,11 @@ void MediaGeneric::draw(Painter &p, const PaintContext &context) const {
 	const auto outer = width();
 	if (outer < st::msgPadding.left() + st::msgPadding.right() + 1) {
 		return;
-	} else if (_paintBg) {
+	}
+	if (!_paintBg && _paintBgFactory) {
+		_paintBg = _paintBgFactory();
+	}
+	if (_paintBg) {
 		_paintBg(p, context, this);
 	} else if (_service) {
 		PainterHighQualityEnabler hq(p);
@@ -118,11 +124,17 @@ void MediaGeneric::draw(Painter &p, const PaintContext &context) const {
 		p.setPen(Qt::NoPen);
 		p.setBrush(context.st->msgServiceBg());
 		const auto rect = QRect(0, 0, width(), height());
-		p.drawRoundedRect(rect, radius, radius);
-		//if (context.selected()) {
-		//	p.setBrush(context.st->serviceTextPalette().selectBg);
-		//	p.drawRoundedRect(rect, radius, radius);
-		//}
+		if (parent()->data()->inlineReplyKeyboard()) {
+			const auto half = rect.height() / 2;
+			p.setClipRect(rect - QMargins(0, 0, 0, half));
+			p.drawRoundedRect(rect, radius, radius);
+			p.setClipRect(rect - QMargins(0, rect.height() - half, 0, 0));
+			const auto small = Ui::BubbleRadiusSmall();
+			p.drawRoundedRect(rect, small, small);
+			p.setClipping(false);
+		} else {
+			p.drawRoundedRect(rect, radius, radius);
+		}
 	}
 
 	auto translated = 0;
@@ -208,6 +220,7 @@ bool MediaGeneric::hasHeavyPart() const {
 }
 
 void MediaGeneric::unloadHeavyPart() {
+	_paintBg = nullptr;
 	for (const auto &entry : _entries) {
 		entry.object->unloadHeavyPart();
 	}
@@ -383,6 +396,35 @@ QSize TextDelimeterPart::countOptimalSize() {
 
 QSize TextDelimeterPart::countCurrentSize(int newWidth) {
 	return { newWidth, minHeight() };
+}
+
+LambdaGenericPart::LambdaGenericPart(
+	QSize size,
+	Fn<void(
+		Painter &p,
+		not_null<const MediaGeneric*> owner,
+		const PaintContext &context,
+		int outerWidth)> draw)
+: _size(size)
+, _draw(std::move(draw)) {
+}
+
+void LambdaGenericPart::draw(
+		Painter &p,
+		not_null<const MediaGeneric*> owner,
+		const PaintContext &context,
+		int outerWidth) const {
+	if (_draw) {
+		_draw(p, owner, context, outerWidth);
+	}
+}
+
+QSize LambdaGenericPart::countOptimalSize() {
+	return _size;
+}
+
+QSize LambdaGenericPart::countCurrentSize(int newWidth) {
+	return { newWidth, _size.height() };
 }
 
 StickerInBubblePart::StickerInBubblePart(

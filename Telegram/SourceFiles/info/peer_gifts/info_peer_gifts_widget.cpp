@@ -14,6 +14,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/share_box.h"
 #include "boxes/star_gift_box.h"
 #include "core/ui_integration.h"
+#include "data/components/recent_shared_media_gifts.h"
 #include "data/stickers/data_custom_emoji.h"
 #include "data/data_channel.h"
 #include "data/data_credits.h"
@@ -199,6 +200,7 @@ private:
 
 	void subscribeToUpdates();
 	void applyUpdateTo(Entries &entries, const Data::GiftUpdate &update);
+	void switchTo(int collectionId);
 	void loadCollections();
 	void loadMore();
 	void loaded(const MTPpayments_SavedStarGifts &result);
@@ -265,7 +267,6 @@ private:
 	mtpRequestId _loadMoreRequestId = 0;
 	Fn<void()> _collectionsLoadedCallback;
 	QString _offset;
-	bool _reloading = false;
 	bool _collectionsLoaded = false;
 
 	rpl::event_stream<Descriptor> _descriptorChanges;
@@ -285,6 +286,7 @@ private:
 	DragState _dragging;
 	base::flat_map<int, ShiftAnimation> _shiftAnimations;
 	int _selected = -1;
+	int _pressedIndex = -1;
 
 	Ui::Animations::Basic _scrollAnimation;
 	base::unique_qptr<Ui::PopupMenu> _menu;
@@ -399,12 +401,22 @@ InnerWidget::InnerWidget(
 	}, lifetime());
 }
 
+void InnerWidget::switchTo(int collectionId) {
+	_collectionsLoadedCallback = nullptr;
+	_api.request(base::take(_loadMoreRequestId)).cancel();
+	_entries = collectionId ? &_perCollection[collectionId] : &_all;
+	_list = &_entries->list;
+	refreshButtons();
+	refreshAbout();
+	loadMore();
+}
+
 void InnerWidget::loadCollections() {
 	if (_addingToCollectionId) {
 		return;
 	}
 	_api.request(MTPpayments_GetStarGiftCollections(
-		_peer->input,
+		_peer->input(),
 		MTP_long(Api::CountHash(_collections
 			| ranges::views::transform(&Data::GiftCollection::hash)))
 	)).done([=](const MTPpayments_StarGiftCollections &result) {
@@ -431,7 +443,9 @@ void InnerWidget::subscribeToUpdates() {
 	) | rpl::on_next([=](const Data::GiftUpdate &update) {
 		applyUpdateTo(_all, update);
 		using Action = Data::GiftUpdate::Action;
-		if (update.action == Action::Pin || update.action == Action::Unpin) {
+		if (update.action == Action::Pin
+			|| update.action == Action::Unpin
+			|| update.action == Action::Delete) {
 			for (auto &[_, entries] : _perCollection) {
 				applyUpdateTo(entries, update);
 			}
@@ -502,6 +516,9 @@ void InnerWidget::applyUpdateTo(
 				view.manageId = {};
 			}
 		}
+	} else if (update.action == Action::Upgraded) {
+		_scrollToTop.fire({});
+		reloadCollection(_descriptor.current().collectionId);
 	} else {
 		return;
 	}
@@ -519,8 +536,18 @@ void InnerWidget::markPinned(std::vector<Entry>::iterator i) {
 	}, [&](GiftTypeStars &data) {
 		data.pinned = true;
 	});
-	if (index) {
-		std::rotate(begin(*_list), i, i + 1);
+
+	auto lastPinnedIndex = 0;
+	for (auto j = begin(*_list); j != end(*_list); ++j) {
+		if (j->gift.pinned) {
+			lastPinnedIndex = int(j - begin(*_list));
+		} else {
+			break;
+		}
+	}
+
+	if (index != lastPinnedIndex) {
+		base::reorder(*_list, index, lastPinnedIndex);
 	}
 	auto unpin = end(*_list);
 	const auto session = &_window->session();
@@ -630,7 +657,7 @@ void InnerWidget::loadMore() {
 			| (filter.skipSaved ? Flag::f_exclude_saved : Flag())
 			| (filter.skipUnsaved ? Flag::f_exclude_unsaved : Flag())
 			| (collectionId ? Flag::f_collection_id : Flag())),
-		_peer->input,
+		_peer->input(),
 		MTP_int(collectionId),
 		MTP_string(filterChanged ? QString() : _offset),
 		MTP_int(kPerPage)
@@ -982,7 +1009,7 @@ void InnerWidget::showMenuForCollection(int id) {
 		editCollectionGifts(id);
 	}, &st::menuIconGiftPremium);
 	if (const auto username = _peer->username(); !username.isEmpty()) {
-		addAction(tr::lng_stories_album_share(tr::now), [=] {
+		addAction(tr::lng_gift_collection_share(tr::now), [=] {
 			shareCollectionLink(username, id);
 		}, &st::menuIconShare);
 	}
@@ -1030,7 +1057,7 @@ void InnerWidget::editCollectionName(int id) {
 void InnerWidget::confirmDeleteCollection(int id) {
 	const auto done = [=](Fn<void()> close) {
 		_window->session().api().request(
-			MTPpayments_DeleteStarGiftCollection(_peer->input, MTP_int(id))
+			MTPpayments_DeleteStarGiftCollection(_peer->input(), MTP_int(id))
 		).send();
 		collectionRemoved(id);
 		close();
@@ -1083,7 +1110,7 @@ void InnerWidget::addGiftToCollection(
 	_window->session().api().request(
 		MTPpayments_UpdateStarGiftCollection(
 			MTP_flags(Flag::f_add_stargift),
-			_peer->input,
+			_peer->input(),
 			MTP_int(collectionId),
 			MTPstring(),
 			MTPVector<MTPInputSavedStarGift>(),
@@ -1122,7 +1149,9 @@ void InnerWidget::addGiftToCollection(
 			refreshCollectionsTabs();
 		}
 	}).fail([=, show = _window->uiShow()](const MTP::Error &error) {
-		show->showToast(error.type());
+		if (!Ui::ShowGiftErrorToast(show, error)) {
+			show->showToast(error.type());
+		}
 	}).send();
 }
 
@@ -1145,7 +1174,8 @@ void InnerWidget::showMenuFor(not_null<GiftButton*> button, QPoint point) {
 	auto entry = ::Settings::SavedStarGiftEntry(
 		_peer,
 		(*_list)[index].gift);
-	entry.pinnedSavedGifts = pinnedSavedGifts();
+	const auto collectionId = _descriptor.current().collectionId;
+	entry.pinnedSavedGifts = collectionId > 0 ? nullptr : pinnedSavedGifts();
 	_menu = base::make_unique_q<Ui::PopupMenu>(this, st::popupMenuWithIcons);
 	if (_peer->canManageGifts() && !_collections.empty()) {
 		const auto &gift = (*_list)[index].gift;
@@ -1165,7 +1195,6 @@ void InnerWidget::showMenuFor(not_null<GiftButton*> button, QPoint point) {
 		entry,
 		::Settings::SavedStarGiftMenuType::List);
 
-	const auto collectionId = _descriptor.current().collectionId;
 	if (collectionId > 0 && _peer->canManageGifts()) {
 		const auto &gift = (*_list)[index].gift;
 		if (ranges::contains(gift.collectionIds, collectionId)) {
@@ -1245,8 +1274,8 @@ void InnerWidget::refreshAbout() {
 	if (filteredEmpty) {
 		auto text = tr::lng_peer_gifts_empty_search(
 			tr::now,
-			Ui::Text::RichLangValue);
-		text.append("\n\n").append(Ui::Text::Link(
+			tr::rich);
+		text.append("\n\n").append(tr::link(
 			tr::lng_peer_gifts_view_all(tr::now)));
 		auto about = std::make_unique<Ui::FlatLabel>(
 			this,
@@ -1304,13 +1333,13 @@ void InnerWidget::refreshAbout() {
 		_about = std::make_unique<Ui::FlatLabel>(
 			this,
 			((maybeEmpty && !knownEmpty)
-				? tr::lng_contacts_loading(Ui::Text::WithEntities)
+				? tr::lng_contacts_loading(tr::marked)
 				: _peer->isSelf()
-				? tr::lng_peer_gifts_about_mine(Ui::Text::RichLangValue)
+				? tr::lng_peer_gifts_about_mine(tr::rich)
 				: tr::lng_peer_gifts_about(
 					lt_user,
-					rpl::single(Ui::Text::Bold(_peer->shortName())),
-					Ui::Text::RichLangValue)),
+					rpl::single(tr::bold(_peer->shortName())),
+					tr::rich)),
 			st::giftListAbout);
 		_about->show();
 		resizeToWidth(width());
@@ -1421,7 +1450,7 @@ void InnerWidget::editCollectionGifts(int id) {
 						| (remove.isEmpty()
 							? Flag()
 							: Flag::f_delete_stargift)),
-					_peer->input,
+					_peer->input(),
 					MTP_int(id),
 					MTPstring(),
 					MTP_vector<MTPInputSavedStarGift>(remove),
@@ -1439,7 +1468,9 @@ void InnerWidget::editCollectionGifts(int id) {
 			}).fail([=](const MTP::Error &error) {
 				if (const auto strong = weakBox.get()) {
 					state->saving = false;
-					strong->uiShow()->showToast(error.type());
+					if (!Ui::ShowGiftErrorToast(strong->uiShow(), error)) {
+						strong->uiShow()->showToast(error.type());
+					}
 				}
 			}).send();
 		});
@@ -1457,7 +1488,7 @@ void InnerWidget::refreshCollectionsTabs() {
 	auto tabs = std::vector<Ui::SubTabs::Tab>();
 	tabs.push_back({
 		.id = u"all"_q,
-		.text = tr::lng_gift_collection_all(tr::now, Ui::Text::WithEntities),
+		.text = tr::lng_gift_collection_all(tr::now, tr::marked),
 	});
 	for (const auto &collection : _collections) {
 		auto &per = _perCollection[collection.id];
@@ -1576,7 +1607,7 @@ void InnerWidget::removeGiftFromCollection(
 	_window->session().api().request(
 		MTPpayments_UpdateStarGiftCollection(
 			MTP_flags(Flag::f_delete_stargift),
-			_peer->input,
+			_peer->input(),
 			MTP_int(collectionId),
 			MTPstring(),
 			MTP_vector<MTPInputSavedStarGift>({
@@ -1629,7 +1660,9 @@ void InnerWidget::removeGiftFromCollection(
 			refreshCollectionsTabs();
 		}
 	}).fail([=, show = _window->uiShow()](const MTP::Error &error) {
-		show->showToast(error.type());
+		if (!Ui::ShowGiftErrorToast(show, error)) {
+			show->showToast(error.type());
+		}
 	}).send();
 }
 
@@ -1885,7 +1918,7 @@ void InnerWidget::flushCollectionReorder() {
 	}
 
 	_api.request(MTPpayments_ReorderStarGiftCollections(
-		_peer->input,
+		_peer->input(),
 		MTP_vector<MTPint>(order)
 	)).fail([show = _window->uiShow()](const MTP::Error &error) {
 		show->showToast(error.type());
@@ -1895,16 +1928,23 @@ void InnerWidget::flushCollectionReorder() {
 }
 
 void InnerWidget::mousePressEvent(QMouseEvent *e) {
-	if (e->button() != Qt::LeftButton || _addingToCollectionId) {
+	if (e->button() != Qt::LeftButton) {
 		return;
 	}
 	const auto index = giftFromGlobalPos(e->globalPos());
 	if (index < 0 || index >= _list->size()) {
 		return;
 	}
-	if (_peer->canManageGifts()
-		&& _descriptor.current().collectionId
-		&& _list->size() > 1) {
+	_pressedIndex = index;
+	const auto collectionId = _descriptor.current().collectionId;
+	const auto canDrag = !_addingToCollectionId
+		&& _peer->canManageGifts()
+		&& _list->size() > 1
+		&& (collectionId
+			|| (!collectionId
+				&& index < _list->size()
+				&& (*_list)[index].gift.pinned));
+	if (canDrag) {
 		if (isDraggedAnimating()) {
 			return;
 		}
@@ -1941,7 +1981,21 @@ void InnerWidget::mouseMoveEvent(QMouseEvent *e) {
 	e->accept();
 
 	const auto currentPos = e->globalPos();
-	const auto selected = giftFromGlobalPos(currentPos);
+	auto selected = giftFromGlobalPos(currentPos);
+	const auto collectionId = _descriptor.current().collectionId;
+	if (!collectionId && selected >= 0) {
+		auto pinnedCount = 0;
+		for (const auto &entry : *_list) {
+			if (entry.gift.pinned) {
+				++pinnedCount;
+			} else {
+				break;
+			}
+		}
+		if (selected >= pinnedCount) {
+			selected = pinnedCount - 1;
+		}
+	}
 	if (selected >= 0 && !draggedAnimating) {
 		_dragging.lastSelected = selected;
 	}
@@ -2070,6 +2124,7 @@ void InnerWidget::mouseMoveEvent(QMouseEvent *e) {
 }
 
 void InnerWidget::mouseReleaseEvent(QMouseEvent *e) {
+	const auto pressedIndex = base::take(_pressedIndex);
 	if (mouseGrabber() == this) {
 		releaseMouse();
 	}
@@ -2153,7 +2208,7 @@ void InnerWidget::mouseReleaseEvent(QMouseEvent *e) {
 		_dragging = {};
 		_shiftAnimations.clear();
 		_draggedView = nullptr;
-		if (index >= 0 && index < _list->size()) {
+		if (pressedIndex >= 0 && index == pressedIndex) {
 			showGift(index);
 		}
 		refreshButtons();
@@ -2232,37 +2287,43 @@ void InnerWidget::requestReorder(int fromIndex, int toIndex) {
 		return;
 	}
 	const auto collectionId = _descriptor.current().collectionId;
-	if (!collectionId) {
-		return;
-	}
-
-	auto order = QVector<MTPInputSavedStarGift>();
-	order.reserve(_list->size());
-	for (const auto &entry : *_list) {
-		order.push_back(Api::InputSavedStarGiftId(entry.gift.manageId));
-	}
-
-	_api.request(
-		MTPpayments_UpdateStarGiftCollection(
-			MTP_flags(MTPpayments_UpdateStarGiftCollection::Flag::f_order),
-			_peer->input,
-			MTP_int(collectionId),
-			MTPstring(),
-			MTPVector<MTPInputSavedStarGift>(),
-			MTPVector<MTPInputSavedStarGift>(),
-			MTP_vector<MTPInputSavedStarGift>(order))
-	).done([=] {
-		const auto i = ranges::find(
-			_collections,
-			collectionId,
-			&Data::GiftCollection::id);
-		if (i != end(_collections) && !_list->empty()) {
-			i->icon = (*_list)[0].gift.info.document;
-			refreshCollectionsTabs();
+	if (collectionId) {
+		auto order = QVector<MTPInputSavedStarGift>();
+		order.reserve(_list->size());
+		for (const auto &entry : *_list) {
+			order.push_back(Api::InputSavedStarGiftId(entry.gift.manageId));
 		}
-	}).fail([show = _window->uiShow()](const MTP::Error &error) {
-		show->showToast(error.type());
-	}).send();
+
+		_api.request(
+			MTPpayments_UpdateStarGiftCollection(
+				MTP_flags(MTPpayments_UpdateStarGiftCollection::Flag::f_order),
+				_peer->input(),
+				MTP_int(collectionId),
+				MTPstring(),
+				MTPVector<MTPInputSavedStarGift>(),
+				MTPVector<MTPInputSavedStarGift>(),
+				MTP_vector<MTPInputSavedStarGift>(order))
+		).done([=] {
+			const auto i = ranges::find(
+				_collections,
+				collectionId,
+				&Data::GiftCollection::id);
+			if (i != end(_collections) && !_list->empty()) {
+				i->icon = (*_list)[0].gift.info.document;
+				refreshCollectionsTabs();
+			}
+		}).fail([show = _window->uiShow()](const MTP::Error &error) {
+			if (!Ui::ShowGiftErrorToast(show, error)) {
+				show->showToast(error.type());
+			}
+		}).send();
+	} else {
+		_window->session().recentSharedGifts().reorderPinned(
+			_window->uiShow(),
+			_peer,
+			fromIndex,
+			toIndex);
+	}
 }
 
 void InnerWidget::reorderCollections(
@@ -2284,6 +2345,7 @@ void InnerWidget::cancelDragging() {
 	}
 	_scrollAnimation.stop();
 	_dragging = {};
+	_pressedIndex = -1;
 	_shiftAnimations.clear();
 	if (_draggedView) {
 		_draggedView = nullptr;
@@ -2521,7 +2583,7 @@ void Widget::setupNotifyCheckbox(int wasBottomHeight, bool enabled) {
 		using Flag = MTPpayments_ToggleChatStarGiftNotifications::Flag;
 		api->request(MTPpayments_ToggleChatStarGiftNotifications(
 			MTP_flags(checked ? Flag::f_enabled : Flag()),
-			_inner->peer()->input
+			_inner->peer()->input()
 		)).send();
 		if (checked) {
 			show->showToast(tr::lng_peer_gifts_notify_enabled(tr::now));

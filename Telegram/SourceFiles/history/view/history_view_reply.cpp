@@ -11,7 +11,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/ui_integration.h"
 #include "data/stickers/data_custom_emoji.h"
 #include "data/data_channel.h"
+#include "data/data_document.h"
 #include "data/data_peer.h"
+#include "data/data_photo.h"
+#include "data/data_poll.h"
 #include "data/data_session.h"
 #include "data/data_story.h"
 #include "data/data_todo_list.h"
@@ -34,6 +37,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_session_controller.h"
 #include "styles/style_chat.h"
 #include "styles/style_dialogs.h"
+#include "styles/style_polls.h"
 
 namespace HistoryView {
 namespace {
@@ -68,7 +72,8 @@ constexpr auto kNonExpandedLinesLimit = 5;
 	return result;
 }
 
-[[nodiscard]] QImage MakeTaskDoneImage() {
+template <typename PaintShape>
+[[nodiscard]] QImage MakeCheckedImage(PaintShape paintShape) {
 	const auto white = QColor(255, 255, 255);
 	const auto black = QColor(0, 0, 0);
 
@@ -87,11 +92,7 @@ constexpr auto kNonExpandedLinesLimit = 5;
 
 	const auto rect = QRectF(line, line, diameter, diameter).marginsRemoved(
 		QMarginsF(line / 2., line / 2., line / 2., line / 2.));
-	auto pen = QPen(white);
-	pen.setWidth(line);
-	p.setPen(pen);
-	p.setBrush(white);
-	p.drawEllipse(rect);
+	paintShape(p, rect);
 	const auto &icon = st::historyPollInChoiceRight;
 	icon.paint(
 		p,
@@ -102,6 +103,28 @@ constexpr auto kNonExpandedLinesLimit = 5;
 	p.end();
 
 	return style::colorizeImage(result, white);
+}
+
+[[nodiscard]] QImage MakeTaskDoneImage() {
+	return MakeCheckedImage([](QPainter &p, QRectF rect) {
+		const auto white = QColor(255, 255, 255);
+		const auto line = st::historyPollRadio.thickness;
+		auto pen = QPen(white);
+		pen.setWidth(line);
+		p.setPen(pen);
+		p.setBrush(white);
+		p.drawEllipse(rect);
+	});
+}
+
+[[nodiscard]] QImage MakePollAnswerImage() {
+	return MakeCheckedImage([](QPainter &p, QRectF rect) {
+		const auto white = QColor(255, 255, 255);
+		const auto line = st::historyPollRadio.thickness;
+		p.setPen(Qt::NoPen);
+		p.setBrush(white);
+		p.drawRoundedRect(rect, line * 2, line * 2);
+	});
 }
 
 } // namespace
@@ -310,7 +333,8 @@ void Reply::update(
 	const auto item = view->data();
 	const auto &fields = data->fields();
 	const auto message = data->resolvedMessage.get();
-	const auto messageMedia = (message && fields.todoItemId)
+	const auto messageMedia = (message
+			&& (fields.todoItemId || !fields.pollOption.isEmpty()))
 		? message->media()
 		: nullptr;
 	const auto messageTodoList = messageMedia
@@ -325,6 +349,14 @@ void Reply::update(
 	const auto task = (taskIndex >= 0
 		&& taskIndex < messageTodoList->items.size())
 		? &messageTodoList->items[taskIndex]
+		: nullptr;
+	const auto messagePoll = messageMedia
+		? messageMedia->poll()
+		: message
+		? (message->media() ? message->media()->poll() : nullptr)
+		: nullptr;
+	const auto pollAnswer = (messagePoll && !fields.pollOption.isEmpty())
+		? messagePoll->answerByOption(fields.pollOption)
 		: nullptr;
 	const auto story = data->resolvedStory.get();
 	const auto externalMedia = fields.externalMedia.get();
@@ -343,15 +375,23 @@ void Reply::update(
 	_hiddenSenderColorIndexPlusOne = (!_colorPeer && message)
 		? (message->originalHiddenSenderInfo()->colorIndex + 1)
 		: 0;
+	const auto pollMediaPtr = pollAnswer
+		? &pollAnswer->media
+		: (messagePoll && fields.pollOption.isEmpty())
+		? &messagePoll->attachedMedia
+		: nullptr;
 	const auto hasPreview = (story && story->hasReplyPreview())
 		|| (message
 			&& message->media()
 			&& message->media()->hasReplyPreview())
-		|| (externalMedia && externalMedia->hasReplyPreview());
+		|| (externalMedia && externalMedia->hasReplyPreview())
+		|| (pollMediaPtr
+			&& (pollMediaPtr->photo || pollMediaPtr->document));
 	_hasPreview = hasPreview ? 1 : 0;
 	_displaying = data->displaying() ? 1 : 0;
 	_multiline = data->multiline() ? 1 : 0;
 	_replyToStory = (fields.storyId != 0);
+	_replyToPoll = (messagePoll && !pollAnswer) ? 1 : 0;
 	const auto hasQuoteIcon = _displaying
 		&& fields.manualQuote
 		&& !fields.quote.empty();
@@ -374,6 +414,13 @@ void Reply::update(
 				.image = MakeTaskImage(),
 				.margin = QMargins(0, st::lineWidth, st::lineWidth, 0),
 			})).append(task->text)
+		: pollAnswer
+		? Ui::Text::Colorized(helper.image({
+			.image = MakePollAnswerImage(),
+			.margin = QMargins(0, st::lineWidth, st::lineWidth, 0),
+		})).append(pollAnswer->text)
+		: messagePoll
+		? TextWithEntities().append(messagePoll->question)
 		: (message && (fields.quote.empty() || !fields.manualQuote))
 		? message->inReplyText()
 		: !fields.quote.empty()
@@ -424,12 +471,14 @@ void Reply::setLinkFrom(
 		not_null<HistoryMessageReply*> data) {
 	const auto weak = base::make_weak(view);
 	const auto &fields = data->fields();
+	const auto isAdminLogEntry = view->data()->isAdminLogEntry();
 	const auto externalChannelId = peerToChannel(fields.externalPeerId);
 	const auto messageId = fields.messageId;
 	const auto highlight = MessageHighlightId{
 		.quote = fields.manualQuote ? fields.quote : TextWithEntities(),
 		.quoteOffset = int(fields.quoteOffset),
 		.todoItemId = fields.todoItemId,
+		.pollOption = fields.pollOption,
 	};
 	const auto returnToId = view->data()->fullId();
 	const auto externalLink = [=](ClickContext context) {
@@ -473,7 +522,9 @@ void Reply::setLinkFrom(
 	};
 	const auto message = data->resolvedMessage.get();
 	const auto story = data->resolvedStory.get();
-	_link = message
+	_link = isAdminLogEntry
+		? std::make_shared<LambdaClickHandler>(externalLink)
+		: message
 		? JumpToMessageClickHandler(message, returnToId, highlight)
 		: story
 		? JumpToStoryClickHandler(story)
@@ -821,9 +872,11 @@ void Reply::paint(
 	}
 
 	if (_ripple.animation) {
+		_ripple.lastPaintedPoint = inBubble ? QPoint(x, y) : QPoint();
 		_ripple.animation->paint(p, x, y, w, &rippleColor);
 		if (_ripple.animation->empty()) {
 			_ripple.animation.reset();
+			_ripple.lastPaintedPoint = {};
 		}
 	}
 
@@ -854,15 +907,42 @@ void Reply::paint(
 					? data->resolvedMessage.get()
 					: nullptr;
 				const auto media = message ? message->media() : nullptr;
-				const auto image = media
-					? media->replyPreview()
-					: !data
-					? nullptr
-					: data->resolvedStory
-					? data->resolvedStory->replyPreview()
-					: data->fields().externalMedia
-					? data->fields().externalMedia->replyPreview()
+				const auto messagePoll = media ? media->poll() : nullptr;
+				const auto pollAnswer = messagePoll
+					? messagePoll->answerByOption(
+						data->fields().pollOption)
 					: nullptr;
+				const auto pollMediaPtr = pollAnswer
+					? &pollAnswer->media
+					: (messagePoll
+						&& data->fields().pollOption.isEmpty())
+					? &messagePoll->attachedMedia
+					: nullptr;
+				const auto image = [&]() -> Image* {
+					if (pollMediaPtr) {
+						if (pollMediaPtr->photo) {
+							return pollMediaPtr->photo->getReplyPreview(
+								message);
+						} else if (pollMediaPtr->document) {
+							return pollMediaPtr->document->getReplyPreview(
+								message);
+						}
+					}
+					if (media) {
+						return media->replyPreview();
+					}
+					if (!data) {
+						return nullptr;
+					}
+					if (data->resolvedStory) {
+						return data->resolvedStory->replyPreview();
+					}
+					if (data->fields().externalMedia) {
+						return data->fields().externalMedia
+							->replyPreview();
+					}
+					return nullptr;
+				}();
 				if (image) {
 					auto to = style::rtlrect(
 						x + st::historyReplyPreviewMargin.left(),
@@ -948,6 +1028,16 @@ void Reply::paint(
 					firstLineSkip += st::dialogsMiniReplyStory.skipText
 						+ st::dialogsMiniReplyStory.icon.icon.width();
 				}
+				if (_replyToPoll) {
+					st::historyPollReplyIcon.paint(
+						p,
+						textLeft + firstLineSkip,
+						textTop,
+						w + 2 * x,
+						replyToTextPalette->linkFg->c);
+					firstLineSkip += st::historyPollReplyIconSkip
+						+ st::historyPollReplyIcon.width();
+				}
 				_text.draw(p, {
 					.position = { textLeft, textTop },
 					.geometry = textGeometry(textw, firstLineSkip),
@@ -985,7 +1075,11 @@ void Reply::createRippleAnimation(
 		Ui::RippleAnimation::RoundRectMask(
 			size,
 			st::messageQuoteStyle.radius),
-		[=] { view->repaint(); });
+		[=] {
+			view->repaint(_ripple.lastPaintedPoint.isNull()
+				? QRect()
+				: QRect(_ripple.lastPaintedPoint, size));
+		});
 }
 
 void Reply::saveRipplePoint(QPoint point) const {
@@ -1026,13 +1120,22 @@ TextWithEntities Reply::ComposePreviewName(
 		}
 		return to->author();
 	}();
-	if (const auto media = replyTo.todoItemId ? to->media() : nullptr) {
+	if (const auto media = (replyTo.todoItemId
+			|| !replyTo.pollOption.isEmpty())
+		? to->media()
+		: nullptr) {
 		if (const auto todolist = media->todolist()) {
 			return tr::lng_preview_reply_to_task(
 				tr::now,
 				lt_title,
 				todolist->title,
-				Ui::Text::WithEntities);
+				tr::marked);
+		} else if (const auto poll = media->poll()) {
+			return tr::lng_preview_reply_to_poll_option(
+				tr::now,
+				lt_title,
+				poll->question,
+				tr::marked);
 		}
 	}
 	const auto toPeer = to->history()->peer;
@@ -1059,7 +1162,7 @@ TextWithEntities Reply::ComposePreviewName(
 			tr::now,
 			lt_name,
 			nameFull,
-			Ui::Text::WithEntities);
+			tr::marked);
 
 }
 

@@ -28,7 +28,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_session_controller.h"
 #include "window/themes/window_theme_editor.h"
 #include "ui/boxes/confirm_box.h"
+#include "data/components/promo_suggestions.h"
 #include "data/data_thread.h"
+#include "settings/settings_common.h"
 #include "apiwrap.h" // ApiWrap::acceptTerms.
 #include "styles/style_layers.h"
 
@@ -207,6 +209,11 @@ void Controller::showAccount(
 			}, _sessionController->lifetime());
 			_widget.updateTitle();
 
+			if (session->promoSuggestions().setupEmailState()
+				!= Data::SetupEmailState::None) {
+				_widget.setupSetupEmailLock();
+			}
+
 			session->updates().updateOnline(crl::now());
 		} else {
 			sideBarChanged();
@@ -346,7 +353,7 @@ auto Controller::sessionControllerChanges() const
 }
 
 bool Controller::locked() const {
-	if (Core::App().passcodeLocked()) {
+	if (Core::App().passcodeLocked()/* || Core::App().setupEmailLocked()*/) {
 		return true;
 	} else if (const auto controller = sessionController()) {
 		return controller->session().termsLocked().has_value();
@@ -372,6 +379,19 @@ void Controller::clearPasscodeLock() {
 	} else {
 		_widget.clearPasscodeLock();
 	}
+}
+
+void Controller::setupSetupEmailLock() {
+	if (const auto &session = _sessionController) {
+		if (session->session().promoSuggestions().setupEmailState()
+			!= Data::SetupEmailState::None) {
+			_widget.setupSetupEmailLock();
+		}
+	}
+}
+
+void Controller::clearSetupEmailLock() {
+	_widget.clearSetupEmailLock();
 }
 
 void Controller::setupIntro(QPixmap oldContentCache) {
@@ -594,6 +614,35 @@ auto Controller::floatPlayerDelegateValue() const
 
 std::shared_ptr<Ui::Show> Controller::uiShow() {
 	return std::make_shared<Show>(this);
+}
+
+void Controller::setHighlightControlId(const QString &id) {
+	_highlightControlId = id;
+}
+
+QString Controller::highlightControlId() const {
+	return _highlightControlId;
+}
+
+bool Controller::takeHighlightControlId(const QString &id) {
+	if (_highlightControlId == id) {
+		_highlightControlId = QString();
+		return true;
+	}
+	return false;
+}
+
+void Controller::checkHighlightControl(
+		const QString &id,
+		QWidget *widget,
+		Settings::HighlightArgs &&args) {
+	if (widget && takeHighlightControlId(id)) {
+		Settings::HighlightWidget(widget, std::move(args));
+	}
+}
+
+void Controller::checkHighlightControl(const QString &id, QWidget *widget) {
+	checkHighlightControl(id, widget, {});
 }
 
 rpl::lifetime &Controller::lifetime() {

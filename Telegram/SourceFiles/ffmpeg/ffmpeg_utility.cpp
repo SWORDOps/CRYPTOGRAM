@@ -648,7 +648,8 @@ int ReadRotationFromMetadata(not_null<AVStream*> stream) {
 		AV_PKT_DATA_DISPLAYMATRIX);
 	auto theta = 0;
 	if (displaymatrix) {
-		theta = -round(av_display_rotation_get((int32_t*)displaymatrix));
+		const auto matrix = (int32_t*)displaymatrix->data;
+		theta = -round(av_display_rotation_get(matrix));
 	}
 	theta -= 360 * floor(theta / 360 + 0.9 / 360);
 	const auto result = int(base::SafeRound(theta));
@@ -690,7 +691,7 @@ QImage CreateFrameStorage(QSize size) {
 		? (widthAlign - (width % widthAlign))
 		: 0);
 	const auto perLine = neededWidth * kPixelBytesSize;
-	const auto buffer = new uchar[perLine * height + kAlignImageBy];
+	const auto buffer = new uchar[size_t(perLine) * height + kAlignImageBy];
 	const auto cleanupData = static_cast<void *>(buffer);
 	const auto address = reinterpret_cast<uintptr_t>(buffer);
 	const auto alignedBuffer = buffer + ((address % kAlignImageBy)

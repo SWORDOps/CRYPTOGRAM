@@ -222,7 +222,7 @@ TopicIconDescriptor ParseTopicIconEmojiEntity(QStringView entity) {
 		const auto parts = entity.mid(normal.size()).split(' ');
 		if (parts.size() == 2) {
 			return {
-				.title = parts[1].toString(),
+				.title = parts[1].isEmpty() ? u" "_q : parts[1].toString(),
 				.colorId = int32(parts[0].toUInt()),
 			};
 		}
@@ -431,6 +431,7 @@ void ForumTopic::applyTopic(const MTPDforumTopic &data) {
 		applyTopicTopMessage(data.vtop_message().v);
 		unreadMentions().setCount(data.vunread_mentions_count().v);
 		unreadReactions().setCount(data.vunread_reactions_count().v);
+		unreadPollVotes().setCount(data.vunread_poll_votes_count().v);
 	}
 }
 
@@ -477,7 +478,7 @@ void ForumTopic::setClosedAndSave(bool closed) {
 	const auto weak = base::make_weak(this);
 	api->request(MTPmessages_EditForumTopic(
 		MTP_flags(MTPmessages_EditForumTopic::Flag::f_closed),
-		peer()->input,
+		peer()->input(),
 		MTP_int(_rootId),
 		MTPstring(), // title
 		MTPlong(), // icon_emoji_id
@@ -836,6 +837,16 @@ void ForumTopic::applyColorId(int32 colorId) {
 	}
 }
 
+void ForumTopic::applyMaybeLast(not_null<HistoryItem*> item) {
+	if (!_lastServerMessage.value_or(nullptr)
+		|| (*_lastServerMessage)->id < item->id) {
+		setLastServerMessage(item);
+		resolveChatListMessageGroup();
+	} else {
+		growLastKnownServerMessageId(item->id);
+	}
+}
+
 void ForumTopic::applyItemAdded(not_null<HistoryItem*> item) {
 	if (item->isRegular()) {
 		setLastServerMessage(item);
@@ -977,6 +988,9 @@ void ForumTopic::hasUnreadReactionChanged(bool has) {
 		was.reactionsMuted = muted() ? was.reactions : 0;
 	}
 	notifyUnreadStateChange(was);
+}
+
+void ForumTopic::hasUnreadPollVoteChanged(bool has) {
 }
 
 const QString &ForumTopic::chatListNameSortKey() const {

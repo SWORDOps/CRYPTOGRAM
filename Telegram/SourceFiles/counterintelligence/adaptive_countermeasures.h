@@ -3,7 +3,11 @@
 #include "surveillance_detector.h"
 #include <QtCore/QObject>
 #include <QtCore/QTimer>
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QAudioOutput>)
 #include <QtMultimedia/QAudioOutput>
+#endif
+#endif
 #include <memory>
 
 namespace SpyGram::Counterintelligence {
@@ -83,14 +87,14 @@ public:
     CountermeasureIntensity getCurrentIntensity() const { return _current_intensity; }
     bool isEmergencyModeActive() const { return _emergency_mode; }
 
-signals:
+Q_SIGNALS:
     void countermeasureActivated(CountermeasureType type, CountermeasureIntensity intensity);
     void countermeasureDeactivated(CountermeasureType type);
     void emergencyModeActivated();
     void emergencyModeDeactivated();
     void intensityChanged(CountermeasureIntensity newIntensity, CountermeasureIntensity oldIntensity);
 
-private slots:
+private Q_SLOTS:
     void updateCountermeasures();
     void generateAudioNoise();
     void updatePrivacySettings();
@@ -165,7 +169,11 @@ private:
     QHash<CountermeasureType, CountermeasureStatus> _countermeasure_status;
 
     // Audio system for countermeasures
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QAudioOutput>)
     std::unique_ptr<QAudioOutput> _audio_output;
+#endif
+#endif
     QIODevice *_audio_device = nullptr;
     QByteArray _noise_buffer;
 

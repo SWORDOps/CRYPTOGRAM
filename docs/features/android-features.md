@@ -121,9 +121,12 @@ The Android tree exposes privacy toggles and supporting helper classes for:
 - Persisted via `SharedConfig.cryptogramUtdEnabled` and `cryptogramUtdThreshold`
 
 ### 14. Voice Morphing
-**Status**: Settings toggle present
+**Status**: Native DSP implementation present
 
 - AI voice anonymization toggle
+- Native pitch shifting via WSOLA (Waveform Similarity Overlap-Add) in `CryptogramWrapper.cpp`
+- Native formant shifting via LPC-based spectral envelope warping
+- Kotlin API: `OPSECHelper.pitchShift()` and `OPSECHelper.formantShift()`
 - Persisted via `SharedConfig.cryptogramVoiceMorphingEnabled`
 
 ### 15. Location Privacy
@@ -262,7 +265,7 @@ Use the current build docs and the status page together, because the docs do not
 | DPI Evasion | included, partial | Toggle + method selection |
 | Stylometry Shield | included, partial | Toggle + runtime obfuscation |
 | Universal Threat Detector | source-only | Toggle + sensitivity |
-| Voice Morphing | included, partial | Toggle present |
+| Voice Morphing | included, partial | Native DSP (WSOLA + LPC), Kotlin API |
 | Location Privacy | excluded | Toggle + randomization impl |
 | Interface Camouflage | included, partial | Toggle present |
 | Hardware Tether | included, partial | Toggle present |
@@ -271,12 +274,13 @@ Use the current build docs and the status page together, because the docs do not
 | OPSEC Presets | included | Present (3 presets) |
 | Monero Mining | included, experimental | Not present |
 | OpenVINO Translation | excluded | Not present |
-| Tor/I2P/Snowflake | included, partial | Not present (network-level) |
+| Tor/I2P/Snowflake | included, partial | Tor JNI bridge present (dlopen + external proxy fallback) |
 
 ## Known Gaps
 
-- Tor/I2P/Snowflake network integration is not present on Android (requires native Tor/I2P libraries).
+- Tor JNI bridge is present but requires libtor.so or an external Tor proxy (e.g. Orbot) at runtime; I2P/Snowflake are not yet implemented on Android.
 - Monero mining is not present on Android (desktop-only development feature).
 - OpenVINO translation is not present on Android (requires Intel OpenVINO runtime).
-- Some JNI-backed features still depend on partial or placeholder cryptographic paths.
+- Android Double Ratchet has real DH ratcheting (X25519 + HMAC chain keys + root key derivation), but session persistence and key bundle transport require runtime validation.
+- Android MLS still contains some placeholder crypto paths; desktop MLS has been upgraded to real crypto.
 - Device-level and end-to-end testing is still limited in this repository snapshot.

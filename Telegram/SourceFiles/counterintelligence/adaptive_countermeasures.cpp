@@ -5,7 +5,11 @@
 #include <QtCore/QDebug>
 #include <QtCore/QDateTime>
 #include <QtCore/QRandomGenerator>
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QMediaDevices>)
 #include <QtMultimedia/QMediaDevices>
+#endif
+#endif
 #include <QtNetwork/QNetworkProxy>
 #include <cmath>
 #include <algorithm>
@@ -55,14 +59,22 @@ void AdaptiveCountermeasures::initializeHardwareCapabilities() {
     _npu_available = false; // Will be set by surveillance detector
 
     // Check for audio output
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QMediaDevices>)
     const auto audioDevices = QMediaDevices::audioOutputs();
     _audio_output_available = !audioDevices.isEmpty();
+#else
+    _audio_output_available = false;
+#endif
+#endif
 
     qDebug() << "AdaptiveCountermeasures: Hardware detection complete"
-             << "Audio devices:" << audioDevices.size();
+             << "Audio available:" << _audio_output_available;
 }
 
 void AdaptiveCountermeasures::initializeAudioSystem() {
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QAudioOutput>)
     if (!_audio_output_available) {
         qWarning() << "AdaptiveCountermeasures: No audio output devices available";
         return;
@@ -83,6 +95,10 @@ void AdaptiveCountermeasures::initializeAudioSystem() {
 
     // Pre-generate noise buffer
     _noise_buffer.resize(NOISE_BUFFER_SIZE * sizeof(int16_t));
+#else
+    qWarning() << "AdaptiveCountermeasures: QtMultimedia not available, audio system disabled";
+#endif
+#endif
 }
 
 void AdaptiveCountermeasures::startCountermeasures() {
@@ -279,7 +295,7 @@ void AdaptiveCountermeasures::deployCountermeasures(
     _current_intensity = intensity;
 
     if (oldIntensity != intensity) {
-        emit intensityChanged(intensity, oldIntensity);
+        Q_EMIT intensityChanged(intensity, oldIntensity);
     }
 
     // Activate required countermeasures
@@ -358,7 +374,7 @@ void AdaptiveCountermeasures::activateCountermeasure(CountermeasureType type, Co
     // Update activation count
     _activation_count[type]++;
 
-    emit countermeasureActivated(type, intensity);
+    Q_EMIT countermeasureActivated(type, intensity);
 }
 
 void AdaptiveCountermeasures::deactivateCountermeasure(CountermeasureType type) {
@@ -395,10 +411,12 @@ void AdaptiveCountermeasures::deactivateCountermeasure(CountermeasureType type) 
 
     _countermeasure_status.remove(type);
 
-    emit countermeasureDeactivated(type);
+    Q_EMIT countermeasureDeactivated(type);
 }
 
 void AdaptiveCountermeasures::activateAudioNoise(CountermeasureIntensity intensity) {
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QAudioOutput>)
     if (!_audio_output_available || !_audio_output) {
         return;
     }
@@ -412,6 +430,8 @@ void AdaptiveCountermeasures::activateAudioNoise(CountermeasureIntensity intensi
     auto &status = _countermeasure_status[CountermeasureType::AudioNoise];
     status.description = QString("Audio noise generation (Intensity: %1)").arg(static_cast<int>(intensity));
     status.effectiveness = 0.7f + (static_cast<int>(intensity) * 0.1f);
+#endif
+#endif
 }
 
 void AdaptiveCountermeasures::activateUltrasonicJamming(CountermeasureIntensity intensity) {
@@ -490,10 +510,14 @@ void AdaptiveCountermeasures::activateCommunicationHiding(CountermeasureIntensit
 void AdaptiveCountermeasures::deactivateAudioNoise() {
     _audio_noise_timer->stop();
 
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QAudioOutput>)
     if (_audio_output && _audio_device) {
         _audio_output->stop();
         _audio_device = nullptr;
     }
+#endif
+#endif
 }
 
 void AdaptiveCountermeasures::deactivateUltrasonicJamming() {
@@ -533,6 +557,8 @@ void AdaptiveCountermeasures::deactivateCommunicationHiding() {
 }
 
 void AdaptiveCountermeasures::generateAudioNoise() {
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QAudioOutput>)
     if (!_audio_output || !_audio_output_available) {
         return;
     }
@@ -568,6 +594,8 @@ void AdaptiveCountermeasures::generateAudioNoise() {
     if (_audio_device && _audio_device->isWritable()) {
         _audio_device->write(_noise_buffer);
     }
+#endif
+#endif
 }
 
 void AdaptiveCountermeasures::generateWhiteNoise(float amplitude) {
@@ -833,7 +861,7 @@ void AdaptiveCountermeasures::activateEmergencyMode() {
 
     deployCountermeasures(emergencyMeasures, CountermeasureIntensity::Maximum);
 
-    emit emergencyModeActivated();
+    Q_EMIT emergencyModeActivated();
 }
 
 void AdaptiveCountermeasures::deactivateEmergencyMode() {
@@ -854,7 +882,7 @@ void AdaptiveCountermeasures::deactivateEmergencyMode() {
         deployCountermeasures(minimalMeasures, CountermeasureIntensity::Minimal);
     }
 
-    emit emergencyModeDeactivated();
+    Q_EMIT emergencyModeDeactivated();
 }
 
 void AdaptiveCountermeasures::setThreatLevel(ThreatLevel level) {

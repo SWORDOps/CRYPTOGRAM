@@ -34,6 +34,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_wall_paper.h"
 #include "data/notify/data_notify_settings.h"
 #include "history/history.h"
+#include "history/history_item.h"
 #include "api/api_peer_photo.h"
 #include "apiwrap.h"
 #include "lang/lang_keys.h"
@@ -236,20 +237,34 @@ bool UserData::hasUnreadStories() const {
 	return flags() & Flag::HasUnreadStories;
 }
 
+bool UserData::hasActiveVideoStream() const {
+	return flags() & Flag::HasActiveVideoStream;
+}
+
 void UserData::setStoriesState(StoriesState state) {
 	Expects(state != StoriesState::Unknown);
 
 	const auto was = flags();
 	switch (state) {
 	case StoriesState::None:
-		_flags.remove(Flag::HasActiveStories | Flag::HasUnreadStories);
+		_flags.remove(Flag::HasActiveStories
+			| Flag::HasUnreadStories
+			| Flag::HasActiveVideoStream);
 		break;
 	case StoriesState::HasRead:
-		_flags.set(
-			(flags() & ~Flag::HasUnreadStories) | Flag::HasActiveStories);
+		_flags.set(Flag::HasActiveStories
+			| (was
+				& ~(Flag::HasUnreadStories | Flag::HasActiveVideoStream)));
 		break;
 	case StoriesState::HasUnread:
-		_flags.add(Flag::HasActiveStories | Flag::HasUnreadStories);
+		_flags.set((was & ~Flag::HasActiveVideoStream)
+			| Flag::HasActiveStories
+			| Flag::HasUnreadStories);
+		break;
+	case StoriesState::HasVideoStream:
+		_flags.set((was & ~Flag::HasUnreadStories)
+			| Flag::HasActiveStories
+			| Flag::HasActiveVideoStream);
 		break;
 	}
 	if (flags() != was) {
@@ -302,6 +317,36 @@ void UserData::setPersonalChannel(ChannelId channelId, MsgId messageId) {
 		_personalChannelMessageId = messageId;
 		session().changes().peerUpdated(this, UpdateFlag::PersonalChannel);
 	}
+}
+
+UserId UserData::botManagerId() const {
+	return _botManagerId;
+}
+
+void UserData::setBotManagerId(UserId managerId) {
+	const auto changed = (_botManagerId != managerId);
+	_botManagerId = managerId;
+	if (changed) {
+		session().changes().peerUpdated(this, UpdateFlag::ManagedBot);
+	}
+}
+
+MTPInputUser UserData::inputUser() const {
+	const auto item = isLoaded() ? nullptr : owner().messageWithPeer(id);
+	if (item) {
+		const auto peer = item->history()->peer;
+		Assert(peer.get() != this);
+
+		return MTP_inputUserFromMessage(
+			item->history()->peer->input(),
+			MTP_int(item->id.bare),
+			MTP_long(peerToUser(id).bare));
+	} else if (isSelf()) {
+		return MTP_inputUserSelf();
+	}
+	return MTP_inputUser(
+		MTP_long(peerToUser(id).bare),
+		MTP_long(_accessHash));
 }
 
 void UserData::setName(
@@ -618,6 +663,21 @@ bool UserData::readDatesPrivate() const {
 	return (flags() & UserDataFlag::ReadDatesPrivate);
 }
 
+bool UserData::allowsForwarding() const {
+	return !(flags() & Flag::NoForwardsMyEnabled)
+		&& !(flags() & Flag::NoForwardsPeerEnabled);
+}
+
+void UserData::setNoForwardsFlags(bool myEnabled, bool peerEnabled) {
+	const auto mask = Flag::NoForwardsMyEnabled | Flag::NoForwardsPeerEnabled;
+	setFlags((flags() & ~mask)
+		| (myEnabled ? Flag::NoForwardsMyEnabled : Flag())
+		| (peerEnabled ? Flag::NoForwardsPeerEnabled : Flag()));
+	if (!myEnabled && !peerEnabled) {
+		owner().clearSharingDisabledTime(this);
+	}
+}
+
 int UserData::starsPerMessage() const {
 	return _starsPerMessage;
 }
@@ -837,7 +897,8 @@ void ApplyUserUpdate(not_null<UserData*> user, const MTPDuserFull &update) {
 			: Flag())
 		| (user->starsPerMessage() ? Flag::HasStarsPerMessage : Flag())
 		| Flag::MessageMoneyRestrictionsKnown
-		| Flag::RequiresPremiumToWrite;
+		| Flag::RequiresPremiumToWrite
+		| Flag::UnofficialSecurityRisk;
 	user->setFlags((user->flags() & ~mask)
 		| (update.is_phone_calls_private()
 			? Flag::PhoneCallsPrivate
@@ -853,6 +914,9 @@ void ApplyUserUpdate(not_null<UserData*> user, const MTPDuserFull &update) {
 		| Flag::MessageMoneyRestrictionsKnown
 		| (update.is_contact_require_premium()
 			? (Flag::RequiresPremiumToWrite | Flag::HasRequirePremiumToWrite)
+			: Flag())
+		| (update.is_unofficial_security_risk()
+			? Flag::UnofficialSecurityRisk
 			: Flag()));
 	user->setIsBlocked(update.is_blocked());
 	user->setCallsStatus(update.is_phone_calls_private()
@@ -950,6 +1014,7 @@ void ApplyUserUpdate(not_null<UserData*> user, const MTPDuserFull &update) {
 	user->setPersonalChannel(
 		update.vpersonal_channel_id().value_or_empty(),
 		update.vpersonal_channel_message().value_or_empty());
+	user->setBotManagerId(update.vbot_manager_id().value_or_empty());
 	if (user->isSelf()) {
 		user->owner().businessInfo().applyAwaySettings(
 			FromMTP(&user->owner(), update.vbusiness_away_message()));
@@ -981,6 +1046,9 @@ void ApplyUserUpdate(not_null<UserData*> user, const MTPDuserFull &update) {
 			| (data.is_disallow_premium_gifts()
 				? Api::DisallowedGiftType::Premium
 				: Api::DisallowedGiftType())
+			| (data.is_disallow_stargifts_from_channels()
+				? Api::DisallowedGiftType::FromChannels
+				: Api::DisallowedGiftType())
 			| (update.is_display_gifts_button()
 				? Api::DisallowedGiftType::SendHide
 				: Api::DisallowedGiftType()));
@@ -1004,6 +1072,10 @@ void ApplyUserUpdate(not_null<UserData*> user, const MTPDuserFull &update) {
 	} else {
 		user->setNote(TextWithEntities());
 	}
+
+	user->setNoForwardsFlags(
+		update.is_noforwards_my_enabled(),
+		update.is_noforwards_peer_enabled());
 
 	user->fullUpdated();
 }

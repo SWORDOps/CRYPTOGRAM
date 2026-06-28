@@ -85,6 +85,7 @@ enum class ChannelDataFlag : uint64 {
 	ForumTabs = (1ULL << 42),
 	HasStarsPerMessage = (1ULL << 43),
 	StarsPerMessageKnown = (1ULL << 44),
+	HasActiveVideoStream = (1ULL << 45),
 };
 inline constexpr bool is_flag_type(ChannelDataFlag) { return true; };
 using ChannelDataFlags = base::flags<ChannelDataFlag>;
@@ -140,12 +141,11 @@ public:
 	base::flat_set<not_null<UserData*>> bots;
 	rpl::event_stream<bool> unrestrictedByBoostsChanges;
 
-	// For admin badges, full admins list with ranks.
-	base::flat_map<UserId, QString> admins;
+	base::flat_set<UserId> admins;
+	base::flat_map<UserId, QString> memberRanks;
 
 	UserData *creator = nullptr; // nullptr means unknown
-	QString creatorRank;
-	int botStatus = 0; // -1 - no bots, 0 - unknown, 1 - one bot, that sees all history, 2 - other
+	Data::BotStatus botStatus = Data::BotStatus::Unknown;
 	bool joinedMessageFound = false;
 	bool adminsLoaded = false;
 	StickerSetIdentifier stickerSet;
@@ -193,6 +193,10 @@ public:
 	void setUsername(const QString &username);
 	void setUsernames(const Data::Usernames &newUsernames);
 	void setPhoto(const MTPChatPhoto &photo);
+
+	[[nodiscard]] uint64 accessHash() const {
+		return _accessHash;
+	}
 	void setAccessHash(uint64 accessHash);
 
 	void setFlags(ChannelDataFlags which);
@@ -301,6 +305,9 @@ public:
 		ChatAdminRightsInfo oldRights,
 		ChatAdminRightsInfo newRights,
 		const QString &rank);
+	void applyEditMemberRank(
+		not_null<UserData*> user,
+		const QString &rank);
 	void applyEditBanned(
 		not_null<PeerData*> participant,
 		ChatRestrictionsInfo oldRights,
@@ -310,7 +317,6 @@ public:
 	void markForbidden();
 
 	[[nodiscard]] bool isGroupAdmin(not_null<UserData*> user) const;
-	[[nodiscard]] QString adminTitle(not_null<UserData*> user) const;
 	[[nodiscard]] bool lastParticipantsRequestNeeded() const;
 	[[nodiscard]] bool isMegagroup() const {
 		return flags() & Flag::Megagroup;
@@ -351,7 +357,6 @@ public:
 	[[nodiscard]] bool autoTranslation() const {
 		return flags() & Flag::AutoTranslation;
 	}
-
 	[[nodiscard]] auto adminRights() const {
 		return _adminRights.current();
 	}
@@ -537,6 +542,7 @@ public:
 
 	[[nodiscard]] bool hasActiveStories() const;
 	[[nodiscard]] bool hasUnreadStories() const;
+	[[nodiscard]] bool hasActiveVideoStream() const;
 	void setStoriesState(StoriesState state);
 
 	[[nodiscard]] Data::Forum *forum() const {
@@ -552,11 +558,9 @@ public:
 	[[nodiscard]] TimeId subscriptionUntilDate() const;
 	void updateSubscriptionUntilDate(TimeId subscriptionUntilDate);
 
+	[[nodiscard]] MTPInputChannel inputChannel() const;
+
 	// Still public data members.
-	uint64 access = 0;
-
-	MTPinputChannel inputChannel = MTP_inputChannelEmpty();
-
 	int32 date = 0;
 	std::unique_ptr<MegagroupInfo> mgInfo;
 
@@ -588,6 +592,8 @@ private:
 
 	std::vector<UserId> _recentRequesters;
 	MsgId _availableMinId = 0;
+
+	uint64 _accessHash = 0;
 
 	RestrictionFlags _defaultRestrictions;
 	AdminRightFlags _adminRights;

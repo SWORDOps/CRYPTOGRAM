@@ -20,8 +20,12 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <QtCore/QMutexLocker>
 #include <QtCore/QThread>
 #include <QtCore/QCryptographicHash>
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QAudioDevice>)
 #include <QtMultimedia/QAudioDevice>
 #include <QtMultimedia/QMediaDevices>
+#endif
+#endif
 #include <openssl/rand.h>
 #include <openssl/evp.h>
 #include <cmath>
@@ -587,7 +591,7 @@ bool GNAAcousticSecurity::initialize(const HardwareProfile& profile) {
     // Start performance monitoring
     _metricsTimer.CallEach(5000); // Update metrics every 5 seconds
 
-    emit performanceUpdated(_metrics);
+    Q_EMIT performanceUpdated(_metrics);
 
     qDebug() << "GNA Acoustic Security initialized successfully"
              << "- NPU Available:" << _gnaCapabilities.available
@@ -609,7 +613,7 @@ void GNAAcousticSecurity::reconfigure(const HardwareProfile& profile) {
     configureGNADevice();
     optimizeForGNAHardware();
 
-    emit performanceUpdated(_metrics);
+    Q_EMIT performanceUpdated(_metrics);
 }
 
 bool GNAAcousticSecurity::isGNAAvailable() const {
@@ -626,7 +630,7 @@ void GNAAcousticSecurity::startSurveillanceMonitoring() {
     // Start surveillance timer - check every 100ms for real-time detection
     _surveillanceTimer.CallEach(100);
 
-    emit voiceMorphingStatusChanged(_voiceMode);
+    Q_EMIT voiceMorphingStatusChanged(_voiceMode);
 }
 
 void GNAAcousticSecurity::stopSurveillanceMonitoring() {
@@ -723,12 +727,12 @@ void GNAAcousticSecurity::enableVoiceProtection(VoiceSecurityMode mode) {
         break;
     }
 
-    emit voiceMorphingStatusChanged(mode);
+    Q_EMIT voiceMorphingStatusChanged(mode);
 }
 
 void GNAAcousticSecurity::disableVoiceProtection() {
     _voiceMode = VoiceSecurityMode::Disabled;
-    emit voiceMorphingStatusChanged(_voiceMode);
+    Q_EMIT voiceMorphingStatusChanged(_voiceMode);
 }
 
 QByteArray GNAAcousticSecurity::morphVoiceRealtime(const QByteArray& inputAudio) {
@@ -790,7 +794,7 @@ void GNAAcousticSecurity::enableCovertChannel(const CovertChannelConfig& config)
     // Start covert channel maintenance
     _covertChannelTimer.CallEach(1000); // Check every second
 
-    emit covertChannelStatusChanged(true);
+    Q_EMIT covertChannelStatusChanged(true);
 }
 
 void GNAAcousticSecurity::disableCovertChannel() {
@@ -799,7 +803,7 @@ void GNAAcousticSecurity::disableCovertChannel() {
     _covertChannelActive = false;
     _covertChannelTimer.Cancel();
 
-    emit covertChannelStatusChanged(false);
+    Q_EMIT covertChannelStatusChanged(false);
 }
 
 bool GNAAcousticSecurity::transmitCovertMessage(const QByteArray& message) {
@@ -878,7 +882,7 @@ bool GNAAcousticSecurity::detectCovertCommunication(const QByteArray& audioData)
 void GNAAcousticSecurity::setVoiceMorphingConfig(const VoiceMorphingConfig& config) {
     _voiceConfig = config;
     _voiceMode = config.mode;
-    emit voiceMorphingStatusChanged(_voiceMode);
+    Q_EMIT voiceMorphingStatusChanged(_voiceMode);
 }
 
 void GNAAcousticSecurity::setCovertChannelConfig(const CovertChannelConfig& config) {
@@ -974,7 +978,7 @@ void GNAAcousticSecurity::activateEmergencyMode() {
     // Disable covert channels to reduce detectability
     disableCovertChannel();
 
-    emit emergencyModeActivated();
+    Q_EMIT emergencyModeActivated();
 }
 
 void GNAAcousticSecurity::deactivateEmergencyMode() {
@@ -997,7 +1001,7 @@ void GNAAcousticSecurity::processAudioInput() {
     if (!audioData.isEmpty()) {
         AcousticThreatResult threat = _surveillanceEngine->detectSurveillance(audioData);
         if (threat.level != ThreatLevel::None) {
-            emit acousticThreatDetected(threat);
+            Q_EMIT acousticThreatDetected(threat);
         }
     }
 }
@@ -1007,8 +1011,8 @@ void GNAAcousticSecurity::updatePerformanceMetrics() {
     _metrics.powerConsumptionWh += getCurrentPowerConsumption() *
         (_metrics.lastUpdateTime.toMSecsSinceEpoch() - _metricsStartTime.toMSecsSinceEpoch()) / 3600000.0;
 
-    emit performanceUpdated(_metrics);
-    emit powerConsumptionChanged(getCurrentPowerConsumption());
+    Q_EMIT performanceUpdated(_metrics);
+    Q_EMIT powerConsumptionChanged(getCurrentPowerConsumption());
 }
 
 void GNAAcousticSecurity::checkSurveillanceThreats() {

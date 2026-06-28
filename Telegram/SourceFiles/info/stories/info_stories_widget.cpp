@@ -21,6 +21,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_info.h"
 #include "styles/style_layers.h"
 
+#include <QtWidgets/QApplication>
+#include <QtWidgets/QScrollBar>
+
 namespace Info::Stories {
 
 int ArchiveId() {
@@ -59,12 +62,16 @@ Widget::Widget(
 	QWidget *parent,
 	not_null<Controller*> controller)
 : ContentWidget(parent, controller)
-, _albumId(controller->key().storiesAlbumId()) {
-	_inner = setInnerWidget(object_ptr<InnerWidget>(
-		this,
-		controller,
-		_albumId.value(),
-		controller->key().storiesAddToAlbumId()));
+, _albumId(controller->key().storiesAlbumId())
+, _inner(
+	setupFlexibleInnerWidget(
+		object_ptr<InnerWidget>(
+			this,
+			controller,
+			_albumId.value(),
+			controller->key().storiesAddToAlbumId()),
+		_flexibleScroll))
+, _pinnedToTop(_inner->createPinnedToTop(this)) {
 	_emptyAlbumShown = _inner->albumEmptyValue();
 	_inner->albumIdChanges() | rpl::on_next([=](int id) {
 		controller->showSection(
@@ -83,6 +90,14 @@ Widget::Widget(
 	) | rpl::on_next([=] {
 		refreshBottom();
 	}, _inner->lifetime());
+
+	_inner->backRequest() | rpl::on_next([=] {
+		checkBeforeClose([=] { controller->showBackFromStack(); });
+	}, _inner->lifetime());
+}
+
+void Widget::setInnerFocus() {
+	_inner->setFocus();
 }
 
 void Widget::setIsStackBottom(bool isStackBottom) {
@@ -146,6 +161,25 @@ void Widget::refreshBottom() {
 		_hasPinnedToBottom = false;
 	} else {
 		setupBottomButton(wasBottom);
+	}
+
+	if (_pinnedToBottom) {
+		const auto processHeight = [=] {
+			setScrollBottomSkip(_pinnedToBottom->height());
+			_pinnedToBottom->moveToLeft(
+				_pinnedToBottom->x(),
+				height() - _pinnedToBottom->height());
+		};
+
+		_inner->sizeValue(
+		) | rpl::on_next([=](const QSize &s) {
+			_pinnedToBottom->resizeToWidth(s.width());
+		}, _pinnedToBottom->lifetime());
+
+		rpl::combine(
+			_pinnedToBottom->heightValue(),
+			heightValue()
+		) | rpl::on_next(processHeight, _pinnedToBottom->lifetime());
 	}
 }
 
@@ -219,6 +253,7 @@ void Widget::showFinished() {
 	if (const auto bottom = _pinnedToBottom.data()) {
 		bottom->toggle(true, anim::type::normal);
 	}
+	_inner->showFinished();
 }
 
 rpl::producer<SelectedItems> Widget::selectedListValue() const {

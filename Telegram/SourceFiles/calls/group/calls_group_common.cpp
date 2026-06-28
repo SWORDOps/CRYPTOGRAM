@@ -22,6 +22,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "tde2e/tde2e_integration.h"
 #include "ui/boxes/boost_box.h"
 #include "ui/widgets/buttons.h"
+#include "ui/widgets/checkbox.h"
 #include "ui/widgets/labels.h"
 #include "ui/widgets/popup_menu.h"
 #include "ui/layers/generic_box.h"
@@ -57,8 +58,8 @@ object_ptr<Ui::GenericBox> ScreenSharingPrivacyRequestBox() {
 					tr::lng_group_call_mac_screencast_access(),
 					tr::lng_group_call_mac_recording()
 				) | rpl::map([](QString a, QString b) {
-					auto result = Ui::Text::RichLangValue(a);
-					result.append("\n\n").append(Ui::Text::RichLangValue(b));
+					auto result = tr::rich(a);
+					result.append("\n\n").append(tr::rich(b));
 					return result;
 				}),
 				st::groupCallBoxLabel),
@@ -77,9 +78,34 @@ object_ptr<Ui::GenericBox> ScreenSharingPrivacyRequestBox() {
 #endif // Q_OS_MAC
 }
 
-object_ptr<Ui::RpWidget> MakeJoinCallLogo(not_null<QWidget*> parent) {
-	const auto logoSize = st::confcallJoinLogo.size();
-	const auto logoOuter = logoSize.grownBy(st::confcallJoinLogoPadding);
+void ShowUniqueCaptureOptions(
+		std::shared_ptr<Ui::Show> show,
+		Fn<void(bool withAudio)> done) {
+	show->showBox(Box([=](not_null<Ui::GenericBox*> box) {
+		box->setTitle(tr::lng_group_call_sharing_screen_options());
+		const auto withAudio = box->addRow(
+			object_ptr<Ui::Checkbox>(
+				box,
+				tr::lng_group_call_screen_share_audio(tr::now),
+				false,
+				st::groupCallCheckbox));
+		box->addButton(
+			tr::lng_group_call_choose_source(),
+			[=] {
+				const auto audio = withAudio->checked();
+				box->closeBox();
+				done(audio);
+			});
+		box->addButton(tr::lng_cancel(), [=] { box->closeBox(); });
+	}));
+}
+
+object_ptr<Ui::RpWidget> MakeRoundActiveLogo(
+		not_null<QWidget*> parent,
+		const style::icon &icon,
+		const style::margins &padding) {
+	const auto logoSize = icon.size();
+	const auto logoOuter = logoSize.grownBy(padding);
 	auto result = object_ptr<Ui::RpWidget>(parent);
 	const auto logo = result.data();
 	logo->resize(logo->width(), logoOuter.height());
@@ -94,9 +120,16 @@ object_ptr<Ui::RpWidget> MakeJoinCallLogo(not_null<QWidget*> parent) {
 		p.setBrush(st::windowBgActive);
 		p.setPen(Qt::NoPen);
 		p.drawEllipse(outer);
-		st::confcallJoinLogo.paintInCenter(p, outer);
+		icon.paintInCenter(p, outer);
 	}, logo->lifetime());
 	return result;
+}
+
+object_ptr<Ui::RpWidget> MakeJoinCallLogo(not_null<QWidget*> parent) {
+	return MakeRoundActiveLogo(
+		parent,
+		st::confcallJoinLogo,
+		st::confcallJoinLogoPadding);
 }
 
 void ConferenceCallJoinConfirm(
@@ -123,7 +156,7 @@ void ConferenceCallJoinConfirm(
 		st::boxRowPadding + st::confcallLinkTitlePadding,
 		style::al_top);
 	const auto wrapName = [&](not_null<PeerData*> peer) {
-		return rpl::single(Ui::Text::Bold(peer->shortName()));
+		return rpl::single(tr::bold(peer->shortName()));
 	};
 	box->addRow(
 		object_ptr<Ui::FlatLabel>(
@@ -132,8 +165,8 @@ void ConferenceCallJoinConfirm(
 				? tr::lng_confcall_join_text_inviter(
 					lt_user,
 					wrapName(maybeInviter),
-					Ui::Text::RichLangValue)
-				: tr::lng_confcall_join_text(Ui::Text::RichLangValue)),
+					tr::rich)
+				: tr::lng_confcall_join_text(tr::rich)),
 			st::confcallLinkCenteredText),
 		st::boxRowPadding,
 		style::al_top
@@ -179,14 +212,14 @@ void ConferenceCallJoinConfirm(
 			? tr::lng_confcall_already_joined_one(
 				lt_user,
 				wrapByIndex(0),
-				Ui::Text::RichLangValue)
+				tr::rich)
 			: (known == 2)
 			? tr::lng_confcall_already_joined_two(
 				lt_user,
 				wrapByIndex(0),
 				lt_other,
 				wrapByIndex(1),
-				Ui::Text::RichLangValue)
+				tr::rich)
 			: (known == 3)
 			? tr::lng_confcall_already_joined_three(
 				lt_user,
@@ -195,7 +228,7 @@ void ConferenceCallJoinConfirm(
 				wrapByIndex(1),
 				lt_third,
 				wrapByIndex(2),
-				Ui::Text::RichLangValue)
+				tr::rich)
 			: tr::lng_confcall_already_joined_many(
 				lt_count,
 				rpl::single(1. * (std::max(known, call->fullCount()) - 2)),
@@ -203,7 +236,7 @@ void ConferenceCallJoinConfirm(
 				wrapByIndex(0),
 				lt_other,
 				wrapByIndex(1),
-				Ui::Text::RichLangValue);
+				tr::rich);
 		box->addRow(
 			object_ptr<Ui::FlatLabel>(
 				box,
@@ -213,18 +246,13 @@ void ConferenceCallJoinConfirm(
 			style::al_top
 		)->setTryMakeSimilarLines(true);
 	}
-	const auto joinAndClose = [=] {
+	box->addButton(tr::lng_confcall_join_button(), [=] {
 		join([weak = base::make_weak(box)] {
 			if (const auto strong = weak.get()) {
 				strong->closeBox();
 			}
 		});
-	};
-	Info::BotStarRef::AddFullWidthButton(
-		box,
-		tr::lng_confcall_join_button(),
-		joinAndClose,
-		&st::confcallLinkButton);
+	});
 }
 
 ConferenceCallLinkStyleOverrides DarkConferenceCallLinkStyle() {
@@ -269,7 +297,7 @@ void ShowConferenceCallLinkBox(
 		if (!args.initial && call->canManage()) {
 			const auto toggle = Ui::CreateChild<Ui::IconButton>(
 				close->parentWidget(),
-				st.menuToggle ? *st.menuToggle : st::confcallLinkMenu);
+				st.menuToggle ? *st.menuToggle : st::boxTitleMenu);
 			const auto handler = [=] {
 				if (state->resetting) {
 					return;
@@ -282,7 +310,8 @@ void ShowConferenceCallLinkBox(
 						MTP_flags(Flag::f_reset_invite_hash),
 						call->input(),
 						MTPBool(), // join_muted
-						MTPBool()) // messages_enabled
+						MTPBool(), // messages_enabled
+						MTPlong()) // send_paid_messages_stars
 				).done([=](const MTPUpdates &result) {
 					call->session().api().applyUpdates(result);
 					ShowConferenceCallLinkBox(show, call, args);
@@ -407,8 +436,8 @@ void ShowConferenceCallLinkBox(
 				tr::lng_confcall_link_join_link(
 					lt_arrow,
 					rpl::single(Ui::Text::IconEmoji(&st::textMoreIconEmoji)),
-					[](QString v) { return Ui::Text::Link(v); }),
-				Ui::Text::WithEntities),
+					[](QString v) { return tr::link(v); }),
+				tr::marked),
 			(st.centerLabel
 				? *st.centerLabel
 				: st::confcallLinkCenteredText));

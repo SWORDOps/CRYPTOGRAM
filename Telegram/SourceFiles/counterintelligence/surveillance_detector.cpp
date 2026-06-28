@@ -1,9 +1,16 @@
 #include "surveillance_detector.h"
+#include "universal_security_validator.h"
 #include "../privacy/quantum_crypto_system.h"
+#include "../security/gna_acoustic_security.h"
+#include "../security/hardware_detector.h"
 #include <QtCore/QDebug>
 #include <QtCore/QDateTime>
 #include <QtCore/QStandardPaths>
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QMediaDevices>)
 #include <QtMultimedia/QMediaDevices>
+#endif
+#endif
 #include <QtNetwork/QNetworkInterface>
 #include <cmath>
 #include <algorithm>
@@ -125,12 +132,14 @@ void SurveillanceDetector::initializeHardwareCapabilities() {
         qDebug() << "SurveillanceDetector: Quantum crypto system initialization failed";
     }
 
-    emit hardwareCapabilityChanged("GNA", _gna_available);
-    emit hardwareCapabilityChanged("NPU", _npu_available);
-    emit hardwareCapabilityChanged("OpenVINO", _openvino_available);
+    Q_EMIT hardwareCapabilityChanged("GNA", _gna_available);
+    Q_EMIT hardwareCapabilityChanged("NPU", _npu_available);
+    Q_EMIT hardwareCapabilityChanged("OpenVINO", _openvino_available);
 }
 
 void SurveillanceDetector::initializeAudioSystem() {
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QAudioInput>)
     // Setup audio format for high-quality analysis
     _audio_format.setSampleRate(SAMPLE_RATE);
     _audio_format.setChannelCount(CHANNEL_COUNT);
@@ -158,6 +167,10 @@ void SurveillanceDetector::initializeAudioSystem() {
              << "Device:" << selectedDevice.description()
              << "Sample Rate:" << _audio_format.sampleRate()
              << "Channels:" << _audio_format.channelCount();
+#else
+    qWarning() << "SurveillanceDetector: QtMultimedia not available, audio system disabled";
+#endif
+#endif
 }
 
 void SurveillanceDetector::initializeGNASystem() {
@@ -178,13 +191,13 @@ void SurveillanceDetector::initializeNPUSystem() {
 #ifdef SPYGRAM_NPU_AVAILABLE
     if (_npu_available) {
         try {
-            _npu_engine = std::make_unique<SpyGram::Hardware::NPUAcousticEngine>();
+            _npu_engine = new SpyGram::Hardware::NPUAcousticEngine();
 
             // Secure initialization with validation
             if (!_npu_engine->initialize()) {
                 qWarning() << "SurveillanceDetector: NPU secure initialization failed";
                 _npu_available = false;
-                _npu_engine.reset();
+                _npu_engine = nullptr;
                 return;
             }
 
@@ -192,7 +205,7 @@ void SurveillanceDetector::initializeNPUSystem() {
             if (!_npu_engine->loadSurveillanceDetectionModel()) {
                 qWarning() << "SurveillanceDetector: NPU model loading failed";
                 _npu_available = false;
-                _npu_engine.reset();
+                _npu_engine = nullptr;
                 return;
             }
 
@@ -200,17 +213,17 @@ void SurveillanceDetector::initializeNPUSystem() {
             _npu_engine->enableSecurityLogging(true);
 
             // Connect security signals
-            connect(_npu_engine.get(), &SpyGram::Hardware::NPUAcousticEngine::securityViolationDetected,
+            connect(_npu_engine, &SpyGram::Hardware::NPUAcousticEngine::securityViolationDetected,
                     this, [this](const QString &violation) {
                         qWarning() << "SurveillanceDetector: NPU security violation:" << violation;
-                        emit securityViolationDetected("NPU: " + violation);
+                        Q_EMIT securityViolationDetected("NPU: " + violation);
                     });
 
-            connect(_npu_engine.get(), &SpyGram::Hardware::NPUAcousticEngine::modelIntegrityCompromised,
+            connect(_npu_engine, &SpyGram::Hardware::NPUAcousticEngine::modelIntegrityCompromised,
                     this, [this](const QString &details) {
                         qWarning() << "SurveillanceDetector: NPU model integrity compromised:" << details;
                         _npu_available = false;
-                        _npu_engine.reset();
+                        _npu_engine = nullptr;
                     });
 
             qDebug() << "SurveillanceDetector: NPU acoustic engine securely initialized";
@@ -218,7 +231,7 @@ void SurveillanceDetector::initializeNPUSystem() {
             // Secure exception handling - sanitize error message
             qWarning() << "SurveillanceDetector: NPU initialization failed (security)";
             _npu_available = false;
-            _npu_engine.reset();
+            _npu_engine = nullptr;
         }
     }
 #endif
@@ -228,13 +241,13 @@ void SurveillanceDetector::initializeOpenVINOSystem() {
 #ifdef SPYGRAM_OPENVINO_AVAILABLE
     if (_openvino_available) {
         try {
-            _openvino_processor = std::make_unique<OpenVINOAcousticProcessor>();
+            _openvino_processor = new OpenVINOAcousticProcessor();
             _openvino_processor->loadSurveillanceModels();
             qDebug() << "SurveillanceDetector: OpenVINO processor initialized";
         } catch (const std::exception &e) {
             qWarning() << "SurveillanceDetector: OpenVINO initialization failed:" << e.what();
             _openvino_available = false;
-            _openvino_processor.reset();
+            _openvino_processor = nullptr;
         }
     }
 #endif
@@ -248,6 +261,8 @@ void SurveillanceDetector::startDetection() {
     qDebug() << "SurveillanceDetector: Starting surveillance detection";
 
     // Start audio capture if enabled and available
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QAudioInput>)
     if (_audio_analysis_enabled && _audio_input) {
         _audio_device = _audio_input->start();
         if (_audio_device) {
@@ -257,6 +272,8 @@ void SurveillanceDetector::startDetection() {
             qWarning() << "SurveillanceDetector: Failed to start audio capture";
         }
     }
+#endif
+#endif
 
     // Start network analysis if enabled
     if (_network_analysis_enabled) {
@@ -286,10 +303,14 @@ void SurveillanceDetector::stopDetection() {
     _threat_update_timer->stop();
 
     // Stop audio capture
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QAudioInput>)
     if (_audio_input && _audio_device) {
         _audio_input->stop();
         _audio_device = nullptr;
     }
+#endif
+#endif
 
     _detection_active = false;
     _current_threat_level = ThreatLevel::None;
@@ -345,7 +366,7 @@ void SurveillanceDetector::processAudioData() {
     // Process threat if detected
     if (threat.level > ThreatLevel::None) {
         updateThreatHistory(threat);
-        emit threatDetected(threat);
+        Q_EMIT threatDetected(threat);
     }
 }
 
@@ -610,7 +631,7 @@ void SurveillanceDetector::analyzeNetworkTraffic() {
         }
 
         updateThreatHistory(threat);
-        emit threatDetected(threat);
+        Q_EMIT threatDetected(threat);
     }
 }
 
@@ -622,7 +643,7 @@ bool SurveillanceDetector::detectNetworkSurveillance() {
         // Look for monitoring interfaces or unusual configurations
         if (interface.name().contains("mon") ||
             interface.name().contains("tap") ||
-            interface.flags().testFlag(QNetworkInterface::IsPromiscuous)) {
+            interface.name().contains("sniff")) {
             qDebug() << "SurveillanceDetector: Suspicious network interface detected:" << interface.name();
             return true;
         }
@@ -645,7 +666,7 @@ void SurveillanceDetector::performPeriodicScan() {
             threat.mitigation_suggestion = "Use RF shielding and change location";
 
             updateThreatHistory(threat);
-            emit threatDetected(threat);
+            Q_EMIT threatDetected(threat);
         }
     }
 
@@ -662,7 +683,7 @@ void SurveillanceDetector::performPeriodicScan() {
             threat.mitigation_suggestion = "Use TEMPEST shielding immediately";
 
             updateThreatHistory(threat);
-            emit threatDetected(threat);
+            Q_EMIT threatDetected(threat);
         }
     }
 }
@@ -703,7 +724,7 @@ void SurveillanceDetector::updateThreatLevel() {
     _current_threat_level = calculateOverallThreatLevel();
 
     if (_current_threat_level != oldLevel) {
-        emit threatLevelChanged(_current_threat_level, oldLevel);
+        Q_EMIT threatLevelChanged(_current_threat_level, oldLevel);
         qDebug() << "SurveillanceDetector: Threat level changed from"
                  << static_cast<int>(oldLevel) << "to" << static_cast<int>(_current_threat_level);
     }

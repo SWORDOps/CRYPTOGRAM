@@ -186,6 +186,13 @@ TextParseOptions MenuTextOptions = {
 	).text;
 }
 
+[[nodiscard]] QString FormatReactionsCountString(int count) {
+	return tr::lng_context_seen_reactions_count(
+		tr::now,
+		lt_count_short,
+		count);
+}
+
 Action::Action(
 	not_null<PopupMenu*> parentMenu,
 	rpl::producer<WhoReadContent> content,
@@ -207,13 +214,13 @@ Action::Action(
 , _height(st::defaultWhoRead.itemPadding.top()
 		+ _st.itemStyle.font->height
 		+ st::defaultWhoRead.itemPadding.bottom()) {
-	const auto parent = parentMenu->menu();
 	const auto delay = anim::Disabled() ? 0 : parentMenu->st().duration;
 	const auto checkAppeared = [=, now = crl::now()](bool force = false) {
 		_appeared = force || ((crl::now() - now) >= delay);
 	};
 
 	setAcceptBoth(true);
+	fitToMenuWidth();
 
 	std::move(
 		content
@@ -294,7 +301,15 @@ void Action::resolveMinWidth() {
 				lt_count_short,
 				_content.fullReactionsCount))
 		: QString();
-	const auto maxTextWidth = std::max(width(maxText), width(maxReacted));
+	const auto maxReactionsCount = (_content.fullReactionsCount
+			> _content.fullReadCount)
+		? FormatReactionsCountString(_content.fullReactionsCount)
+		: QString();
+	const auto maxTextWidth = std::max({
+		width(maxText),
+		width(maxReacted),
+		width(maxReactionsCount),
+	});
 	const auto maxWidth = st::defaultWhoRead.itemPadding.left()
 		+ maxIconWidth
 		+ maxTextWidth
@@ -434,10 +449,12 @@ void Action::refreshText() {
 				|| (count > 0 && _content.fullReactionsCount > usersCount)
 				|| (count > 0 && onlySeenCount == 0))
 			? (count
-				? tr::lng_context_seen_reacted(
-					tr::now,
-					lt_count_short,
-					count)
+				? ((_content.fullReactionsCount > _content.fullReadCount)
+					? FormatReactionsCountString(_content.fullReactionsCount)
+					: tr::lng_context_seen_reacted(
+						tr::now,
+						lt_count_short,
+						count))
 				: tr::lng_context_seen_reacted_none(tr::now))
 			: (_content.type == WhoReadType::Watched)
 			? (count
@@ -515,8 +532,8 @@ WhenAction::WhenAction(
 , _height(st::whenReadPadding.top()
 		+ st::whenReadStyle.font->height
 		+ st::whenReadPadding.bottom()) {
-
 	setAcceptBoth(true);
+	fitToMenuWidth();
 
 	std::move(
 		content
@@ -721,8 +738,8 @@ int WhenAction::contentHeight() const {
 } // namespace
 
 WhoReactedEntryAction::WhoReactedEntryAction(
-	not_null<Menu::Menu*> parent,
-	Text::CustomEmojiFactory customEmojiFactory,
+	not_null<Ui::Menu::Menu*> parent,
+	CustomEmojiFactory customEmojiFactory,
 	const style::Menu &st,
 	Data &&data)
 : ItemBase(parent, st)
@@ -732,6 +749,7 @@ WhoReactedEntryAction::WhoReactedEntryAction(
 , _height(st::defaultWhoRead.photoSkip * 2 + st::defaultWhoRead.photoSize) {
 	setAcceptBoth(true);
 
+	fitToMenuWidth();
 	setData(std::move(data));
 
 	paintRequest(

@@ -16,6 +16,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/send_files_box.h"
 #include "core/application.h"
 #include "core/core_settings.h"
+#include "data/components/promo_suggestions.h"
 
 namespace Main {
 namespace {
@@ -28,7 +29,8 @@ constexpr auto kVersion = 2;
 
 SessionSettings::SessionSettings()
 : _selectorTab(ChatHelpers::SelectorTab::Emoji)
-, _supportSwitch(Support::SwitchSettings::Next) {
+, _supportSwitch(Support::SwitchSettings::Next)
+, _setupEmailState(Data::SetupEmailState::None) {
 }
 
 QByteArray SessionSettings::serialize() const {
@@ -44,7 +46,6 @@ QByteArray SessionSettings::serialize() const {
 		+ sizeof(qint32) * 3
 		+ _hiddenPinnedMessages.size() * (sizeof(quint64) * 4)
 		+ sizeof(qint32)
-		+ _verticalSubsectionTabs.size() * sizeof(quint64)
 		+ sizeof(qint32) // _ringtoneDefaultVolumes size
 		+ (_ringtoneDefaultVolumes.size()
 			* (0
@@ -63,6 +64,13 @@ QByteArray SessionSettings::serialize() const {
 			+ Serialize::stringSize(auth.device)
 			+ Serialize::stringSize(auth.location);
 	}
+	size += sizeof(qint32); // _setupEmailState
+	size += sizeof(qint32) // _moderateCommonGroups size
+		+ (_moderateCommonGroups.size() * sizeof(qint32));
+	size += sizeof(qint32);
+	size += sizeof(qint32)
+		+ _subsectionTabsModes.size() * (sizeof(quint64) + sizeof(qint32));
+	size += sizeof(qint32); // _phoneNumberHidden
 
 	auto result = QByteArray();
 	result.reserve(size);
@@ -114,10 +122,7 @@ QByteArray SessionSettings::serialize() const {
 				<< SerializePeerId(key.monoforumPeerId)
 				<< qint64(value.bare);
 		}
-		stream << qint32(_verticalSubsectionTabs.size());
-		for (const auto &peerId : _verticalSubsectionTabs) {
-			stream << SerializePeerId(peerId);
-		}
+		stream << qint32(0);
 		stream << qint32(_ringtoneDefaultVolumes.size());
 		for (const auto &[key, value] : _ringtoneDefaultVolumes) {
 			stream << uint8_t(key) << ushort(value);
@@ -143,6 +148,17 @@ QByteArray SessionSettings::serialize() const {
 				<< auth.device
 				<< auth.location;
 		}
+		stream << qint32(static_cast<int>(_setupEmailState));
+		stream << qint32(_moderateCommonGroups.size());
+		for (const auto &filterId : _moderateCommonGroups) {
+			stream << qint32(filterId);
+		}
+		stream << qint32(_disableSharingBoxShowsCount);
+		stream << qint32(_subsectionTabsModes.size());
+		for (const auto &[peerId, mode] : _subsectionTabsModes) {
+			stream << SerializePeerId(peerId) << qint32(mode);
+		}
+		stream << qint32(_phoneNumberHidden ? 1 : 0);
 	}
 
 	Ensures(result.size() == size);
@@ -202,7 +218,7 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 	std::vector<int> appDictionariesEnabled;
 	qint32 appAutoDownloadDictionaries = app.autoDownloadDictionaries() ? 1 : 0;
 	base::flat_map<ThreadId, MsgId> hiddenPinnedMessages;
-	base::flat_set<PeerId> verticalSubsectionTabs;
+	base::flat_map<PeerId, qint32> subsectionTabsModes;
 	qint32 dialogsFiltersEnabled = _dialogsFiltersEnabled ? 1 : 0;
 	qint32 supportAllSilent = _supportAllSilent ? 1 : 0;
 	qint32 photoEditorHintShowsCount = _photoEditorHintShowsCount;
@@ -214,6 +230,10 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 	base::flat_map<ThreadId, ushort> ringtoneVolumes;
 	base::flat_set<uint64> ratedTranscriptions;
 	std::vector<Data::UnreviewedAuth> unreviewed;
+	qint32 setupEmailState = 0;
+	std::vector<int32> moderateCommonGroups;
+	qint32 disableSharingBoxShowsCount = 0;
+	qint32 phoneNumberHidden = 0;
 
 	stream >> versionTag;
 	if (versionTag == kVersionTag) {
@@ -532,7 +552,8 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 						"Bad data for SessionSettings::addFromSerialized()"));
 					return;
 				}
-				verticalSubsectionTabs.emplace(DeserializePeerId(peerId));
+				subsectionTabsModes.emplace(
+					DeserializePeerId(peerId), qint32(1));
 			}
 		}
 	}
@@ -627,6 +648,50 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 			}
 		}
 	}
+	if (!stream.atEnd()) {
+		stream >> setupEmailState;
+	}
+	if (!stream.atEnd()) {
+		auto count = qint32(0);
+		stream >> count;
+		if (stream.status() == QDataStream::Ok) {
+			for (auto i = 0; i != count; ++i) {
+				qint32 filterId;
+				stream >> filterId;
+				if (stream.status() != QDataStream::Ok) {
+					LOG(("App Error: "
+						"Bad data for SessionSettings::addFromSerialized()"
+						"with moderateCommonGroups"));
+					return;
+				}
+				moderateCommonGroups.emplace_back(filterId);
+			}
+		}
+	}
+	if (!stream.atEnd()) {
+		stream >> disableSharingBoxShowsCount;
+	}
+	if (!stream.atEnd()) {
+		auto count = qint32(0);
+		stream >> count;
+		if (stream.status() == QDataStream::Ok) {
+			for (auto i = 0; i != count; ++i) {
+				auto peerId = quint64();
+				auto mode = qint32(0);
+				stream >> peerId >> mode;
+				if (stream.status() != QDataStream::Ok) {
+					LOG(("App Error: "
+						"Bad data for SessionSettings::addFromSerialized()"));
+					return;
+				}
+				subsectionTabsModes.emplace(
+					DeserializePeerId(peerId), mode);
+			}
+		}
+	}
+	if (!stream.atEnd()) {
+		stream >> phoneNumberHidden;
+	}
 	if (stream.status() != QDataStream::Ok) {
 		LOG(("App Error: "
 			"Bad data for SessionSettings::addFromSerialized()"));
@@ -673,11 +738,26 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 	_mutePeriods = std::move(mutePeriods);
 	_lastNonPremiumLimitDownload = lastNonPremiumLimitDownload;
 	_lastNonPremiumLimitUpload = lastNonPremiumLimitUpload;
-	_verticalSubsectionTabs = std::move(verticalSubsectionTabs);
+	_subsectionTabsModes = std::move(subsectionTabsModes);
 	_ringtoneDefaultVolumes = std::move(ringtoneDefaultVolumes);
 	_ringtoneVolumes = std::move(ringtoneVolumes);
 	_ratedTranscriptions = std::move(ratedTranscriptions);
 	_unreviewed = std::move(unreviewed);
+	auto uncheckedSetupEmailState = static_cast<Data::SetupEmailState>(
+		setupEmailState);
+	switch (uncheckedSetupEmailState) {
+	case Data::SetupEmailState::None:
+	case Data::SetupEmailState::Setup:
+	case Data::SetupEmailState::SetupNoSkip:
+	case Data::SetupEmailState::SettingUp:
+	case Data::SetupEmailState::SettingUpNoSkip:
+		_setupEmailState = uncheckedSetupEmailState;
+		break;
+	}
+
+	_moderateCommonGroups = std::move(moderateCommonGroups);
+	_disableSharingBoxShowsCount = disableSharingBoxShowsCount;
+	_phoneNumberHidden = (phoneNumberHidden == 1);
 
 	if (version < 2) {
 		app.setLastSeenWarningSeen(appLastSeenWarningSeen == 1);
@@ -812,17 +892,18 @@ void SessionSettings::setHiddenPinnedMessageId(
 	}
 }
 
-bool SessionSettings::verticalSubsectionTabs(PeerId peerId) const {
-	return _verticalSubsectionTabs.contains(peerId);
+qint32 SessionSettings::subsectionTabsMode(PeerId peerId) const {
+	const auto i = _subsectionTabsModes.find(peerId);
+	return (i != end(_subsectionTabsModes)) ? i->second : 0;
 }
 
-void SessionSettings::setVerticalSubsectionTabs(
+void SessionSettings::setSubsectionTabsMode(
 		PeerId peerId,
-		bool vertical) {
-	if (vertical) {
-		_verticalSubsectionTabs.emplace(peerId);
+		qint32 mode) {
+	if (mode) {
+		_subsectionTabsModes[peerId] = mode;
 	} else {
-		_verticalSubsectionTabs.remove(peerId);
+		_subsectionTabsModes.remove(peerId);
 	}
 }
 
@@ -834,6 +915,20 @@ void SessionSettings::incrementPhotoEditorHintShown() {
 	if (photoEditorHintShown()) {
 		_photoEditorHintShowsCount++;
 	}
+}
+
+bool SessionSettings::shouldShowDisableSharingBox() const {
+	return _disableSharingBoxShowsCount < kDisableSharingBoxMaxShowsCount;
+}
+
+void SessionSettings::incrementDisableSharingBoxShown() {
+	if (shouldShowDisableSharingBox()) {
+		_disableSharingBoxShowsCount++;
+	}
+}
+
+void SessionSettings::resetDisableSharingBoxShown() {
+	_disableSharingBoxShowsCount = 0;
 }
 
 std::vector<TimeId> SessionSettings::mutePeriods() const {
@@ -904,6 +999,14 @@ void SessionSettings::setUnreviewed(std::vector<Data::UnreviewedAuth> auths) {
 
 const std::vector<Data::UnreviewedAuth> &SessionSettings::unreviewed() const {
 	return _unreviewed;
+}
+
+void SessionSettings::setSetupEmailState(Data::SetupEmailState state) {
+	_setupEmailState = state;
+}
+
+Data::SetupEmailState SessionSettings::setupEmailState() const {
+	return _setupEmailState;
 }
 
 } // namespace Main

@@ -6,8 +6,9 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "boxes/translate_box.h"
+#include "boxes/translate_box_content.h"
+#include "lang/translate_provider.h"
 
-#include "api/api_text_entities.h" // Api::EntitiesToMTP / EntitiesFromMTP.
 #include "core/application.h"
 #include "core/core_settings.h"
 #include "core/ui_integration.h"
@@ -17,17 +18,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_instance.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
-#include "mtproto/sender.h"
 #include "spellcheck/platform/platform_language.h"
 #include "ui/boxes/choose_language_box.h"
-#include "ui/effects/loading_element.h"
 #include "ui/layers/generic_box.h"
-#include "ui/text/text_utilities.h"
-#include "ui/vertical_list.h"
-#include "ui/painter.h"
-#include "ui/power_saving.h"
-#include "ui/widgets/buttons.h"
-#include "ui/widgets/labels.h"
 #include "ui/widgets/multi_select.h"
 #include "ui/wrap/fade_wrap.h"
 #include "ui/wrap/slide_wrap.h"
@@ -36,8 +29,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_info.h" // inviteLinkListItem.
 #include "styles/style_layers.h"
 // #include "GoogleAppTranslator.h"  // Not available in this build
-
-#include <QLocale>
 
 namespace Ui {
 namespace {
@@ -99,19 +90,22 @@ void TranslateBox(
 		MsgId msgId,
 		TextWithEntities text,
 		bool hasCopyRestriction) {
-	box->setWidth(st::boxWideWidth);
-	box->addButton(tr::lng_box_ok(), [=] { box->closeBox(); });
-	const auto container = box->verticalLayout();
-
 	struct State {
-		State(not_null<Main::Session*> session) : api(&session->mtp()) {
+		State(not_null<Main::Session*> session)
+		: provider(CreateTranslateProvider(session)) {
 		}
 
-		MTP::Sender api;
+		std::unique_ptr<TranslateProvider> provider;
 		rpl::variable<LanguageId> to;
 	};
 	const auto state = box->lifetime().make_state<State>(&peer->session());
 	state->to = ChooseTranslateTo(peer->owner().history(peer));
+	const auto request = std::make_shared<TranslateProviderRequest>(
+		PrepareTranslateProviderRequest(
+			state->provider.get(),
+			peer,
+			msgId,
+			std::move(text)));
 
 	if (!IsServerMsgId(msgId)) {
 		msgId = 0;

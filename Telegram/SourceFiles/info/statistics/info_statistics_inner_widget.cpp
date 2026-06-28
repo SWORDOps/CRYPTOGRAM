@@ -287,6 +287,7 @@ void FillStatistic(
 				Type::Bar);
 		}
 	}
+	Statistic::FixCacheForHighDPIChartWidget(content);
 	if (!state->pendingCount) {
 		++state->pendingCount;
 		singlePendingDone();
@@ -579,7 +580,7 @@ void FillLoading(
 		: u"stats"_q;
 	auto icon = ::Settings::CreateLottieIcon(
 		content,
-		{ .name = iconName, .sizeOverride = Size(st::changePhoneIconSize) },
+		{ .name = iconName, .sizeOverride = st::normalBoxLottieSize },
 		st::settingsBlockedListIconPadding);
 
 	(

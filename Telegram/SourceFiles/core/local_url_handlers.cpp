@@ -7,7 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "core/local_url_handlers.h"
 
-#include "api/api_authorizations.h"
+#include "core/deep_links/deep_links_router.h"
 #include "api/api_confirm_phone.h"
 #include "api/api_chat_filters.h"
 #include "api/api_chat_invite.h"
@@ -34,6 +34,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/sticker_set_box.h"
 #include "boxes/star_gift_box.h"
 #include "boxes/language_box.h"
+#include "boxes/url_auth_box.h"
 #include "passport/passport_form_controller.h"
 #include "ui/text/text_utilities.h"
 #include "ui/toast/toast.h"
@@ -42,6 +43,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_birthday.h"
 #include "data/data_channel.h"
 #include "data/data_document.h"
+#include "data/data_poll.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
 #include "media/player/media_player_instance.h"
@@ -52,17 +54,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_peer_menu.h"
 #include "window/themes/window_theme_editor_box.h" // GenerateSlug.
 #include "payments/payments_checkout_process.h"
-#include "settings/settings_active_sessions.h"
-#include "settings/settings_credits.h"
+#include "settings/sections/settings_credits.h"
 #include "settings/settings_credits_graphics.h"
-#include "settings/settings_information.h"
-#include "settings/settings_global_ttl.h"
-#include "settings/settings_folders.h"
-#include "settings/settings_main.h"
 #include "settings/settings_privacy_controllers.h"
-#include "settings/settings_privacy_security.h"
-#include "settings/settings_chat.h"
-#include "settings/settings_premium.h"
+#include "settings/sections/settings_premium.h"
 #include "storage/storage_account.h"
 #include "mainwidget.h"
 #include "main/main_account.h"
@@ -154,10 +149,10 @@ void PersonalChannelController::prepare() {
 		}
 		if (!delegate()->peerListFullRowsCount()) {
 			auto none = rpl::combine(
-				tr::lng_settings_channel_no_yet(Ui::Text::WithEntities),
+				tr::lng_settings_channel_no_yet(tr::marked),
 				tr::lng_settings_channel_start()
 			) | rpl::map([](TextWithEntities &&text, const QString &link) {
-				return text.append('\n').append(Ui::Text::Link(link));
+				return text.append('\n').append(tr::link(link));
 			});
 			auto label = object_ptr<Ui::FlatLabel>(
 				nullptr,
@@ -231,7 +226,7 @@ void SavePersonalChannel(
 			&& self->personalChannelMessageId() != messageId)) {
 		self->setPersonalChannel(channelId, messageId);
 		self->session().api().request(MTPaccount_UpdatePersonalChannel(
-			channel ? channel->inputChannel : MTP_inputChannelEmpty()
+			channel ? channel->inputChannel() : MTP_inputChannelEmpty()
 		)).done(crl::guard(window, [=] {
 			window->showToast((channel
 				? tr::lng_settings_channel_saved
@@ -431,6 +426,8 @@ bool ApplyMtprotoProxy(
 	auto params = url_parse_params(
 		match->captured(1),
 		qthelp::UrlParamNameTransform::ToLower);
+	auto &secret = params[u"secret"_q];
+	secret.replace('+', '-').replace('/', '_');
 	ProxiesBoxController::ShowApplyConfirmation(
 		controller,
 		MTP::ProxyData::Type::Mtproto,
@@ -503,7 +500,9 @@ bool ShowWallPaper(
 		const QString &value) {
 	auto result = ChatAdminRights();
 	for (const auto &element : value.split(QRegularExpression(u"[+ ]"_q))) {
-		if (element == u"change_info"_q) {
+		if (element.isEmpty()) {
+			continue;
+		} else if (element == u"change_info"_q) {
 			result |= ChatAdminRight::ChangeInfo;
 		} else if (element == u"post_messages"_q) {
 			result |= ChatAdminRight::PostMessages;
@@ -521,6 +520,12 @@ bool ShowWallPaper(
 			result |= ChatAdminRight::PinMessages;
 		} else if (element == u"promote_members"_q) {
 			result |= ChatAdminRight::AddAdmins;
+		} else if (element == u"post_stories"_q) {
+			result |= ChatAdminRight::PostStories;
+		} else if (element == u"edit_stories"_q) {
+			result |= ChatAdminRight::EditStories;
+		} else if (element == u"delete_stories"_q) {
+			result |= ChatAdminRight::DeleteStories;
 		} else if (element == u"manage_video_chats"_q) {
 			result |= ChatAdminRight::ManageCall;
 		} else if (element == u"manage_direct_messages"_q) {
@@ -530,7 +535,7 @@ bool ShowWallPaper(
 		} else if (element == u"manage_chat"_q) {
 			result |= ChatAdminRight::Other;
 		} else {
-			return {};
+			continue;
 		}
 	}
 	return result;
@@ -576,6 +581,17 @@ bool ResolveUsernameOrPhone(
 			: selfId;
 		ResolveGiftCode(controller, appnameParam, fromId, toId);
 		return true;
+	}
+	if (domainParam == u"oauth"_q) {
+		const auto token = params.value(u"startapp"_q);
+		if (!token.isEmpty()) {
+			UrlAuthBox::ActivateUrl(
+				controller->uiShow(),
+				&controller->session(),
+				u"tg://resolve?domain=oauth&startapp="_q + token,
+				context);
+			return true;
+		}
 	}
 
 	// Fix t.me/s/username links.
@@ -635,7 +651,6 @@ bool ResolveUsernameOrPhone(
 		post = postId;
 	}
 	const auto storyParam = params.value(u"story"_q);
-	const auto storyId = storyParam.toInt();
 	const auto storyAlbumParam = params.value(u"album"_q);
 	const auto storyAlbumId = storyAlbumParam.toInt();
 	const auto giftCollectionParam = params.value(u"collection"_q);
@@ -649,6 +664,8 @@ bool ResolveUsernameOrPhone(
 	const auto threadId = topicId ? topicId : threadParam.toInt();
 	const auto gameParam = params.value(u"game"_q);
 	const auto videot = params.value(u"t"_q);
+	const auto pollOption = PollOptionFromLink(
+		params.value(u"option"_q));
 	if (params.contains(u"direct"_q)) {
 		resolveType = ResolveType::ChannelDirect;
 	}
@@ -667,7 +684,8 @@ bool ResolveUsernameOrPhone(
 		.usernameOrId = domain,
 		.phone = phone,
 		.messageId = post,
-		.storyId = storyId,
+		.pollOption = pollOption,
+		.storyParam = storyParam,
 		.storyAlbumId = storyAlbumId,
 		.giftCollectionId = giftCollectionId,
 		.videoTimestamp = (!videot.isEmpty()
@@ -738,6 +756,8 @@ bool ResolvePrivatePost(
 	const auto topicId = topicParam.toInt();
 	const auto threadParam = params.value(u"thread"_q);
 	const auto threadId = topicId ? topicId : threadParam.toInt();
+	const auto pollOption = PollOptionFromLink(
+		params.value(u"option"_q));
 	if (!channelId || (msgId && !IsServerMsgId(msgId))) {
 		return false;
 	}
@@ -745,6 +765,7 @@ bool ResolvePrivatePost(
 	controller->showPeerByLink(Window::PeerByLinkInfo{
 		.usernameOrId = channelId,
 		.messageId = msgId,
+		.pollOption = pollOption,
 		.repliesInfo = commentId
 			? Window::RepliesByLinkInfo{
 				Window::CommentId{ commentId }
@@ -758,50 +779,6 @@ bool ResolvePrivatePost(
 		.clickFromBotWebviewContext = my.botWebviewContext,
 	});
 	controller->window().activate();
-	return true;
-}
-
-bool ResolveSettings(
-		Window::SessionController *controller,
-		const Match &match,
-		const QVariant &context) {
-	const auto section = match->captured(1).mid(1).toLower();
-	const auto type = [&]() -> std::optional<::Settings::Type> {
-		if (section == u"language"_q) {
-			ShowLanguagesBox(controller);
-			return {};
-		} else if (section == u"phone_privacy"_q) {
-			ShowPhonePrivacyBox(controller);
-			return {};
-		} else if (section == u"devices"_q) {
-			return ::Settings::Sessions::Id();
-		} else if (section == u"folders"_q) {
-			return ::Settings::Folders::Id();
-		} else if (section == u"privacy"_q) {
-			return ::Settings::PrivacySecurity::Id();
-		} else if (section == u"themes"_q) {
-			return ::Settings::Chat::Id();
-		} else if (section == u"change_number"_q) {
-			controller->show(
-				Ui::MakeInformBox(tr::lng_change_phone_error()));
-			return {};
-		} else if (section == u"auto_delete"_q) {
-			return ::Settings::GlobalTTLId();
-		} else if (section == u"information"_q) {
-			return ::Settings::Information::Id();
-		}
-		return ::Settings::Main::Id();
-	}();
-
-	if (type.has_value()) {
-		if (!controller) {
-			return false;
-		} else if (*type == ::Settings::Sessions::Id()) {
-			controller->session().api().authorizations().reload();
-		}
-		controller->showSettings(*type);
-		controller->window().activate();
-	}
 	return true;
 }
 
@@ -1001,7 +978,7 @@ bool ShowEditBirthday(
 		const auto save = [=](Data::Birthday result) {
 			using BFlag = MTPDbirthday::Flag;
 			controller->session().api().request(MTPusers_SuggestBirthday(
-				targetUser->inputUser,
+				targetUser->inputUser(),
 				MTP_birthday(
 					MTP_flags(result.year() ? BFlag::f_year : BFlag()),
 					MTP_int(result.day()),
@@ -1093,14 +1070,12 @@ bool ShowEditBirthday(
 				std::move(isExactlyContacts),
 				tr::lng_settings_birthday_contacts(
 					lt_link,
-					tr::lng_settings_birthday_contacts_link(
-					) | Ui::Text::ToLink(link),
-					Ui::Text::WithEntities),
+					tr::lng_settings_birthday_contacts_link(tr::url(link)),
+					tr::marked),
 				tr::lng_settings_birthday_about(
 					lt_link,
-					tr::lng_settings_birthday_about_link(
-					) | Ui::Text::ToLink(link),
-					Ui::Text::WithEntities)));
+					tr::lng_settings_birthday_about_link(tr::url(link)),
+					tr::marked)));
 		}));
 
 	}
@@ -1152,6 +1127,22 @@ bool ShowEditPersonalChannel(
 	if (!controller) {
 		return false;
 	} else if (controller->showFrozenError()) {
+		return true;
+	}
+	const auto maybePeerId = match->captured(1);
+	const auto maybeRemove = match->captured(2);
+
+	if (!maybePeerId.isEmpty()) {
+		if (const auto peerId = PeerId(maybePeerId.toULongLong())) {
+			if (const auto peer = controller->session().data().peer(peerId)) {
+				if (const auto channel = peer->asChannel()) {
+					SavePersonalChannel(controller, channel);
+					return true;
+				}
+			}
+		}
+	} else if (!maybeRemove.isEmpty()) {
+		SavePersonalChannel(controller, nullptr);
 		return true;
 	}
 
@@ -1266,7 +1257,7 @@ bool EditPaidMessagesFee(
 			ShowEditChatPermissions(controller, channel);
 		}
 	} else {
-		controller->show(Box(EditMessagesPrivacyBox, controller));
+		controller->show(Box(EditMessagesPrivacyBox, controller, QString()));
 	}
 	return true;
 }
@@ -1287,6 +1278,20 @@ bool ShowCommonGroups(
 					user,
 					Info::Section::Type::CommonGroups));
 		}
+	}
+	return true;
+}
+
+bool EditPeer(
+		Window::SessionController *controller,
+		const Match &match,
+		const QVariant &context) {
+	if (!controller) {
+		return false;
+	}
+	const auto peerId = PeerId(match->captured(1).toULongLong());
+	if (const auto peer = controller->session().data().peerLoaded(peerId)) {
+		controller->showEditPeerBox(peer);
 	}
 	return true;
 }
@@ -1589,10 +1594,10 @@ bool ResolveTopUp(
 					.text = tr::lng_credits_enough(
 						tr::now,
 						lt_link,
-						Ui::Text::Link(
-							Ui::Text::Bold(
+						tr::link(
+							tr::bold(
 								tr::lng_credits_enough_link(tr::now))),
-						Ui::Text::RichLangValue),
+						tr::rich),
 					.filter = filter,
 					.duration = 4 * crl::time(1000),
 				});
@@ -1641,6 +1646,21 @@ bool ResolveUniqueGift(
 	return true;
 }
 
+bool ResolveGiftAuction(
+		Window::SessionController *controller,
+		const Match &match,
+		const QVariant &context) {
+	if (!controller) {
+		return false;
+	}
+	const auto slug = match->captured(1);
+	if (slug.isEmpty()) {
+		return false;
+	}
+	controller->showStarGiftAuction(slug);
+	return true;
+}
+
 bool ResolveConferenceCall(
 		Window::SessionController *controller,
 		const Match &match,
@@ -1682,7 +1702,35 @@ bool ResolveTonSettings(
 	return true;
 }
 
+bool ResolveOAuth(
+		Window::SessionController *controller,
+		const Match &match,
+		const QVariant &context) {
+	if (!controller) {
+		return false;
+	}
+	const auto params = url_parse_params(
+		match->captured(1),
+		qthelp::UrlParamNameTransform::ToLower);
+	const auto token = params.value(u"token"_q);
+	if (token.isEmpty()) {
+		return false;
+	}
+	UrlAuthBox::ActivateUrl(
+		controller->uiShow(),
+		&controller->session(),
+		u"tg://oauth?token="_q + token,
+		context);
+	return true;
+}
+
 } // namespace
+
+bool TryRouterForLocalUrl(
+		Window::SessionController *controller,
+		const QString &command) {
+	return DeepLinks::Router::Instance().tryHandle(controller, command);
+}
 
 const std::vector<LocalUrlHandler> &LocalUrlHandlers() {
 	static auto Result = std::vector<LocalUrlHandler>{
@@ -1739,10 +1787,6 @@ const std::vector<LocalUrlHandler> &LocalUrlHandlers() {
 			ResolvePrivatePost
 		},
 		{
-			u"^settings(/language|/devices|/folders|/privacy|/themes|/change_number|/auto_delete|/information|/edit_profile|/phone_privacy)?$"_q,
-			ResolveSettings
-		},
-		{
 			u"^test_chat_theme/?\\?(.+)(#|$)"_q,
 			ResolveTestChatTheme,
 		},
@@ -1787,6 +1831,10 @@ const std::vector<LocalUrlHandler> &LocalUrlHandlers() {
 			ResolveUniqueGift
 		},
 		{
+			u"^stargift_auction/?\\?slug=([a-zA-Z0-9\\.\\_\\-]+)(&|$)"_q,
+			ResolveGiftAuction
+		},
+		{
 			u"^call/?\\?slug=([a-zA-Z0-9\\.\\_\\-]+)(&|$)"_q,
 			ResolveConferenceCall
 		},
@@ -1797,6 +1845,10 @@ const std::vector<LocalUrlHandler> &LocalUrlHandlers() {
 		{
 			u"^ton/?(^\\?.*)?(#|$)"_q,
 			ResolveTonSettings
+		},
+		{
+			u"^oauth/?\\?(.+)(#|$)"_q,
+			ResolveOAuth
 		},
 		{
 			u"^([^\\?]+)(\\?|#|$)"_q,
@@ -1837,7 +1889,7 @@ const std::vector<LocalUrlHandler> &InternalUrlHandlers() {
 			ShowEditBirthdayPrivacy,
 		},
 		{
-			u"^edit_personal_channel$"_q,
+			u"^edit_personal_channel(?::(?:(\\d{2,})|(remove)))?$"_q,
 			ShowEditPersonalChannel,
 		},
 		{
@@ -1863,6 +1915,10 @@ const std::vector<LocalUrlHandler> &InternalUrlHandlers() {
 		{
 			u"^common_groups/([0-9]+)$"_q,
 			ShowCommonGroups,
+		},
+		{
+			u"^edit_peer/([0-9]+)$"_q,
+			EditPeer,
 		},
 		{
 			u"^stars_examples$"_q,
@@ -1958,9 +2014,24 @@ QString TryConvertUrlToLocal(QString url) {
 		} else if (const auto nftMatch = regex_match(u"^nft/([a-zA-Z0-9\\.\\_\\-]+)(\\?|$)"_q, query, matchOptions)) {
 			const auto slug = nftMatch->captured(1);
 			return u"tg://nft?slug="_q + slug;
+		} else if (const auto auctionMatch = regex_match(u"^auction/([a-zA-Z0-9\\.\\_\\-]+)(\\?|$)"_q, query, matchOptions)) {
+			const auto slug = auctionMatch->captured(1);
+			return u"tg://stargift_auction?slug="_q + slug;
 		} else if (const auto callMatch = regex_match(u"^call/([a-zA-Z0-9\\.\\_\\-]+)(\\?|$)"_q, query, matchOptions)) {
 			const auto slug = callMatch->captured(1);
 			return u"tg://call?slug="_q + slug;
+		} else if (const auto newbotMatch = regex_match(u"^newbot/([a-zA-Z0-9\\.\\_]+)(/([a-zA-Z0-9\\.\\_]*))?(/?\\?(.+))?$"_q, query, matchOptions)) {
+			const auto manager = newbotMatch->captured(1);
+			const auto username = newbotMatch->captured(3);
+			const auto params = newbotMatch->captured(5);
+			auto result = u"tg://newbot?manager="_q + url_encode(manager);
+			if (!username.isEmpty()) {
+				result += u"&username="_q + url_encode(username);
+			}
+			if (!params.isEmpty()) {
+				result += '&' + params;
+			}
+			return result;
 		} else if (const auto privateMatch = regex_match(u"^"
 			"c/(\\-?\\d+)"
 			"("
@@ -1990,7 +2061,7 @@ QString TryConvertUrlToLocal(QString url) {
 				"/?$|"
 				"/[a-zA-Z0-9\\.\\_\\-]+/?(\\?|$)|"
 				"/\\d+/?(\\?|$)|"
-				"/s/\\d+/?(\\?|$)|"
+				"/s/(\\d+|live)/?(\\?|$)|"
 				"/a/\\d+/?(\\?|$)|"
 				"/c/\\d+/?(\\?|$)|"
 				"/\\d+/\\d+/?(\\?|$)"
@@ -2013,7 +2084,7 @@ QString TryConvertUrlToLocal(QString url) {
 				added = u"&topic=%1&post=%2"_q.arg(threadPostMatch->captured(1), threadPostMatch->captured(2));
 			} else if (const auto postMatch = regex_match(u"^/(\\d+)(/?\\?|/?$)"_q, usernameMatch->captured(2))) {
 				added = u"&post="_q + postMatch->captured(1);
-			} else if (const auto storyMatch = regex_match(u"^/s/(\\d+)(/?\\?|/?$)"_q, usernameMatch->captured(2))) {
+			} else if (const auto storyMatch = regex_match(u"^/s/(\\d+|live)(/?\\?|/?$)"_q, usernameMatch->captured(2))) {
 				added = u"&story="_q + storyMatch->captured(1);
 			} else if (const auto albumMatch = regex_match(u"^/a/(\\d+)(/?\\?|/?$)"_q, usernameMatch->captured(2))) {
 				added = u"&album="_q + albumMatch->captured(1);
@@ -2028,7 +2099,7 @@ QString TryConvertUrlToLocal(QString url) {
 	return url;
 }
 
-bool InternalPassportLink(const QString &url) {
+bool InternalPassportOrOAuthLink(const QString &url) {
 	const auto urlTrimmed = url.trimmed();
 	if (!urlTrimmed.startsWith(u"tg://"_q, Qt::CaseInsensitive)) {
 		return false;
@@ -2041,23 +2112,33 @@ bool InternalPassportLink(const QString &url) {
 		u"^passport/?\\?(.+)(#|$)"_q,
 		command,
 		matchOptions);
+	const auto oauthMatch = regex_match(
+		u"^oauth/?\\?(.+)(#|$)"_q,
+		command,
+		matchOptions);
 	const auto usernameMatch = regex_match(
 		u"^resolve/?\\?(.+)(#|$)"_q,
 		command,
 		matchOptions);
-	const auto usernameValue = usernameMatch->hasMatch()
-		? url_parse_params(
+	auto usernameValue = QString();
+	if (usernameMatch->hasMatch()) {
+		const auto params = url_parse_params(
 			usernameMatch->captured(1),
-			UrlParamNameTransform::ToLower).value(u"domain"_q)
-		: QString();
+			UrlParamNameTransform::ToLower);
+		usernameValue = params.value(u"domain"_q);
+	}
 	const auto authLegacy = (usernameValue == u"telegrampassport"_q);
-	return authMatch->hasMatch() || authLegacy;
+	const auto oauthLegacy = (usernameValue == u"oauth"_q);
+	return authMatch->hasMatch()
+		|| oauthMatch->hasMatch()
+		|| authLegacy
+		|| oauthLegacy;
 }
 
 bool StartUrlRequiresActivate(const QString &url) {
 	return Core::App().passcodeLocked()
 		? true
-		: !InternalPassportLink(url);
+		: !InternalPassportOrOAuthLink(url);
 }
 
 void ResolveAndShowUniqueGift(
@@ -2092,6 +2173,8 @@ void ResolveAndShowUniqueGift(
 		const auto &data = result.data();
 		session->data().processUsers(data.vusers());
 		if (const auto gift = Api::FromTL(session, data.vgift())) {
+			Core::App().hideMediaView();
+
 			using namespace ::Settings;
 			show->show(Box(
 				GlobalStarGiftBox,
@@ -2099,10 +2182,13 @@ void ResolveAndShowUniqueGift(
 				*gift,
 				StarGiftResaleInfo(),
 				st));
+			show->activate();
 		}
 	}).fail([=](const MTP::Error &error) {
 		clear();
-		show->showToast(u"Error: "_q + error.type());
+		if (!Ui::ShowGiftErrorToast(show, error)) {
+			show->showToast(u"Error: "_q + error.type());
+		}
 	}).send();
 }
 

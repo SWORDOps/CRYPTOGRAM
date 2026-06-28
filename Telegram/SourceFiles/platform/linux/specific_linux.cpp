@@ -55,11 +55,10 @@ namespace GObject = gi::repository::GObject;
 using namespace Platform;
 
 void PortalAutostart(bool enabled, Fn<void(bool)> done) {
-	auto donePtr = std::make_shared<Fn<void(bool)>>(std::move(done));
 	const auto executable = ExecutablePathForShortcuts();
 	if (executable.isEmpty()) {
-		if (donePtr && *donePtr) {
-			(*donePtr)(false);
+		if (done) {
+			done(false);
 		}
 		return;
 	}
@@ -69,16 +68,16 @@ void PortalAutostart(bool enabled, Fn<void(bool)> done) {
 		Gio::DBusProxyFlags::NONE_,
 		base::Platform::XDP::kService,
 		base::Platform::XDP::kObjectPath,
-		[=](gi::repository::GObject::Object, Gio::AsyncResult res) {
+		[=](GObject::Object, Gio::AsyncResult res) {
 			auto proxy = XdpBackground::BackgroundProxy::new_for_bus_finish(
 				res);
 
 			if (!proxy) {
-				if (donePtr && *donePtr) {
+				if (done) {
 					Gio::DBusErrorNS_::strip_remote_error(proxy.error());
 					LOG(("Portal Autostart Error: %1").arg(
 						proxy.error().message_().c_str()));
-					(*donePtr)(false);
+					done(false);
 				}
 				return;
 			}
@@ -122,17 +121,17 @@ void PortalAutostart(bool enabled, Fn<void(bool)> done) {
 					+ '/'
 					+ handleToken,
 				nullptr,
-				[=](gi::repository::GObject::Object, Gio::AsyncResult res) mutable {
+				[=](GObject::Object, Gio::AsyncResult res) mutable {
 					auto requestProxy = XdpRequest::RequestProxy::new_finish(
 						res);
 
 					if (!requestProxy) {
-						if (donePtr && *donePtr) {
+						if (done) {
 							Gio::DBusErrorNS_::strip_remote_error(
 								requestProxy.error());
 							LOG(("Portal Autostart Error: %1").arg(
 								requestProxy.error().message_().c_str()));
-							(*donePtr)(false);
+							done(false);
 						}
 						return;
 					}
@@ -148,13 +147,13 @@ void PortalAutostart(bool enabled, Fn<void(bool)> done) {
 							(void)window; // don't destroy until finish
 
 							if (response) {
-								if (donePtr && *donePtr) {
+								if (done) {
 									LOG(("Portal Autostart Error: "
 										"Request denied"));
-									(*donePtr)(false);
+									done(false);
 								}
-							} else if (donePtr && *donePtr) {
-								(*donePtr)(enabled);
+							} else if (done) {
+								done(enabled);
 							}
 
 							request.disconnect(*signalId);
@@ -197,7 +196,7 @@ void PortalAutostart(bool enabled, Fn<void(bool)> done) {
 								GLib::Variant::new_variant(
 									GLib::Variant::new_boolean(false))),
 						}),
-						[=](gi::repository::GObject::Object, Gio::AsyncResult res) mutable {
+						[=](GObject::Object, Gio::AsyncResult res) mutable {
 							auto &sandbox = Core::Sandbox::Instance();
 							sandbox.customEnterFromEventLoop([&] {
 								const auto result =
@@ -205,13 +204,13 @@ void PortalAutostart(bool enabled, Fn<void(bool)> done) {
 										res);
 
 								if (!result) {
-									if (donePtr && *donePtr) {
+									if (done) {
 										const auto &error = result.error();
 										Gio::DBusErrorNS_::strip_remote_error(
 											error);
 										LOG(("Portal Autostart Error: %1").arg(
 											error.message_().c_str()));
-										(*donePtr)(false);
+										done(false);
 									}
 
 									request.disconnect(*signalId);
@@ -450,7 +449,7 @@ bool GenerateServiceFile(bool silent = false) {
 		Gio::DBusProxyFlags::NONE_,
 		base::Platform::DBus::kService,
 		base::Platform::DBus::kObjectPath,
-		[=](gi::repository::GObject::Object, Gio::AsyncResult res) {
+		[=](GObject::Object, Gio::AsyncResult res) {
 			auto interface = XdgDBus::DBus(
 				XdgDBus::DBusProxy::new_for_bus_finish(res, nullptr));
 
@@ -519,12 +518,61 @@ void InstallLauncher() {
 [[nodiscard]] QByteArray HashForSocketPath() {
 	constexpr auto kHashForSocketPathLength = 24;
 
-	const auto binary = openssl::Sha256(
+	const auto binary = openssl::Sha384(
 		bytes::make_span(Core::Launcher::Instance().instanceHash()));
 	const auto base64 = QByteArray(
 		reinterpret_cast<const char*>(binary.data()),
 		binary.size()).toBase64(QByteArray::Base64UrlEncoding);
 	return base64.mid(0, kHashForSocketPathLength);
+}
+
+void AppInfoCheckScheme(
+		const std::string &scheme,
+		Fn<void(Gio::AppInfo, Fn<void()>)> callback,
+		Fn<void()> fail) {
+	// TODO: use get_default_for_uri_scheme_async once we can use GLib 2.74
+	if (auto appInfo = Gio::AppInfo::get_default_for_uri_scheme(scheme)) {
+		callback(appInfo, fail);
+		return;
+	}
+	fail();
+}
+
+void PortalCheckScheme(
+		const std::string &scheme,
+		Fn<void(Fn<void()>)> callback,
+		Fn<void()> fail) {
+	XdpOpenURI::OpenURIProxy::new_for_bus(
+		Gio::BusType::SESSION_,
+		Gio::DBusProxyFlags::NONE_,
+		base::Platform::XDP::kService,
+		base::Platform::XDP::kObjectPath,
+		[=](GObject::Object, Gio::AsyncResult res) {
+			auto interface = XdpOpenURI::OpenURI(
+				XdpOpenURI::OpenURIProxy::new_for_bus_finish(res, nullptr));
+
+			if (!interface) {
+				fail();
+				return;
+			}
+
+			interface.call_scheme_supported(
+				scheme,
+				GLib::Variant::new_array(
+					GLib::VariantType::new_("{sv}"),
+					{}),
+				[=](GObject::Object, Gio::AsyncResult res) mutable {
+					const auto result
+						= interface.call_scheme_supported_finish(res);
+
+					if (!result || !std::get<1>(*result)) {
+						fail();
+						return;
+					}
+
+					callback(fail);
+				});
+		});
 }
 
 } // namespace
@@ -784,57 +832,26 @@ QString ApplicationIconName() {
 }
 
 void LaunchMaps(const Data::LocationPoint &point, Fn<void()> fail) {
-	auto failPtr = std::make_shared<Fn<void()>>(std::move(fail));
-	if (auto appInfo = Gio::AppInfo::get_default_for_uri_scheme("geo")) {
-		if (appInfo.launch_uris(
-				{
-					std::format(
-						"geo:{},{}",
-						point.latAsString().toStdString(),
-						point.lonAsString().toStdString()),
-				},
+	const auto url = QUrl(
+		u"geo:%1,%2"_q.arg(point.latAsString(), point.lonAsString()));
+
+	AppInfoCheckScheme(url.scheme().toStdString(), [=](
+			Gio::AppInfo appInfo,
+			Fn<void()> fail) {
+		// TODO: use launch_uris_async once we can use GLib 2.60
+		if (!appInfo.launch_uris(
+				{ url.toString().toStdString() },
 				base::Platform::AppLaunchContext(),
 				nullptr)) {
-			return;
+			fail();
 		}
-	}
-
-	XdpOpenURI::OpenURIProxy::new_for_bus(
-		Gio::BusType::SESSION_,
-		Gio::DBusProxyFlags::NONE_,
-		base::Platform::XDP::kService,
-		base::Platform::XDP::kObjectPath,
-		[=](gi::repository::GObject::Object, Gio::AsyncResult res) {
-			auto interface = XdpOpenURI::OpenURI(
-				XdpOpenURI::OpenURIProxy::new_for_bus_finish(res, nullptr));
-
-			if (!interface) {
-				if (failPtr && *failPtr) (*failPtr)();
-				return;
+	}, [=] {
+		PortalCheckScheme(url.scheme().toStdString(), [=](Fn<void()> fail) {
+			if (!QDesktopServices::openUrl(url)) {
+				fail();
 			}
-
-			interface.call_scheme_supported(
-				"geo",
-				GLib::Variant::new_array(
-					GLib::VariantType::new_("{sv}"),
-					{}),
-				[=](gi::repository::GObject::Object, Gio::AsyncResult res) mutable {
-					const auto result
-						= interface.call_scheme_supported_finish(res);
-
-					if (!result || !std::get<1>(*result)) {
-						if (failPtr && *failPtr) (*failPtr)();
-						return;
-					}
-
-					if (!QDesktopServices::openUrl(
-						u"geo:%1,%2"_q.arg(
-							point.latAsString(),
-							point.lonAsString()))) {
-						if (failPtr && *failPtr) (*failPtr)();
-					}
-				});
-		});
+		}, fail);
+	});
 }
 
 namespace ThirdParty {

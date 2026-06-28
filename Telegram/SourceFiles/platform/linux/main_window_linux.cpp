@@ -228,7 +228,7 @@ void MainWindow::createGlobalMenu() {
 		});
 
 	auto quit = file->addAction(
-		tr::lng_mac_menu_quit_telegram(tr::now, lt_telegram, u"64Gram"_q),
+		tr::lng_mac_menu_quit_telegram(tr::now, lt_telegram, u"CRYPTOGRAM"_q),
 		this,
 		[=] { quitFromTray(); },
 		QKeySequence::Quit);
@@ -374,7 +374,6 @@ void MainWindow::createGlobalMenu() {
 		QKeySequence(Qt::ControlModifier | Qt::Key_Comma));
 
 	prefs->setMenuRole(QAction::PreferencesRole);
-	prefs->setShortcutContext(Qt::WidgetShortcut);
 
 	auto tools = psMainMenu->addMenu(tr::lng_linux_menu_tools(tr::now));
 
@@ -428,7 +427,7 @@ void MainWindow::createGlobalMenu() {
 		tr::lng_mac_menu_about_telegram(
 			tr::now,
 			lt_telegram,
-			u"64Gram"_q),
+			u"CRYPTOGRAM"_q),
 		[=] {
 			ensureWindowShown();
 			controller().show(Box(AboutBox));

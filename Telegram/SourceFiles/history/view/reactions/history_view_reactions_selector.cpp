@@ -359,10 +359,11 @@ int Selector::effectPreviewHeight() const {
 	if (_listMode != ChatHelpers::EmojiListMode::MessageEffects) {
 		return 0;
 	}
-	return 0
+	const auto extend = Ui::BoxShadow::ExtendFor(st::previewMenu.shadow);
+	return extend.top()
 		+ HistoryView::Sticker::MessageEffectSize().height()
 		+ st::effectPreviewSend.height
-		+ 0;
+		+ extend.bottom();
 }
 
 QMargins Selector::marginsForShadow() const {
@@ -802,7 +803,7 @@ void Selector::paintNonTransparentExpandRect(
 		inner.y() + inner.height(),
 		inner.width(),
 		st::lineWidth,
-		st::shadowFg);
+		st::defaultPopupMenu.shadowFallback);
 }
 
 void Selector::paintExpanded(QPainter &p) {
@@ -918,8 +919,17 @@ void Selector::mousePressEvent(QMouseEvent *e) {
 }
 
 void Selector::mouseReleaseEvent(QMouseEvent *e) {
-	if (!_strip || _pressed != lookupSelectedIndex(e->pos())) {
+	if (!_strip) {
 		return;
+	}
+	if (_pressed != lookupSelectedIndex(e->pos())) {
+#ifdef Q_OS_UNIX
+		if (!_over || e->button() != Qt::RightButton) {
+			return;
+		}
+#else
+		return;
+#endif // !Q_OS_UNIX
 	}
 	_pressed = -1;
 	const auto selected = _strip->selected();
@@ -1238,7 +1248,7 @@ bool AdjustMenuGeometryForSelector(
 		selector->effectPreviewHeight());
 	const auto willBeHeightWithoutBottomPadding = fullTop
 		+ height
-		- 0;
+		- Ui::BoxShadow::ExtendFor(menu->st().shadow).top();
 	const auto additionalPaddingBottom
 		= (willBeHeightWithoutBottomPadding >= minimalHeight
 			? 0
@@ -1491,10 +1501,10 @@ TextWithEntities ItemReactionsAbout(not_null<HistoryItem*> item) {
 		: tr::lng_subscribe_tag_about(
 			tr::now,
 			lt_link,
-			Ui::Text::Link(
+			tr::link(
 				tr::lng_subscribe_tag_link(tr::now),
 				u"internal:about_tags"_q),
-			Ui::Text::WithEntities);
+			tr::marked);
 }
 
 } // namespace HistoryView::Reactions

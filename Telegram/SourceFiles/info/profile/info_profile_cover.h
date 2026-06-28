@@ -11,20 +11,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "info/profile/info_profile_trust_flag.h"
 #include "ui/wrap/padding_wrap.h"
 #include "ui/abstract_button.h"
-#include "base/timer.h"
 
 namespace Window {
 class SessionController;
 } // namespace Window
-
-namespace Ui {
-class UserpicButton;
-class FlatLabel;
-template <typename Widget>
-class SlideWrap;
-class RoundButton;
-class StarsRating;
-} // namespace Ui
 
 namespace HistoryView {
 class StickerPlayer;
@@ -34,20 +24,9 @@ namespace Data {
 class ForumTopic;
 } // namespace Data
 
-namespace Info {
-class Controller;
-class Section;
-} // namespace Info
-
-namespace style {
-struct InfoProfileCover;
-} // namespace style
-
 namespace Info::Profile {
 
-class EmojiStatusPanel;
-class MusicButton;
-class Badge;
+[[nodiscard]] QMargins LargeCustomEmojiMargins();
 
 class TopicIconView final {
 public:
@@ -61,7 +40,10 @@ public:
 		Fn<void()> update,
 		const style::color &generalIconFg);
 
-	void paintInRect(QPainter &p, QRect rect);
+	void paintInRect(
+		QPainter &p,
+		QRect rect,
+		QColor textColor = QColor(0, 0, 0, 0));
 
 private:
 	using StickerPlayer = HistoryView::StickerPlayer;

@@ -20,6 +20,10 @@ namespace ChatHelpers {
 enum class SelectorTab;
 } // namespace ChatHelpers
 
+namespace Data {
+enum class SetupEmailState;
+} // namespace Data
+
 namespace Main {
 
 class SessionSettings final {
@@ -120,8 +124,8 @@ public:
 		PeerId monoforumPeerId,
 		MsgId msgId);
 
-	[[nodiscard]] bool verticalSubsectionTabs(PeerId peerId) const;
-	void setVerticalSubsectionTabs(PeerId peerId, bool vertical);
+	[[nodiscard]] qint32 subsectionTabsMode(PeerId peerId) const;
+	void setSubsectionTabsMode(PeerId peerId, qint32 mode);
 
 	[[nodiscard]] bool dialogsFiltersEnabled() const {
 		return _dialogsFiltersEnabled;
@@ -132,6 +136,10 @@ public:
 
 	[[nodiscard]] bool photoEditorHintShown() const;
 	void incrementPhotoEditorHintShown();
+
+	[[nodiscard]] bool shouldShowDisableSharingBox() const;
+	void incrementDisableSharingBoxShown();
+	void resetDisableSharingBoxShown();
 
 	[[nodiscard]] std::vector<TimeId> mutePeriods() const;
 	void addMutePeriod(TimeId period);
@@ -169,9 +177,27 @@ public:
 	void setUnreviewed(std::vector<Data::UnreviewedAuth> auths);
 	[[nodiscard]] const std::vector<Data::UnreviewedAuth> &unreviewed() const;
 
+	void setSetupEmailState(Data::SetupEmailState state);
+	[[nodiscard]] Data::SetupEmailState setupEmailState() const;
+
+	void setModerateCommonGroups(std::vector<int32> groups) {
+		_moderateCommonGroups = std::move(groups);
+	}
+	[[nodiscard]] const std::vector<int32> &moderateCommonGroups() const {
+		return _moderateCommonGroups;
+	}
+
+	void setPhoneNumberHidden(bool hidden) {
+		_phoneNumberHidden = hidden;
+	}
+	[[nodiscard]] bool phoneNumberHidden() const {
+		return _phoneNumberHidden;
+	}
+
 private:
 	static constexpr auto kDefaultSupportChatsLimitSlice = 7 * 24 * 60 * 60;
 	static constexpr auto kPhotoEditorHintMaxShowsCount = 5;
+	static constexpr auto kDisableSharingBoxMaxShowsCount = 3;
 
 	struct ThreadId {
 		PeerId peerId;
@@ -192,11 +218,12 @@ private:
 	rpl::variable<bool> _archiveInMainMenu = false;
 	rpl::variable<bool> _skipArchiveInSearch = false;
 	base::flat_map<ThreadId, MsgId> _hiddenPinnedMessages;
-	base::flat_set<PeerId> _verticalSubsectionTabs;
+	base::flat_map<PeerId, qint32> _subsectionTabsModes;
 	base::flat_map<Data::DefaultNotify, ushort> _ringtoneDefaultVolumes;
 	base::flat_map<ThreadId, ushort> _ringtoneVolumes;
 	bool _dialogsFiltersEnabled = false;
 	int _photoEditorHintShowsCount = 0;
+	int _disableSharingBoxShowsCount = 0;
 	std::vector<TimeId> _mutePeriods;
 	TimeId _lastNonPremiumLimitDownload = 0;
 	TimeId _lastNonPremiumLimitUpload = 0;
@@ -212,6 +239,12 @@ private:
 	base::flat_set<uint64> _ratedTranscriptions;
 
 	std::vector<Data::UnreviewedAuth> _unreviewed;
+
+	Data::SetupEmailState _setupEmailState;
+
+	std::vector<int32> _moderateCommonGroups;
+
+	bool _phoneNumberHidden = false;
 
 };
 

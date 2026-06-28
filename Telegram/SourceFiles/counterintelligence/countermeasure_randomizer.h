@@ -107,13 +107,13 @@ public:
     void setGovernmentMode(bool enabled);
     RandomizedDeployment adaptForGovernmentMode(const RandomizedDeployment &deployment);
 
-signals:
+Q_SIGNALS:
     void randomizationConfigChanged();
     void patternObfuscationUpdated();
     void predictablePatternDetected(const QList<CountermeasureType> &pattern);
     void decoyCountermeasureDeployed(CountermeasureType decoyType);
 
-private slots:
+private Q_SLOTS:
     void updateRandomizationParameters();
     void rotateObfuscationPatterns();
 
@@ -163,12 +163,12 @@ private:
 
 private:
     RandomizationConfig _config;
-    QMutex _randomization_mutex;
+    mutable QMutex _randomization_mutex;
     bool _government_mode = false;
     bool _logging_enabled = true;
 
     // Randomization state
-    QRandomGenerator *_secure_rng;
+    QRandomGenerator _secure_rng;
     qint64 _last_pattern_update = 0;
     PatternObfuscation _current_pattern;
     QList<PatternObfuscation> _pattern_history;

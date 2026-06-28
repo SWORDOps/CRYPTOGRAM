@@ -39,6 +39,7 @@ private:
 	bool handleHideWorkaround(QOpenGLFunctions &f);
 
 	void paintBackground() override;
+	void paintVideoStream() override;
 	void paintTransformedVideoFrame(ContentGeometry geometry) override;
 	void paintTransformedStaticContent(
 		const QImage &image,
@@ -49,7 +50,8 @@ private:
 	void paintTransformedContent(
 		not_null<QOpenGLShaderProgram*> program,
 		ContentGeometry geometry,
-		bool fillTransparentBackground);
+		bool fillTransparentBackground,
+		QRectF textureRect = QRectF(0., 0., 1., 1.));
 	void paintRadialLoading(
 		QRect inner,
 		bool radial,
@@ -57,6 +59,8 @@ private:
 	void paintThemePreview(QRect outer) override;
 	void paintDocumentBubble(QRect outer, QRect icon) override;
 	void paintSaveMsg(QRect outer) override;
+	void paintChapter(QRect outer) override;
+	void paintSpeedBoost(QRect outer) override;
 	void paintControlsStart() override;
 	void paintControl(
 		Over control,
@@ -74,6 +78,11 @@ private:
 		const QImage &image,
 		QRect rect,
 		float64 opacity = 1.) override;
+
+	void paintRecognitionOverlay(
+		const QImage &image,
+		ContentGeometry geometry,
+		float64 opacity);
 
 	//void invalidate();
 
@@ -137,6 +146,8 @@ private:
 	Ui::GL::Image _documentBubbleImage;
 	Ui::GL::Image _themePreviewImage;
 	Ui::GL::Image _saveMsgImage;
+	Ui::GL::Image _chapterImage;
+	Ui::GL::Image _speedBoostImage;
 	Ui::GL::Image _footerImage;
 	Ui::GL::Image _captionImage;
 	Ui::GL::Image _groupThumbsImage;
@@ -145,7 +156,7 @@ private:
 	static constexpr auto kStoriesSiblingPartsCount = 4;
 	Ui::GL::Image _storiesSiblingParts[kStoriesSiblingPartsCount];
 
-	static constexpr auto kControlsCount = 6;
+	static constexpr auto kControlsCount = 8;
 	[[nodiscard]] Control controlMeta(Over control) const;
 
 	// Last one is for the over circle image.

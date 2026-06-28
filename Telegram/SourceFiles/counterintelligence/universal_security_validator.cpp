@@ -194,7 +194,7 @@ ThreatAssessment UniversalSecurityValidator::performCrossTierValidation(const Th
 
     if (confidenceDiff > 0.3f || levelDiff > 1) {
         _cross_tier_discrepancies++;
-        emit crossTierDiscrepancy(primary, secondary);
+        Q_EMIT crossTierDiscrepancy(primary, secondary);
 
         // Use more conservative result
         if (primary.level > secondary.level) {
@@ -390,13 +390,13 @@ ThreatAssessment UniversalSecurityValidator::validateWithMultipleMethods(const T
     // Method 1: Confidence validation
     if (!performConfidenceValidation(validated)) {
         _baseline_violations++;
-        emit securityBaselineViolation("Confidence validation failed");
+        Q_EMIT securityBaselineViolation("Confidence validation failed");
     }
 
     // Method 2: Consistency validation
     if (!performConsistencyValidation(validated, tier)) {
         _baseline_violations++;
-        emit securityBaselineViolation("Consistency validation failed");
+        Q_EMIT securityBaselineViolation("Consistency validation failed");
     }
 
     return validated;
@@ -491,7 +491,7 @@ ThreatAssessment UniversalSecurityValidator::enforceMinimumConfidence(const Thre
         }
 
         _baseline_violations++;
-        emit securityBaselineViolation("Minimum confidence threshold violation");
+        Q_EMIT securityBaselineViolation("Minimum confidence threshold violation");
     }
 
     return enforced;
@@ -508,7 +508,7 @@ ThreatAssessment UniversalSecurityValidator::enforceMinimumThreatLevel(const Thr
         enforced.details += " (Threat level elevated to baseline)";
 
         _baseline_violations++;
-        emit securityBaselineViolation("Minimum threat detection level violation");
+        Q_EMIT securityBaselineViolation("Minimum threat detection level violation");
     }
 
     return enforced;
@@ -520,7 +520,7 @@ ThreatAssessment UniversalSecurityValidator::enforceUniversalValidation(const Th
     // Apply universal validation rules that work on all hardware
 
     // Rule 1: High confidence requires specific threat type
-    if (validated.confidence > 0.8f && validated.type == SurveillanceType::None) {
+    if (validated.confidence > 0.8f && validated.type == SurveillanceType::Unknown) {
         validated.type = SurveillanceType::AudioRecording; // Default high-confidence type
         validated.details += " (Type inferred from confidence)";
     }

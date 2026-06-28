@@ -112,6 +112,10 @@ void ChatCreateDone(
 					show,
 					chat,
 					CollectForbiddenUsers(&chat->session(), result));
+				chat->owner().addRecentJoinChat({
+					.fromPeerId = chat->id,
+					.joinedPeerId = chat->id,
+				});
 			}
 		};
 	if (!success) {
@@ -123,7 +127,7 @@ void ChatCreateDone(
 void MustBePublicDestroy(not_null<ChannelData*> channel) {
 	const auto session = &channel->session();
 	session->api().request(MTPchannels_DeleteChannel(
-		channel->inputChannel
+		channel->inputChannel()
 	)).done([=](const MTPUpdates &result) {
 		session->api().applyUpdates(result);
 	}).send();
@@ -157,7 +161,7 @@ void MustBePublicFailed(
 TextWithEntities PeerFloodErrorText(
 		not_null<Main::Session*> session,
 		PeerFloodType type) {
-	const auto link = Ui::Text::Link(
+	const auto link = tr::link(
 		tr::lng_cant_more_info(tr::now),
 		session->createInternalLinkFull(u"spambot"_q));
 	return ((type == PeerFloodType::InviteGroup)
@@ -166,7 +170,7 @@ TextWithEntities PeerFloodErrorText(
 			tr::now,
 			lt_more_info,
 			link,
-			Ui::Text::WithEntities);
+			tr::marked);
 }
 
 void ShowAddParticipantsError(
@@ -455,10 +459,12 @@ void AddContactBox::save() {
 		MTP_vector<MTPInputContact>(
 			1,
 			MTP_inputPhoneContact(
+				MTP_flags(0),
 				MTP_long(_contactId),
 				MTP_string(phone),
 				MTP_string(firstName),
-				MTP_string(lastName)))
+				MTP_string(lastName),
+				MTPTextWithEntities())) // note
 	)).done(crl::guard(weak, [=](
 			const MTPcontacts_ImportedContacts &result) {
 		const auto &data = result.data();
@@ -572,7 +578,8 @@ void GroupInfoBox::prepare() {
 	_title->setMaxLength(Ui::EditPeer::kMaxGroupChannelTitle);
 	_title->setInstantReplaces(Ui::InstantReplaces::Default());
 	_title->setInstantReplacesEnabled(
-		Core::App().settings().replaceEmojiValue());
+		Core::App().settings().replaceEmojiValue(),
+		Core::App().settings().systemTextReplaceValue());
 	Ui::Emoji::SuggestionsController::Init(
 		getDelegate()->outerContainer(),
 		_title,
@@ -588,7 +595,8 @@ void GroupInfoBox::prepare() {
 		_description->setMaxLength(Ui::EditPeer::kMaxChannelDescription);
 		_description->setInstantReplaces(Ui::InstantReplaces::Default());
 		_description->setInstantReplacesEnabled(
-			Core::App().settings().replaceEmojiValue());
+			Core::App().settings().replaceEmojiValue(),
+			Core::App().settings().systemTextReplaceValue());
 		_description->setSubmitSettings(
 			Core::App().settings().sendSubmitWay());
 
@@ -730,7 +738,7 @@ void GroupInfoBox::createGroup(
 		auto user = peer->asUser();
 		Assert(user != nullptr);
 		if (!user->isSelf()) {
-			inputs.push_back(user->inputUser);
+			inputs.push_back(user->inputUser());
 		}
 	}
 	_creationRequestId = _api.request(MTPmessages_CreateChat(
@@ -1029,7 +1037,7 @@ void SetupChannelBox::prepare() {
 	setMouseTracking(true);
 
 	_checkRequestId = _api.request(MTPchannels_CheckUsername(
-		_channel->inputChannel,
+		_channel->inputChannel(),
 		MTP_string("preston")
 	)).fail([=](const MTP::Error &error) {
 		_checkRequestId = 0;
@@ -1276,7 +1284,7 @@ void SetupChannelBox::save() {
 	const auto saveUsername = [&](const QString &link) {
 		_sentUsername = link;
 		_saveRequestId = _api.request(MTPchannels_UpdateUsername(
-			_channel->inputChannel,
+			_channel->inputChannel(),
 			MTP_string(_sentUsername)
 		)).done([=] {
 			const auto done = _done;
@@ -1360,7 +1368,7 @@ void SetupChannelBox::check() {
 	if (link.size() >= Ui::EditPeer::kMinUsernameLength) {
 		_checkUsername = link;
 		_checkRequestId = _api.request(MTPchannels_CheckUsername(
-			_channel->inputChannel,
+			_channel->inputChannel(),
 			MTP_string(link)
 		)).done([=](const MTPBool &result) {
 			_checkRequestId = 0;
@@ -1524,7 +1532,10 @@ void SetupChannelBox::firstCheckFail(UsernameResult result) {
 	}
 }
 
-EditNameBox::EditNameBox(QWidget*, not_null<UserData*> user)
+EditNameBox::EditNameBox(
+	QWidget*,
+	not_null<UserData*> user,
+	Focus focus)
 : _user(user)
 , _api(&_user->session().mtp())
 , _first(
@@ -1537,7 +1548,8 @@ EditNameBox::EditNameBox(QWidget*, not_null<UserData*> user)
 	st::defaultInputField,
 	tr::lng_signup_lastname(),
 	_user->lastName)
-, _invertOrder(langFirstNameGoesSecond()) {
+, _invertOrder(langFirstNameGoesSecond())
+, _focus(focus) {
 }
 
 void EditNameBox::prepare() {
@@ -1567,16 +1579,20 @@ void EditNameBox::prepare() {
 	) | rpl::on_next([=](not_null<bool*> handled) {
 		*handled = true;
 		_last->setFocus();
+		*handled = true;
 	}, _first->lifetime());
 	_last->tabbed(
 	) | rpl::on_next([=](not_null<bool*> handled) {
 		*handled = true;
 		_first->setFocus();
+		*handled = true;
 	}, _last->lifetime());
 }
 
 void EditNameBox::setInnerFocus() {
-	(_invertOrder ? _last : _first)->setFocusFast();
+	const auto focusLast = (_focus == Focus::LastName)
+		|| (_focus == Focus::FirstName && _invertOrder);
+	(focusLast ? _last : _first)->setFocusFast();
 }
 
 void EditNameBox::submit() {

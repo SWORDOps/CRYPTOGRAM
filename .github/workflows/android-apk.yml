@@ -1,0 +1,178 @@
+---
+name: Android APK Production
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+    paths:
+      - 'telegram-android/**'
+      - 'TMessagesProj/**'
+      - '.github/workflows/android-apk.yml'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - 'telegram-android/**'
+      - 'TMessagesProj/**'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: false
+        default: 'release'
+        type: choice
+        options:
+          - debug
+          - release
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          sdkmanager --install "ndk;25.2.9519653"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
+
+      - name: Install CMake for Android
+        run: |
+          sdkmanager --install "cmake;3.22.1"
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: android-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            android-gradle-
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(grep -oP 'APP_VERSION_NAME=\K\S+' telegram-android/gradle.properties || echo "1.0.0")
+          CODE=$(grep -oP 'APP_VERSION_CODE=\K\S+' telegram-android/gradle.properties || echo "1")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "code=$CODE" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION (code $CODE)"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x telegram-android/gradlew
+
+      - name: Build Debug APK
+        if: github.event.inputs.build_type != 'release'
+        run: |
+          cd telegram-android
+          ./gradlew :TMessagesProj_App:assembleAfatDebug --stacktrace --no-daemon
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
+
+      - name: Build Release APK
+        if: github.event.inputs.build_type != 'debug'
+        run: |
+          cd telegram-android
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/cryptogram.keystore
+            ./gradlew :TMessagesProj_App:assembleAfatRelease \
+              -Pandroid.injected.signing.store.file=/tmp/cryptogram.keystore \
+              -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
+              -Pandroid.injected.signing.key.alias=${{ secrets.KEYSTORE_ALIAS }} \
+              -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }} \
+              --stacktrace --no-daemon
+          else
+            echo "No signing secrets — building unsigned release"
+            ./gradlew :TMessagesProj_App:assembleAfatRelease --stacktrace --no-daemon
+          fi
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
+
+      - name: Collect APKs
+        id: collect
+        run: |
+          mkdir -p artifacts/android
+          find telegram-android/TMessagesProj*/build/outputs/apk -name "*.apk" -type f -exec cp {} artifacts/android/ \; || true
+          ls -lh artifacts/android/ || true
+
+          DEBUG_APK=$(find artifacts/android -name "*debug*.apk" | head -1)
+          RELEASE_APK=$(find artifacts/android -name "*release*.apk" | head -1)
+          echo "debug_apk=$DEBUG_APK" >> $GITHUB_OUTPUT
+          echo "release_apk=$RELEASE_APK" >> $GITHUB_OUTPUT
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        if: steps.collect.outputs.debug_apk != ''
+        with:
+          name: cryptogram-${{ steps.version.outputs.version }}-android-debug
+          path: ${{ steps.collect.outputs.debug_apk }}
+          retention-days: 30
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        if: steps.collect.outputs.release_apk != ''
+        with:
+          name: cryptogram-${{ steps.version.outputs.version }}-android-release
+          path: ${{ steps.collect.outputs.release_apk }}
+          retention-days: 30
+
+      - name: Upload APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/android/*.apk
+          draft: true
+          name: CRYPTOGRAM ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build summary
+        if: always()
+        run: |
+          echo "## Android APK Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ steps.version.outputs.version }} (code ${{ steps.version.outputs.code }})" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Date**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.collect.outputs.debug_apk }}" ]; then
+            echo "- Debug APK: \`$(basename ${{ steps.collect.outputs.debug_apk }})\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Debug APK: not built" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -n "${{ steps.collect.outputs.release_apk }}" ]; then
+            echo "- Release APK: \`$(basename ${{ steps.collect.outputs.release_apk }})\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Release APK: not built" >> $GITHUB_STEP_SUMMARY
+          fi

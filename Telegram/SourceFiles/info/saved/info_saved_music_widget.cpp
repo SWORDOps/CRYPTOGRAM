@@ -111,6 +111,20 @@ void MusicInner::setupList() {
 	Expects(!_list);
 
 	_list = object_ptr<Media::ListWidget>(this, _controller);
+	if (_peer->isSelf()) {
+		_list->setReorderDescriptor({
+			.save = [=](
+					int oldPosition,
+					int newPosition,
+					Fn<void()> done,
+					Fn<void()> fail) {
+				_controller->session().data().savedMusic().reorder(
+					oldPosition,
+					newPosition);
+				done();
+			}
+		});
+	}
 	const auto raw = _list.data();
 
 	using namespace rpl::mappers;
@@ -162,9 +176,9 @@ void MusicInner::refreshEmpty() {
 	_empty = object_ptr<Ui::FlatLabel>(
 		this,
 		(!knownEmpty
-			? tr::lng_contacts_loading(Ui::Text::WithEntities)
+			? tr::lng_contacts_loading(tr::marked)
 			: rpl::single(
-				tr::lng_media_song_empty(tr::now, Ui::Text::WithEntities))),
+				tr::lng_media_song_empty(tr::now, tr::marked))),
 		st::giftListAbout);
 	_empty->show();
 	_emptyLoading = !knownEmpty;

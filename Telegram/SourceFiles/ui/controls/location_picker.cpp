@@ -38,6 +38,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "webview/webview_data_stream_memory.h"
 #include "webview/webview_embed.h"
 #include "webview/webview_interface.h"
+#include "core/cached_webview_availability.h"
 #include "window/themes/window_theme.h"
 #include "styles/style_chat_helpers.h"
 #include "styles/style_dialogs.h"
@@ -546,7 +547,7 @@ void SetupEmptyView(
 		(query ? Icon::NoResults : Icon::Search),
 		(query
 			? tr::lng_maps_no_places
-			: tr::lng_maps_choose_to_search)(Text::WithEntities));
+			: tr::lng_maps_choose_to_search)(tr::marked));
 	view->setMinimalHeight(st::recentPeersEmptyHeightMin);
 	view->show();
 
@@ -772,12 +773,13 @@ std::shared_ptr<Main::SessionShow> LocationPicker::uiShow() {
 }
 
 bool LocationPicker::Available(const LocationPickerConfig &config) {
-	static const auto Supported = [&] {
-		const auto availability = Webview::Availability();
-		return availability.customSchemeRequests
-			&& availability.customReferer;
-	}();
-	return Supported && !config.mapsToken.isEmpty();
+#ifdef _DEBUG
+	return true;
+#endif
+	const auto &availability = Core::CachedWebviewAvailability();
+	return availability.customSchemeRequests
+		&& availability.customReferer
+		&& !config.mapsToken.isEmpty();
 }
 
 void LocationPicker::setup(const Descriptor &descriptor) {
@@ -917,6 +919,7 @@ void LocationPicker::setupWebview() {
 		Webview::WindowConfig{
 			.opaqueBg = st::windowBg->c,
 			.storageId = _webviewStorageId,
+			.safe = true,
 		});
 	const auto raw = _webview.get();
 
@@ -1177,8 +1180,8 @@ void LocationPicker::venuesSendRequest() {
 	}
 	_venuesRequestId = _api.request(MTPmessages_GetInlineBotResults(
 		MTP_flags(MTPmessages_GetInlineBotResults::Flag::f_geo_point),
-		_venuesBot->inputUser,
-		(_venueRecipient ? _venueRecipient->input : MTP_inputPeerEmpty()),
+		_venuesBot->inputUser(),
+		(_venueRecipient ? _venueRecipient->input() : MTP_inputPeerEmpty()),
 		MTP_inputGeoPoint(
 			MTP_flags(0),
 			MTP_double(_venuesRequestLocation.point.x()),

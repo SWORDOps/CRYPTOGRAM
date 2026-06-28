@@ -83,7 +83,7 @@ public:
 
     SystemMetrics getSystemMetrics() const { return _system_metrics; }
 
-signals:
+Q_SIGNALS:
     // System state changes
     void systemInitialized();
     void systemShutdown();
@@ -99,7 +99,7 @@ signals:
     void systemHealthChanged(float healthScore);
     void performanceAlert(const QString &component, const QString &issue);
 
-private slots:
+private Q_SLOTS:
     // Component integration
     void onThreatDetected(const ThreatAssessment &threat);
     void onThreatLevelChanged(ThreatLevel newLevel, ThreatLevel oldLevel);

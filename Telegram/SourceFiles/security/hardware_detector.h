@@ -7,8 +7,8 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 */
 #pragma once
 
-#include "../../lib_base/bytes.h"
-#include "../../lib_base/expected.h"
+#include "base/bytes.h"
+#include "base/expected.h"
 
 #include <QtCore/QObject>
 #include <QtCore/QString>
@@ -203,7 +203,7 @@ public:
     QString getDistribution() const;
     QStringList getLoadedDrivers() const;
 
-signals:
+Q_SIGNALS:
     void detectionComplete(const HardwareProfile &profile);
     void npuDetected(const NPUInfo &info);
     void tpmDetected(const TPMInfo &info);
@@ -212,7 +212,7 @@ signals:
     void hardwareStatusChanged(const QString &component, bool available);
     void detectionError(const QString &component, HardwareDetectionResult error);
 
-private slots:
+private Q_SLOTS:
     void onDetectionFinished();
     void onBenchmarkFinished();
     void onMonitoringTimer();

@@ -1,6 +1,6 @@
 #pragma once
 /*
-This file is part of 64Gram Desktop,
+This file is part of CRYPTOGRAM Desktop,
 the unofficial app based on Telegram Desktop.
 For license and copyright information please follow this link:
 https://github.com/TDesktop-x64/tdesktop/blob/dev/LEGAL
@@ -85,21 +85,5 @@ private:
 
 	object_ptr<Ui::FlatLabel> _description = {nullptr};
 	std::shared_ptr<Ui::RadiobuttonGroup> _bitrateGroup;
-
-};
-
-class RecentDisplayLimitController : public Ui::BoxContent {
-public:
-	RecentDisplayLimitController(QWidget *parent);
-
-	static QString Label(int limit);
-
-protected:
-	void prepare() override;
-
-private:
-	void save();
-
-	std::shared_ptr<Ui::RadiobuttonGroup> _optionGroup;
 
 };

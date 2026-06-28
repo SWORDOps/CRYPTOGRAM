@@ -157,7 +157,7 @@ not_null<Ui::SettingsButton*> AddButtonWithText(
 	return AddButtonWithText(
 		parent,
 		std::move(text),
-		std::move(label) | Ui::Text::ToWithEntities(),
+		std::move(label) | rpl::map(tr::marked),
 		std::move(callback),
 		std::move(descriptor));
 }
@@ -184,7 +184,7 @@ void SaveDefaultRestrictions(
 
 	const auto requestId = api->request(
 		MTPmessages_EditChatDefaultBannedRights(
-			peer->input,
+			peer->input(),
 			RestrictionsToMTP({ rights, 0 }))
 	).done([=](const MTPUpdates &result) {
 		api->clearModifyRequest(key);
@@ -216,7 +216,7 @@ void SaveSlowmodeSeconds(
 	const auto key = Api::RequestKey("slowmode_seconds", channel->id);
 
 	const auto requestId = api->request(MTPchannels_ToggleSlowMode(
-		channel->inputChannel,
+		channel->inputChannel(),
 		MTP_int(seconds)
 	)).done([=](const MTPUpdates &result) {
 		api->clearModifyRequest(key);
@@ -251,7 +251,7 @@ void SaveStarsPerMessage(
 		MTP_flags(broadcastAllowed
 			? Flag::f_broadcast_messages_allowed
 			: Flag(0)),
-		channel->inputChannel,
+		channel->inputChannel(),
 		MTP_long(starsPerMessage)
 	)).done([=](const MTPUpdates &result) {
 		api->clearModifyRequest(key);
@@ -286,7 +286,7 @@ void SaveBoostsUnrestrict(
 	const auto key = Api::RequestKey("boosts_unrestrict", channel->id);
 	const auto requestId = api->request(
 		MTPchannels_SetBoostsToUnblockRestrictions(
-			channel->inputChannel,
+			channel->inputChannel(),
 			MTP_int(boostsUnrestrict))
 	).done([=](const MTPUpdates &result) {
 		api->clearModifyRequest(key);
@@ -665,7 +665,8 @@ object_ptr<Ui::RpWidget> Controller::createTitleEdit() {
 	result->entity()->setMaxLength(Ui::EditPeer::kMaxGroupChannelTitle);
 	result->entity()->setInstantReplaces(Ui::InstantReplaces::Default());
 	result->entity()->setInstantReplacesEnabled(
-		Core::App().settings().replaceEmojiValue());
+		Core::App().settings().replaceEmojiValue(),
+		Core::App().settings().systemTextReplaceValue());
 	Ui::Emoji::SuggestionsController::Init(
 		_wrap->window(),
 		result->entity(),
@@ -773,7 +774,8 @@ object_ptr<Ui::RpWidget> Controller::createDescriptionEdit() {
 	result->entity()->setMaxLength(Ui::EditPeer::kMaxChannelDescription);
 	result->entity()->setInstantReplaces(Ui::InstantReplaces::Default());
 	result->entity()->setInstantReplacesEnabled(
-		Core::App().settings().replaceEmojiValue());
+		Core::App().settings().replaceEmojiValue(),
+		Core::App().settings().systemTextReplaceValue());
 	result->entity()->setSubmitSettings(
 		Core::App().settings().sendSubmitWay());
 	Ui::Emoji::SuggestionsController::Init(
@@ -1101,9 +1103,9 @@ void Controller::fillDirectMessagesButton() {
 	auto label = _starsPerDirectMessageSavedValue->value(
 	) | rpl::map([](int starsPerMessage) {
 		return (starsPerMessage < 0)
-			? tr::lng_manage_monoforum_off(Ui::Text::WithEntities)
+			? tr::lng_manage_monoforum_off(tr::marked)
 			: !starsPerMessage
-			? tr::lng_manage_monoforum_free(Ui::Text::WithEntities)
+			? tr::lng_manage_monoforum_free(tr::marked)
 			: rpl::single(Ui::Text::IconEmoji(
 				&st::starIconEmojiColored
 			).append(' ').append(
@@ -1167,7 +1169,7 @@ void Controller::fillForumButton() {
 						tr::now,
 						lt_count,
 						EnableForumMinMembers(_peer),
-						Ui::Text::RichLangValue));
+						tr::rich));
 			}
 		} else {
 			_navigation->uiShow()->show(Box(
@@ -1206,7 +1208,6 @@ void Controller::refreshForumToggleLocked() {
 void Controller::fillColorIndexButton() {
 	Expects(_controls.buttonsLayout != nullptr);
 
-	const auto show = _navigation->uiShow();
 	AddPeerColorButton(
 		_controls.buttonsLayout,
 		_navigation->uiShow(),
@@ -1326,8 +1327,8 @@ void Controller::fillSignaturesButton() {
 		_controls.buttonsLayout,
 		rpl::conditional(
 			signs->toggledValue(),
-			tr::lng_edit_sign_profiles_about(Ui::Text::WithEntities),
-			tr::lng_edit_sign_messages_about(Ui::Text::WithEntities)));
+			tr::lng_edit_sign_profiles_about(tr::marked),
+			tr::lng_edit_sign_messages_about(tr::marked)));
 	Ui::AddSkip(_controls.buttonsLayout);
 }
 
@@ -1415,11 +1416,11 @@ void Controller::fillManageSection() {
 				container,
 				tr::lng_manage_peer_bot_about(
 					lt_bot,
-					rpl::single(Ui::Text::Link(
+					rpl::single(tr::link(
 						'@' + kBotManagerUsername.utf16(),
 						_peer->session().createInternalLinkFull(
 							kBotManagerUsername.utf16()))),
-					Ui::Text::RichLangValue),
+					tr::rich),
 				st::boxDividerLabel),
 			st::defaultBoxDividerLabelPadding));
 		fillBotVerifyAccounts();
@@ -1732,7 +1733,7 @@ void Controller::editReactions() {
 	}
 	_controls.levelRequested = true;
 	_api.request(MTPpremium_GetBoostsStatus(
-		_peer->input
+		_peer->input()
 	)).done([=](const MTPpremium_BoostsStatus &result) {
 		_controls.levelRequested = false;
 		if (const auto channel = _peer->asChannel()) {
@@ -2298,16 +2299,21 @@ void Controller::saveUsernamesOrder() {
 	}
 	if (_savingData.usernamesOrder->empty()) {
 		_api.request(MTPchannels_DeactivateAllUsernames(
-			channel->inputChannel
+			channel->inputChannel()
 		)).done([=] {
-			channel->setUsernames(channel->editableUsername().isEmpty()
-				? Data::Usernames()
-				: Data::Usernames{
+			if (channel->editableUsername().isEmpty()) {
+				channel->setUsernames({});
+			} else {
+				channel->setUsernames({
 					{ channel->editableUsername(), true, true }
 				});
+			}
 			continueSave();
 		}).send();
 	} else {
+		const auto weakContinue = crl::guard(this, [=] {
+			continueSave();
+		});
 		const auto lifetime = std::make_shared<rpl::lifetime>();
 		const auto newUsernames = (*_savingData.usernamesOrder);
 		_peer->session().api().usernames().reorder(
@@ -2325,7 +2331,7 @@ void Controller::saveUsernamesOrder() {
 					.editable = editable,
 				};
 			}) | ranges::to_vector);
-			continueSave();
+			weakContinue();
 			lifetime->destroy();
 		}, *lifetime);
 	}
@@ -2352,7 +2358,7 @@ void Controller::saveUsername() {
 
 	const auto newUsername = (*_savingData.username);
 	_api.request(MTPchannels_UpdateUsername(
-		channel->inputChannel,
+		channel->inputChannel(),
 		MTP_string(newUsername)
 	)).done([=] {
 		channel->setName(
@@ -2404,11 +2410,11 @@ void Controller::saveDiscussionLink() {
 	}
 
 	const auto input = *_savingData.discussionLink
-		? (*_savingData.discussionLink)->inputChannel
+		? (*_savingData.discussionLink)->inputChannel()
 		: MTP_inputChannelEmpty();
 	_api.request(MTPchannels_SetDiscussionGroup(
-		(channel->isBroadcast() ? channel->inputChannel : input),
-		(channel->isBroadcast() ? input : channel->inputChannel)
+		(channel->isBroadcast() ? channel->inputChannel() : input),
+		(channel->isBroadcast() ? input : channel->inputChannel())
 	)).done([=] {
 		channel->setDiscussionLink(*_savingData.discussionLink);
 		continueSave();
@@ -2467,20 +2473,22 @@ void Controller::saveTitle() {
 		_controls.title->showError();
 		if (type == u"NO_CHAT_TITLE"_q) {
 			_box->scrollToWidget(_controls.title);
+		} else {
+			_navigation->showToast(type);
 		}
 		cancelSave();
 	};
 
 	if (const auto channel = _peer->asChannel()) {
 		_api.request(MTPchannels_EditTitle(
-			channel->inputChannel,
+			channel->inputChannel(),
 			MTP_string(*_savingData.title)
 		)).done(std::move(onDone)
 		).fail(std::move(onFail)
 		).send();
 	} else if (const auto chat = _peer->asChat()) {
 		_api.request(MTPmessages_EditChatTitle(
-			chat->inputChat,
+			chat->inputChat(),
 			MTP_string(*_savingData.title)
 		)).done(std::move(onDone)
 		).fail(std::move(onFail)
@@ -2488,7 +2496,7 @@ void Controller::saveTitle() {
 	} else if (_isBot) {
 		_api.request(MTPbots_GetBotInfo(
 			MTP_flags(MTPbots_GetBotInfo::Flag::f_bot),
-			_peer->asUser()->inputUser,
+			_peer->asUser()->inputUser(),
 			MTPstring() // Lang code.
 		)).done([=](const MTPbots_BotInfo &result) {
 			const auto was = qs(result.data().vname());
@@ -2499,7 +2507,7 @@ void Controller::saveTitle() {
 			using Flag = MTPbots_SetBotInfo::Flag;
 			_api.request(MTPbots_SetBotInfo(
 				MTP_flags(Flag::f_bot | Flag::f_name),
-				_peer->asUser()->inputUser,
+				_peer->asUser()->inputUser(),
 				MTPstring(), // Lang code.
 				MTP_string(now), // Name.
 				MTPstring(), // About.
@@ -2527,7 +2535,7 @@ void Controller::saveDescription() {
 	if (_isBot) {
 		_api.request(MTPbots_GetBotInfo(
 			MTP_flags(MTPbots_GetBotInfo::Flag::f_bot),
-			_peer->asUser()->inputUser,
+			_peer->asUser()->inputUser(),
 			MTPstring() // Lang code.
 		)).done([=](const MTPbots_BotInfo &result) {
 			const auto was = qs(result.data().vabout());
@@ -2538,15 +2546,16 @@ void Controller::saveDescription() {
 			using Flag = MTPbots_SetBotInfo::Flag;
 			_api.request(MTPbots_SetBotInfo(
 				MTP_flags(Flag::f_bot | Flag::f_about),
-				_peer->asUser()->inputUser,
+				_peer->asUser()->inputUser(),
 				MTPstring(), // Lang code.
 				MTPstring(), // Name.
 				MTP_string(now), // About.
 				MTPstring() // Description.
 			)).done([=] {
 				successCallback();
-			}).fail([=] {
+			}).fail([=](const MTP::Error &error) {
 				_controls.description->showError();
+				_navigation->showToast(error.type());
 				cancelSave();
 			}).send();
 		}).fail([=] {
@@ -2555,7 +2564,7 @@ void Controller::saveDescription() {
 		return;
 	}
 	_api.request(MTPmessages_EditChatAbout(
-		_peer->input,
+		_peer->input(),
 		MTP_string(*_savingData.description)
 	)).done([=] {
 		successCallback();
@@ -2566,6 +2575,7 @@ void Controller::saveDescription() {
 			return;
 		}
 		_controls.description->showError();
+		_navigation->showToast(type);
 		cancelSave();
 	}).send();
 }
@@ -2631,15 +2641,17 @@ void Controller::togglePreHistoryHidden(
 		done();
 	};
 	_api.request(MTPchannels_TogglePreHistoryHidden(
-		channel->inputChannel,
+		channel->inputChannel(),
 		MTP_bool(hidden)
 	)).done([=](const MTPUpdates &result) {
 		channel->session().api().applyUpdates(result);
 		apply();
 	}).fail([=](const MTP::Error &error) {
-		if (error.type() == u"CHAT_NOT_MODIFIED"_q) {
+		const auto type = error.type();
+		if (type == u"CHAT_NOT_MODIFIED"_q) {
 			apply();
 		} else {
+			_navigation->showToast(type);
 			fail();
 		}
 	}).send();
@@ -2669,7 +2681,7 @@ void Controller::saveForum() {
 		return;
 	}
 	_api.request(MTPchannels_ToggleForum(
-		channel->inputChannel,
+		channel->inputChannel(),
 		MTP_bool(*_savingData.forum),
 		MTP_bool(*_savingData.forum && *_savingData.forumTabs)
 	)).done([=](const MTPUpdates &result) {
@@ -2696,7 +2708,7 @@ void Controller::saveAutotranslate() {
 		return continueSave();
 	}
 	_api.request(MTPchannels_ToggleAutotranslation(
-		channel->inputChannel,
+		channel->inputChannel(),
 		MTP_bool(*_savingData.autotranslate)
 	)).done([=](const MTPUpdates &result) {
 		channel->session().api().applyUpdates(result);
@@ -2732,7 +2744,7 @@ void Controller::saveSignatures() {
 			| (*_savingData.signatureProfiles
 				? Flag::f_profiles_enabled
 				: Flag())),
-		channel->inputChannel
+		channel->inputChannel()
 	)).done([=](const MTPUpdates &result) {
 		channel->session().api().applyUpdates(result);
 		continueSave();
@@ -2751,9 +2763,12 @@ void Controller::saveForwards() {
 		|| *_savingData.noForwards != _peer->allowsForwarding()) {
 		return continueSave();
 	}
+	using Flag = MTPmessages_ToggleNoForwards::Flag;
 	_api.request(MTPmessages_ToggleNoForwards(
-		_peer->input,
-		MTP_bool(*_savingData.noForwards)
+		MTP_flags(Flag()),
+		_peer->input(),
+		MTP_bool(*_savingData.noForwards),
+		MTPint()
 	)).done([=](const MTPUpdates &result) {
 		_peer->session().api().applyUpdates(result);
 		continueSave();
@@ -2775,7 +2790,7 @@ void Controller::saveJoinToWrite() {
 		return continueSave();
 	}
 	_api.request(MTPchannels_ToggleJoinToSend(
-		_peer->asChannel()->inputChannel,
+		_peer->asChannel()->inputChannel(),
 		MTP_bool(*_savingData.joinToWrite)
 	)).done([=](const MTPUpdates &result) {
 		_peer->session().api().applyUpdates(result);
@@ -2798,7 +2813,7 @@ void Controller::saveRequestToJoin() {
 		return continueSave();
 	}
 	_api.request(MTPchannels_ToggleJoinRequest(
-		_peer->asChannel()->inputChannel,
+		_peer->asChannel()->inputChannel(),
 		MTP_bool(*_savingData.requestToJoin)
 	)).done([=](const MTPUpdates &result) {
 		_peer->session().api().applyUpdates(result);
@@ -2858,7 +2873,7 @@ void Controller::deleteChannel() {
 		session->api().deleteConversation(chat, false);
 	}
 	session->api().request(MTPchannels_DeleteChannel(
-		channel->inputChannel
+		channel->inputChannel()
 	)).done([=](const MTPUpdates &result) {
 		session->api().applyUpdates(result);
 	//}).fail([=](const MTP::Error &error) {
@@ -2928,7 +2943,7 @@ object_ptr<Ui::SettingsButton> EditPeerInfoBox::CreateButton(
 	return CreateButton(
 		parent,
 		std::move(text),
-		std::move(count) | Ui::Text::ToWithEntities(),
+		std::move(count) | rpl::map(tr::marked),
 		std::move(callback),
 		st,
 		std::move(descriptor));

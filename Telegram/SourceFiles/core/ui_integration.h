@@ -50,6 +50,8 @@ public:
 
 	void textActionsUpdated() override;
 	void activationFromTopPanel() override;
+	void touchCounterIncrement() override;
+	int touchCounterNow() override;
 
 	bool screenIsLocked() override;
 
@@ -79,6 +81,7 @@ public:
 	QString phraseFormattingBlockquote() override;
 	QString phraseFormattingMonospace() override;
 	QString phraseFormattingSpoiler() override;
+	QString phraseFormattingDate() override;
 	QString phraseButtonOk() override;
 	QString phraseButtonClose() override;
 	QString phraseButtonCancel() override;
@@ -96,11 +99,9 @@ public:
 	QString phraseMaximize() override;
 	QString phraseRestore() override;
 
-	void touchCounterIncrement() override;
-	[[nodiscard]] int touchCounterNow() override;
-
 private:
 	int _touchCounter = 0;
+
 };
 
 [[nodiscard]] bool OpenGLLastCheckFailed();

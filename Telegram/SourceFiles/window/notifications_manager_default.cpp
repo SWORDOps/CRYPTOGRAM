@@ -661,6 +661,8 @@ Notification::Notification(
 , _fromScheduled(fromScheduled)
 , _close(this, st::notifyClose)
 , _reply(this, tr::lng_notification_reply(), st::defaultBoxButton) {
+	_reply->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
+
 	Lang::Updated(
 	) | rpl::on_next([=] {
 		refreshLang();
@@ -1001,9 +1003,9 @@ void Notification::updateNotifyDisplay() {
 				: TextWithEntities{ name };
 		};
 		auto title = options.hideNameAndPhoto
-			? TextWithEntities{ u"64Gram Desktop"_q }
+			? TextWithEntities{ u"CRYPTOGRAM Desktop"_q }
 			: reminder
-			? tr::lng_notification_reminder(tr::now, Ui::Text::WithEntities)
+			? tr::lng_notification_reminder(tr::now, tr::marked)
 			: topicWithChat();
 		const auto fullTitle = manager()->addTargetAccountName(
 			std::move(title),

@@ -53,6 +53,7 @@ public:
 		not_null<QWidget*> parent,
 		not_null<SubsectionButtonDelegate*> delegate,
 		SubsectionTab &&data);
+	~VerticalButton();
 
 private:
 	void paintEvent(QPaintEvent *e) override;
@@ -123,6 +124,12 @@ VerticalButton::VerticalButton(
 , _text(_st.nameStyle, _data.text, kDefaultTextOptions, _st.nameWidth)
 , _roundRect(st::boxRadius, st::windowBgOver) {
 	updateSize();
+}
+
+VerticalButton::~VerticalButton() {
+	if (_subscribed) {
+		_data.userpic->subscribeToUpdates(nullptr);
+	}
 }
 
 void VerticalButton::dataUpdatedHook() {
@@ -256,21 +263,18 @@ void VerticalButton::paintEvent(QPaintEvent *e) {
 		right -= badge.width() + st.padding;
 	}
 	if (state.mention || state.reaction) {
-		UnreadBadgeStyle st;
-		st.sizeId = state.mention
-			? UnreadBadgeSize::Dialogs
-			: UnreadBadgeSize::ReactionInDialogs;
-		st.muted = state.mention
+		const auto muted = state.mention
 			? state.mentionMuted
 			: state.reactionMuted;
-		st.padding = 0;
-		st.textTop = 0;
-		const auto counter = QString();
-		const auto badge = PaintUnreadBadge(p, counter, right, top, st);
-		(state.mention
-			? st::dialogsUnreadMention.icon
-			: st::dialogsUnreadReaction.icon).paintInCenter(p, badge);
-		right -= badge.width() + st.padding + st::dialogsUnreadPadding;
+		const auto &icon = state.mention
+			? (muted
+				? st::dialogsUnreadMentionMuted.icon
+				: st::dialogsUnreadMention.icon)
+			: (muted
+				? st::dialogsUnreadReactionMuted.icon
+				: st::dialogsUnreadReaction.icon);
+		icon.paint(p, right - icon.width(), top, width());
+		right -= icon.width() + st::dialogsUnreadPadding;
 	}
 	if (isPinned() && isFirstPinned()) {
 		PaintPinnedIcon(p, width(), _backgroundMargin);
@@ -436,21 +440,18 @@ void HorizontalButton::paintEvent(QPaintEvent *e) {
 		right -= badge.width() + st.padding;
 	}
 	if (state.mention || state.reaction) {
-		UnreadBadgeStyle st;
-		st.sizeId = state.mention
-			? UnreadBadgeSize::Dialogs
-			: UnreadBadgeSize::ReactionInDialogs;
-		st.muted = state.mention
+		const auto muted = state.mention
 			? state.mentionMuted
 			: state.reactionMuted;
-		st.padding = 0;
-		st.textTop = 0;
-		const auto counter = QString();
-		const auto badge = PaintUnreadBadge(p, counter, right, badgeTop, st);
-		(state.mention
-			? st::dialogsUnreadMention.icon
-			: st::dialogsUnreadReaction.icon).paintInCenter(p, badge);
-		right -= badge.width() + st.padding + st::dialogsUnreadPadding;
+		const auto &icon = state.mention
+			? (muted
+				? st::dialogsUnreadMentionMuted.icon
+				: st::dialogsUnreadMention.icon)
+			: (muted
+				? st::dialogsUnreadReactionMuted.icon
+				: st::dialogsUnreadReaction.icon);
+		icon.paint(p, right - icon.width(), badgeTop, width());
+		right -= icon.width() + st::dialogsUnreadPadding;
 	}
 
 	if (isPinned() && isFirstPinned()) {
@@ -477,7 +478,10 @@ SubsectionButton::SubsectionButton(
 SubsectionButton::~SubsectionButton() = default;
 
 void SubsectionButton::setData(SubsectionTab &&data) {
+	Expects(_data.userpic.get() == data.userpic.get());
+
 	_data = std::move(data);
+	RippleButton::finishAnimating();
 	dataUpdatedHook();
 	update();
 }
@@ -658,9 +662,6 @@ void SubsectionSlider::setSections(
 }
 
 void SubsectionSlider::activate(int index) {
-	if (_active == index) {
-		return;
-	}
 	if (_isReorderingCallback && _isReorderingCallback()) {
 		return;
 	}

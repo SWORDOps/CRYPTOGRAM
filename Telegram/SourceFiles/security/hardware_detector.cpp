@@ -63,10 +63,10 @@ void HardwareDetector::detectAll() {
 
     qDebug() << "Hardware detection complete. Overall score:" << _profile.overallScore;
 
-    emit detectionComplete(_profile);
-    emit npuDetected(_profile.npu);
-    emit tpmDetected(_profile.tpm);
-    emit openvinoDetected(_profile.openvino);
+    Q_EMIT detectionComplete(_profile);
+    Q_EMIT npuDetected(_profile.npu);
+    Q_EMIT tpmDetected(_profile.tpm);
+    Q_EMIT openvinoDetected(_profile.openvino);
 }
 
 NPUInfo HardwareDetector::detectNPUInternal() {
@@ -758,11 +758,11 @@ void HardwareDetector::refreshHardwareStatus() {
     bool tpmAvailable = QFile::exists("/dev/tpm0");
 
     if (npuAvailable != _profile.npu.available) {
-        emit hardwareStatusChanged("NPU", npuAvailable);
+        Q_EMIT hardwareStatusChanged("NPU", npuAvailable);
     }
 
     if (tpmAvailable != _profile.tpm.available) {
-        emit hardwareStatusChanged("TPM", tpmAvailable);
+        Q_EMIT hardwareStatusChanged("TPM", tpmAvailable);
     }
 }
 
@@ -913,19 +913,19 @@ bool HardwareDetector::testOpenVINODevice(const QString &device) {
 void HardwareDetector::detectNPU() {
     QMutexLocker locker(&_mutex);
     _profile.npu = detectNPUInternal();
-    emit npuDetected(_profile.npu);
+    Q_EMIT npuDetected(_profile.npu);
 }
 
 void HardwareDetector::detectTPM() {
     QMutexLocker locker(&_mutex);
     _profile.tpm = detectTPMInternal();
-    emit tpmDetected(_profile.tpm);
+    Q_EMIT tpmDetected(_profile.tpm);
 }
 
 void HardwareDetector::detectOpenVINO() {
     QMutexLocker locker(&_mutex);
     _profile.openvino = detectOpenVINOInternal();
-    emit openvinoDetected(_profile.openvino);
+    Q_EMIT openvinoDetected(_profile.openvino);
 }
 
 void HardwareDetector::detectCPU() {
@@ -1058,7 +1058,7 @@ void HardwareDetector::runBenchmarks() {
     }
 
     qDebug() << "Benchmarks completed";
-    emit benchmarkComplete(results);
+    Q_EMIT benchmarkComplete(results);
 }
 
 BenchmarkResults::CryptoTest HardwareDetector::runCryptoBenchmark() {

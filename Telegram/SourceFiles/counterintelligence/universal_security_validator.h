@@ -81,7 +81,7 @@ public:
     void enableUniversalSecurityLogging(bool enable);
     QStringList getSecurityValidationLogs() const;
 
-signals:
+Q_SIGNALS:
     void securityBaselineViolation(const QString &violation);
     void tierValidationFailed(SecurityTier tier, const QString &reason);
     void crossTierDiscrepancy(const ThreatAssessment &primary, const ThreatAssessment &secondary);
@@ -121,7 +121,7 @@ private:
 private:
     SecurityBaseline _baseline;
     SecurityTier _current_tier;
-    QMutex _validation_mutex;
+    mutable QMutex _validation_mutex;
     bool _security_logging_enabled = true;
     QStringList _validation_logs;
 

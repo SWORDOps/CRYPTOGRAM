@@ -37,7 +37,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Settings {
 namespace {
 
-class Location : public BusinessSection<Location> {
+class Location : public Section<Location> {
 public:
 	Location(
 		QWidget *parent,
@@ -84,7 +84,7 @@ private:
 Location::Location(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
-: BusinessSection(parent, controller)
+: Section(parent, controller)
 , _config(ResolveBusinessMapsConfig(&controller->session()))
 , _bottomSkipRounding(st::boxRadius, st::boxDividerBg) {
 	setupContent(controller);
@@ -123,7 +123,7 @@ void Location::setupPicker(not_null<Ui::VerticalLayout*> content) {
 		.lottieSize = st::settingsCloudPasswordIconSize,
 		.lottieMargins = st::peerAppearanceIconPadding,
 		.showFinished = showFinishes(),
-		.about = tr::lng_location_about(Ui::Text::WithEntities),
+		.about = tr::lng_location_about(tr::marked),
 		.aboutMargins = st::peerAppearanceCoverLabelMargin,
 	});
 
@@ -273,7 +273,7 @@ void Location::setupUnsupported(not_null<Ui::VerticalLayout*> content) {
 		.lottieSize = st::settingsCloudPasswordIconSize,
 		.lottieMargins = st::peerAppearanceIconPadding,
 		.showFinished = showFinishes(),
-		.about = tr::lng_location_fallback(Ui::Text::WithEntities),
+		.about = tr::lng_location_fallback(tr::marked),
 		.aboutMargins = st::peerAppearanceCoverLabelMargin,
 		.parts = RectPart::Top,
 	});

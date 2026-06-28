@@ -74,55 +74,57 @@ struct PeerUpdate {
 		Usernames           = (1ULL << 12),
 		TranslationDisabled = (1ULL << 13),
 		Color               = (1ULL << 14),
-		BackgroundEmoji     = (1ULL << 15),
-		StoriesState        = (1ULL << 16),
-		VerifyInfo          = (1ULL << 17),
-		StarsPerMessage     = (1ULL << 18),
+		ColorProfile        = (1ULL << 15),
+		BackgroundEmoji     = (1ULL << 16),
+		StoriesState        = (1ULL << 17),
+		VerifyInfo          = (1ULL << 18),
+		StarsPerMessage     = (1ULL << 19),
 
 		// For users
-		CanShareContact     = (1ULL << 19),
-		IsContact           = (1ULL << 20),
-		PhoneNumber         = (1ULL << 21),
-		OnlineStatus        = (1ULL << 22),
-		BotCommands         = (1ULL << 23),
-		BotCanBeInvited     = (1ULL << 24),
-		BotStartToken       = (1ULL << 25),
-		CommonChats         = (1ULL << 26),
-		PeerGifts           = (1ULL << 27),
-		HasCalls            = (1ULL << 28),
-		SupportInfo         = (1ULL << 29),
-		IsBot               = (1ULL << 30),
-		EmojiStatus         = (1ULL << 31),
-		BusinessDetails     = (1ULL << 32),
-		Birthday            = (1ULL << 33),
-		PersonalChannel     = (1ULL << 34),
-		StarRefProgram      = (1ULL << 35),
-		PaysPerMessage      = (1ULL << 36),
-		GiftSettings        = (1ULL << 37),
-		StarsRating         = (1ULL << 38),
-		ContactNote         = (1ULL << 39),
+		CanShareContact     = (1ULL << 20),
+		IsContact           = (1ULL << 21),
+		PhoneNumber         = (1ULL << 22),
+		OnlineStatus        = (1ULL << 23),
+		BotCommands         = (1ULL << 24),
+		BotCanBeInvited     = (1ULL << 25),
+		BotStartToken       = (1ULL << 26),
+		CommonChats         = (1ULL << 27),
+		PeerGifts           = (1ULL << 28),
+		HasCalls            = (1ULL << 29),
+		SupportInfo         = (1ULL << 30),
+		IsBot               = (1ULL << 31),
+		EmojiStatus         = (1ULL << 32),
+		BusinessDetails     = (1ULL << 33),
+		Birthday            = (1ULL << 34),
+		PersonalChannel     = (1ULL << 35),
+		StarRefProgram      = (1ULL << 36),
+		PaysPerMessage      = (1ULL << 37),
+		GiftSettings        = (1ULL << 38),
+		StarsRating         = (1ULL << 39),
+		ContactNote         = (1ULL << 40),
 
 		// For chats and channels
-		InviteLinks         = (1ULL << 40),
-		Members             = (1ULL << 41),
-		Admins              = (1ULL << 42),
-		BannedUsers         = (1ULL << 43),
-		Rights              = (1ULL << 44),
-		PendingRequests     = (1ULL << 45),
-		Reactions           = (1ULL << 46),
+		InviteLinks         = (1ULL << 41),
+		Members             = (1ULL << 42),
+		Admins              = (1ULL << 43),
+		BannedUsers         = (1ULL << 44),
+		Rights              = (1ULL << 45),
+		PendingRequests     = (1ULL << 46),
+		Reactions           = (1ULL << 47),
 
 		// For channels
-		ChannelAmIn         = (1ULL << 47),
-		StickersSet         = (1ULL << 48),
-		EmojiSet            = (1ULL << 49),
-		DiscussionLink      = (1ULL << 50),
-		MonoforumLink       = (1ULL << 51),
-		ChannelLocation     = (1ULL << 52),
-		Slowmode            = (1ULL << 53),
-		GroupCall           = (1ULL << 54),
+		ChannelAmIn         = (1ULL << 48),
+		StickersSet         = (1ULL << 49),
+		EmojiSet            = (1ULL << 50),
+		DiscussionLink      = (1ULL << 51),
+		MonoforumLink       = (1ULL << 52),
+		ChannelLocation     = (1ULL << 53),
+		Slowmode            = (1ULL << 54),
+		GroupCall           = (1ULL << 55),
+		ManagedBot          = (1ULL << 56),
 
 		// For iteration
-		LastUsedBit         = (1ULL << 54),
+		LastUsedBit         = (1ULL << 56),
 	};
 	using Flags = base::flags<Flag>;
 	friend inline constexpr auto is_flag_type(Flag) { return true; }
@@ -151,8 +153,9 @@ struct HistoryUpdate {
 		CloudDraft         = (1U << 12),
 		TranslateFrom      = (1U << 13),
 		TranslatedTo       = (1U << 14),
+		UnreadPollVotes    = (1U << 15),
 
-		LastUsedBit        = (1U << 14),
+		LastUsedBit        = (1U << 15),
 	};
 	using Flags = base::flags<Flag>;
 	friend inline constexpr auto is_flag_type(Flag) { return true; }
@@ -177,8 +180,9 @@ struct TopicUpdate {
 		Closed          = (1U << 9),
 		Creator         = (1U << 10),
 		Destroyed       = (1U << 11),
+		UnreadPollVotes = (1U << 12),
 
-		LastUsedBit     = (1U << 11),
+		LastUsedBit     = (1U << 12),
 	};
 	using Flags = base::flags<Flag>;
 	friend inline constexpr auto is_flag_type(Flag) { return true; }
@@ -196,8 +200,9 @@ struct SublistUpdate {
 		UnreadReactions = (1U << 2),
 		CloudDraft = (1U << 3),
 		Destroyed = (1U << 4),
+		UnreadPollVotes = (1U << 5),
 
-		LastUsedBit = (1U << 4),
+		LastUsedBit = (1U << 5),
 	};
 	using Flags = base::flags<Flag>;
 	friend inline constexpr auto is_flag_type(Flag) { return true; }
@@ -278,6 +283,12 @@ struct ChatAdminChange {
 	not_null<PeerData*> peer;
 	not_null<UserData*> user;
 	ChatAdminRights rights;
+	QString rank;
+};
+
+struct ChatMemberRankChange {
+	not_null<PeerData*> peer;
+	not_null<UserData*> user;
 	QString rank;
 };
 
@@ -400,6 +411,12 @@ public:
 		QString rank);
 	[[nodiscard]] rpl::producer<ChatAdminChange> chatAdminChanges() const;
 
+	void chatMemberRankChanged(
+		not_null<PeerData*> peer,
+		not_null<UserData*> user,
+		QString rank);
+	[[nodiscard]] rpl::producer<ChatMemberRankChange> chatMemberRankChanges() const;
+
 	void sendNotifications();
 
 private:
@@ -453,6 +470,7 @@ private:
 	Manager<Dialogs::Entry, EntryUpdate> _entryChanges;
 	Manager<Story, StoryUpdate> _storyChanges;
 	rpl::event_stream<ChatAdminChange> _chatAdminChanges;
+	rpl::event_stream<ChatMemberRankChange> _chatMemberRankChanges;
 
 	bool _notify = false;
 

@@ -18,7 +18,7 @@ Status terms used here:
 | 2 | MLS Protocol | included | partial — key package encode/decode, group encryption/decryption with AES-256-GCM, real X25519 key generation, Ed25519 signing, proper HKDF; Welcome transport via ZW entities; MLS key packages advertised in init params |
 | 3 | Post-Quantum Cryptography | included | partial (hybrid plumbing present) |
 | 4 | Audio Steganography and GNA | included | partial, experimental |
-| 5 | Surveillance Detection | source-only | source-only/not shipped by default |
+| 5 | Surveillance Detection | included | partial, experimental — wired into CMake with conditional hardware includes |
 | 6 | Covert Channels | included | partial, experimental |
 | 7 | Zero-Knowledge Authentication | included | partial, requires validation |
 | 8 | Location Privacy and Randomization | excluded | not shipped by default |

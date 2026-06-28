@@ -16,15 +16,20 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtCore/QDateTime>
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QAudioInput>)
 #include <QtMultimedia/QAudioInput>
 #include <QtMultimedia/QAudioOutput>
+#define CRYPTOGRAM_HAVE_QTMULTIMEDIA 1
+#endif
+#endif
 #include <memory>
 
 namespace Security {
 
 // Forward declarations
 enum class SecurityTier;
-enum class ThreatLevel;
+using SpyGram::Counterintelligence::ThreatLevel;
 
 // GNA (Gaussian Neural Accelerator) capabilities
 struct GNACapabilities {
@@ -180,7 +185,7 @@ public:
     void deactivateEmergencyMode();
     bool isEmergencyModeActive() const { return _emergencyMode; }
 
-signals:
+Q_SIGNALS:
     void acousticThreatDetected(const AcousticThreatResult& threat);
     void surveillanceDeviceDetected(const QString& deviceInfo);
     void voiceMorphingStatusChanged(VoiceSecurityMode newMode);
@@ -189,7 +194,7 @@ signals:
     void performanceUpdated(const GNAPerformanceMetrics& metrics);
     void powerConsumptionChanged(double watts);
 
-private slots:
+private Q_SLOTS:
     void processAudioInput();
     void updatePerformanceMetrics();
     void checkSurveillanceThreats();
@@ -249,8 +254,10 @@ private:
     HardwareProfile _hardwareProfile;
 
     // Audio interface
+#ifdef CRYPTOGRAM_HAVE_QTMULTIMEDIA
     std::unique_ptr<QAudioInput> _audioInput;
     std::unique_ptr<QAudioOutput> _audioOutput;
+#endif
 
     // Performance tracking
     mutable GNAPerformanceMetrics _metrics;

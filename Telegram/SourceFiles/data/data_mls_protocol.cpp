@@ -14,7 +14,6 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include <openssl/kdf.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
-#include <openssl/hkdf.h>
 #include <openssl/core_names.h>
 
 namespace Data {
@@ -90,6 +89,9 @@ std::optional<std::pair<bytes::vector, bytes::vector>> generateSignatureKeyPair(
 	}
 	return std::nullopt;
 }
+
+// Forward declarations
+bytes::vector computeSHA512(const bytes::vector &data);
 
 // Normalize a secret to a 32-byte AES-256 key
 bytes::vector normalizeAeadKey(const bytes::vector &secret) {
@@ -231,6 +233,63 @@ const EVP_MD *selectHkdfDigestForLength(int length) {
 		return EVP_sha256();
 	}
 	return EVP_sha512();
+}
+
+// HKDF-Expand using OpenSSL 3.x EVP_KDF API
+bool hkdfExpandOssl(
+		unsigned char *out, size_t outLen,
+		const EVP_MD *md,
+		const unsigned char *prk, size_t prkLen,
+		const unsigned char *info, size_t infoLen) {
+	auto *kctx = EVP_KDF_CTX_new(EVP_KDF_fetch(nullptr, "HKDF", nullptr));
+	if (!kctx) return false;
+
+	OSSL_PARAM params[3];
+	params[0] = OSSL_PARAM_construct_utf8_string(
+		OSSL_KDF_PARAM_DIGEST, const_cast<char *>(EVP_MD_get0_name(md)), 0);
+	params[1] = OSSL_PARAM_construct_octet_string(
+		OSSL_KDF_PARAM_KEY, const_cast<unsigned char *>(prk), prkLen);
+	params[2] = OSSL_PARAM_construct_octet_string(
+		OSSL_KDF_PARAM_INFO, const_cast<unsigned char *>(info), infoLen);
+	auto p3 = OSSL_PARAM_construct_end();
+	// We need 4 params total (3 + end)
+	OSSL_PARAM paramsAll[4];
+	paramsAll[0] = params[0];
+	paramsAll[1] = params[1];
+	paramsAll[2] = params[2];
+	paramsAll[3] = p3;
+
+	bool ok = (EVP_KDF_derive(kctx, out, outLen, paramsAll) > 0);
+	EVP_KDF_CTX_free(kctx);
+	return ok;
+}
+
+// HKDF-Extract using OpenSSL 3.x EVP_KDF API
+bool hkdfExtractOssl(
+		unsigned char *out, size_t outLen,
+		const EVP_MD *md,
+		const unsigned char *ikm, size_t ikmLen,
+		const unsigned char *salt, size_t saltLen) {
+	auto *kctx = EVP_KDF_CTX_new(EVP_KDF_fetch(nullptr, "HKDF", nullptr));
+	if (!kctx) return false;
+
+	OSSL_PARAM params[3];
+	params[0] = OSSL_PARAM_construct_utf8_string(
+		OSSL_KDF_PARAM_DIGEST, const_cast<char *>(EVP_MD_get0_name(md)), 0);
+	params[1] = OSSL_PARAM_construct_octet_string(
+		OSSL_KDF_PARAM_SALT, const_cast<unsigned char *>(salt), saltLen);
+	params[2] = OSSL_PARAM_construct_octet_string(
+		OSSL_KDF_PARAM_KEY, const_cast<unsigned char *>(ikm), ikmLen);
+	auto p3 = OSSL_PARAM_construct_end();
+	OSSL_PARAM paramsAll[4];
+	paramsAll[0] = params[0];
+	paramsAll[1] = params[1];
+	paramsAll[2] = params[2];
+	paramsAll[3] = p3;
+
+	bool ok = (EVP_KDF_derive(kctx, out, outLen, paramsAll) > 0);
+	EVP_KDF_CTX_free(kctx);
+	return ok;
 }
 
 // MLS Labels (from RFC 9420)
@@ -449,14 +508,14 @@ bytes::vector MLSGroupState::deriveApplicationSecret(const QString &label) const
 
 	bytes::vector result(hashSize);
 	const auto *md = selectHkdfDigestForLength(hashSize);
-	if (HKDF_expand(
+	if (!hkdfExpandOssl(
 			reinterpret_cast<unsigned char*>(result.data()),
 			static_cast<size_t>(hashSize),
 			md,
 			reinterpret_cast<const unsigned char*>(_epochSecret.data()),
 			_epochSecret.size(),
 			reinterpret_cast<const unsigned char*>(labelBytes.data()),
-			labelBytes.size()) != 1) {
+			labelBytes.size())) {
 		// Fallback to hash-based derivation if HKDF fails
 		auto hash = _epochSecret;
 		hash.insert(hash.end(),
@@ -965,7 +1024,7 @@ bytes::vector MLSProtocol::encryptPathSecret(const MLSTreeNode &node, const byte
 
 	bytes::vector aad(sizeof(node.index) + 1);
 	std::memcpy(aad.data(), &node.index, sizeof(node.index));
-	aad[sizeof(node.index)] = static_cast<uint8>(node.type);
+	aad[sizeof(node.index)] = static_cast<std::byte>(static_cast<uint8>(node.type));
 
 	auto encrypted = encryptAesGcm(
 		key,
@@ -996,14 +1055,14 @@ bytes::vector MLSProtocol::hkdfExpand(const bytes::vector &prk, const QString &i
 	bytes::vector result(length);
 	const auto infoBytes = info.toUtf8();
 	const auto *md = selectHkdfDigestForLength(length);
-	if (HKDF_expand(
+	if (!hkdfExpandOssl(
 			reinterpret_cast<unsigned char*>(result.data()),
 			static_cast<size_t>(length),
 			md,
 			reinterpret_cast<const unsigned char*>(prk.data()),
 			prk.size(),
 			reinterpret_cast<const unsigned char*>(infoBytes.data()),
-			infoBytes.size()) != 1) {
+			infoBytes.size())) {
 		return {};
 	}
 	return result;
@@ -1013,14 +1072,14 @@ bytes::vector MLSProtocol::hkdfExtract(const bytes::vector &salt, const bytes::v
 	const auto *md = selectHkdfDigestForLength(
 		static_cast<int>(std::max(salt.size(), ikm.size())));
 	bytes::vector result(EVP_MD_size(md));
-	if (HKDF_extract(
+	if (!hkdfExtractOssl(
 			reinterpret_cast<unsigned char*>(result.data()),
-			nullptr,
+			result.size(),
 			md,
 			reinterpret_cast<const unsigned char*>(ikm.data()),
 			ikm.size(),
 			reinterpret_cast<const unsigned char*>(salt.data()),
-			salt.size()) != 1) {
+			salt.size())) {
 		return computeSHA512(salt.empty() ? ikm : salt);
 	}
 	return result;

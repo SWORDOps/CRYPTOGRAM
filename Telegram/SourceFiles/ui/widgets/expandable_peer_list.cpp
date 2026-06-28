@@ -7,15 +7,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "ui/widgets/expandable_peer_list.h"
 
-#include "base/algorithm.h"
 #include "data/data_peer.h"
 #include "info/profile/info_profile_values.h"
+#include "lang/lang_text_entity.h"
 #include "ui/controls/userpic_button.h"
 #include "ui/rect.h"
 #include "ui/text/text_utilities.h"
 #include "ui/vertical_list.h"
 #include "ui/widgets/buttons.h"
-#include "ui/widgets/checkbox.h"
 #include "ui/widgets/participants_check_view.h"
 #include "ui/wrap/slide_wrap.h"
 #include "ui/wrap/vertical_layout.h"
@@ -153,8 +152,8 @@ void AddExpandablePeerList(
 
 			using namespace Info::Profile;
 			auto name = controller->data.bold
-				? NameValue(peer) | Ui::Text::ToBold() | rpl::type_erased
-				: NameValue(peer) | Ui::Text::ToWithEntities() | rpl::type_erased;
+				? (NameValue(peer) | rpl::map(tr::bold) | rpl::type_erased)
+				: NameValue(peer) | rpl::map(tr::marked);
 			const auto userpic
 				= Ui::CreateChild<Ui::UserpicButton>(line, peer, st);
 			const auto checkbox = Ui::CreateChild<Ui::Checkbox>(

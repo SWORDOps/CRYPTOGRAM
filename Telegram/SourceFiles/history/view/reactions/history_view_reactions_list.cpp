@@ -261,7 +261,7 @@ void Controller::showReaction(const ReactionId &reaction) {
 		}) | ranges::views::transform(
 			&AllEntry::first
 		) | ranges::to_vector;
-		for (const auto peer : _filtered) {
+		for (const auto &peer : _filtered) {
 			appendRow(peer, _shownReaction);
 		}
 		_filteredOffset = QString();
@@ -372,7 +372,7 @@ void Controller::loadMore(const ReactionId &reaction) {
 		| (reaction.empty() ? Flag(0) : Flag::f_reaction);
 	_loadRequestId = _api.request(MTPmessages_GetMessageReactionsList(
 		MTP_flags(flags),
-		_peer->input,
+		_peer->input(),
 		MTP_int(_itemId.msg),
 		Data::ReactionToMTP(reaction),
 		MTP_string(offset),

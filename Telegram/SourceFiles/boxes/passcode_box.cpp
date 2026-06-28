@@ -29,7 +29,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/rect.h"
 #include "passport/passport_encryption.h"
 #include "passport/passport_panel_edit_contact.h"
-#include "settings/settings_privacy_security.h"
+#include "settings/sections/settings_privacy_security.h"
 #include "styles/style_layers.h"
 #include "styles/style_passport.h"
 #include "styles/style_boxes.h"
@@ -73,17 +73,17 @@ void TransferPasswordError(
 	auto text = std::move(about).append('\n').append('\n').append(
 		tr::lng_rights_transfer_check_password(
 			tr::now,
-			Ui::Text::RichLangValue)
+			tr::rich)
 	).append('\n').append('\n').append(
 		tr::lng_rights_transfer_check_session(
 			tr::now,
-			Ui::Text::RichLangValue)
+			tr::rich)
 	);
 	if (error == PasswordErrorType::Later) {
 		text.append('\n').append('\n').append(
 			tr::lng_rights_transfer_check_later(
 				tr::now,
-				Ui::Text::RichLangValue));
+				tr::rich));
 	}
 	box->addRow(object_ptr<Ui::FlatLabel>(
 		box,
@@ -1152,7 +1152,7 @@ RecoverBox::RecoverBox(
 	tr::lng_signin_recover_hint(
 		lt_recover_email,
 		rpl::single(Ui::Text::WrapEmailPattern(pattern)),
-		Ui::Text::WithEntities),
+		tr::marked),
 	st::termsContent,
 	st::defaultPopupMenu)
 , _closeParent(std::move(closeParent)) {

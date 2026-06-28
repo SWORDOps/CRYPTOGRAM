@@ -34,7 +34,6 @@ WarningWidget::WarningWidget(QWidget *parent)
 	using TextTransform = Ui::RoundButtonTextTransform;
 	_keepChanges->setTextTransform(TextTransform::NoTransform);
 	_keepChanges->setClickedCallback([] { KeepApplied(); });
-	_revert->setTextTransform(TextTransform::NoTransform);
 	_revert->setClickedCallback([] { Revert(); });
 	updateText();
 }

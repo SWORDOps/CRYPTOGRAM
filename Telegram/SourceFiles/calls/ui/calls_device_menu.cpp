@@ -75,7 +75,7 @@ Subsection::Subsection(
 	this,
 	text,
 	st::callDeviceSelectionLabel))
-, _dummyAction(new QAction(parent)) {
+, _dummyAction(Ui::CreateChild<QAction>(parent)) {
 	setPointerCursor(false);
 
 	std::move(
@@ -111,7 +111,7 @@ Selector::Selector(
 : Ui::Menu::ItemBase(parent, st)
 , _scroll(base::make_unique_q<Ui::ScrollArea>(this))
 , _list(_scroll->setOwnedWidget(object_ptr<Ui::VerticalLayout>(this)))
-, _dummyAction(new QAction(parent)) {
+, _dummyAction(Ui::CreateChild<QAction>(parent)) {
 	setPointerCursor(false);
 
 	std::move(

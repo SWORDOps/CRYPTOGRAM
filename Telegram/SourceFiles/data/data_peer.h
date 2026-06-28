@@ -229,6 +229,22 @@ public:
 	[[nodiscard]] DocumentId backgroundEmojiId() const;
 	bool changeBackgroundEmojiId(DocumentId id);
 
+	[[nodiscard]] std::optional<uint8> colorProfileIndex() const {
+		return _colorProfileIndex;
+	}
+	[[nodiscard]] auto colorProfileCollectible() const
+	-> const std::shared_ptr<Ui::ColorCollectible> & {
+		return _colorProfileCollectible;
+	}
+	bool changeColorProfileCollectible(Ui::ColorCollectible data);
+	bool changeColorProfileCollectible(
+		const tl::conditional<MTPPeerColor> &cloudColor);
+	bool clearColorProfileCollectible();
+	bool changeColorProfileIndex(uint8 index);
+	bool clearColorProfileIndex();
+	[[nodiscard]] DocumentId profileBackgroundEmojiId() const;
+	bool changeProfileBackgroundEmojiId(DocumentId id);
+
 	void setEmojiStatus(const MTPEmojiStatus &status);
 	void setEmojiStatus(EmojiStatusId emojiStatusId, TimeId until = 0);
 	[[nodiscard]] EmojiStatusId emojiStatusId() const;
@@ -301,6 +317,7 @@ public:
 	[[nodiscard]] rpl::producer<bool> slowmodeAppliedValue() const;
 	[[nodiscard]] int slowmodeSecondsLeft() const;
 	[[nodiscard]] bool canManageGroupCall() const;
+	[[nodiscard]] bool canManageRanks() const;
 	[[nodiscard]] bool amMonoforumAdmin() const;
 
 	[[nodiscard]] int starsPerMessage() const;
@@ -375,11 +392,11 @@ public:
 	void setUserpicPhoto(const MTPPhoto &data);
 
 	void paintUserpic(
-		Painter &p,
+		QPainter &p,
 		Ui::PeerUserpicView &view,
 		PaintUserpicContext context) const;
 	void paintUserpic(
-			Painter &p,
+			QPainter &p,
 			Ui::PeerUserpicView &view,
 			int x,
 			int y,
@@ -394,7 +411,7 @@ public:
 		});
 	}
 	void paintUserpicLeft(
-			Painter &p,
+			QPainter &p,
 			Ui::PeerUserpicView &view,
 			int x,
 			int y,
@@ -508,6 +525,7 @@ public:
 	bool changeColorCollectible(
 		const tl::conditional<MTPPeerColor> &cloudColor);
 	bool changeColor(const tl::conditional<MTPPeerColor> &cloudColor);
+	bool changeColorProfile(const tl::conditional<MTPPeerColor> &cloudColor);
 
 	enum class BlockStatus : char {
 		Unknown,
@@ -562,15 +580,18 @@ public:
 		None,
 		HasRead,
 		HasUnread,
+		HasVideoStream,
 	};
 	[[nodiscard]] bool hasActiveStories() const;
 	[[nodiscard]] bool hasUnreadStories() const;
+	[[nodiscard]] bool hasActiveVideoStream() const;
 	void setStoriesState(StoriesState state);
 
 	[[nodiscard]] int peerGiftsCount() const;
 
+	[[nodiscard]] MTPInputPeer input() const;
+
 	const PeerId id;
-	MTPinputPeer input = MTP_inputPeerEmpty();
 
 protected:
 	void updateNameDelayed(
@@ -612,10 +633,11 @@ private:
 
 	EmojiStatusId _emojiStatusId;
 	DocumentId _backgroundEmojiId = 0;
+	DocumentId _profileBackgroundEmojiId = 0;
 	crl::time _lastFullUpdate = 0;
 
 	QString _name;
-	uint32 _nameVersion : 29 = 1;
+	uint32 _nameVersion : 16 = 1;
 	
 	mutable QString _fakeName = QString();
 	int _randomNumber = 0;
@@ -628,12 +650,14 @@ private:
 	BarSettings _barSettings = PeerBarSettings(PeerBarSetting::Unknown);
 	std::unique_ptr<PeerBarDetails> _barDetails;
 	std::shared_ptr<Ui::ColorCollectible> _colorCollectible;
+	std::shared_ptr<Ui::ColorCollectible> _colorProfileCollectible;
 
 	BlockStatus _blockStatus = BlockStatus::Unknown;
 	LoadedStatus _loadedStatus = LoadedStatus::Not;
 	TranslationFlag _translationFlag = TranslationFlag::Unknown;
 	uint8 _colorIndex : 6 = 0;
 	uint8 _colorIndexCloud : 1 = 0;
+	std::optional<uint8> _colorProfileIndex;
 	uint8 _userpicHasVideo : 1 = 0;
 
 	QString _about;
@@ -661,6 +685,8 @@ void SetTopPinnedMessageId(
 	PeerData *migrated = nullptr);
 
 [[nodiscard]] uint64 BackgroundEmojiIdFromColor(const MTPPeerColor *color);
-[[nodiscard]] uint8 ColorIndexFromColor(const MTPPeerColor *color);
+[[nodiscard]] std::optional<uint8> ColorIndexFromColor(const MTPPeerColor *);
+
+[[nodiscard]] bool IsBotUserCreatesTopics(not_null<PeerData*>);
 
 } // namespace Data

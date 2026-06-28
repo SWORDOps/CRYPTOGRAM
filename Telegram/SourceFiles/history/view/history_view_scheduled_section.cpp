@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/history_view_top_bar_widget.h"
 #include "history/view/history_view_schedule_box.h"
 #include "history/view/history_view_sticker_toast.h"
+#include "data/data_chat_participant_status.h"
 #include "history/history.h"
 #include "history/history_drag_area.h"
 #include "history/history_item_helpers.h" // GetErrorForSending.
@@ -242,7 +243,7 @@ ScheduledWidget::ScheduledWidget(
 			_inner,
 			controller->chatStyle(),
 			st::msgServicePadding);
-		const auto emptyText = Ui::Text::Semibold(
+		const auto emptyText = tr::semibold(
 			tr::lng_scheduled_messages_empty(tr::now));
 		emptyInfo->setText(emptyText);
 		_inner->setEmptyInfoWidget(std::move(emptyInfo));
@@ -384,7 +385,9 @@ void ScheduledWidget::setupComposeControls() {
 		if (const auto item = session().data().message(data.fullId)) {
 			if (item->isScheduled()) {
 				const auto spoiler = data.spoilered;
-				edit(item, data.options, saveEditMsgRequestId, spoiler);
+				auto &options = data.options;
+				options.scheduleRepeatPeriod = item->scheduleRepeatPeriod();
+				edit(item, options, saveEditMsgRequestId, spoiler);
 			}
 		}
 	}, lifetime());
@@ -399,6 +402,12 @@ void ScheduledWidget::setupComposeControls() {
 			this,
 			[=] { _choosingAttach = false; chooseAttach(); });
 	}, lifetime());
+
+	_composeControls->setSendAsFileConfirmed(crl::guard(this, [=](
+			std::shared_ptr<Ui::PreparedBundle> bundle,
+			Api::SendOptions options) {
+		sendingFilesConfirmed(std::move(bundle), options);
+	}));
 
 	_composeControls->fileChosen(
 	) | rpl::on_next([=](ChatHelpers::FileChosen data) {
@@ -565,20 +574,15 @@ bool ScheduledWidget::confirmSendingFiles(
 		SendMenu::Details());
 
 	box->setConfirmedCallback(crl::guard(this, [=](
-		Ui::PreparedList &&list,
-		Ui::SendFilesWay way,
-		TextWithTags &&caption,
-		Api::SendOptions options,
-		bool ctrlShiftEnter) {
-		sendingFilesConfirmed(
-			std::move(list),
-			way,
-			std::move(caption),
-			options,
-			ctrlShiftEnter);
+			std::shared_ptr<Ui::PreparedBundle> bundle,
+			Api::SendOptions options) {
+		sendingFilesConfirmed(std::move(bundle), options);
 	}));
 	box->setCancelledCallback(_composeControls->restoreTextCallback(
 		insertTextOnCancel));
+	box->takeTextWithTagsRequests() | rpl::on_next([=](TextWithTags &&text) {
+		_composeControls->setText(std::move(text));
+	}, box->lifetime());
 
 	//ActivateWindow(controller());
 	controller()->show(std::move(box));
@@ -587,46 +591,29 @@ bool ScheduledWidget::confirmSendingFiles(
 }
 
 void ScheduledWidget::sendingFilesConfirmed(
-	Ui::PreparedList &&list,
-	Ui::SendFilesWay way,
-	TextWithTags &&caption,
-	Api::SendOptions options,
-	bool ctrlShiftEnter) {
-	Expects(list.filesToProcess.empty());
-
-	if (showSendingFilesError(list, way.sendImagesAsPhotos())) {
+		std::shared_ptr<Ui::PreparedBundle> bundle,
+		Api::SendOptions options) {
+	if (showSendingFilesError(*bundle)) {
 		return;
 	}
-	auto groups = DivideByGroups(std::move(list), way, false);
-	const auto type = way.sendImagesAsPhotos()
-		? SendMediaType::Photo
-		: SendMediaType::File;
+	const auto compress = bundle->way.sendImagesAsPhotos();
+	const auto type = compress ? SendMediaType::Photo : SendMediaType::File;
 	auto action = prepareSendAction(options);
 	action.clearDraft = false;
-	if ((groups.size() != 1 || !groups.front().sentWithCaption())
-		&& !caption.text.isEmpty()) {
-		auto message = Api::MessageToSend(action);
-		message.textWithTags = base::take(caption);
-		session().api().sendMessage(std::move(message));
-	}
-	for (auto &group : groups) {
+	auto &api = session().api();
+	for (auto &group : bundle->groups) {
 		const auto album = (group.type != Ui::AlbumType::None)
 			? std::make_shared<SendingAlbum>()
 			: nullptr;
-		session().api().sendFiles(
-			std::move(group.list),
-			type,
-			base::take(caption),
-			album,
-			action);
+		api.sendFiles(std::move(group.list), type, album, action);
 	}
 }
 
 bool ScheduledWidget::confirmSendingFiles(
-	QImage &&image,
-	QByteArray &&content,
-	std::optional<bool> overrideSendImagesAsPhotos,
-	const QString &insertTextOnCancel) {
+		QImage &&image,
+		QByteArray &&content,
+		std::optional<bool> overrideSendImagesAsPhotos,
+		const QString &insertTextOnCancel) {
 	if (image.isNull()) {
 		return false;
 	}
@@ -662,8 +649,8 @@ void ScheduledWidget::checkReplyReturns() {
 }
 
 void ScheduledWidget::uploadFile(
-	const QByteArray &fileContent,
-	SendMediaType type) {
+		const QByteArray &fileContent,
+		SendMediaType type) {
 	const auto callback = [=](Api::SendOptions options) {
 		session().api().sendFile(
 			fileContent,
@@ -675,46 +662,20 @@ void ScheduledWidget::uploadFile(
 }
 
 bool ScheduledWidget::showSendingFilesError(
-	const Ui::PreparedList &list) const {
-	return showSendingFilesError(list, std::nullopt);
+		const Ui::PreparedList &list) const {
+	const auto peer = _history->peer;
+	const auto show = controller()->uiShow();
+	return Data::ShowSendError(show, peer, list, std::nullopt, true);
 }
 
 bool ScheduledWidget::showSendingFilesError(
-	const Ui::PreparedList &list,
-	std::optional<bool> compress) const {
-	const auto error = [&]() -> Data::SendError {
-		using Error = Ui::PreparedList::Error;
-		const auto peer = _history->peer;
-		const auto error = Data::FileRestrictionError(peer, list, compress);
-		if (error) {
-			return error;
-		} else switch (list.error) {
-		case Error::None: return QString();
-		case Error::EmptyFile:
-		case Error::Directory:
-		case Error::NonLocalUrl: return tr::lng_send_image_empty(
-			tr::now,
-			lt_name,
-			list.errorData);
-		case Error::TooLargeFile: return u"(toolarge)"_q;
-		}
-		return tr::lng_forward_send_files_cant(tr::now);
-	}();
-	if (!error) {
-		return false;
-	} else if (error.text == u"(toolarge)"_q) {
-		const auto fileSize = list.files.back().size;
-		controller()->show(
-			Box(FileSizeLimitBox, &session(), fileSize, nullptr));
-		return true;
-	}
-
-	Data::ShowSendErrorToast(controller(), _history->peer, error);
-	return true;
+		const Ui::PreparedBundle &bundle) const {
+	const auto show = controller()->uiShow();
+	return Data::ShowSendError(show, _history->peer, bundle, true);
 }
 
 Api::SendAction ScheduledWidget::prepareSendAction(
-	Api::SendOptions options) const {
+		Api::SendOptions options) const {
 	auto result = Api::SendAction(_history, options);
 	result.options.sendAs = _composeControls->sendAsPeer();
 	if (_forumTopic) {
@@ -1335,7 +1296,7 @@ void ScheduledWidget::showProcessingVideoTooltip() {
 		_inner.data(),
 		Ui::MakeNiceTooltipLabel(
 			_inner.data(),
-			tr::lng_scheduled_video_tip(Ui::Text::WithEntities),
+			tr::lng_scheduled_video_tip(tr::marked),
 			st::processingVideoTipMaxWidth,
 			st::defaultImportantTooltipLabel),
 		st::defaultImportantTooltip);
@@ -1508,7 +1469,8 @@ void ScheduledWidget::listMarkContentsRead(
 }
 
 MessagesBarData ScheduledWidget::listMessagesBar(
-		const std::vector<not_null<Element*>> &elements) {
+		const std::vector<not_null<Element*>> &elements,
+		bool markLastAsRead) {
 	return {};
 }
 
@@ -1649,14 +1611,27 @@ void ScheduledWidget::listShowPremiumToast(
 void ScheduledWidget::listOpenPhoto(
 		not_null<PhotoData*> photo,
 		FullMsgId context) {
-	controller()->openPhoto(photo, { context });
+	const auto draw = _forumTopic
+		? Data::CanSendAnyOf(_forumTopic, Data::FilesSendRestrictions())
+		: Data::CanSendAnyOf(
+			_history->peer,
+			Data::FilesSendRestrictions());
+	controller()->openPhoto(photo, { .id = context, .showDrawButton = draw });
 }
 
 void ScheduledWidget::listOpenDocument(
 		not_null<DocumentData*> document,
 		FullMsgId context,
 		bool showInMediaView) {
-	controller()->openDocument(document, showInMediaView, { context });
+	const auto draw = _forumTopic
+		? Data::CanSendAnyOf(_forumTopic, Data::FilesSendRestrictions())
+		: Data::CanSendAnyOf(
+			_history->peer,
+			Data::FilesSendRestrictions());
+	controller()->openDocument(
+		document,
+		showInMediaView,
+		{ .id = context, .showDrawButton = draw });
 }
 
 void ScheduledWidget::listPaintEmpty(
@@ -1727,7 +1702,7 @@ bool ShowScheduledVideoPublished(
 
 	const auto text = tr::lng_scheduled_video_published(
 		tr::now,
-		Ui::Text::Bold);
+		tr::bold);
 	const auto &st = st::processingVideoToast;
 	const auto skip = st::processingVideoPreviewSkip;
 	const auto size = st.style.font->height * 2;

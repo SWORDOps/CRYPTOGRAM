@@ -12,7 +12,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/ui_utility.h"
 #include "chat_helpers/tabbed_selector.h"
 #include "window/window_session_controller.h"
-#include "mainwindow.h"
+#include "main/main_session.h"
+#include "data/data_session.h"
+#include "data/stickers/data_stickers.h"
 #include "core/application.h"
 #include "base/options.h"
 #include "styles/style_chat_helpers.h"
@@ -68,7 +70,8 @@ TabbedPanel::TabbedPanel(
 	: _ownedSelector.data())
 , _heightRatio(st::emojiPanHeightRatio)
 , _minContentHeight(st::emojiPanMinHeight)
-, _maxContentHeight(st::emojiPanMaxHeight) {
+, _maxContentHeight(st::emojiPanMaxHeight)
+, _shadow(_selector->st().showAnimation.shadow) {
 	Expects(_selector != nullptr);
 
 	_selector->setParent(this);
@@ -113,6 +116,13 @@ TabbedPanel::TabbedPanel(
 	) | rpl::on_next([=] {
 		hideAnimated();
 	}, lifetime());
+
+	if (_regularWindow) {
+		_regularWindow->session().data().stickers().gifWithCaptionSent(
+		) | rpl::on_next([=] {
+			hideAnimated();
+		}, lifetime());
+	}
 
 	_selector->slideFinished(
 	) | rpl::on_next([=] {
@@ -244,7 +254,7 @@ void TabbedPanel::paintEvent(QPaintEvent *e) {
 		hideFinished();
 	} else {
 		if (!_cache.isNull()) _cache = QPixmap();
-		Ui::BoxShadow(_selector->st().showAnimation.shadow).paint(p, innerRect(), st::emojiPanRadius);
+		_shadow.paint(p, innerRect(), st::emojiPanRadius);
 	}
 }
 
@@ -382,6 +392,7 @@ void TabbedPanel::startShowAnimation() {
 				inner.topLeft() * style::DevicePixelRatio(),
 				inner.size() * style::DevicePixelRatio()),
 			st::emojiPanRadius);
+		_showAnimation->setCornerMasks(Images::CornersMask(st::emojiPanRadius));
 		_showAnimation->start();
 	}
 	hideChildren();

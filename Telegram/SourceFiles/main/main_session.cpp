@@ -31,13 +31,17 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "storage/storage_facade.h"
 #include "data/components/credits.h"
 #include "data/components/factchecks.h"
+#include "data/components/gift_auctions.h"
 #include "data/components/location_pickers.h"
+#include "data/components/passkeys.h"
 #include "data/components/promo_suggestions.h"
 #include "data/components/recent_peers.h"
 #include "data/components/recent_shared_media_gifts.h"
 #include "data/components/scheduled_messages.h"
 #include "data/components/sponsored_messages.h"
 #include "data/components/top_peers.h"
+#include "settings/settings_faq_suggestions.h"
+#include "settings/settings_recent_searches.h"
 #include "data/data_session.h"
 #include "data/data_changes.h"
 #include "data/data_user.h"
@@ -112,6 +116,7 @@ Session::Session(
 , _attachWebView(std::make_unique<InlineBots::AttachWebView>(this))
 , _recentPeers(std::make_unique<Data::RecentPeers>(this))
 , _recentSharedGifts(std::make_unique<Data::RecentSharedMediaGifts>(this))
+, _giftAuctions(std::make_unique<Data::GiftAuctions>(this))
 , _scheduledMessages(std::make_unique<Data::ScheduledMessages>(this))
 , _sponsoredMessages(std::make_unique<Data::SponsoredMessages>(this))
 , _topPeers(std::make_unique<Data::TopPeers>(this, Data::TopPeerType::Chat))
@@ -120,7 +125,42 @@ Session::Session(
 , _factchecks(std::make_unique<Data::Factchecks>(this))
 , _locationPickers(std::make_unique<Data::LocationPickers>())
 , _credits(std::make_unique<Data::Credits>(this))
-, _promoSuggestions(std::make_unique<Data::PromoSuggestions>(this))
+, _promoSuggestions(std::make_unique<Data::PromoSuggestions>(this, [=] {
+	using State = Data::SetupEmailState;
+	if (_promoSuggestions->setupEmailState() == State::Setup
+		|| _promoSuggestions->setupEmailState() == State::SetupNoSkip) {
+		if (_settings->setupEmailState() == State::Setup
+			|| _settings->setupEmailState() == State::SetupNoSkip) {
+			crl::on_main([=] {
+			// base::call_delayed(5000, [=] {
+				Core::App().lockBySetupEmail();
+			});
+			const auto unlockLifetime = std::make_shared<rpl::lifetime>();
+			_promoSuggestions->setupEmailStateValue(
+			) | rpl::filter([](Data::SetupEmailState s) {
+				return s == Data::SetupEmailState::None;
+			}) | rpl::take(1) | rpl::on_next(crl::guard(this, [=] {
+				Core::App().unlockSetupEmail();
+				_settings->setSetupEmailState(State::None);
+				saveSettingsDelayed(200);
+				unlockLifetime->destroy();
+			}), *unlockLifetime);
+		} else {
+			_settings->setSetupEmailState(
+				_promoSuggestions->setupEmailState());
+			saveSettingsDelayed(200);
+		}
+	} else {
+		if (_settings->setupEmailState() == State::Setup
+			|| _settings->setupEmailState() == State::SetupNoSkip) {
+			_settings->setSetupEmailState(State::None);
+			saveSettingsDelayed(200);
+		}
+	}
+}))
+, _passkeys(std::make_unique<Data::Passkeys>(this))
+, _faqSuggestions(std::make_unique<Settings::FaqSuggestions>(this))
+, _recentSettingsSearches(std::make_unique<Settings::RecentSearches>(this))
 , _cachedReactionIconFactory(std::make_unique<ReactionIconFactory>())
 , _supportHelper(Support::Helper::Create(this))
 , _fastButtonsBots(std::make_unique<Support::FastButtonsBots>(this))
@@ -148,7 +188,7 @@ Session::Session(
 		_selfUserpicView = view.cloud;
 	}, lifetime());
 
-	crl::on_main(this, [=] {
+	crl::on_main_queue(this, { [=] {
 		using Flag = Data::PeerUpdate::Flag;
 		changes().peerUpdates(
 			_user,
@@ -177,23 +217,36 @@ Session::Session(
 				});
 			saveSettingsDelayed();
 		}
-
+	}, [=] {
 		// Storage::Account uses Main::Account::session() in those methods.
 		// So they can't be called during Main::Session construction.
+		//
+		// They are deferred via crl::on_main which fires after the
+		// constructor returns and _session is set.
+		//
+		// Steps are chained via crl::on_main so that paint events
+		// can be processed between heavy file reads.
 		local().readInstalledStickers();
+	}, [=] {
 		local().readInstalledMasks();
+	}, [=] {
 		local().readInstalledCustomEmoji();
+	}, [=] {
 		local().readFeaturedStickers();
+	}, [=] {
 		local().readFeaturedCustomEmoji();
+	}, [=] {
 		local().readRecentStickers();
 		local().readRecentMasks();
 		local().readFavedStickers();
 		local().readSavedGifs();
+	}, [=] {
 		data().stickers().notifyUpdated(Data::StickersType::Stickers);
 		data().stickers().notifyUpdated(Data::StickersType::Masks);
 		data().stickers().notifyUpdated(Data::StickersType::Emoji);
 		data().stickers().notifySavedGifsUpdated();
-	});
+		DEBUG_LOG(("Init: Account stored data load finished."));
+	} }).dispatch();
 
 #ifndef TDESKTOP_DISABLE_SPELLCHECK
 	Spellchecker::Start(this);

@@ -26,6 +26,8 @@ struct CreditTopupOption;
 struct SavedStarGift;
 class SavedStarGiftId;
 struct StarGift;
+struct UniqueGift;
+struct GiftUpgradeSpinner;
 } // namespace Data
 
 namespace HistoryView {
@@ -64,26 +66,29 @@ struct SubscriptionRightLabel {
 	QSize size;
 };
 SubscriptionRightLabel PaintSubscriptionRightLabelCallback(
-	not_null<Main::Session*> session,
+	not_null<::Main::Session*> session,
 	const style::PeerListItem &st,
 	int amount);
 
 void FillCreditOptions(
-	std::shared_ptr<Main::SessionShow> show,
+	std::shared_ptr<::Main::SessionShow> show,
 	not_null<Ui::VerticalLayout*> container,
 	not_null<PeerData*> peer,
 	CreditsAmount minCredits,
 	Fn<void()> paid,
 	rpl::producer<> showFinishes,
 	rpl::producer<QString> subtitle,
-	std::vector<Data::CreditTopupOption> preloadedTopupOptions);
+	std::vector<Data::CreditTopupOption> preloadedTopupOptions,
+	bool dark = false,
+	PeerId spendPurposePeerId = PeerId(0));
 
 [[nodiscard]] not_null<Ui::RpWidget*> AddBalanceWidget(
 	not_null<Ui::RpWidget*> parent,
-	not_null<Main::Session*> session,
+	not_null<::Main::Session*> session,
 	rpl::producer<CreditsAmount> balanceValue,
 	bool rightAlign,
-	rpl::producer<float64> opacityValue = nullptr);
+	rpl::producer<float64> opacityValue = nullptr,
+	bool dark = false);
 
 void AddWithdrawalWidget(
 	not_null<Ui::VerticalLayout*> container,
@@ -101,6 +106,7 @@ struct GiftWearBoxStyleOverride {
 	const style::FlatLabel *title = nullptr;
 	const style::FlatLabel *subtitle = nullptr;
 	const style::icon *radiantIcon = nullptr;
+	const style::icon *profileIcon = nullptr;
 	const style::icon *proofIcon = nullptr;
 	const style::FlatLabel *infoTitle = nullptr;
 	const style::FlatLabel *infoAbout = nullptr;
@@ -117,6 +123,7 @@ struct CreditsEntryBoxStyleOverrides {
 	const style::icon *share = nullptr;
 	const style::icon *theme = nullptr;
 	const style::icon *transfer = nullptr;
+	const style::icon *craft = nullptr;
 	const style::icon *wear = nullptr;
 	const style::icon *takeoff = nullptr;
 	const style::icon *resell = nullptr;
@@ -125,16 +132,37 @@ struct CreditsEntryBoxStyleOverrides {
 	const style::icon *hide = nullptr;
 	const style::icon *pin = nullptr;
 	const style::icon *unpin = nullptr;
+	const style::icon *offer = nullptr;
 	std::shared_ptr<ShareBoxStyleOverrides> shareBox;
 	std::shared_ptr<GiftWearBoxStyleOverride> giftWearBox;
 };
 [[nodiscard]] CreditsEntryBoxStyleOverrides DarkCreditsEntryBoxStyle();
+
+[[nodiscard]] rpl::producer<CreditsAmount> UniqueGiftResalePrice(
+	std::shared_ptr<Data::UniqueGift> unique,
+	bool forceTon = false);
+[[nodiscard]] bool UniqueGiftCanRemoveDetails(
+	const Data::CreditsHistoryEntry &entry);
+[[nodiscard]] Fn<void(Fn<void()> removed)> UniqueGiftRemoveDetailsHandler(
+	std::shared_ptr<ChatHelpers::Show> show,
+	const Data::CreditsHistoryEntry &entry);
 
 void GenericCreditsEntryBox(
 	not_null<Ui::GenericBox*> box,
 	std::shared_ptr<ChatHelpers::Show> show,
 	const Data::CreditsHistoryEntry &e,
 	const Data::SubscriptionEntry &s,
+	CreditsEntryBoxStyleOverrides st = {});
+void GenericCreditsEntryBody(
+	not_null<Ui::GenericBox*> box,
+	std::shared_ptr<ChatHelpers::Show> show,
+	const Data::CreditsHistoryEntry &e);
+void GenericCreditsEntryBody(
+	not_null<Ui::GenericBox*> box,
+	std::shared_ptr<ChatHelpers::Show> show,
+	const Data::CreditsHistoryEntry &e,
+	const Data::SubscriptionEntry &s,
+	std::shared_ptr<Data::GiftUpgradeSpinner> upgradeSpinner,
 	CreditsEntryBoxStyleOverrides st = {});
 void UniqueGiftValueBox(
 	not_null<Ui::GenericBox*> box,
@@ -178,7 +206,7 @@ void GlobalStarGiftBox(
 	not_null<PeerData*> owner,
 	const Data::SavedStarGift &data);
 [[nodiscard]] Data::SavedStarGiftId EntryToSavedStarGiftId(
-	not_null<Main::Session*> session,
+	not_null<::Main::Session*> session,
 	const Data::CreditsHistoryEntry &entry);
 void ShowSavedStarGiftBox(
 	not_null<Window::SessionController*> controller,
@@ -232,6 +260,9 @@ struct SmallBalanceBot {
 struct SmallBalanceReaction {
 	ChannelId channelId = 0;
 };
+struct SmallBalanceVideoStream {
+	PeerId streamerId = 0;
+};
 struct SmallBalanceSubscription {
 	QString name;
 };
@@ -247,23 +278,27 @@ struct SmallBalanceForMessage {
 struct SmallBalanceForSuggest {
 	PeerId recipientId;
 };
+struct SmallBalanceForOffer {
+};
 struct SmallBalanceForSearch {
 };
 struct SmallBalanceSource : std::variant<
 	SmallBalanceBot,
 	SmallBalanceReaction,
+	SmallBalanceVideoStream,
 	SmallBalanceSubscription,
 	SmallBalanceDeepLink,
 	SmallBalanceStarGift,
 	SmallBalanceForMessage,
 	SmallBalanceForSuggest,
+	SmallBalanceForOffer,
 	SmallBalanceForSearch> {
 	using variant::variant;
 };
 
 void SmallBalanceBox(
 	not_null<Ui::GenericBox*> box,
-	std::shared_ptr<Main::SessionShow> show,
+	std::shared_ptr<::Main::SessionShow> show,
 	uint64 wholeCredits,
 	SmallBalanceSource source,
 	Fn<void()> paid);
@@ -276,7 +311,7 @@ enum class SmallBalanceResult {
 };
 
 void MaybeRequestBalanceIncrease(
-	std::shared_ptr<Main::SessionShow> show,
+	std::shared_ptr<::Main::SessionShow> show,
 	uint64 credits,
 	SmallBalanceSource source,
 	Fn<void(SmallBalanceResult)> done);
@@ -287,5 +322,11 @@ void AddMiniStars(
 	int photoSize,
 	int boxWidth,
 	float64 heightRatio);
+
+void AddUniqueCloseMoreButton(
+	not_null<Ui::GenericBox*> box,
+	Settings::CreditsEntryBoxStyleOverrides st,
+	Fn<void(not_null<Ui::PopupMenu*>)> fillMenu = nullptr,
+	Fn<void()> launchCraft = nullptr);
 
 } // namespace Settings

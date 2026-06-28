@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/media/history_view_web_page.h"
 
+#include "base/unixtime.h"
 #include "core/application.h"
 #include "countries/countries_instance.h"
 #include "base/qt/qt_key_modifiers.h"
@@ -192,7 +193,7 @@ constexpr auto kSponsoredUserpicLines = 2;
 
 [[nodiscard]] TextWithEntities PageToPhrase(not_null<WebPageData*> page) {
 	const auto type = page->type;
-	const auto text = (page->iv
+	const auto text = tr::upper(page->iv
 		? tr::lng_view_button_iv(tr::now)
 		: page->uniqueGift
 		? tr::lng_view_button_collectible(tr::now)
@@ -236,7 +237,20 @@ constexpr auto kSponsoredUserpicLines = 2;
 		? tr::lng_view_button_storyalbum(tr::now)
 		: (type == WebPageType::GiftCollection)
 		? tr::lng_view_button_collection(tr::now)
-		: QString()).toUpper();
+		: (type == WebPageType::NewBot)
+		? tr::lng_view_button_newbot(tr::now)
+		: (type == WebPageType::Auction)
+		? ((page->auction
+			&& page->auction->endDate
+			&& page->auction->endDate <= base::unixtime::now())
+			? tr::lng_auction_preview_view_results(tr::now)
+			: (page->auction
+				&& page->auction->auctionGift->auctionStartDate
+				&& (page->auction->auctionGift->auctionStartDate
+				> base::unixtime::now()))
+			? tr::lng_auction_bar_view(tr::now)
+			: tr::lng_auction_preview_join(tr::now))
+		: QString());
 	if (page->iv) {
 		return Ui::Text::IconEmoji(&st::historyIvIcon).append(text);
 	}
@@ -271,7 +285,9 @@ constexpr auto kSponsoredUserpicLines = 2;
 			&& webpage->document->isWallPaper())
 		// || (type == WebPageType::StickerSet)
 		|| (type == WebPageType::StoryAlbum)
-		|| (type == WebPageType::GiftCollection);
+		|| (type == WebPageType::GiftCollection)
+		|| (type == WebPageType::Auction)
+		|| (type == WebPageType::NewBot);
 }
 
 } // namespace
@@ -395,7 +411,7 @@ QSize WebPage::countOptimalSize() {
 	} else if (sponsored && !sponsored->buttonText.isEmpty()) {
 		_openButton.setText(
 			st::semiboldTextStyle,
-			sponsored->buttonText.toUpper());
+			tr::upper(sponsored->buttonText));
 	}
 
 	const auto padding = inBubblePadding() + innerMargin();
@@ -517,8 +533,35 @@ QSize WebPage::countOptimalSize() {
 				_data->uniqueGift),
 				MediaGenericDescriptor{
 					.maxWidth = st::msgServiceGiftPreview,
-					.paintBg = UniqueGiftBg(_parent, _data->uniqueGift),
+					.paintBgFactory = [=] {
+						return UniqueGiftBg(_parent, _data->uniqueGift);
+					},
+					.expandCurrentWidth = true,
 				});
+	} else if (!_attach && _data->auction) {
+		const auto &gift = _data->auction->auctionGift;
+		const auto backdrop = gift->background
+			? gift->background->backdrop()
+			: Data::UniqueGiftBackdrop();
+		_attach = std::make_unique<MediaGeneric>(
+			_parent,
+			GenerateAuctionPreview(
+				_parent,
+				nullptr,
+				gift,
+				backdrop),
+			MediaGenericDescriptor{
+				.maxWidth = st::msgServiceGiftPreview,
+				.paintBgFactory = [=] {
+					return AuctionBg(
+						_parent,
+						backdrop,
+						gift,
+						_data->auction->auctionGift->auctionStartDate,
+						_data->auction->endDate);
+				},
+				.expandCurrentWidth = true,
+			});
 	} else if (!_attach && !_asArticle) {
 		_attach = CreateAttach(
 			_parent,
@@ -533,7 +576,8 @@ QSize WebPage::countOptimalSize() {
 	// init strings
 	if (_description.isEmpty()
 		&& !_data->description.text.isEmpty()
-		&& !_data->uniqueGift) {
+		&& !_data->uniqueGift
+		&& !_data->auction) {
 		const auto &text = _data->description;
 		using Type = Core::TextContextDetails::HashtagMentionType;
 		auto context = Core::TextContext({
@@ -558,14 +602,14 @@ QSize WebPage::countOptimalSize() {
 		_siteNameLines = 1;
 		_siteName.setMarkedText(
 			st::webPageTitleStyle,
-			Ui::Text::Link(siteName, _data->url),
+			tr::link(siteName, _data->url),
 			Ui::WebpageTextTitleOptions());
 	}
 	if (_title.isEmpty() && !title.isEmpty()) {
 		if (!_siteNameLines && !_data->url.isEmpty()) {
 			_title.setMarkedText(
 				st::webPageTitleStyle,
-				Ui::Text::Link(title, _data->url),
+				tr::link(title, _data->url),
 				Ui::WebpageTextTitleOptions());
 
 		} else {
@@ -1584,6 +1628,15 @@ bool WebPage::enforceBubbleWidth() const {
 	return (_attach != nullptr)
 		&& (_data->document != nullptr)
 		&& (_data->document->isWallPaper() || _data->document->isTheme());
+}
+
+bool WebPage::allowsNarrowBubble() const {
+	return (_attach != nullptr)
+		&& (_data->uniqueGift != nullptr || _data->auction != nullptr);
+}
+
+int WebPage::minBubbleWidthForNarrowBubble() const {
+	return allowsNarrowBubble() ? maxWidth() : 0;
 }
 
 void WebPage::playAnimation(bool autoplay) {

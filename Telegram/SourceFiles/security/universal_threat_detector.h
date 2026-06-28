@@ -7,8 +7,8 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 */
 #pragma once
 
-#include "../../lib_base/bytes.h"
-#include "../../lib_base/expected.h"
+#include "base/bytes.h"
+#include "base/expected.h"
 
 #include <QtCore/QObject>
 #include <QtCore/QString>
@@ -225,7 +225,7 @@ public:
     int getFalsePositiveCount() const;
     void retrainOnFeedback();
 
-signals:
+Q_SIGNALS:
     void threatDetected(const ThreatAnalysis &analysis);
     void analysisComplete(const QString &requestId, const ThreatAnalysis &analysis);
     void analysisError(const QString &requestId, const QString &error);
@@ -235,7 +235,7 @@ signals:
     void statisticsUpdated(const ProcessingStatistics &stats);
     void threatDatabaseUpdated(int newVersion);
 
-private slots:
+private Q_SLOTS:
     void onAnalysisWorkerFinished();
     void onModelLoadFinished();
     void onDatabaseUpdateFinished();

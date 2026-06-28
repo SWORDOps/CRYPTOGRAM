@@ -301,7 +301,7 @@ public:
     bool validateHardwareIntegrity();
     QStringList getIntegrityCheckResults() const;
 
-signals:
+Q_SIGNALS:
     void hardwareCapabilityChanged(AccelerationType type, bool available);
     void algorithmBenchmarkCompleted(QuantumAlgorithm algorithm, double performanceMs);
     void quantumThreatDetected();

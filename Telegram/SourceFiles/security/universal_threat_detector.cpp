@@ -205,7 +205,7 @@ void UniversalThreatDetector::initialize() {
         qDebug() << "Universal Threat Detector initialized successfully with tier:"
                  << static_cast<int>(_currentTier);
 
-        emit processingTierChanged(_currentTier, AIProcessingTier::Tier4_Pattern_Only);
+        Q_EMIT processingTierChanged(_currentTier, AIProcessingTier::Tier4_Pattern_Only);
 
     } catch (const std::exception &e) {
         qCritical() << "Failed to initialize Universal Threat Detector:" << e.what();
@@ -257,7 +257,7 @@ void UniversalThreatDetector::setProcessingTier(AIProcessingTier tier) {
     qDebug() << "Processing tier changed from" << static_cast<int>(oldTier)
              << "to" << static_cast<int>(tier);
 
-    emit processingTierChanged(_currentTier, oldTier);
+    Q_EMIT processingTierChanged(_currentTier, oldTier);
 }
 
 AIProcessingTier UniversalThreatDetector::getCurrentProcessingTier() const {
@@ -349,7 +349,7 @@ ThreatAnalysis UniversalThreatDetector::analyzeText(const QString &text, const Q
 
         // Emit signal for real-time monitoring
         if (analysis.result != AIAnalysisResult::Safe) {
-            emit threatDetected(analysis);
+            Q_EMIT threatDetected(analysis);
         }
 
     } catch (const std::exception &e) {
@@ -442,7 +442,7 @@ QString UniversalThreatDetector::requestAnalysis(const AnalysisRequest &request)
     // Check queue size limit
     if (_analysisQueue.size() >= MAX_QUEUE_SIZE) {
         qWarning() << "Analysis queue full, rejecting request";
-        emit analysisError(requestId, "Analysis queue full");
+        Q_EMIT analysisError(requestId, "Analysis queue full");
         return QString();
     }
 
@@ -984,7 +984,7 @@ bool UniversalThreatDetector::isWhitelisted(const QString &content) const {
 
 // Slot implementations
 void UniversalThreatDetector::onStatisticsTimer() {
-    emit statisticsUpdated(_statistics);
+    Q_EMIT statisticsUpdated(_statistics);
 }
 
 void UniversalThreatDetector::processAnalysisQueue() {
@@ -1009,7 +1009,7 @@ void UniversalThreatDetector::processAnalysisQueue() {
         _activeRequests.remove(request.requestId);
         activeLocker.unlock();
 
-        emit analysisComplete(request.requestId, analysis);
+        Q_EMIT analysisComplete(request.requestId, analysis);
     });
 }
 
@@ -1026,7 +1026,7 @@ void UniversalThreatDetector::onModelLoadFinished() {
 void UniversalThreatDetector::onDatabaseUpdateFinished() {
     // Database update finished notification
     qDebug() << "Database update finished";
-    emit threatDatabaseUpdated(_threatDatabaseVersion);
+    Q_EMIT threatDatabaseUpdated(_threatDatabaseVersion);
 }
 
 // Utility functions implementation

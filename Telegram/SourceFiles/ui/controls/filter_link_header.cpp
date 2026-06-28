@@ -495,6 +495,7 @@ object_ptr<RoundButton> FilterLinkProcessButton(
 	const auto st = &st::filterInviteBox.button;
 	const auto badgeSt = &st::filterInviteButtonBadgeStyle;
 	auto result = object_ptr<RoundButton>(parent, rpl::single(u""_q), *st);
+	result->setTextTransform(RoundButtonTextTransform::ToUpper);
 
 	struct Data {
 		TextWithEntities text;
@@ -513,33 +514,33 @@ object_ptr<RoundButton> FilterLinkProcessButton(
 		case FilterLinkHeaderType::AddingFilter:
 			return badge.isEmpty()
 				? tr::lng_filters_by_link_add_no(
-					Ui::Text::WithEntities
+					tr::marked
 				) | with(QString())
 				: tr::lng_filters_by_link_add_button(
 					lt_folder,
 					rpl::single(title),
-					Ui::Text::WithEntities
+					tr::marked
 				) | with(badge);
 		case FilterLinkHeaderType::AddingChats:
 			return badge.isEmpty()
 				? tr::lng_filters_by_link_join_no(
-					Ui::Text::WithEntities
+					tr::marked
 				) | with(QString())
 				: tr::lng_filters_by_link_and_join_button(
 					lt_count,
 					rpl::single(float64(count)),
-					Ui::Text::WithEntities) | with(badge);
+					tr::marked) | with(badge);
 		case FilterLinkHeaderType::AllAdded:
-			return tr::lng_box_ok(Ui::Text::WithEntities) | with(QString());
+			return tr::lng_box_ok(tr::marked) | with(QString());
 		case FilterLinkHeaderType::Removing:
 			return badge.isEmpty()
 				? tr::lng_filters_by_link_remove_button(
-					Ui::Text::WithEntities
+					tr::marked
 				) | with(QString())
 				: tr::lng_filters_by_link_and_quit_button(
 					lt_count,
 					rpl::single(float64(count)),
-					Ui::Text::WithEntities) | with(badge);
+					tr::marked) | with(badge);
 		}
 		Unexpected("Type in FilterLinkProcessButton.");
 	}) | rpl::flatten_latest();

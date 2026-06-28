@@ -1,0 +1,235 @@
+---
+name: Linux .deb Production
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LEGAL'
+      - 'LICENSE'
+      - '.github/workflows/build-android.yml'
+      - '.github/workflows/android-apk.yml'
+      - 'telegram-android/**'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LEGAL'
+      - 'LICENSE'
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: false
+        default: 'Release'
+        type: choice
+        options:
+          - Debug
+          - Release
+
+permissions:
+  contents: write
+
+jobs:
+  debian:
+    name: Debian .deb Package
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential git pkg-config \
+            qt6-base-dev qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
+            qt6-image-formats-plugins qt6-l10n-tools qt6-declarative-dev \
+            qt6-multimedia-dev qt6-charts-dev \
+            libssl-dev libopenal-dev libpulse-dev \
+            libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
+            libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxcb-xinerama0-dev libxcb-xkb-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev \
+            libglib2.0-dev libdbus-1-dev libx11-dev \
+            libxrandr-dev libxi-dev \
+            python3-dev python3-pip \
+            yasm nasm ccache ninja-build \
+            cmake dh-make dpkg-dev
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --upgrade grpcio grpcio-tools cryptography pyyaml requests sqlalchemy protobuf
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-debian-${{ github.sha }}
+          restore-keys: |
+            ccache-debian-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=2G
+          ccache --set-config=compression=true
+          ccache -z
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(grep -oP 'AppVersion \K\S+' Telegram/build/version || echo "1.0.0")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Build CRYPTOGRAM Desktop
+        run: |
+          BUILD_TYPE="${{ github.event.inputs.build_type || 'Release' }}"
+          export BUILD_TYPE
+          export JOBS=$(nproc)
+          export CCACHE_DIR=~/.ccache
+
+          chmod +x build_linux.sh
+          ./build_linux.sh
+
+          ccache -s
+
+      - name: Locate binary
+        id: locate-binary
+        run: |
+          BINARY=""
+          for candidate in \
+            build_release/bin/Telegram \
+            build_Release/bin/Telegram \
+            build_release/Telegram \
+            build_Release/Telegram \
+            build_debug/bin/Telegram \
+            build_Debug/bin/Telegram \
+            out/Release/Telegram \
+            out/Debug/Telegram; do
+            if [ -f "$candidate" ]; then
+              BINARY="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$BINARY" ]; then
+            echo "Searching for Telegram binary..."
+            BINARY=$(find . -name "Telegram" -type f -executable 2>/dev/null | head -1)
+          fi
+
+          if [ -z "$BINARY" ]; then
+            echo "::error::No binary found after build"
+            exit 1
+          fi
+
+          echo "binary=$BINARY" >> $GITHUB_OUTPUT
+          echo "Found binary: $BINARY"
+
+      - name: Create .deb package
+        run: |
+          BINARY="${{ steps.locate-binary.outputs.binary }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCH=$(dpkg --print-architecture)
+          PKGDIR="artifacts/cryptogram_${VERSION}_${ARCH}"
+
+          mkdir -p "$PKGDIR/usr/local/bin"
+          mkdir -p "$PKGDIR/usr/local/share/applications"
+          mkdir -p "$PKGDIR/usr/local/share/icons/hicolor/256x256/apps"
+          mkdir -p "$PKGDIR/DEBIAN"
+
+          cp "$BINARY" "$PKGDIR/usr/local/bin/cryptogram"
+          chmod +x "$PKGDIR/usr/local/bin/cryptogram"
+
+          # Desktop entry
+          cat > "$PKGDIR/usr/local/share/applications/cryptogram.desktop" << 'DESKTOP'
+          [Desktop Entry]
+          Name=CRYPTOGRAM
+          Comment=Military-Grade Secure Messaging Client
+          Exec=/usr/local/bin/cryptogram
+          Icon=cryptogram
+          Type=Application
+          Categories=Network;InstantMessaging;Security;
+          Terminal=false
+          StartupWMClass=CRYPTOGRAM
+          DESKTOP
+
+          # Control file
+          cat > "$PKGDIR/DEBIAN/control" << CONTROL
+          Package: cryptogram
+          Version: ${VERSION}
+          Architecture: ${ARCH}
+          Maintainer: CRYPTOGRAM <noreply@cryptogram.dev>
+          Description: CRYPTOGRAM Secure Messaging Client
+           CRYPTOGRAM is a military-grade secure messaging application
+           featuring Signal Protocol (Double Ratchet), MLS (RFC 9420),
+           voice morphing, surveillance detection, and Tor integration.
+          Depends: libqt6-core6, libqt6-gui6, libqt6-widgets6, libqt6-network6, libssl3, libopenal1, libpulse0
+          Section: net
+          Priority: optional
+          CONTROL
+
+          # Postinst script
+          cat > "$PKGDIR/DEBIAN/postinst" << 'POSTINST'
+          #!/bin/sh
+          set -e
+          if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database -q /usr/local/share/applications
+          fi
+          POSTINST
+          chmod 755 "$PKGDIR/DEBIAN/postinst"
+
+          # Prerm script
+          cat > "$PKGDIR/DEBIAN/prerm" << 'PRERM'
+          #!/bin/sh
+          set -e
+          PRERM
+          chmod 755 "$PKGDIR/DEBIAN/prerm"
+
+          # Build .deb
+          cd artifacts
+          dpkg-deb --build "cryptogram_${VERSION}_${ARCH}"
+          ls -lh *.deb
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptogram-${{ steps.version.outputs.version }}-debian-amd64
+          path: artifacts/*.deb
+          retention-days: 30
+
+      - name: Upload .deb to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.deb
+          draft: true
+          name: CRYPTOGRAM ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build summary
+        if: always()
+        run: |
+          echo "## Linux .deb Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Date**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

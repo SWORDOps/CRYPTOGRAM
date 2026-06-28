@@ -77,7 +77,7 @@ void CountermeasureRandomizer::setRandomizationConfig(const RandomizationConfig 
     _pattern_rotation_timer->setInterval(_config.pattern_change_interval);
 
     logRandomizationEvent("CONFIG_UPDATED", "Randomization configuration updated");
-    emit randomizationConfigChanged();
+    Q_EMIT randomizationConfigChanged();
 }
 
 RandomizationConfig CountermeasureRandomizer::getRandomizationConfig() const {
@@ -258,7 +258,7 @@ void CountermeasureRandomizer::updatePatternObfuscation() {
     _pattern_changes++;
 
     logRandomizationEvent("PATTERN_UPDATED", "Obfuscation pattern updated");
-    emit patternObfuscationUpdated();
+    Q_EMIT patternObfuscationUpdated();
 }
 
 QList<CountermeasureType> CountermeasureRandomizer::obfuscateDeploymentPattern(
@@ -363,7 +363,7 @@ void CountermeasureRandomizer::analyzeDeploymentHistory(const QList<Countermeasu
     // Check for predictable patterns
     if (detectPredictablePattern(recentDeployments)) {
         _patterns_detected++;
-        emit predictablePatternDetected(recentDeployments);
+        Q_EMIT predictablePatternDetected(recentDeployments);
         adjustRandomizationBias();
     }
 }
@@ -425,11 +425,11 @@ RandomizedDeployment CountermeasureRandomizer::adaptForGovernmentMode(const Rand
 // Private implementation methods
 
 float CountermeasureRandomizer::generateSecureRandom(float min, float max) {
-    return min + (_secure_rng->bounded(1.0) * (max - min));
+    return min + (_secure_rng.bounded(1.0) * (max - min));
 }
 
 int CountermeasureRandomizer::generateSecureRandomInt(int min, int max) {
-    return _secure_rng->bounded(min, max + 1);
+    return _secure_rng.bounded(min, max + 1);
 }
 
 qint64 CountermeasureRandomizer::generateSecureRandomTime(qint64 base, float variance) {

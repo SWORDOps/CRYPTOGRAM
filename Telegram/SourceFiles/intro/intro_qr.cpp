@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "intro/intro_qr.h"
 
 #include "boxes/abstract_box.h"
+#include "data/components/passkeys.h"
 #include "intro/intro_phone.h"
 #include "intro/intro_widget.h"
 #include "intro/intro_password_check.h"
@@ -20,6 +21,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/text/text_utilities.h"
 #include "ui/image/image_prepare.h"
 #include "ui/painter.h"
+#include "main/main_app_config.h"
 #include "main/main_account.h"
 #include "ui/boxes/confirm_box.h"
 #include "core/application.h"
@@ -27,6 +29,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/update_checker.h"
 #include "base/unixtime.h"
 #include "qr/qr_generate.h"
+#include "platform/platform_webauthn.h"
 #include "styles/style_intro.h"
 
 namespace Intro {
@@ -207,6 +210,13 @@ QrWidget::QrWidget(
 		api().request(base::take(_requestId)).cancel();
 		refreshCode();
 	}, lifetime());
+
+	account->appConfig().value(
+	) | rpl::filter([=] {
+		return !_passkey;
+	}) | rpl::on_next([=] {
+		setupPasskeyLink();
+	}, lifetime());
 }
 
 QString QrWidget::accessibilityName() {
@@ -302,12 +312,12 @@ void QrWidget::setupControls() {
 		const auto label = steps->add(
 			object_ptr<Ui::FlatLabel>(
 				steps,
-				text(Ui::Text::RichLangValue),
+				text(tr::rich),
 				st::introQrStep),
 			st::introQrStepMargins);
 		const auto number = Ui::CreateChild<Ui::FlatLabel>(
 			steps,
-			rpl::single(Ui::Text::Semibold(QString::number(++index) + ".")),
+			rpl::single(tr::semibold(QString::number(++index) + ".")),
 			st::defaultFlatLabel);
 		rpl::combine(
 			number->widthValue(),
@@ -330,7 +340,7 @@ void QrWidget::setupControls() {
 
 	_skip = Ui::CreateChild<Ui::LinkButton>(
 		this,
-		tr::lng_intro_qr_skip(tr::now));
+		tr::lng_intro_qr_phone(tr::now));
 	rpl::combine(
 		sizeValue(),
 		_skip->widthValue()
@@ -341,6 +351,59 @@ void QrWidget::setupControls() {
 	}, _skip->lifetime());
 
 	_skip->setClickedCallback([=] { submit(); });
+}
+
+void QrWidget::setupPasskeyLink() {
+	Expects(!_passkey);
+
+	if (!account().appConfig().settingsDisplayPasskeys()
+		|| !Platform::WebAuthn::IsSupported()) {
+		return;
+	}
+	_passkey = Ui::CreateChild<Ui::LinkButton>(
+		this,
+		tr::lng_intro_qr_passkey(tr::now));
+	_passkey->show();
+	rpl::combine(
+		sizeValue(),
+		_passkey->widthValue()
+	) | rpl::on_next([=](QSize size, int passkeyWidth) {
+		_passkey->moveToLeft(
+			(size.width() - passkeyWidth) / 2,
+			(contentTop()
+				+ st::introQrSkipTop
+				+ 1.5 * st::normalFont->height));
+	}, _passkey->lifetime());
+
+	_passkey->setClickedCallback([=] {
+		const auto initialDc = api().instance().mainDcId();
+		::Data::InitPasskeyLogin(api(), [=](
+			const ::Data::Passkey::LoginData &loginData) {
+			Platform::WebAuthn::Login(loginData, [=](
+					Platform::WebAuthn::LoginResult result) {
+				if (result.userHandle.isEmpty()) {
+					using Error = Platform::WebAuthn::Error;
+					if (result.error == Error::UnsignedBuild) {
+						showError(
+							tr::lng_settings_passkeys_unsigned_error());
+					}
+					return;
+				}
+				::Data::FinishPasskeyLogin(
+					api(),
+					initialDc,
+					result,
+					[=](const MTPauth_Authorization &auth) { done(auth); },
+					[=](QString error) {
+						if (error == u"SESSION_PASSWORD_NEEDED"_q) {
+							sendCheckPasswordRequest();
+						} else {
+							showError(rpl::single(error));
+						}
+					});
+			});
+		});
+	});
 }
 
 void QrWidget::refreshCode() {

@@ -3,8 +3,12 @@
 #include <QtCore/QObject>
 #include <QtCore/QTimer>
 #include <QtCore/QQueue>
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QAudioInput>)
 #include <QtMultimedia/QAudioInput>
 #include <QtMultimedia/QAudioFormat>
+#endif
+#endif
 #include <memory>
 #include <array>
 
@@ -12,7 +16,7 @@
 class NPUAcousticEngine;
 class OpenVINOAcousticProcessor;
 class QuantumCryptoSystem;
-class UniversalSecurityValidator;
+namespace SpyGram::Counterintelligence { class UniversalSecurityValidator; }
 
 namespace SpyGram::Counterintelligence {
 
@@ -85,13 +89,13 @@ public:
     void setAudioAnalysisEnabled(bool enabled) { _audio_analysis_enabled = enabled; }
     void setNetworkAnalysisEnabled(bool enabled) { _network_analysis_enabled = enabled; }
 
-signals:
+Q_SIGNALS:
     void threatDetected(const ThreatAssessment &threat);
     void threatLevelChanged(ThreatLevel newLevel, ThreatLevel oldLevel);
     void hardwareCapabilityChanged(const QString &component, bool available);
     void securityViolationDetected(const QString &violation);
 
-private slots:
+private Q_SLOTS:
     void processAudioData();
     void analyzeNetworkTraffic();
     void performPeriodicScan();
@@ -129,15 +133,19 @@ private:
     bool isAuthorizedGovernmentActivity(const ThreatAssessment &threat);
 
     // Audio processing
+#ifdef __has_include
+#if __has_include(<QtMultimedia/QAudioInput>)
     std::unique_ptr<QAudioInput> _audio_input;
     QAudioFormat _audio_format;
+#endif
+#endif
     QIODevice *_audio_device = nullptr;
     QByteArray _audio_buffer;
     static constexpr int AUDIO_BUFFER_SIZE = 4096;
 
     // Hardware acceleration systems
-    std::unique_ptr<NPUAcousticEngine> _npu_engine;
-    std::unique_ptr<OpenVINOAcousticProcessor> _openvino_processor;
+    NPUAcousticEngine *_npu_engine = nullptr;
+    OpenVINOAcousticProcessor *_openvino_processor = nullptr;
     std::unique_ptr<QuantumCryptoSystem> _quantum_crypto;
 
     // Security validation system

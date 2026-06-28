@@ -2,7 +2,7 @@
 #include "info/profile/info_profile_trust_flag.h"
 
 #include "ui/widgets/labels.h"
-#include "ui/painter.h"
+#include "base/event_filter.h"
 #include "styles/style_info.h"
 
 namespace Info::Profile {
@@ -20,24 +20,19 @@ TrustFlag::TrustFlag(
     const auto label = Ui::CreateChild<Ui::FlatLabel>(
         _widget.data(),
         rpl::single(_flag),
-        st::infoProfileNameLabel);
+        st::infoProfileStatus);
 
     const auto size = label->naturalWidth();
-    _widget->resize(size, st::infoProfileNameLabel.style.font->height);
+    _widget->resize(size, label->height());
     label->resizeToWidth(size);
+    label->show();
 
-    _widget->paintRequest(
-    ) | rpl::on_next([=](QRect clip) {
-        Painter p(_widget.data());
-        label->paintEvent(nullptr);
-    }, _widget->lifetime());
-
-    Ui::InstallEventFilter(_widget.data(), [=](not_null<QEvent*> e) {
+    base::install_event_filter(_widget.data(), [=](not_null<QEvent*> e) {
         if (e->type() == QEvent::Enter || e->type() == QEvent::Leave) {
             Ui::Tooltip::Show(1000, this);
         }
         return base::EventFilterResult::Continue;
-    });
+    }, _widget->lifetime());
 }
 
 Ui::RpWidget *TrustFlag::widget() const {

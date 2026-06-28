@@ -443,6 +443,7 @@ void PreviewWrap::paintEvent(QPaintEvent *e) {
 	auto context = _theme->preparePaintContext(
 		_style.get(),
 		rect(),
+		rect(),
 		e->rect(),
 		!window()->isActiveWindow());
 	for (const auto &entry : _entries) {
@@ -453,7 +454,9 @@ void PreviewWrap::paintEvent(QPaintEvent *e) {
 
 		entry.view->draw(p, context);
 
-		p.translate(0, entry.view->height());
+		const auto height = entry.view->height();
+		p.translate(0, height);
+		context.translate(0, -height);
 	}
 	const auto top = _entries.empty() ? nullptr : _entries.back().view.get();
 	if (top && top->displayFromPhoto()) {
@@ -898,11 +901,17 @@ void DraftOptionsBox(
 			const auto small = state->webpage.forceSmallMedia
 				|| (!state->webpage.forceLargeMedia
 					&& state->preview->computeDefaultSmallMedia());
+			const auto hasVideo = state->preview->document
+				&& state->preview->document->isVideoFile();
 			Settings::AddButtonWithIcon(
 				bottom,
 				(small
-					? tr::lng_link_enlarge_photo()
-					: tr::lng_link_shrink_photo()),
+					? (hasVideo
+						? tr::lng_link_enlarge_video()
+						: tr::lng_link_enlarge_photo())
+					: (hasVideo
+						? tr::lng_link_shrink_video()
+						: tr::lng_link_shrink_photo())),
 				st::settingsButton,
 				{ small ? &st::menuIconEnlarge : &st::menuIconShrink }
 			)->setClickedCallback([=] {
@@ -1387,7 +1396,7 @@ void ShowReplyToChatBox(
 		history->setLocalDraft(std::make_unique<Data::Draft>(
 			textWithTags,
 			reply,
-			SuggestPostOptions(),
+			SuggestOptions(),
 			cursor,
 			Data::WebPageDraft()));
 		history->clearLocalEditDraft(topicRootId, monoforumPeerId);

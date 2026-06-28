@@ -344,7 +344,7 @@ void ConfInviteRow::elementsPaint(
 		}
 
 		void prepare() override {
-			for (const auto user : _users) {
+			for (const auto &user : _users) {
 				delegate()->peerListAppendRow(
 					std::make_unique<ConfInviteRow>(user, _st));
 			}
@@ -485,7 +485,7 @@ ConfInviteController::ConfInviteController(
 , _shareLink(std::move(shareLink)) {
 	if (!_shareLink) {
 		_skip.reserve(_prioritize.size());
-		for (const auto user : _prioritize) {
+		for (const auto &user : _prioritize) {
 			_skip.emplace(user);
 		}
 	}
@@ -747,7 +747,9 @@ std::unique_ptr<PeerListRow> InviteController::createRow(
 		|| user->isInaccessible()) {
 		return nullptr;
 	}
-	auto result = std::make_unique<PeerListRow>(user);
+	auto result = std::make_unique<Row>(
+		user,
+		Type{ .chatStyle = _chatStyle.get(), .circleCache = &_pillCircleCache });
 	_rowAdded.fire_copy(user);
 	_inGroup.emplace(user);
 	if (isAlreadyIn(user)) {
@@ -899,14 +901,14 @@ object_ptr<Ui::BoxContent> PrepareInviteBox(
 				showToast(tr::lng_group_call_invite_done_user(
 					tr::now,
 					lt_user,
-					Ui::Text::Bold(result.invited.front()->firstName),
-					Ui::Text::WithEntities));
+					tr::bold(result.invited.front()->firstName),
+					tr::marked));
 			} else if (result.invited.size() > 1) {
 				showToast(tr::lng_group_call_invite_done_many(
 					tr::now,
 					lt_count,
 					result.invited.size(),
-					Ui::Text::RichLangValue));
+					tr::rich));
 			}
 		});
 	};
@@ -1191,7 +1193,7 @@ object_ptr<Ui::BoxContent> PrepareCreateCallBox(
 				const auto &invite = selected.front();
 				Core::App().calls().startOutgoingCall(
 					invite.user,
-					invite.video);
+					{ invite.video });
 			}
 			finished(true);
 		};

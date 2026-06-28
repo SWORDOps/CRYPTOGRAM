@@ -213,7 +213,7 @@ private:
 	void setupShortcuts();
 	void setupStories();
 	void setupSwipeBack();
-	void setupTopBarSuggestions(not_null<Ui::VerticalLayout*> dialogs);
+	void setupTopBarSuggestions();
 	void storiesExplicitCollapse();
 	void collectStoriesUserpicsViews(Data::StorySourcesList list);
 	void storiesToggleExplicitExpand(bool expand);
@@ -287,6 +287,7 @@ private:
 	void updateLockUnlockPosition();
 	void updateSuggestions(anim::type animated);
 	void processSearchFocusChange();
+	void closeSuggestions();
 
 	void setupShortcuts(not_null<Window::SessionController *> controller);
 	[[nodiscard]] bool redirectToSearchPossible() const;
@@ -338,7 +339,8 @@ private:
 	rpl::event_stream<bool> _openedFolderOrForumChanges;
 
 	object_ptr<Ui::ElasticScroll> _scroll;
-	QPointer<InnerWidget> _inner;
+	Ui::VerticalLayout *_innerList = nullptr;
+	InnerWidget *_inner = nullptr;
 	std::unique_ptr<Suggestions> _suggestions;
 	std::vector<std::unique_ptr<Suggestions>> _hidingSuggestions;
 	class BottomButton;

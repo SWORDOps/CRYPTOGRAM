@@ -28,7 +28,8 @@ namespace Ui {
 		not_null<Ui::BoxContent*> box,
 		not_null<Window::SessionController*> controller,
 		not_null<ChatHelpers::TabbedPanel*> emojiPanel,
-		QPoint shift) {
+		QPoint shift,
+		bool fadeOnFocusChange) {
 	const auto emojiToggle = Ui::CreateChild<Ui::EmojiButton>(
 		field->parentWidget(),
 		st::defaultComposeFiles.emoji);

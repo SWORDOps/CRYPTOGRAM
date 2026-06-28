@@ -89,6 +89,10 @@ struct StoriesInfo {
 	int count = 0;
 };
 
+struct ProfileMusicInfo {
+	int count = 0;
+};
+
 struct FileLocation {
 	int dcId = 0;
 	MTPInputFileLocation data;
@@ -613,7 +617,7 @@ struct ActionWebViewDataSent {
 
 struct ActionGiftPremium {
 	Utf8String cost;
-	int months = 0;
+	int days = 0;
 };
 
 struct ActionTopicCreate {
@@ -638,7 +642,7 @@ struct ActionSetChatWallPaper {
 struct ActionGiftCode {
 	QByteArray code;
 	PeerId boostPeerId = 0;
-	int months = 0;
+	int days = 0;
 	bool viaGiveaway = false;
 	bool unclaimed = false;
 };
@@ -687,6 +691,13 @@ struct ActionStarGift {
 	std::vector<TextPart> text;
 	bool anonymous = false;
 	bool limited = false;
+
+	CreditsAmount offerPrice;
+	TimeId offerExpireAt = 0;
+	bool offer = false;
+	bool offerAccepted = false;
+	bool offerDeclined = false;
+	bool offerExpired = false;
 };
 
 struct ActionPaidMessagesRefunded {
@@ -708,6 +719,14 @@ struct ActionTodoAppendTasks {
 	std::vector<TodoListItem> items;
 };
 
+struct ActionPollAppendAnswer {
+	Utf8String option;
+};
+
+struct ActionPollDeleteAnswer {
+	Utf8String option;
+};
+
 struct ActionSuggestedPostApproval {
 	Utf8String rejectComment;
 	TimeId scheduleDate = 0;
@@ -726,6 +745,27 @@ struct ActionSuggestedPostRefund {
 
 struct ActionSuggestBirthday {
 	Birthday birthday;
+};
+
+struct ActionNoForwardsToggle {
+	bool newValue = false;
+};
+
+struct ActionNoForwardsRequest {
+	bool expired = false;
+	bool newValue = false;
+};
+
+struct ActionNewCreatorPending {
+	UserId newCreatorId = 0;
+};
+
+struct ActionChangeCreator {
+	UserId newCreatorId = 0;
+};
+
+struct ActionManagedBotCreated {
+	UserId botId = 0;
 };
 
 struct ServiceAction {
@@ -778,10 +818,17 @@ struct ServiceAction {
 		ActionPaidMessagesPrice,
 		ActionTodoCompletions,
 		ActionTodoAppendTasks,
+		ActionPollAppendAnswer,
+		ActionPollDeleteAnswer,
 		ActionSuggestedPostApproval,
 		ActionSuggestedPostSuccess,
 		ActionSuggestedPostRefund,
-		ActionSuggestBirthday> content;
+		ActionSuggestBirthday,
+		ActionNoForwardsToggle,
+		ActionNoForwardsRequest,
+		ActionNewCreatorPending,
+		ActionChangeCreator,
+		ActionManagedBotCreated> content;
 };
 
 ServiceAction ParseServiceAction(
@@ -930,6 +977,11 @@ struct StoriesSlice {
 StoriesSlice ParseStoriesSlice(
 	const MTPVector<MTPStoryItem> &data,
 	int baseIndex);
+
+struct ProfileMusicSlice {
+	std::vector<Message> list;
+	int skipped = 0;
+};
 
 Message ParseMessage(
 	ParseMediaContext &context,

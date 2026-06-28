@@ -22,7 +22,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "countries/countries_instance.h"
 #include "data/data_user.h" // ->bot()->session()
 #include "main/main_session.h" // ->session().user()
-#include "ui/text/text_utilities.h" // Ui::Text::ToUpper
 #include "boxes/abstract_box.h"
 #include "ui/boxes/confirm_box.h"
 #include "lang/lang_keys.h"
@@ -223,6 +222,7 @@ PanelEditDocument::PanelEditDocument(
 		this,
 		tr::lng_passport_save_value(),
 		st::passportPanelSaveValue) {
+	_done->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
 	setupControls(
 		&error,
 		&data,
@@ -249,6 +249,7 @@ PanelEditDocument::PanelEditDocument(
 		this,
 		tr::lng_passport_save_value(),
 		st::passportPanelSaveValue) {
+	_done->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
 	setupControls(
 		nullptr,
 		nullptr,
@@ -272,6 +273,7 @@ PanelEditDocument::PanelEditDocument(
 		this,
 		tr::lng_passport_save_value(),
 		st::passportPanelSaveValue) {
+	_done->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
 	setupControls(&error, &data, nullptr, nullptr, {}, {}, {});
 }
 
@@ -496,7 +498,7 @@ not_null<Ui::RpWidget*> PanelEditDocument::setupContent(
 		inner->add(
 			object_ptr<Ui::SettingsButton>(
 				inner,
-				std::move(*text) | Ui::Text::ToUpper(),
+				std::move(*text) | rpl::map(tr::upper),
 				st::passportDeleteButton),
 			st::passportUploadButtonPadding
 		)->addClickHandler([=] {

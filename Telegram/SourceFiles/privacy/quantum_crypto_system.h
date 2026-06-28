@@ -4,7 +4,6 @@
 #include <memory>
 
 class QuantumCryptoSystem : public QObject {
-    Q_OBJECT
 public:
     explicit QuantumCryptoSystem(QObject *parent = nullptr) : QObject(parent) {}
     ~QuantumCryptoSystem() = default;

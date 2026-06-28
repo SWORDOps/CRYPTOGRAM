@@ -16,11 +16,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_streaming.h"
 #include "data/data_peer_values.h"
 #include "data/data_premium_limits.h"
+#include "info/profile/info_profile_icon.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "main/main_domain.h" // kMaxAccounts
 #include "ui/chat/chat_theme.h"
 #include "ui/chat/chat_style.h"
+#include "ui/controls/feature_list.h"
 #include "ui/layers/generic_box.h"
 #include "ui/effects/path_shift_gradient.h"
 #include "ui/effects/premium_graphics.h"
@@ -33,8 +35,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/boxes/confirm_box.h"
 #include "ui/painter.h"
 #include "ui/vertical_list.h"
-#include "settings/settings_business.h"
-#include "settings/settings_premium.h"
+#include "settings/sections/settings_business.h"
+#include "settings/sections/settings_premium.h"
 #include "lottie/lottie_single_player.h"
 #include "history/view/media/history_view_sticker.h"
 #include "history/view/history_view_element.h"
@@ -43,7 +45,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_session_controller.h"
 #include "api/api_premium.h"
 #include "apiwrap.h"
+#include "styles/style_credits.h" // upgradeGiftSubtext
+#include "styles/style_info.h" // infoStarsUnderstood
 #include "styles/style_layers.h"
+#include "styles/style_menu_icons.h"
 #include "styles/style_premium.h"
 #include "styles/style_settings.h"
 
@@ -135,6 +140,14 @@ void PreloadSticker(const std::shared_ptr<Data::DocumentMedia> &media) {
 		return tr::lng_premium_summary_subtitle_effects();
 	case PremiumFeature::TodoLists:
 		return tr::lng_premium_summary_subtitle_todo_lists();
+	case PremiumFeature::PeerColors:
+		return tr::lng_premium_summary_subtitle_peer_colors();
+	case PremiumFeature::Gifts:
+		return tr::lng_premium_summary_subtitle_gifts();
+	case PremiumFeature::NoForwards:
+		return tr::lng_premium_summary_subtitle_no_forwards();
+	case PremiumFeature::AiCompose:
+		return tr::lng_premium_summary_subtitle_ai_compose();
 
 	case PremiumFeature::BusinessLocation:
 		return tr::lng_business_subtitle_location();
@@ -202,6 +215,14 @@ void PreloadSticker(const std::shared_ptr<Data::DocumentMedia> &media) {
 		return tr::lng_premium_summary_about_effects();
 	case PremiumFeature::TodoLists:
 		return tr::lng_premium_summary_about_todo_lists();
+	case PremiumFeature::PeerColors:
+		return tr::lng_premium_summary_about_peer_colors();
+	case PremiumFeature::Gifts:
+		return tr::lng_premium_summary_about_gifts();
+	case PremiumFeature::NoForwards:
+		return tr::lng_premium_summary_about_no_forwards();
+	case PremiumFeature::AiCompose:
+		return tr::lng_premium_summary_about_ai_compose();
 
 	case PremiumFeature::BusinessLocation:
 		return tr::lng_business_about_location();
@@ -543,6 +564,10 @@ struct VideoPreviewDocument {
 		case PremiumFeature::MessagePrivacy: return "message_privacy";
 		case PremiumFeature::Effects: return "effects";
 		case PremiumFeature::TodoLists: return "todo";
+		case PremiumFeature::PeerColors: return "peer_colors";
+		case PremiumFeature::Gifts: return "gifts";
+		case PremiumFeature::NoForwards: return "no_forwards";
+		case PremiumFeature::AiCompose: return "ai_compose";
 
 		case PremiumFeature::BusinessLocation: return "business_location";
 		case PremiumFeature::BusinessHours: return "business_hours";
@@ -889,6 +914,31 @@ struct VideoPreviewDocument {
 	return result;
 }
 
+void AddGiftsInfoRows(not_null<Ui::VerticalLayout*> container) {
+	const auto features = std::vector<Ui::FeatureListEntry>{
+		{
+			st::menuIconUnique,
+			tr::lng_gift_upgrade_unique_title(tr::now),
+			tr::lng_gift_upgrade_unique_about(tr::now, tr::marked),
+		},
+		{
+			st::menuIconTradable,
+			tr::lng_gift_upgrade_tradable_title(tr::now),
+			tr::lng_gift_upgrade_tradable_about(tr::now, tr::marked),
+		},
+		{
+			st::menuIconNftWear,
+			tr::lng_gift_upgrade_wearable_title(tr::now),
+			tr::lng_gift_upgrade_wearable_about(tr::now, tr::marked),
+		},
+	};
+	for (const auto &feature : features) {
+		container->add(
+			Ui::MakeFeatureListEntry(container, feature),
+			st::boxRowPadding);
+	}
+}
+
 void PreviewBox(
 		not_null<Ui::GenericBox*> box,
 		std::shared_ptr<ChatHelpers::Show> show,
@@ -951,22 +1001,32 @@ void PreviewBox(
 		st::settingsPremiumTopBarClose);
 	close->setClickedCallback([=] { box->closeBox(); });
 
-	const auto left = Ui::CreateChild<Ui::IconButton>(
+	const auto gifts = (state->selected.current() == PremiumFeature::Gifts);
+
+	const auto left = gifts ? nullptr : Ui::CreateChild<Ui::IconButton>(
 		buttonsParent,
 		st::settingsPremiumMoveLeft);
-	left->setClickedCallback([=] { move(-1); });
+	if (left) {
+		left->setClickedCallback([=] { move(-1); });
+	}
 
-	const auto right = Ui::CreateChild<Ui::IconButton>(
+	const auto right = gifts ? nullptr : Ui::CreateChild<Ui::IconButton>(
 		buttonsParent,
 		st::settingsPremiumMoveRight);
-	right->setClickedCallback([=] { move(1); });
+	if (right) {
+		right->setClickedCallback([=] { move(1); });
+	}
 
 	buttonsParent->widthValue(
 	) | rpl::on_next([=](int width) {
 		const auto outerHeight = st::premiumPreviewHeight;
 		close->moveToRight(0, 0, width);
-		left->moveToLeft(0, (outerHeight - left->height()) / 2, width);
-		right->moveToRight(0, (outerHeight - right->height()) / 2, width);
+		if (left) {
+			left->moveToLeft(0, (outerHeight - left->height()) / 2, width);
+		}
+		if (right) {
+			right->moveToRight(0, (outerHeight - right->height()) / 2, width);
+		}
 	}, close->lifetime());
 
 	state->preload = [=] {
@@ -1094,16 +1154,30 @@ void PreviewBox(
 		st::premiumPreviewAboutPadding,
 		style::al_top
 	)->setTryMakeSimilarLines(true);
-	box->addRow(
-		CreateSwitch(box->verticalLayout(), &state->selected, state->order),
-		st::premiumDotsMargin);
+
+	if (gifts) {
+		box->setStyle(st::giftBox);
+		AddGiftsInfoRows(box->verticalLayout());
+	} else {
+		box->addRow(
+			CreateSwitch(box->verticalLayout(), &state->selected, state->order),
+			st::premiumDotsMargin);
+	}
 	const auto showFinished = [=] {
 		state->showFinished = true;
 		if (base::take(state->preloadScheduled)) {
 			state->preload();
 		}
 	};
-	if ((descriptor.fromSettings && show->session().premium())
+	if (gifts) {
+		box->setShowFinishedCallback(showFinished);
+		box->addButton(
+			rpl::single(QString()),
+			[=] { box->closeBox(); }
+		)->setText(rpl::single(Ui::Text::IconEmoji(
+			&st::infoStarsUnderstood
+		).append(' ').append(tr::lng_auction_about_understood(tr::now))));
+	} else if ((descriptor.fromSettings && show->session().premium())
 		|| descriptor.hideSubscriptionButton) {
 		box->setShowFinishedCallback(showFinished);
 		box->addButton(tr::lng_close(), [=] { box->closeBox(); });
@@ -1396,7 +1470,7 @@ void PremiumUnavailableBox(not_null<Ui::GenericBox*> box) {
 	Ui::ConfirmBox(box, {
 		.text = tr::lng_premium_unavailable(
 			tr::now,
-			Ui::Text::RichLangValue),
+			tr::rich),
 		.inform = true,
 	});
 }
@@ -1415,7 +1489,7 @@ void DoubledLimitsPreviewBox(
 			tr::lng_premium_double_limits_about_channels(
 				lt_count,
 				rpl::single(float64(premium)),
-				Ui::Text::RichLangValue),
+				tr::rich),
 			limits.channelsDefault(),
 			premium,
 		});
@@ -1427,7 +1501,7 @@ void DoubledLimitsPreviewBox(
 			tr::lng_premium_double_limits_about_pins(
 				lt_count,
 				rpl::single(float64(premium)),
-				Ui::Text::RichLangValue),
+				tr::rich),
 			limits.dialogsPinnedDefault(),
 			premium,
 		});
@@ -1439,7 +1513,7 @@ void DoubledLimitsPreviewBox(
 			tr::lng_premium_double_limits_about_links(
 				lt_count,
 				rpl::single(float64(premium)),
-				Ui::Text::RichLangValue),
+				tr::rich),
 			limits.channelsPublicDefault(),
 			premium,
 		});
@@ -1451,7 +1525,7 @@ void DoubledLimitsPreviewBox(
 			tr::lng_premium_double_limits_about_gifs(
 				lt_count,
 				rpl::single(float64(premium)),
-				Ui::Text::RichLangValue),
+				tr::rich),
 			limits.gifsDefault(),
 			premium,
 		});
@@ -1463,7 +1537,7 @@ void DoubledLimitsPreviewBox(
 			tr::lng_premium_double_limits_about_stickers(
 				lt_count,
 				rpl::single(float64(premium)),
-				Ui::Text::RichLangValue),
+				tr::rich),
 			limits.stickersFavedDefault(),
 			premium,
 		});
@@ -1473,7 +1547,7 @@ void DoubledLimitsPreviewBox(
 		entries.push_back({
 			tr::lng_premium_double_limits_subtitle_bio(),
 			tr::lng_premium_double_limits_about_bio(
-				Ui::Text::RichLangValue),
+				tr::rich),
 			limits.aboutLengthDefault(),
 			premium,
 		});
@@ -1483,7 +1557,7 @@ void DoubledLimitsPreviewBox(
 		entries.push_back({
 			tr::lng_premium_double_limits_subtitle_captions(),
 			tr::lng_premium_double_limits_about_captions(
-				Ui::Text::RichLangValue),
+				tr::rich),
 			limits.captionLengthDefault(),
 			premium,
 		});
@@ -1495,7 +1569,7 @@ void DoubledLimitsPreviewBox(
 			tr::lng_premium_double_limits_about_folders(
 				lt_count,
 				rpl::single(float64(premium)),
-				Ui::Text::RichLangValue),
+				tr::rich),
 			limits.dialogFiltersDefault(),
 			premium,
 		});
@@ -1507,7 +1581,7 @@ void DoubledLimitsPreviewBox(
 			tr::lng_premium_double_limits_about_folder_chats(
 				lt_count,
 				rpl::single(float64(premium)),
-				Ui::Text::RichLangValue),
+				tr::rich),
 			limits.dialogFiltersChatsDefault(),
 			premium,
 		});
@@ -1521,7 +1595,7 @@ void DoubledLimitsPreviewBox(
 		tr::lng_premium_double_limits_about_accounts(
 			lt_count,
 			rpl::single(float64(Main::Domain::kPremiumMaxAccounts)),
-			Ui::Text::RichLangValue),
+			tr::rich),
 		Main::Domain::kMaxAccounts,
 		Main::Domain::kPremiumMaxAccounts,
 		till,
@@ -1533,7 +1607,7 @@ void DoubledLimitsPreviewBox(
 			tr::lng_premium_double_limits_about_similar_channels(
 				lt_count,
 				rpl::single(float64(premium)),
-				Ui::Text::RichLangValue),
+				tr::rich),
 			limits.similarChannelsDefault(),
 			premium,
 		});
