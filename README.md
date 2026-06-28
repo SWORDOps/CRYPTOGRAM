@@ -15,7 +15,14 @@ Both platforms share the same core C++ cryptographic code via `telegram-android/
 ### Validation
 
 - **205 verification checks pass** across static wiring (80 checks) and E2E verification (125 checks)
-- **6 Catch2 test files** covering crypto primitives, Signal Protocol, MLS Protocol, build verification, Android JNI, and counterintelligence
+- **6 Catch2 test suites** — 108 test cases, 1,216 assertions — all PASS
+  - Crypto Primitives: 18 cases / 128 assertions (X25519, Ed25519, AES-256-GCM, HKDF, SHA-256, HMAC)
+  - Signal Protocol: 10 cases / 438 assertions (X3DH, Double Ratchet, forward secrecy, out-of-order, key bundles)
+  - MLS Protocol: 20 cases / 427 assertions (TreeKEM, group create/add/remove, encrypt/decrypt, epoch advancement)
+  - Build Verification: 18 cases / 85 assertions
+  - Android JNI: 22 cases / 79 assertions
+  - Counterintelligence: 20 cases / 59 assertions
+- **Android device-level validation** — all crypto tests pass on 3 emulators (API 33, 34, 35; Pixel 7 / 7 Pro / 6 Pro)
 - **Android native self-tests** pass for Double Ratchet and MLS
 - **CI/CD pipelines** produce signed artifacts on tag pushes
 - See `docs/status/FINAL_STATUS.md` for detailed validation status
@@ -258,8 +265,8 @@ Unit tests use Catch2 and are located in `tests/unit/`:
 | `test_double_ratchet` | Double Ratchet protocol tests |
 | `test_mls_protocol` | MLS protocol tests |
 | `test_e2e_crypto_primitives` | X25519, Ed25519, AES-256-GCM, HKDF, SHA-256, HMAC, RAND |
-| `test_e2e_signal_protocol` | KeyBundle transport, DH ratchet, forward secrecy, out-of-order messages |
-| `test_e2e_mls_protocol` | TreeKEM, group create/add/remove, encrypt/decrypt, epoch advancement |
+| `test_e2e_signal_protocol` | X3DH key exchange, Double Ratchet (DH ratcheting, chain key ratcheting, forward secrecy, out-of-order), key bundle serialization (10 cases / 438 assertions) |
+| `test_e2e_mls_protocol` | TreeKEM key packages, group create/add/remove, encrypt/decrypt, epoch advancement, multi-ciphersuite (20 cases / 427 assertions) |
 | `test_e2e_build_verification` | Source file presence, CMakeLists wiring, CI/CD workflow structure |
 | `test_e2e_android_jni` | JNI exports, Kotlin bindings, integration hooks, SharedConfig toggles |
 | `test_e2e_counterintelligence` | Class structure, Qt compatibility, CMakeLists wiring, security modules |
@@ -272,6 +279,45 @@ Unit tests use Catch2 and are located in `tests/unit/`:
 ./test_build_fixes.sh   # Quick regression checks for known build edge cases
 ./check_syntax.sh       # Targeted syntax/API consistency checks
 ```
+
+### Catch2 Test Compilation (Standalone)
+
+All 6 Catch2 test suites compile standalone without the full CMake/Qt6 build tree:
+
+```bash
+# Compile all test suites
+for t in test_e2e_crypto_primitives test_e2e_signal_protocol test_e2e_mls_protocol \
+         test_e2e_build_verification test_e2e_android_jni test_e2e_counterintelligence; do
+  g++ -std=c++20 -O2 -o /tmp/${t} tests/unit/${t}.cpp -lCatch2Main -lCatch2 -lssl -lcrypto
+done
+
+# Run all tests
+for t in test_e2e_crypto_primitives test_e2e_signal_protocol test_e2e_mls_protocol \
+         test_e2e_build_verification test_e2e_android_jni test_e2e_counterintelligence; do
+  /tmp/${t}
+done
+```
+
+### Android Device-Level Validation
+
+Crypto test suites can be validated on Android emulators via `adb`:
+
+```bash
+# Build static-linked binaries (for Android x86_64 emulator)
+for t in test_e2e_crypto_primitives test_e2e_signal_protocol test_e2e_mls_protocol; do
+  g++ -std=c++20 -O2 -static -o /tmp/${t}_static tests/unit/${t}.cpp \
+    -lCatch2Main -lCatch2 -lssl -lcrypto -lpthread -ldl -lzstd -lz
+done
+
+# Push to emulator and run
+adb push /tmp/test_e2e_crypto_primitives_static /data/local/tmp/test_e2e_crypto_primitives
+adb shell "chmod +x /data/local/tmp/test_e2e_* && /data/local/tmp/test_e2e_crypto_primitives"
+```
+
+Validated on:
+- Pixel 7 (API 33, x86_64, Google APIs)
+- Pixel 7 Pro (API 34, x86_64, Google APIs)
+- Pixel 6 Pro (API 35, x86_64, Google APIs)
 
 ## Documentation
 
@@ -333,7 +379,7 @@ CRYPTOGRAM/
 | **Build (Desktop)** | CMake + Ninja |
 | **Build (Android)** | Gradle + CMake (NDK 25.2) |
 | **CI/CD** | GitHub Actions |
-| **Testing** | Catch2 (C++), native self-tests (Android), E2E verification battery (205 checks) |
+| **Testing** | Catch2 (C++, 108 cases / 1,216 assertions), Android device validation (3 API levels), E2E verification battery (205 checks) |
 
 ## License
 
