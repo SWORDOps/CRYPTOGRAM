@@ -169,7 +169,7 @@ python -m mock_server.server &
 | `./run_tests.sh` | Static verification harness (80 checks) |
 | `./run_e2e_tests.sh` | E2E verification battery (125 checks) |
 | `./test_build_fixes.sh` | Quick regression checks for known build edge cases |
-| `./check_syntax.sh` | Targeted syntax/API consistency checks |
+| `./tests/check_syntax.sh` | Targeted syntax/API consistency checks |
 
 ## Getting Started — Android
 
@@ -290,7 +290,7 @@ Unit tests use Catch2 and are located in `tests/unit/`:
 ./run_tests.sh          # Static verification harness (80 checks)
 ./run_e2e_tests.sh      # E2E verification battery (125 checks)
 ./test_build_fixes.sh   # Quick regression checks for known build edge cases
-./check_syntax.sh       # Targeted syntax/API consistency checks
+./tests/check_syntax.sh   # Targeted syntax/API consistency checks
 ```
 
 ### Catch2 Test Compilation (Standalone)
@@ -345,7 +345,7 @@ Validated on:
 | [Integration Test Results](docs/status/DESKTOP_TEST_RESULTS.md) | Verification artifacts |
 | [Security Overview](docs/features/security-overview.md) | Security architecture overview |
 | [Changelog](CHANGELOG.md) | Versioned change history |
-| [License](LICENSE) | GNU GPL v3.0 with OpenSSL exception |
+| [License](LICENSE) | GNU AGPL v3.0 with OpenSSL exception |
 
 ## Project Structure
 
@@ -396,7 +396,7 @@ CRYPTOGRAM/
 
 ## License
 
-CRYPTOGRAM is released under the **GNU GPL v3.0** with the project-specific OpenSSL exception noted in `LICENSE`.
+CRYPTOGRAM is released under the **GNU AGPL v3.0** with the project-specific OpenSSL exception noted in `LICENSE`.
 
 ## Support CRYPTOGRAM
 
