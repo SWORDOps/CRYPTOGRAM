@@ -106,18 +106,6 @@ Release APKs are signed automatically using repository secrets:
 
 > Without these secrets, release builds produce unsigned APKs. A local keystore is saved at `telegram-android/cryptogram.keystore` (gitignored) for local builds.
 
-### Legacy Workflows
-
-| Workflow | File | Purpose |
-|----------|------|---------|
-| Linux (Docker) | `linux.yml` | Rocky Linux 8 Docker-based CI build |
-| Android (Legacy) | `build-android.yml` | Older Android build with overlay copy steps |
-| Release (Legacy) | `release.yml` | Combined Android + Debian release workflow |
-| Docker | `docker.yml`, `docker-build.yml` | Docker image builds |
-| Snap | `snap.yml` | Snap package build |
-| Windows | `win.yml`, `winget.yml` | Windows builds |
-| macOS | `mac.yml`, `mac_packaged.yml` | macOS builds |
-
 ## Getting Started — Desktop (Linux)
 
 ### Prerequisites
