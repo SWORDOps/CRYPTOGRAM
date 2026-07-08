@@ -211,44 +211,6 @@ struct State {
 		st::storiesStealthAboutMargin);
 }
 
-[[nodiscard]] object_ptr<Ui::RpWidget> MakeFeature(
-		QWidget *parent,
-		Feature feature) {
-	auto result = object_ptr<Ui::PaddingWrap<>>(
-		parent,
-		object_ptr<Ui::RpWidget>(parent),
-		st::storiesStealthFeatureMargin);
-	const auto widget = result->entity();
-	const auto icon = Ui::CreateChild<Info::Profile::FloatingIcon>(
-		widget,
-		feature.icon,
-		st::storiesStealthFeatureIconPosition);
-	const auto title = Ui::CreateChild<Ui::FlatLabel>(
-		widget,
-		feature.title,
-		st::storiesStealthFeatureTitle);
-	const auto about = Ui::CreateChild<Ui::FlatLabel>(
-		widget,
-		rpl::single(feature.about),
-		st::storiesStealthFeatureAbout);
-	icon->show();
-	title->show();
-	about->show();
-	widget->widthValue(
-	) | rpl::on_next([=](int width) {
-		const auto left = st::storiesStealthFeatureLabelLeft;
-		const auto available = width - left;
-		title->resizeToWidth(available);
-		about->resizeToWidth(available);
-		auto top = 0;
-		title->move(left, top);
-		top += title->height() + st::storiesStealthFeatureSkip;
-		about->move(left, top);
-		top += about->height();
-		widget->resize(width, top);
-	}, widget->lifetime());
-	return result;
-}
 
 [[nodiscard]] object_ptr<Ui::RoundButton> MakeButton(
 		QWidget *parent,

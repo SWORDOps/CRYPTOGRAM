@@ -596,13 +596,4 @@ bool OpenGLLastCheckFailed() {
 	return QFile::exists(OpenGLCheckFilePath());
 }
 
-void UiIntegration::touchCounterIncrement() {
-	++_touchCounter;
-}
-
-int UiIntegration::touchCounterNow() {
-	return _touchCounter;
-}
-
 } // namespace Core
-

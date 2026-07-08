@@ -160,12 +160,6 @@ PaidReactionToast::PaidReactionToast(
 : _parent(parent)
 , _owner(owner)
 , _topOffset(std::move(topOffset)) {
-	_owner->callPaidReactionSent(
-	) | rpl::filter(
-		std::move(mine)
-	) | rpl::on_next([=](not_null<Calls::GroupCall*> call) {
-		maybeShowFor(call);
-	}, _lifetime);
 }
 
 PaidReactionToast::~PaidReactionToast() {

@@ -27,9 +27,9 @@ namespace Adaptive {
 enum class WindowLayout;
 } // namespace Adaptive
 
+struct DrawToReplyRequest;
 namespace Data {
 struct StoriesContext;
-struct DrawToReplyRequest;
 class SavedMessages;
 enum class StorySourcesList : uchar;
 } // namespace Data
@@ -801,9 +801,9 @@ private:
 	[[nodiscard]] bool openPhotoExternal(
 		not_null<PhotoData*> photo,
 		Data::FileOrigin origin);
-	void handleDrawToReplyRequest(Data::DrawToReplyRequest request);
+	void handleDrawToReplyRequest(DrawToReplyRequest request);
 	[[nodiscard]] Data::Thread *resolveDrawToReplyThread(
-		const Data::DrawToReplyRequest &request) const;
+		const DrawToReplyRequest &request) const;
 	void showDrawToReplyFilesBox(
 		not_null<Data::Thread*> thread,
 		FullMsgId replyTo,

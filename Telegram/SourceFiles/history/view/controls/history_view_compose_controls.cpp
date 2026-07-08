@@ -3029,7 +3029,7 @@ void ComposeControls::initSendAsButton(
 		),
 		Data::CanSendAnythingValue(peer, false)
 	) | rpl::skip(1) | rpl::on_next([=] {
-		if (updateSendAsButton()) {
+		if (updateSendAsButton(videoStream)) {
 			updateControlsVisibility();
 			updateControlsGeometry(_wrap->size());
 			orderControls();

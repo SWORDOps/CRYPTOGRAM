@@ -7,33 +7,47 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "iv/iv_controller.h"
 
-#include "base/event_filter.h"
 #include "base/platform/base_platform_info.h"
 #include "base/qt/qt_key_modifiers.h"
+#include "base/invoke_queued.h"
 #include "base/qt_signal_producer.h"
+#include "base/qthelp_url.h"
 #include "core/file_utilities.h"
+#include "iv/iv_data.h"
 #include "lang/lang_keys.h"
 #include "ui/chat/attach/attach_bot_webview.h"
+#include "ui/platform/ui_platform_window_title.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/labels.h"
+#include "ui/widgets/menu/menu_action.h"
 #include "ui/widgets/rp_window.h"
+#include "ui/widgets/popup_menu.h"
+#include "ui/widgets/tooltip.h"
+#include "ui/wrap/fade_wrap.h"
 #include "ui/basic_click_handlers.h"
 #include "ui/painter.h"
 #include "ui/rect.h"
+#include "ui/webview_helpers.h"
+#include "ui/ui_utility.h"
+#include "webview/webview_data_stream_memory.h"
 #include "webview/webview_embed.h"
 #include "webview/webview_interface.h"
 #include "styles/palette.h"
 #include "styles/style_iv.h"
-#include "styles/style_payments.h"
+#include "styles/style_menu_icons.h"
+#include "styles/style_payments.h" // paymentsCriticalError
+#include "styles/style_widgets.h"
 #include "styles/style_window.h"
 
-#include <QtCore/QUrl>
+#include <QtCore/QRegularExpression>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
+#include <QtCore/QJsonValue>
+#include <QtCore/QFile>
 #include <QtGui/QGuiApplication>
-#include <QtGui/QKeyEvent>
 #include <QtGui/QPainter>
 #include <QtGui/QWindow>
-
-#include <string>
+#include <charconv>
 
 #include <ada.h>
 
@@ -50,7 +64,7 @@ class ItemZoom final
 	, public Ui::AbstractTooltipShower {
 public:
 	ItemZoom(
-		not_null<Ui::Menu::Menu*> parent,
+		not_null<Ui::PopupMenu*> parent,
 		const not_null<Delegate*> delegate,
 		const style::Menu &st)
 	: Ui::Menu::Action(
@@ -91,7 +105,7 @@ public:
 		resetLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
 		reset->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
 		reset->setClickedCallback([this] {
-			_delegate->ivSetZoom(0);
+			_delegate->ivSetZoom(kDefaultZoom);
 		});
 		reset->show();
 		const auto plus = Ui::CreateSimpleCircleButton(
@@ -267,7 +281,8 @@ private:
 		+ "IV.init();"
 		+ page.script;
 
-	return R"(<!DOCTYPE html>
+	return (
+	R"(<!DOCTYPE html>
 <html)"_q
 	+ classAttribute
 	+ R"( style=")"
@@ -291,7 +306,7 @@ private:
 		<script>)"_q + js + R"(</script>
 	</body>
 </html>
-)"_q;
+)"_q).toUtf8();
 }
 
 [[nodiscard]] QByteArray ReadResource(const QString &name) {
@@ -362,18 +377,41 @@ private:
 
 } // namespace
 
-Controller::Controller(not_null<Delegate*> delegate)
-: _delegate(delegate) {
+Controller::Controller(
+	not_null<Delegate*> delegate,
+	Fn<ShareBoxResult(ShareBoxDescriptor)> showShareBox)
+: _delegate(delegate)
+, _updateStyles([=] {
+	if (_webview) {
+		const auto webviewZoomController = _webview->zoomController();
+		const auto styleZoom = webviewZoomController
+			? kDefaultZoom
+			: _delegate->ivZoom();
+		const auto str = Ui::EscapeForScriptString(ComputeStyles(styleZoom));
+		_webview->eval("IV.updateStyles('" + str + "');");
+		if (webviewZoomController) {
+			webviewZoomController->setZoom(_delegate->ivZoom());
+		}
+	}
+})
+, _showShareBox(showShareBox
+	? std::move(showShareBox)
+	: Fn<ShareBoxResult(ShareBoxDescriptor)>([](
+			ShareBoxDescriptor) { return ShareBoxResult(); })) {
 	createWindow();
 }
 
 Controller::~Controller() {
+	destroyShareMenu();
 	if (_window) {
 		_window->hide();
 	}
+	_ready = false;
 	base::take(_webview);
-	_back = nullptr;
-	_forward = nullptr;
+	_back.destroy();
+	_forward.destroy();
+	_menu = nullptr;
+	_menuToggle.destroy();
 	_subtitle = nullptr;
 	_subtitleWrap = nullptr;
 	_window = nullptr;
@@ -389,69 +427,33 @@ void Controller::updateTitleGeometry(int newWidth) const {
 		QPainter(_subtitleWrap.get()).fillRect(clip, st::windowBg);
 	}, _subtitleWrap->lifetime());
 
-	const auto left = (_back ? _back->width() : 0)
-		+ (_forward ? _forward->width() : 0)
-		+ st::ivSubtitleSkip;
-	const auto right = st::ivSubtitleSkip;
-	_subtitle->resizeToWidth(std::max(newWidth - left - right, 0));
+	const auto progressBack = _subtitleBackShift.value(
+		_back->toggled() ? 1. : 0.);
+	const auto progressForward = _subtitleForwardShift.value(
+		_forward->toggled() ? 1. : 0.);
+	const auto backAdded = _back->width()
+		+ st::ivSubtitleSkip
+		- st::ivSubtitleLeft;
+	const auto forwardAdded = _forward->width();
+	const auto left = st::ivSubtitleLeft
+		+ anim::interpolate(0, backAdded, progressBack)
+		+ anim::interpolate(0, forwardAdded, progressForward);
+	_subtitle->resizeToWidth(newWidth - left - _menuToggle->width());
 	_subtitle->moveToLeft(left, st::ivSubtitleTop);
 
-	if (_back) {
-		_back->moveToLeft(0, 0);
-	}
-	if (_forward) {
-		_forward->moveToLeft(_back ? _back->width() : 0, 0);
-	}
+	_back->moveToLeft(0, 0);
+	_forward->moveToLeft(_back->width() * progressBack, 0);
+	_menuToggle->moveToRight(0, 0);
 }
 
-bool Controller::IsGoodTonSiteUrl(const QString &uri) {
-	return !TonsiteToHttps(uri).isEmpty();
-}
-
-void Controller::showTonSite(
-	const Webview::StorageId& storageId,
-	QString uri) {
-	const auto url = TonsiteToHttps(uri);
-	Assert(!url.isEmpty());
-
-	if (!_webview) {
-		createWebview(storageId);
-	}
-	if (_webview && _webview->widget()) {
-		_webview->navigate(url);
-		activate();
-	}
-	_url = url;
-	_subtitleText = _url.value(
-	) | rpl::filter([=](const QString& url) {
-		return !url.isEmpty() && url != u"about:blank"_q;
-		}) | rpl::map([=](QString value) {
-			return HttpsToTonsite(value);
-			});
-		_windowTitleText = _subtitleText.value();
-}
-
-void Controller::showTLViewer(
-	const Webview::StorageId& storageId,
-	QString url) {
-	if (!_webview) {
-		createWebview(storageId);
-	}
-	if (_webview && _webview->widget()) {
-		_webview->navigate(url);
-		activate();
-	}
-	_url = url;
-	_subtitleText = tr::lng_context_view_as_json(tr::now);
-	_windowTitleText = _subtitleText.value();
-}
-
-void Controller::createWindow() {
-	_window = std::make_unique<Ui::RpWindow>();
-	const auto window = _window.get();
-
+void Controller::initControls() {
 	_subtitleWrap = std::make_unique<Ui::RpWidget>(_window->body().get());
-	_subtitle = Ui::CreateChild<Ui::FlatLabel>(
+	_subtitleText = _index.value() | rpl::filter(
+		rpl::mappers::_1 >= 0
+	) | rpl::map([=](int index) {
+		return _pages[index].name;
+	});
+	_subtitle = std::make_unique<Ui::FlatLabel>(
 		_subtitleWrap.get(),
 		_subtitleText.value(),
 		st::ivSubtitle);
@@ -467,23 +469,154 @@ void Controller::createWindow() {
 		_window->setWindowTitle(title);
 	}, _subtitle->lifetime());
 
-	_back = Ui::CreateChild<Ui::IconButton>(_subtitleWrap.get(), st::ivBack);
-	_back->setClickedCallback([=] {
+	_menuToggle.create(_subtitleWrap.get(), st::ivMenuToggle);
+	_menuToggle->setClickedCallback([=] { showMenu(); });
+
+	_back.create(
+		_subtitleWrap.get(),
+		object_ptr<Ui::IconButton>(_subtitleWrap.get(), st::ivBack));
+	_back->entity()->setClickedCallback([=] {
 		if (_webview) {
 			_webview->eval("window.history.back();");
+		} else {
+			_back->hide(anim::type::normal);
 		}
 	});
-	_back->setDisabled(true);
-
-	_forward = Ui::CreateChild<Ui::IconButton>(
+	_forward.create(
 		_subtitleWrap.get(),
-		st::ivForward);
-	_forward->setClickedCallback([=] {
+		object_ptr<Ui::IconButton>(_subtitleWrap.get(), st::ivForward));
+	_forward->entity()->setClickedCallback([=] {
 		if (_webview) {
 			_webview->eval("window.history.forward();");
+		} else {
+			_forward->hide(anim::type::normal);
 		}
 	});
-	_forward->setDisabled(true);
+
+	_back->toggledValue(
+	) | rpl::on_next([=](bool toggled) {
+		_subtitleBackShift.start(
+			[=] { updateTitleGeometry(_window->body()->width()); },
+			toggled ? 0. : 1.,
+			toggled ? 1. : 0.,
+			st::fadeWrapDuration);
+	}, _back->lifetime());
+	_back->hide(anim::type::instant);
+
+	_forward->toggledValue(
+	) | rpl::on_next([=](bool toggled) {
+		_subtitleForwardShift.start(
+			[=] { updateTitleGeometry(_window->body()->width()); },
+			toggled ? 0. : 1.,
+			toggled ? 1. : 0.,
+			st::fadeWrapDuration);
+	}, _forward->lifetime());
+	_forward->hide(anim::type::instant);
+
+	_subtitleBackShift.stop();
+	_subtitleForwardShift.stop();
+}
+
+void Controller::show(
+		const Webview::StorageId &storageId,
+		Prepared page,
+		base::flat_map<QByteArray, rpl::producer<bool>> inChannelValues) {
+	page.script = fillInChannelValuesScript(std::move(inChannelValues));
+	InvokeQueued(_container, [=, page = std::move(page)]() mutable {
+		showInWindow(storageId, std::move(page));
+	});
+}
+
+void Controller::update(Prepared page) {
+	const auto url = page.url;
+	auto i = _indices.find(url);
+	if (i == end(_indices)) {
+		return;
+	}
+	const auto index = i->second;
+	_pages[index] = std::move(page);
+
+	if (_ready) {
+		_webview->eval(reloadScript(index));
+	} else if (!index) {
+		_reloadInitialWhenReady = true;
+	}
+}
+
+bool Controller::IsGoodTonSiteUrl(const QString &uri) {
+	return !TonsiteToHttps(uri).isEmpty();
+}
+
+void Controller::showTonSite(
+		const Webview::StorageId &storageId,
+		QString uri) {
+	const auto url = TonsiteToHttps(uri);
+	Assert(!url.isEmpty());
+
+	if (!_webview) {
+		createWebview(storageId);
+	}
+	if (_webview && _webview->widget()) {
+		_webview->navigate(url);
+		activate();
+	}
+	_url = url;
+	_subtitleText = _url.value(
+	) | rpl::filter([=](const QString &url) {
+		return !url.isEmpty() && url != u"about:blank"_q;
+	}) | rpl::map([=](QString value) {
+		return HttpsToTonsite(value);
+	});
+	_windowTitleText = _subtitleText.value();
+	_menuToggle->hide();
+}
+
+void Controller::showTLViewer(
+	const Webview::StorageId& storageId,
+	QString url) {
+	if (!_webview) {
+		createWebview(storageId);
+	}
+	if (_webview && _webview->widget()) {
+		_webview->navigate(url);
+		activate();
+	}
+	_url = url;
+	_subtitleText = tr::lng_context_view_as_json(tr::now);
+	_windowTitleText = _subtitleText.value();
+	_menuToggle->hide();
+}
+
+QByteArray Controller::fillInChannelValuesScript(
+		base::flat_map<QByteArray, rpl::producer<bool>> inChannelValues) {
+	auto result = QByteArray();
+	for (auto &[id, in] : inChannelValues) {
+		if (_inChannelSubscribed.emplace(id).second) {
+			std::move(in) | rpl::on_next([=](bool in) {
+				if (_ready) {
+					_webview->eval(toggleInChannelScript(id, in));
+				} else {
+					_inChannelChanged[id] = in;
+				}
+			}, _lifetime);
+		}
+	}
+	for (const auto &[id, in] : base::take(_inChannelChanged)) {
+		result += toggleInChannelScript(id, in);
+	}
+	return result;
+}
+
+QByteArray Controller::toggleInChannelScript(
+		const QByteArray &id,
+		bool in) const {
+	const auto value = in ? "true" : "false";
+	return "IV.toggleChannelJoined('" + id + "', " + value + ");";
+}
+
+void Controller::createWindow() {
+	_window = std::make_unique<Ui::RpWindow>();
+	const auto window = _window.get();
 
 	base::qt_signal_producer(
 		qApp,
@@ -495,43 +628,11 @@ void Controller::createWindow() {
 		setInnerFocus();
 	}, window->lifetime());
 
+	initControls();
+
 	window->body()->widthValue() | rpl::on_next([=](int width) {
 		updateTitleGeometry(width);
 	}, _subtitle->lifetime());
-
-	window->events(
-	) | rpl::on_next([=](not_null<QEvent*> e) {
-		if (e->type() == QEvent::Close) {
-			close();
-		} else if (e->type() == QEvent::KeyPress) {
-			processKey(static_cast<QKeyEvent*>(e.get()));
-		}
-	}, window->lifetime());
-
-	base::install_event_filter(window, qApp, [=](not_null<QEvent*> e) {
-		if (e->type() != QEvent::ShortcutOverride
-			|| !window->isActiveWindow()) {
-			return base::EventFilterResult::Continue;
-		}
-		const auto event = static_cast<QKeyEvent*>(e.get());
-		const auto command = Platform::IsMac()
-			? Qt::MetaModifier
-			: Qt::ControlModifier;
-		if (!(event->modifiers() & command)) {
-			return base::EventFilterResult::Continue;
-		} else if (event->key() == Qt::Key_Plus
-			|| event->key() == Qt::Key_Equal) {
-			_delegate->ivSetZoom(_delegate->ivZoom() + kZoomStep);
-			return base::EventFilterResult::Cancel;
-		} else if (event->key() == Qt::Key_Minus) {
-			_delegate->ivSetZoom(_delegate->ivZoom() - kZoomStep);
-			return base::EventFilterResult::Cancel;
-		} else if (event->key() == Qt::Key_0) {
-			_delegate->ivSetZoom(0);
-			return base::EventFilterResult::Cancel;
-		}
-		return base::EventFilterResult::Continue;
-	});
 
 	window->setGeometry(_delegate->ivGeometry(window));
 	window->setMinimumSize({ st::windowMinWidth, st::windowMinHeight });
@@ -568,7 +669,6 @@ void Controller::createWebview(const Webview::StorageId &storageId) {
 		Webview::WindowConfig{
 			.opaqueBg = st::windowBg->c,
 			.storageId = storageId,
-			.safe = true,
 		});
 	const auto raw = _webview.get();
 
@@ -583,12 +683,34 @@ void Controller::createWebview(const Webview::StorageId &storageId) {
 		) | rpl::on_next([=](int value) {
 			webviewZoomController->setZoom(value);
 		}, lifetime());
-		webviewZoomController->setZoom(_delegate->ivZoom());
 	}
 
 	window->lifetime().add([=] {
+		_ready = false;
 		base::take(_webview);
 	});
+
+	window->events(
+	) | rpl::on_next([=](not_null<QEvent*> e) {
+		if (e->type() == QEvent::Close) {
+			close();
+		} else if (e->type() == QEvent::KeyPress) {
+			const auto event = static_cast<QKeyEvent*>(e.get());
+			if (event->key() == Qt::Key_Escape) {
+				escape();
+			}
+			if (event->modifiers() & Qt::ControlModifier) {
+				if (event->key() == Qt::Key_Plus
+					|| event->key() == Qt::Key_Equal) {
+					_delegate->ivSetZoom(_delegate->ivZoom() + kZoomStep);
+				} else if (event->key() == Qt::Key_Minus) {
+					_delegate->ivSetZoom(_delegate->ivZoom() - kZoomStep);
+				} else if (event->key() == Qt::Key_0) {
+					_delegate->ivSetZoom(kDefaultZoom);
+				}
+			}
+		}
+	}, window->lifetime());
 
 	const auto widget = raw->widget();
 	if (!widget) {
@@ -600,6 +722,8 @@ void Controller::createWebview(const Webview::StorageId &storageId) {
 
 	QObject::connect(widget, &QObject::destroyed, [=] {
 		if (!_webview) {
+			// If we destroyed _webview ourselves,
+			// we don't show any message, nothing crashed.
 			return;
 		}
 		crl::on_main(window, [=] {
@@ -616,86 +740,164 @@ void Controller::createWebview(const Webview::StorageId &storageId) {
 	}, _container->lifetime());
 
 	raw->setNavigationStartHandler([=](const QString &uri, bool newWindow) {
-		Q_UNUSED(newWindow);
-
-		if (uri == u"about:blank"_q
-			|| QUrl(uri).host().toLower().endsWith(u".magic.org"_q)) {
+		if (uri.startsWith(u"http://desktop-app-resource/"_q)
+			|| QUrl(uri).host().toLower().endsWith(u".magic.org"_q)
+			|| uri.startsWith(Iv::kTLViewerUrl.utf16())) {
 			return true;
 		}
 		_events.fire({ .type = Event::Type::OpenLink, .url = uri });
 		return false;
 	});
 	raw->setNavigationDoneHandler([=](bool success) {
-		Q_UNUSED(success);
 	});
+	raw->setMessageHandler([=](const QJsonDocument &message) {
+		crl::on_main(_window.get(), [=] {
+			const auto object = message.object();
+			const auto event = object.value("event").toString();
+			if (event == u"keydown"_q) {
+				const auto key = object.value("key").toString();
+				const auto modifier = object.value("modifier").toString();
+				processKey(key, modifier);
+			} else if (event == u"mouseenter"_q) {
+				window->overrideSystemButtonOver({});
+			} else if (event == u"mouseup"_q) {
+				window->overrideSystemButtonDown({});
+			} else if (event == u"link_click"_q) {
+				const auto url = object.value("url").toString();
+				const auto context = object.value("context").toString();
+				processLink(url, context);
+			} else if (event == "menu_page_blocker_click") {
+				if (_menu) {
+					_menu->hideMenu();
+				}
+			} else if (event == u"ready"_q) {
+				_ready = true;
+				auto script = QByteArray();
+				for (const auto &[id, in] : base::take(_inChannelChanged)) {
+					script += toggleInChannelScript(id, in);
+				}
+				if (_navigateToIndexWhenReady >= 0) {
+					script += navigateScript(
+						std::exchange(_navigateToIndexWhenReady, -1),
+						base::take(_navigateToHashWhenReady));
+				}
+				if (base::take(_reloadInitialWhenReady)) {
+					script += reloadScript(0);
+				}
+				if (_menu) {
+					script += "IV.menuShown(true);";
+				}
+				if (!script.isEmpty()) {
+					_webview->eval(script);
+				}
+			} else if (event == u"location_change"_q) {
+				_index = object.value("index").toInt();
+				_hash = object.value("hash").toString();
+				_webview->refreshNavigationHistoryState();
+			}
+		});
+	});
+	raw->setDataRequestHandler([=](Webview::DataRequest request) {
+		const auto pos = request.id.find('#');
+		if (pos != request.id.npos) {
+			request.id = request.id.substr(0, pos);
+		}
+		if (!request.id.starts_with("iv/")) {
+			_dataRequests.fire(std::move(request));
+			return Webview::DataResult::Pending;
+		}
+		const auto finishWith = [&](QByteArray data, std::string mime) {
+			request.done({
+				.stream = std::make_unique<Webview::DataStreamFromMemory>(
+					std::move(data),
+					std::move(mime)),
+				});
+			return Webview::DataResult::Done;
+		};
+		const auto id = std::string_view(request.id).substr(3);
+		if (id.starts_with("page") && id.ends_with(".html")) {
+			if (!_subscribedToColors) {
+				_subscribedToColors = true;
+
+				rpl::merge(
+					Lang::Updated(),
+					style::PaletteChanged(),
+					_delegate->ivZoomValue() | rpl::to_empty
+				) | rpl::on_next([=] {
+					_updateStyles.call();
+				}, _webview->lifetime());
+			}
+			auto index = 0;
+			const auto result = std::from_chars(
+				id.data() + 4,
+				id.data() + id.size() - 5,
+				index);
+			if (result.ec != std::errc()
+				|| index < 0
+				|| index >= _pages.size()) {
+				return Webview::DataResult::Failed;
+			}
+			const auto webviewZoomController = _webview->zoomController();
+			const auto styleZoom = webviewZoomController
+				? kDefaultZoom
+				: _delegate->ivZoom();
+			return finishWith(
+				WrapPage(_pages[index], styleZoom),
+				"text/html; charset=utf-8");
+		} else if (id.starts_with("page") && id.ends_with(".json")) {
+			auto index = 0;
+			const auto result = std::from_chars(
+				id.data() + 4,
+				id.data() + id.size() - 5,
+				index);
+			if (result.ec != std::errc()
+				|| index < 0
+				|| index >= _pages.size()) {
+				return Webview::DataResult::Failed;
+			}
+			auto &page = _pages[index];
+			return finishWith(QJsonDocument(QJsonObject{
+				{ "html", QJsonValue(page.content) },
+				{ "js", QJsonValue(QString::fromUtf8(page.script)) },
+			}).toJson(QJsonDocument::Compact), "application/json");
+		}
+		const auto css = id.ends_with(".css");
+		const auto js = !css && id.ends_with(".js");
+		if (!css && !js) {
+			return Webview::DataResult::Failed;
+		}
+		const auto qstring = QString::fromUtf8(id.data(), id.size());
+		const auto pattern = u"^[a-zA-Z\\.\\-_0-9]+$"_q;
+		if (QRegularExpression(pattern).match(qstring).hasMatch()) {
+			const auto bytes = ReadResource(qstring);
+			if (!bytes.isEmpty()) {
+				const auto mime = css ? "text/css" : "text/javascript";
+				const auto full = (qstring == u"page.js"_q)
+					? (ReadResource("morphdom.js") + bytes)
+					: bytes;
+				return finishWith(full, mime);
+			}
+		}
+		return Webview::DataResult::Failed;
+	});
+
 	raw->navigationHistoryState(
 	) | rpl::on_next([=](Webview::NavigationHistoryState state) {
-		_back->setDisabled(!state.canGoBack);
-		_forward->setDisabled(!state.canGoForward);
+		_back->toggle(
+			state.canGoBack || state.canGoForward,
+			anim::type::normal);
+		_forward->toggle(state.canGoForward, anim::type::normal);
+		_back->entity()->setDisabled(!state.canGoBack);
+		_back->entity()->setIconOverride(
+			state.canGoBack ? nullptr : &st::ivBackIconDisabled,
+			state.canGoBack ? nullptr : &st::ivBackIconDisabled);
+		_back->setAttribute(
+			Qt::WA_TransparentForMouseEvents,
+			!state.canGoBack);
 		_url = QString::fromStdString(state.url);
 	}, _webview->lifetime());
 
 	raw->init(R"()");
-}
-
-void Controller::processKey(QKeyEvent *event) {
-	const auto command = Platform::IsMac()
-		? Qt::MetaModifier
-		: Qt::ControlModifier;
-	if (event->key() == Qt::Key_Escape) {
-		close();
-	} else if (event->modifiers() & command) {
-		if (event->key() == Qt::Key_W) {
-			close();
-		} else if (event->key() == Qt::Key_M) {
-			minimize();
-		} else if (event->key() == Qt::Key_Q) {
-			quit();
-		} else if (event->key() == Qt::Key_0) {
-			_delegate->ivSetZoom(0);
-		}
-	}
-}
-
-void Controller::activate() {
-	if (_window->isMinimized()) {
-		_window->showNormal();
-	} else if (_window->isHidden()) {
-		_window->show();
-	}
-	_window->raise();
-	_window->activateWindow();
-	_window->setFocus();
-	setInnerFocus();
-}
-
-void Controller::setInnerFocus() {
-	if (_webview) {
-		_webview->focus();
-	}
-}
-
-bool Controller::active() const {
-	return _window && _window->isActiveWindow();
-}
-
-void Controller::minimize() {
-	if (_window) {
-		_window->setWindowState(_window->windowState()
-			| Qt::WindowMinimized);
-	}
-}
-
-void Controller::close() {
-	_events.fire({ Event::Type::Close });
-}
-
-void Controller::quit() {
-	_events.fire({ Event::Type::Quit });
-}
-
-rpl::lifetime &Controller::lifetime() {
-	return _lifetime;
 }
 
 void Controller::showWebviewError() {
@@ -708,12 +910,10 @@ void Controller::showWebviewError() {
 }
 
 void Controller::showWebviewError(TextWithEntities text) {
-	const auto wrap = Ui::CreateChild<Ui::RpWidget>(_container);
-
-	const auto error = Ui::CreateChild<Ui::PaddingWrap<Ui::FlatLabel>>(
-		wrap,
+	auto error = Ui::CreateChild<Ui::PaddingWrap<Ui::FlatLabel>>(
+		_container,
 		object_ptr<Ui::FlatLabel>(
-			wrap,
+			_container,
 			rpl::single(text),
 			st::paymentsCriticalError),
 		st::paymentsCriticalErrorPadding);
@@ -727,16 +927,10 @@ void Controller::showWebviewError(TextWithEntities text) {
 		File::OpenUrl(entity.data);
 		return false;
 	});
-	wrap->show();
-
-	wrap->widthValue() | rpl::on_next([=](int width) {
-		error->resizeToWidth(width);
-		wrap->resize(width, error->height());
-	}, wrap->lifetime());
-
+	error->show();
 	_container->sizeValue() | rpl::on_next([=](QSize size) {
-		wrap->setGeometry(0, 0, size.width(), size.height() * 2 / 3);
-	}, wrap->lifetime());
+		error->setGeometry(0, 0, size.width(), size.height() * 2 / 3);
+	}, error->lifetime());
 }
 
 void Controller::showInWindow(
@@ -820,7 +1014,7 @@ void Controller::processKey(const QString &key, const QString &modifier) {
 	} else if (key == u"q"_q && modifier == ctrl) {
 		quit();
 	} else if (key == u"0"_q && modifier == ctrl) {
-		_delegate->ivSetZoom(0);
+		_delegate->ivSetZoom(kDefaultZoom);
 	}
 }
 
@@ -939,7 +1133,8 @@ void Controller::showMenu() {
 
 	_menu->addSeparator();
 	_menu->addAction(
-		base::make_unique_q<ItemZoom>(_menu->menu(), _delegate, _menu->menu()->st()));
+		base::make_unique_q<ItemZoom>(_menu, _delegate, _menu->menu()->st()));
+
 	_menu->setForcedOrigin(Ui::PanelAnimation::Origin::TopRight);
 	_menu->popup(_window->body()->mapToGlobal(
 		QPoint(_window->body()->width(), 0) + st::ivMenuPosition));

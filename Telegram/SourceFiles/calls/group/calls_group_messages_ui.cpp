@@ -420,8 +420,10 @@ void MessagesUi::setupList(
 		std::move(messages),
 		std::move(shown)
 	) | rpl::on_next([=](std::vector<Message> &&list, bool shown) {
-		if (!shown) {
-			list.clear();
+		if (shown) {
+			_hidden = std::nullopt;
+		} else {
+			_hidden = base::take(list);
 		}
 		showList(list);
 	}, _lifetime);
@@ -1174,31 +1176,6 @@ void MessagesUi::setupMessagesWidget() {
 	} else {
 		receiveAllMouseEvents();
 	}
-
-			const auto padding = st::groupCallMessagePadding;
-			const auto userpicSize = st::groupCallUserpic;
-			const auto userpicPadding = st::groupCallUserpicPadding;
-			const auto leftSkip = userpicPadding.left()
-				+ userpicSize
-				+ userpicPadding.right();
-			const auto userpic = QRect(
-				entry.left + userpicPadding.left(),
-				entry.top + userpicPadding.top(),
-				userpicSize,
-				userpicSize);
-			const auto link = userpic.contains(point)
-				? entry.fromLink
-				: entry.text.getState(point - QPoint(
-					entry.left + leftSkip,
-					entry.top + padding.top()
-				), entry.width - leftSkip - padding.right()).link;
-			if (link) {
-				ActivateClickHandler(_messages, link, Qt::LeftButton);
-			}
-			return true;
-		}
-		return false;
-	});
 
 	_messages->paintRequest() | rpl::on_next([=](QRect clip) {
 		const auto start = scroll->scrollTop();

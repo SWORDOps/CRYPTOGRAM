@@ -793,7 +793,7 @@ void GroupCall::initConferenceE2E() {
 void GroupCall::setupConferenceCall() {
 	Expects(_sharedCall != nullptr);
 
-	_conferenceCall->staleParticipantIds(
+	_sharedCall->staleParticipantIds(
 	) | rpl::on_next([=](const base::flat_set<UserId> &staleIds) {
 		removeConferenceParticipants(staleIds, true);
 	}, _lifetime);

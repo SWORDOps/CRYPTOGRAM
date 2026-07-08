@@ -930,7 +930,7 @@ void SessionsContent::Inner::setupContent() {
 		st::defaultLinkButton);
 	rpl::combine(
 		content->sizeValue(),
-		header->positionValue()
+		_currentHeader->positionValue()
 	) | rpl::on_next([=](QSize outer, QPoint position) {
 		const auto x = st::sessionTerminateSkip
 			+ st::sessionTerminate.iconPosition.x();

@@ -69,8 +69,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace HistoryView::Controls {
 namespace {
 
-constexpr auto kAiComposeStyleTooltipHiddenPref = "ai_compose_style_tooltip_hidden"_cs;
-
 enum class ComposeAiMode {
 	Translate,
 	Style,
@@ -1558,9 +1556,7 @@ struct StyleTooltipHandle {
 	};
 
 	const auto updateVisibility = [=](bool visible) {
-		const auto show = visible
-			&& !Core::App().settings().readPref<bool>(
-				kAiComposeStyleTooltipHiddenPref);
+		const auto show = visible;
 		if (state->shown != show) {
 			state->shown = show;
 			if (show) {
@@ -1944,9 +1940,6 @@ void ComposeAiBox(not_null<Ui::GenericBox*> box, ComposeAiBoxArgs &&args) {
 	});
 	content->setStyleSelectedCallback([=] {
 		rebuildButtons();
-		if (!Core::App().settings().readPref<bool>(kAiComposeStyleTooltipHiddenPref)) {
-			Core::App().settings().writePref<bool>(kAiComposeStyleTooltipHiddenPref, true);
-		}
 		(*styleTooltipUpdater)(false);
 	});
 

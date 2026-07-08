@@ -21,23 +21,6 @@ namespace Profile {
 
 BackButton::BackButton(QWidget *parent) : Ui::AbstractButton(parent) {
 	setCursor(style::cur_pointer);
-
-	std::move(
-		oneColumnValue
-	) | rpl::on_next([=](bool oneColumn) {
-		if (!oneColumn) {
-			_unreadBadgeLifetime.destroy();
-		} else if (!_unreadBadgeLifetime) {
-			_session->data().unreadBadgeChanges(
-			) | rpl::on_next([=] {
-				rtlupdate(
-					0,
-					0,
-					st::titleUnreadCounterRight,
-					st::titleUnreadCounterTop);
-			}, _unreadBadgeLifetime);
-		}
-	}, lifetime());
 }
 
 void BackButton::setText(const QString &text) {

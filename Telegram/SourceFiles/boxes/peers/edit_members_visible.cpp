@@ -44,11 +44,24 @@ namespace {
 	auto result = object_ptr<Ui::VerticalLayout>((QWidget*)nullptr);
 	const auto container = result.data();
 
-	button->toggledValue(
+	const auto button = container->add(object_ptr<Ui::SettingsButton>(
+		container,
+		tr::lng_profile_hide_participants(),
+		st::defaultSettingsButton));
+	button->toggleOn(rpl::single(
+		bool(megagroup->flags() & ChannelDataFlag::ParticipantsHidden)));
+
+	Ui::AddSkip(container);
+	Ui::AddDividerText(
+		container,
+		tr::lng_profile_hide_participants_about());
+	Ui::AddSkip(container);
+
+	button->toggledChanges(
 	) | rpl::on_next([=](bool toggled) {
 		megagroup->session().api().request(
 			MTPchannels_ToggleParticipantsHidden(
-				megagroup->inputChannel,
+				megagroup->inputChannel(),
 				MTP_bool(toggled)
 			)
 		).done([=](const MTPUpdates &result) {

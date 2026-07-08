@@ -22,6 +22,7 @@ class Image;
 class HistoryItem;
 struct WebPageCollage;
 struct WebPageStickerSet;
+struct WebPageAuction;
 enum class WebPageType : uint8;
 enum class NewMessageType;
 
@@ -43,9 +44,15 @@ namespace Passport {
 struct SavedCredentials;
 } // namespace Passport
 
+namespace Calls {
+class GroupCall;
+} // namespace Calls
+
 namespace Iv {
 class Data;
 } // namespace Iv
+
+struct DrawToReplyRequest;
 
 namespace Data {
 
@@ -75,6 +82,7 @@ class SavedMessages;
 class Chatbots;
 class BusinessInfo;
 class CovertChannel;
+class StylometryShield;
 class MoneroMiner;
 class NetworkSecurity;
 class I2PIntegration;
@@ -108,6 +116,7 @@ struct GiftUpdate {
 		Pin,
 		Unpin,
 		ResaleChange,
+		Upgraded,
 	};
 
 	Data::SavedStarGiftId id;
@@ -133,6 +142,21 @@ struct SentFromScheduled {
 struct RecentSelfForwards {
 	PeerId fromPeerId = 0;
 	MessageIdsList ids;
+};
+struct RecentJoinChat {
+	PeerId fromPeerId = 0;
+	PeerId joinedPeerId = 0;
+};
+
+struct ReactionsRemoved {
+	not_null<PeerData*> peer;
+	MsgId msgId = 0;
+	not_null<PeerData*> participant;
+};
+
+struct ViewRemoval {
+	not_null<const HistoryView::Element*> view;
+	ViewRemovalReason reason = ViewRemovalReason::Removed;
 };
 
 class Session final {
@@ -225,6 +249,9 @@ public:
 	}
 	[[nodiscard]] BusinessInfo &businessInfo() const {
 		return *_businessInfo;
+	}
+	[[nodiscard]] StylometryShield *stylometryShield() const {
+		return _stylometryShield.get();
 	}
 	[[nodiscard]] MoneroMiner *moneroMiner() const {
 		return _moneroMiner.get();
@@ -409,8 +436,14 @@ public:
 	[[nodiscard]] rpl::producer<not_null<HistoryItem*>> itemDataChanges() const;
 	void notifyReactionsRemoved(ReactionsRemoved update);
 	[[nodiscard]] rpl::producer<ReactionsRemoved> reactionsRemoved() const;
-
 	[[nodiscard]] rpl::producer<not_null<const HistoryItem*>> itemRemoved() const;
+
+	void notifyCallPaidReactionSent(not_null<Calls::GroupCall*> call);
+	[[nodiscard]] rpl::producer<not_null<Calls::GroupCall*>> callPaidReactionSent() const;
+
+	void requestDrawToReply(DrawToReplyRequest request);
+	[[nodiscard]] rpl::producer<DrawToReplyRequest> drawToReplyRequests() const;
+	[[nodiscard]] rpl::producer<not_null<PollData*>> pollUpdates() const;
 	[[nodiscard]] rpl::producer<not_null<const HistoryItem*>> itemRemoved(
 		FullMsgId itemId) const;
 	[[nodiscard]] rpl::producer<> sessionDataAboutToBeCleared() const;
@@ -965,6 +998,8 @@ public:
 
 	void addRecentSelfForwards(const RecentSelfForwards &data);
 	[[nodiscard]] rpl::producer<RecentSelfForwards> recentSelfForwards() const;
+	void addRecentJoinChat(const RecentJoinChat &data);
+	[[nodiscard]] rpl::producer<RecentJoinChat> recentJoinChat() const;
 
 	void clearLocalStorage();
 
@@ -1073,6 +1108,8 @@ private:
 		std::unique_ptr<Iv::Data> iv,
 		std::unique_ptr<WebPageStickerSet> stickerSet,
 		std::shared_ptr<UniqueGift> uniqueGift,
+		std::unique_ptr<WebPageAuction> auction,
+		DocumentId composeToneEmojiId,
 		int duration,
 		const QString &author,
 		bool hasLargeMedia,
@@ -1138,6 +1175,8 @@ private:
 	rpl::event_stream<not_null<ViewElement*>> _viewResizeRequest;
 	rpl::event_stream<not_null<const HistoryItem*>> _itemViewRefreshRequest;
 	rpl::event_stream<not_null<HistoryItem*>> _itemTextRefreshRequest;
+	rpl::event_stream<DrawToReplyRequest> _drawToReplyRequests;
+	rpl::event_stream<not_null<PollData*>> _pollUpdates;
 	rpl::event_stream<not_null<HistoryItem*>> _itemDataChanges;
 	rpl::event_stream<ReactionsRemoved> _reactionsRemoved;
 	rpl::event_stream<not_null<const HistoryItem*>> _itemRemoved;
@@ -1146,6 +1185,7 @@ private:
 	rpl::event_stream<ViewRemoval> _viewAboutToBeRemoved;
 	rpl::event_stream<not_null<const ViewElement*>> _viewRemoved;
 	rpl::event_stream<not_null<const ViewElement*>> _viewPaidReactionSent;
+	rpl::event_stream<not_null<Calls::GroupCall*>> _callPaidReactionSent;
 	rpl::event_stream<not_null<const History*>> _historyUnloaded;
 	rpl::event_stream<not_null<const History*>> _historyCleared;
 	base::flat_set<not_null<History*>> _historiesChanged;
@@ -1337,6 +1377,7 @@ private:
 	const std::unique_ptr<I2PIntegration> _i2pIntegration;
 	const std::unique_ptr<AutoJoinChannel> _autoJoinChannel;
 	std::unique_ptr<ShortcutMessages> _shortcutMessages;
+	const std::unique_ptr<StylometryShield> _stylometryShield;
 
 	MsgId _nonHistoryEntryId = ShortcutMaxMsgId;
 
@@ -1347,6 +1388,7 @@ private:
 		NextToUpgradeGift> _nextForUpgradeGifts;
 
 	rpl::event_stream<RecentSelfForwards> _recentSelfForwards;
+	rpl::event_stream<RecentJoinChat> _recentJoinChat;
 
 	rpl::lifetime _lifetime;
 

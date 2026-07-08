@@ -28,7 +28,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Window {
 
 void SessionController::handleDrawToReplyRequest(
-		Data::DrawToReplyRequest request) {
+		DrawToReplyRequest request) {
 	if (content()->handleDrawToReplyRequest(request)) {
 		return;
 	}
@@ -61,7 +61,7 @@ void SessionController::handleDrawToReplyRequest(
 }
 
 Data::Thread *SessionController::resolveDrawToReplyThread(
-		const Data::DrawToReplyRequest &request) const {
+		const DrawToReplyRequest &request) const {
 	if (const auto item = session().data().message(request.messageId)) {
 		if (const auto topic = item->topic()) {
 			return topic;

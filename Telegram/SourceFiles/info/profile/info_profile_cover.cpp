@@ -10,10 +10,23 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "main/main_session.h"
 #include "data/data_forum_topic.h"
+#include "data/data_chat.h"
 #include "data/data_document.h"
 #include "data/data_document_media.h"
 #include "data/data_session.h"
+#include "data/data_peer.h"
+#include "data/data_user.h"
+#include "data/data_changes.h"
+#include "data/data_channel.h"
+#include "data/data_peer_values.h"
+#include "data/data_saved_music.h"
+#include "apiwrap.h"
+#include "api/api_user_privacy.h"
+#include "api/api_peer_photo.h"
+#include "base/timer_rpl.h"
 #include "data/stickers/data_custom_emoji.h"
+#include "data/data_emoji_statuses.h"
+#include "info/profile/info_profile_badge_tooltip.h"
 #include "info/profile/info_profile_badge.h"
 #include "info/profile/info_profile_emoji_status_panel.h"
 #include "info/profile/info_profile_music_button.h"
@@ -35,6 +48,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/labels.h"
 #include "ui/widgets/popup_menu.h"
 #include "ui/text/text_utilities.h"
+#include "ui/text/format_song_document_name.h"
 #include "ui/basic_click_handlers.h"
 #include "ui/ui_utility.h"
 #include "ui/painter.h"
@@ -44,7 +58,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_session_controller.h"
 #include "main/main_app_config.h"
 #include "main/main_session.h"
-#include "settings/settings_premium.h"
+#include "settings/sections/settings_premium.h"
 #include "chat_helpers/stickers_lottie.h"
 #include "window/window_session_controller.h"
 #include "ui/painter.h"
@@ -54,6 +68,50 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtGui/QClipboard>
 
 namespace Info::Profile {
+namespace {
+
+constexpr auto kWaitBeforeGiftBadge = crl::time(1000);
+constexpr auto kGiftBadgeGlares = 3;
+
+[[nodiscard]] auto MembersStatusText(int count) {
+	return tr::lng_chat_status_members(tr::now, lt_count_decimal, count);
+}
+[[nodiscard]] auto OnlineStatusText(int count) {
+	return tr::lng_chat_status_online(tr::now, lt_count_decimal, count);
+}
+[[nodiscard]] auto ChatStatusText(
+		int fullCount,
+		int onlineCount,
+		bool isGroup) {
+	if (onlineCount > 1 && onlineCount <= fullCount) {
+		return tr::lng_chat_status_members_online(
+			tr::now,
+			lt_members_count,
+			MembersStatusText(fullCount),
+			lt_online_count,
+			OnlineStatusText(onlineCount));
+	} else if (fullCount > 0) {
+		return isGroup
+			? tr::lng_chat_status_members(
+				tr::now,
+				lt_count_decimal,
+				fullCount)
+			: tr::lng_chat_status_subscribers(
+				tr::now,
+				lt_count_decimal,
+				fullCount);
+	}
+	return isGroup
+		? tr::lng_group_status(tr::now)
+		: tr::lng_channel_status(tr::now);
+}
+
+[[nodiscard]] Profile::MusicButtonData DocumentMusicButtonData(
+		not_null<DocumentData*> document) {
+	return { Ui::Text::FormatSongNameFor(document) };
+}
+
+} // namespace
 
 QMargins LargeCustomEmojiMargins() {
 	const auto ratio = style::DevicePixelRatio();
@@ -292,6 +350,19 @@ Cover::Cover(
 			.emojiStatusId = { info ? info->iconId : DocumentId() },
 		};
 	});
+}
+
+[[nodiscard]] const style::InfoProfileCover &CoverStyle(
+		not_null<PeerData*> peer,
+		Data::ForumTopic *topic,
+		Cover::Role role) {
+	return (role == Cover::Role::EditContact)
+		? st::infoEditContactCover
+		: topic
+		? st::infoTopicCover
+		: peer->isMegagroup()
+		? st::infoProfileMegagroupCover
+		: st::infoProfileCover;
 }
 
 Cover::Cover(
@@ -545,8 +616,7 @@ void Cover::setupChildGeometry() {
 			_changePersonal->moveToLeft(
 				(_st.photoLeft
 					+ _st.photo.photoSize
-					- _changePersonal->width()
-					+ st::infoEditContactPersonalLeft),
+					- _changePersonal->width()),
 				(_userpic->y()
 					+ _userpic->height()
 					- _changePersonal->height()));
@@ -583,7 +653,7 @@ void Cover::setupSavedMusic() {
 			widthValue(
 			) | rpl::on_next([=](int newWidth) {
 				_musicButton->resizeToWidth(newWidth);
-				const auto skip = st::infoMusicButtonBottom;
+				const auto skip = 0;
 				_musicButton->moveToLeft(0, _st.height - skip, newWidth);
 				resize(width(), _st.height + _musicButton->height());
 			}, _musicButton->lifetime());
@@ -739,7 +809,7 @@ void Cover::refreshUploadPhotoOverlay() {
 					peer,
 					peer->owner().photo(peer->userpicPhotoId())),
 				Ui::LayerOption::CloseOther);
-		}, &st::menuIconReport);
+		}, &st::infoIconReport);
 		contextMenu->get()->popup(QCursor::pos());
 		return true;
 	};
@@ -844,7 +914,7 @@ void Cover::refreshStatusText() {
 	_status->setMarkedText(statusText);
 	if (hasMembersLink) {
 		_status->setLink(1, std::make_shared<LambdaClickHandler>([=] {
-			_showSection.fire(Section::Type::Members);
+			_showSection.fire(Info::Section::Type::Members);
 		}));
 	}
 

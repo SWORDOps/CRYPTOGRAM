@@ -511,15 +511,9 @@ void EditCaptionBox::rebuildPreview() {
 			file,
 			Ui::AttachControls::Type::EditOnly);
 		_isPhoto = (media && media->isPhoto());
-		const auto withCheckbox = _isPhoto && CanBeCompressed(_albumType);
-		if (media && (!withCheckbox || !_asFile)) {
-			media->spoileredChanges(
-			) | rpl::on_next([=](bool spoilered) {
-				_mediaEditManager.apply({ .type = spoilered
-					? SendMenu::ActionType::SpoilerOn
-					: SendMenu::ActionType::SpoilerOff
-				});
-			}, media->lifetime());
+		if (media && !_asFile) {
+			media->setSendWay(currentSendWay());
+			media->setCanShowHighQualityBadge(file.canUseHighQualityPhoto());
 			_content.reset(media);
 		} else {
 			_content.reset(Ui::CreateChild<Ui::SingleFilePreview>(
@@ -548,14 +542,6 @@ void EditCaptionBox::rebuildPreview() {
 
 	_content->modifyRequests(
 	) | rpl::start_to_stream(_photoEditorOpens, _content->lifetime());
-
-	_content->editCoverRequests() | rpl::on_next([=] {
-		setupEditCoverHandler();
-	}, _content->lifetime());
-
-	_content->clearCoverRequests() | rpl::on_next([=] {
-		setupClearCoverHandler();
-	}, _content->lifetime());
 
 	_content->heightValue(
 	) | rpl::start_to_stream(_contentHeight, _content->lifetime());
@@ -763,10 +749,7 @@ void EditCaptionBox::setupControls() {
 void EditCaptionBox::setupEditEventHandler() {
 	_editMediaClicks.events(
 	) | rpl::on_next([=] {
-		ChooseReplacement(_controller, _albumType, crl::guard(this, [=](
-				Ui::PreparedList &&list) {
-			setPreparedList(std::move(list));
-		}));
+		showMenu(QCursor::pos(), true);
 	}, lifetime());
 }
 

@@ -81,23 +81,23 @@ bool I2PIntegration::connectToRouter(const QString &address, uint16 port) {
     _routerInfo.routerAddress = address;
     _routerInfo.routerPort = port;
     _status = I2PStatus::Connecting;
-    emit statusChanged(_status);
+    Q_EMIT statusChanged(_status);
 
     _samSocket->abort();
     _samSocket->connectToHost(address, port);
     if (!_samSocket->waitForConnected(2500)) {
         _status = I2PStatus::RouterNotFound;
         _routerInfo.isRunning = false;
-        emit statusChanged(_status);
-        emit error(QString("I2P router not reachable at %1:%2").arg(address).arg(port));
+        Q_EMIT statusChanged(_status);
+        Q_EMIT error(QString("I2P router not reachable at %1:%2").arg(address).arg(port));
         return false;
     }
 
     _routerInfo.isRunning = true;
     _status = I2PStatus::Connected;
     _routerInfo.version = "SAM";
-    emit statusChanged(_status);
-    emit routerConnected();
+    Q_EMIT statusChanged(_status);
+    Q_EMIT routerConnected();
     return true;
 }
 
@@ -111,8 +111,8 @@ bool I2PIntegration::disconnectFromRouter() {
 
     _routerInfo.isRunning = false;
     _status = I2PStatus::Disconnected;
-    emit statusChanged(_status);
-    emit routerDisconnected();
+    Q_EMIT statusChanged(_status);
+    Q_EMIT routerDisconnected();
     return true;
 }
 
@@ -130,7 +130,7 @@ QString I2PIntegration::createTunnel(const I2PTunnelConfig &config) {
     _statistics.tunnelsCreated++;
     _statistics.lastActivity = QDateTime::currentDateTime();
 
-    emit tunnelCreated(tunnel.tunnelId);
+    Q_EMIT tunnelCreated(tunnel.tunnelId);
     return tunnel.tunnelId;
 }
 
@@ -148,7 +148,7 @@ bool I2PIntegration::destroyTunnel(const QString &tunnelId) {
     }
 
     _tunnels.remove(tunnelId);
-    emit tunnelDestroyed(tunnelId);
+    Q_EMIT tunnelDestroyed(tunnelId);
     return true;
 }
 
@@ -159,7 +159,7 @@ bool I2PIntegration::startTunnel(const QString &tunnelId) {
     }
     it->autoStart = true;
     _status = I2PStatus::Tunneling;
-    emit statusChanged(_status);
+    Q_EMIT statusChanged(_status);
     return true;
 }
 
@@ -171,7 +171,7 @@ bool I2PIntegration::stopTunnel(const QString &tunnelId) {
     it->autoStart = false;
     if (_tunnels.isEmpty()) {
         _status = I2PStatus::Connected;
-        emit statusChanged(_status);
+        Q_EMIT statusChanged(_status);
     }
     return true;
 }
@@ -208,7 +208,7 @@ bool I2PIntegration::sendData(const QString &tunnelId, const QByteArray &data) {
     _statistics.bytesSent += data.size();
     _statistics.lastActivity = QDateTime::currentDateTime();
 
-    emit dataReceived(tunnelId, data);
+    Q_EMIT dataReceived(tunnelId, data);
     return true;
 }
 
@@ -248,13 +248,13 @@ bool I2PIntegration::detectI2PRouter() {
     _routerInfo.isRunning = ok;
     if (!ok && _status == I2PStatus::Connected) {
         _status = I2PStatus::RouterNotFound;
-        emit statusChanged(_status);
+        Q_EMIT statusChanged(_status);
     }
     return ok;
 }
 
 bool I2PIntegration::downloadI2PRouter() {
-    emit error("I2P router auto-download is not implemented for this build target");
+    Q_EMIT error("I2P router auto-download is not implemented for this build target");
     return false;
 }
 
@@ -265,15 +265,15 @@ QString I2PIntegration::getI2PInstallPath() const {
 void I2PIntegration::handleRouterConnection() {
     _routerInfo.isRunning = true;
     _status = I2PStatus::Connected;
-    emit statusChanged(_status);
-    emit routerConnected();
+    Q_EMIT statusChanged(_status);
+    Q_EMIT routerConnected();
 }
 
 void I2PIntegration::handleRouterDisconnection() {
     _routerInfo.isRunning = false;
     _status = I2PStatus::Disconnected;
-    emit statusChanged(_status);
-    emit routerDisconnected();
+    Q_EMIT statusChanged(_status);
+    Q_EMIT routerDisconnected();
 
     if (_enabled) {
         _reconnectTimer->start();
@@ -285,7 +285,7 @@ void I2PIntegration::handleTunnelData() {
     if (!data.isEmpty()) {
         _statistics.bytesReceived += data.size();
         _statistics.lastActivity = QDateTime::currentDateTime();
-        emit dataReceived(QStringLiteral("sam"), data);
+        Q_EMIT dataReceived(QStringLiteral("sam"), data);
     }
 }
 

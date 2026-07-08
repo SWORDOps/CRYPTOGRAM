@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -506,22 +506,13 @@ ListWidget::ListWidget(
 			resizeItem(view);
 		}
 	}, lifetime());
-	_session->data().viewHeightAdjusted(
-	) | rpl::on_next([this](Data::Session::ViewHeightAdjusted data) {
-		if (data.view->delegate() == this) {
-			viewHeightAdjusted(data.view);
-		}
-	}, lifetime());
 	_session->data().itemViewRefreshRequest(
 	) | rpl::on_next([this](auto item) {
 		if (const auto view = viewForItem(item)) {
 			refreshItem(view);
 		}
 	}, lifetime());
-	_session->data().itemShowHighlightRequest(
-	) | rpl::on_next([this](auto item) {
-		showItemHighlight(item);
-	}, lifetime());
+
 	_session->data().viewLayoutChanged(
 	) | rpl::on_next([this](auto view) {
 		if (view->delegate() == this) {
@@ -604,15 +595,6 @@ ListWidget::ListWidget(
 		}, lifetime());
 	}
 
-	if (_replyButtonManager) {
-		Core::App().settings().cornerReplyValue(
-		) | rpl::on_next([=](bool value) {
-			_useCornerReply = value;
-			if (!value) {
-				_replyButtonManager->updateButton({});
-			}
-		}, lifetime());
-	}
 
 	_delegate->listChatWideValue(
 	) | rpl::on_next([=](bool wide) {

@@ -611,7 +611,7 @@ not_null<Ui::VerticalLayout*> SetupFoldersList(
 			row.button->setColorIndexProgress(value);
 		}
 	};
-	tagsButtonEnabled->events() | rpl::distinct_until_changed(
+	state->tagsButtonEnabled.events() | rpl::distinct_until_changed(
 	) | rpl::on_next([=](bool value) {
 		state->tagsEnabledAnimation.stop();
 		state->tagsEnabledAnimation.start(
@@ -619,7 +619,7 @@ not_null<Ui::VerticalLayout*> SetupFoldersList(
 			value ? .0 : 1.,
 			value ? 1. : .0,
 			st::universalDuration);
-	}, lifetime);
+	}, container->lifetime());
 	setTagsProgress(session->data().chatsFilters().tagsEnabled());
 
 	rpl::single(rpl::empty) | rpl::then(
@@ -842,204 +842,6 @@ not_null<Ui::VerticalLayout*> SetupFoldersList(
 	return wrap;
 }
 
-void SetupTopContent(
-		not_null<Ui::VerticalLayout*> parent,
-		rpl::producer<> showFinished) {
-	const auto divider = Ui::CreateChild<Ui::BoxContentDivider>(parent.get());
-	const auto verticalLayout = parent->add(
-		object_ptr<Ui::VerticalLayout>(parent.get()));
-
-	auto icon = CreateLottieIcon(
-		verticalLayout,
-		{
-			.name = u"filters"_q,
-			.sizeOverride = {
-				st::settingsFilterIconSize,
-				st::settingsFilterIconSize,
-			},
-		},
-		st::settingsFilterIconPadding);
-	std::move(
-		showFinished
-	) | rpl::on_next([animate = std::move(icon.animate)] {
-		animate(anim::repeat::once);
-	}, verticalLayout->lifetime());
-	verticalLayout->add(std::move(icon.widget));
-
-	verticalLayout->add(
-		object_ptr<Ui::FlatLabel>(
-			verticalLayout,
-			tr::lng_filters_about(),
-			st::settingsFilterDividerLabel),
-		st::settingsFilterDividerLabelPadding,
-		style::al_top)->setTryMakeSimilarLines(true);
-
-	verticalLayout->geometryValue(
-	) | rpl::on_next([=](const QRect &r) {
-		divider->setGeometry(r);
-	}, divider->lifetime());
-
-}
-
-void SetupTagContent(
-		not_null<Window::SessionController*> controller,
-		not_null<Ui::VerticalLayout*> container,
-		not_null<FoldersState*> state,
-		HighlightRegistry *highlights,
-		not_null<Ui::VerticalLayout*> filtersWrap) {
-	const auto session = &controller->session();
-	const auto limit = [=] {
-		return Data::PremiumLimits(session).dialogFiltersCurrent();
-	};
-
-	auto premium = Data::AmPremiumValue(session);
-	const auto tagsButton = content->add(
-		object_ptr<Ui::SettingsButton>(
-			content,
-			tr::lng_filters_enable_tags(),
-			st::settingsButtonNoIconLocked));
-	const auto state = tagsButton->lifetime().make_state<State>();
-	tagsButton->toggleOn(rpl::merge(
-		rpl::combine(
-			session->data().chatsFilters().tagsEnabledValue(),
-			rpl::duplicate(premium),
-			rpl::mappers::_1 && rpl::mappers::_2),
-		state->tagsTurnOff.events()));
-	rpl::duplicate(premium) | rpl::on_next([=](bool value) {
-		tagsButton->setToggleLocked(!value);
-	}, tagsButton->lifetime());
-
-	const auto find = [=](not_null<FilterRowButton*> button) {
-		const auto i = ranges::find(state->rows, button, &FilterRow::button);
-		Assert(i != end(state->rows));
-		return &*i;
-	};
-
-	const auto addFilter = [=](const Data::ChatFilter &filter) {
-		const auto button = filtersWrap->add(
-			object_ptr<FilterRowButton>(filtersWrap, session, filter));
-		button->removeRequests(
-		) | rpl::on_next([=] {
-			const auto row = find(button);
-			row->removed = true;
-			button->setRemoved(true);
-		}, button->lifetime());
-		button->restoreRequests(
-		) | rpl::on_next([=] {
-			if (showLimitReached()) {
-				return;
-			}
-			button->setRemoved(false);
-			find(button)->removed = false;
-		}, button->lifetime());
-		button->setClickedCallback([=] {
-			const auto found = find(button);
-			if (found->removed) {
-				return;
-			}
-			const auto doneCallback = [=](const Data::ChatFilter &result) {
-				find(button)->filter = result;
-				button->updateData(result);
-			};
-			const auto saveAnd = [=](
-					const Data::ChatFilter &data,
-					Fn<void(Data::ChatFilter)> next) {
-				doneCallback(data);
-				state->save(button, next);
-			};
-			controller->window().show(Box(
-				EditFilterBox,
-				controller,
-				found->filter,
-				crl::guard(button, doneCallback),
-				crl::guard(button, saveAnd)));
-		});
-		state->rows.push_back({ button, filter });
-		state->count = state->rows.size();
-
-		filtersWrap->resizeToWidth(container->width());
-		return button;
-	};
-
-	Ui::AddSkip(container);
-	const auto nonEmptyAbout = container->add(
-		object_ptr<Ui::SlideWrap<Ui::VerticalLayout>>(
-			container,
-			object_ptr<Ui::VerticalLayout>(container))
-	)->setDuration(0);
-	const auto aboutRows = nonEmptyAbout->entity();
-	Ui::AddDivider(aboutRows);
-	Ui::AddSkip(aboutRows);
-	const auto recommendedTitle = Ui::AddSubsectionTitle(
-		aboutRows,
-		tr::lng_filters_recommended());
-	if (highlights) {
-		highlights->push_back({
-			u"folders/add-recommended"_q,
-			{ recommendedTitle.get(), SubsectionTitleHighlight() },
-		});
-	}
-
-	const auto setTagsProgress = [=](float64 value) {
-		for (const auto &row : state->rows) {
-			row.button->setColorIndexProgress(value);
-		}
-	};
-	state->tagsButtonEnabled.events() | rpl::distinct_until_changed(
-	) | rpl::on_next([=](bool value) {
-		state->tagsEnabledAnimation.stop();
-		state->tagsEnabledAnimation.start(
-			setTagsProgress,
-			value ? .0 : 1.,
-			value ? 1. : .0,
-			st::universalDuration);
-	}, container->lifetime());
-	setTagsProgress(session->data().chatsFilters().tagsEnabled());
-
-	rpl::single(rpl::empty) | rpl::then(
-		session->data().chatsFilters().suggestedUpdated()
-	) | rpl::map([=] {
-		return session->data().chatsFilters().suggestedFilters();
-	}) | rpl::filter([=](const std::vector<Data::SuggestedFilter> &list) {
-		return !list.empty();
-	}) | rpl::take(
-		1
-	) | rpl::on_next([=](
-			const std::vector<Data::SuggestedFilter> &suggestions) {
-		for (const auto &suggestion : suggestions) {
-			const auto &filter = suggestion.filter;
-			if (ranges::contains(state->rows, filter, &FilterRow::filter)) {
-				continue;
-			}
-			state->suggested = state->suggested.current() + 1;
-			const auto button = aboutRows->add(object_ptr<FilterRowButton>(
-				aboutRows,
-				session,
-				filter,
-				suggestion.description));
-			button->addRequests(
-				) | rpl::on_next([=] {
-				if (showLimitReached()) {
-					return;
-				}
-				addFilter(filter);
-				state->suggested = state->suggested.current() - 1;
-				delete button;
-			}, button->lifetime());
-		}
-		aboutRows->resizeToWidth(container->width());
-		Ui::AddSkip(aboutRows, st::defaultVerticalListSkip);
-	}, aboutRows->lifetime());
-
-	auto showSuggestions = rpl::combine(
-		state->suggested.value(),
-		state->count.value(),
-		Data::AmPremiumValue(session)
-	) | rpl::map([limit](int suggested, int count, bool) {
-		return suggested > 0 && count < limit();
-	});
-	nonEmptyAbout->toggleOn(std::move(showSuggestions));
-}
 
 void BuildTopContent(SectionBuilder &builder, rpl::producer<> showFinished) {
 	builder.add([showFinished = std::move(showFinished)](
@@ -1096,12 +898,6 @@ void BuildFoldersListSection(
 			ctx.container,
 			state,
 			ctx.highlights);
-		SetupRecommendedSection(
-			ctx.controller,
-			ctx.container,
-			state,
-			ctx.highlights,
-			wrap);
 		return SectionBuilder::WidgetToAdd{};
 	});
 }
@@ -1188,37 +984,7 @@ void BuildTagsSection(SectionBuilder &builder, not_null<FoldersState*> state) {
 			}
 		});
 
-	tagsButton->toggledValue(
-	) | rpl::filter([=](bool checked) {
-		const auto premium = session->premium();
-		if (checked && !premium) {
-			ShowPremiumPreviewToBuy(controller, PremiumFeature::FilterTags);
-			state->tagsTurnOff.fire(false);
-		}
-		if (!premium) {
-			tagsButtonEnabled->fire(false);
-		} else {
-			tagsButtonEnabled->fire_copy(checked);
-		}
-		const auto proceed = premium
-			&& (checked != session->data().chatsFilters().tagsEnabled());
-		if (!proceed) {
-			state->requestTimer.cancel();
-		}
-		return proceed;
-	}) | rpl::on_next([=](bool v) {
-		state->sendCallback = [=] { send(v); };
-		state->requestTimer.cancel();
-		state->requestTimer.setCallback([=] { send(v); });
-		state->requestTimer.callOnce(500);
-	}, tagsButton->lifetime());
-
-	tagsButton->lifetime().add([=] {
-		if (state->requestTimer.isActive()) {
-			if (state->sendCallback) {
-				state->sendCallback();
-			}
-		}
+		return SectionBuilder::WidgetToAdd{};
 	});
 
 	builder.addSkip();

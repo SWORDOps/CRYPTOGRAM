@@ -168,7 +168,9 @@ void SubsectionTabs::setupHorizontal(
 	}, scroll->lifetime());
 
 	_horizontal->paintRequest() | rpl::on_next([=](QRect clip) {
-		QPainter(_horizontal).fillRect(
+		QPainter p(_horizontal);
+		const auto line = st::lineWidth;
+		p.fillRect(
 			clip.intersected(
 				widget->rect().marginsRemoved(
 					{ 0, bottom ? line : 0, 0, bottom ? 0 : line })),

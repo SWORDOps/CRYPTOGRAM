@@ -129,6 +129,7 @@ jobs:
             build-essential git pkg-config \
             qt6-base-dev qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
             qt6-image-formats-plugins qt6-l10n-tools qt6-declarative-dev \
+            qt6-multimedia-dev qt6-charts-dev \
             libssl-dev libopenal-dev libpulse-dev \
             libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
             libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev \
@@ -194,10 +195,9 @@ jobs:
           fi
 
           if [ -z "$BINARY" ]; then
-            echo "No binary found — build may have produced output elsewhere"
-            find . -maxdepth 4 -name "Telegram" -o -name "cryptogram" 2>/dev/null | head -10
-            echo "binary_found=false" >> $GITHUB_OUTPUT
-            exit 0
+            echo "::error::No Telegram binary found after desktop build"
+            find . -maxdepth 4 \( -name "Telegram" -o -name "cryptogram" \) 2>/dev/null | head -10
+            exit 1
           fi
 
           echo "binary=$BINARY" >> $GITHUB_OUTPUT

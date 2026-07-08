@@ -1324,23 +1324,7 @@ void GenericCreditsEntryCover(
 	const auto owner = &session->data();
 	const auto isStarGift = e.stargift || e.soldOutInfo;
 	const auto uniqueGift = e.uniqueGift.get();
-	const auto forConvert = starGiftCanTransfer
-		&& e.starsConverted
-		&& !e.converted
-		&& starGiftSender;
-	const auto canConvert = forConvert && !timeExceeded;
-	const auto inResale = uniqueGift && (uniqueGift->starsForResale > 0);
-	const auto canBuyResold = inResale && (e.bareGiftOwnerId != selfPeerId);
 
-	if (auto savedId = EntryToSavedStarGiftId(session, e)) {
-		session->data().giftUpdates(
-		) | rpl::on_next([=](const Data::GiftUpdate &update) {
-			if (update.id == savedId
-				&& update.action != Data::GiftUpdate::Action::ResaleChange) {
-				box->closeBox();
-			}
-		}, box->lifetime());
-	}
 
 	box->setStyle(st.box ? *st.box : st::giveawayGiftCodeBox);
 	box->setWidth(st::boxWideWidth);

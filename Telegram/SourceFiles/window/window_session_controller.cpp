@@ -1891,7 +1891,7 @@ void SessionController::init() {
 		session().supportHelper().registerWindow(this);
 	}
 	session().data().drawToReplyRequests(
-	) | rpl::on_next([=](Data::DrawToReplyRequest request) {
+	) | rpl::on_next([=](DrawToReplyRequest request) {
 		handleDrawToReplyRequest(std::move(request));
 	}, lifetime());
 	setupShortcuts();

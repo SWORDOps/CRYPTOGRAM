@@ -74,7 +74,7 @@ void AdaptiveCountermeasures::initializeHardwareCapabilities() {
 
 void AdaptiveCountermeasures::initializeAudioSystem() {
 #ifdef __has_include
-#if __has_include(<QtMultimedia/QAudioOutput>)
+	#if __has_include(<QtMultimedia/QAudioSink>)
     if (!_audio_output_available) {
         qWarning() << "AdaptiveCountermeasures: No audio output devices available";
         return;
@@ -89,7 +89,7 @@ void AdaptiveCountermeasures::initializeAudioSystem() {
     // Create audio output device
     const auto audioDevices = QMediaDevices::audioOutputs();
     if (!audioDevices.isEmpty()) {
-        _audio_output = std::make_unique<QAudioOutput>(audioDevices.first(), format);
+        _audio_output = std::make_unique<QAudioSink>(audioDevices.first(), format);
         qDebug() << "AdaptiveCountermeasures: Audio output initialized";
     }
 
@@ -416,7 +416,7 @@ void AdaptiveCountermeasures::deactivateCountermeasure(CountermeasureType type) 
 
 void AdaptiveCountermeasures::activateAudioNoise(CountermeasureIntensity intensity) {
 #ifdef __has_include
-#if __has_include(<QtMultimedia/QAudioOutput>)
+	#if __has_include(<QtMultimedia/QAudioSink>)
     if (!_audio_output_available || !_audio_output) {
         return;
     }
@@ -511,7 +511,7 @@ void AdaptiveCountermeasures::deactivateAudioNoise() {
     _audio_noise_timer->stop();
 
 #ifdef __has_include
-#if __has_include(<QtMultimedia/QAudioOutput>)
+	#if __has_include(<QtMultimedia/QAudioSink>)
     if (_audio_output && _audio_device) {
         _audio_output->stop();
         _audio_device = nullptr;
@@ -558,7 +558,7 @@ void AdaptiveCountermeasures::deactivateCommunicationHiding() {
 
 void AdaptiveCountermeasures::generateAudioNoise() {
 #ifdef __has_include
-#if __has_include(<QtMultimedia/QAudioOutput>)
+	#if __has_include(<QtMultimedia/QAudioSink>)
     if (!_audio_output || !_audio_output_available) {
         return;
     }

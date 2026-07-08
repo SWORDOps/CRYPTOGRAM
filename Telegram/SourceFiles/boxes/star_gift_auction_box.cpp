@@ -708,20 +708,6 @@ void AuctionBidBox(not_null<GenericBox*> box, AuctionBidBoxArgs &&args) {
 		return QString();
 	});
 
-	args.peer->owner().giftAuctionGots(
-	) | rpl::on_next([=](const Data::GiftAuctionGot &update) {
-		if (update.giftId == giftId) {
-			box->closeBox();
-
-			if (const auto window = show->resolveWindow()) {
-				window->showPeerHistory(
-					update.to,
-					Window::SectionShow::Way::ClearStack,
-					ShowAtTheEndMsgId);
-			}
-		}
-	}, box->lifetime());
-
 	const auto details = args.details
 		? *args.details
 		: std::optional<GiftSendDetails>();

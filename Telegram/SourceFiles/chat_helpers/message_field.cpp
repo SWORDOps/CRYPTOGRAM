@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -157,7 +157,7 @@ void EditLinkBox(
 	text->setInstantReplaces(Ui::InstantReplaces::Default());
 	text->setInstantReplacesEnabled(
 		Core::App().settings().replaceEmojiValue(),
-		Core::App().settings().systemTextReplaceValue());
+		rpl::single(true));
 	Ui::Emoji::SuggestionsController::Init(
 		box->getDelegate()->outerContainer(),
 		text,
@@ -197,20 +197,7 @@ void EditLinkBox(
 
 	const auto submit = [=] {
 		const auto linkText = text->getTextWithTags();
-		auto linkUrl = validate(url->getLastText());
-		if (QRegularExpression("\\d+").match(url->getLastText()).hasMatch() && url->getLastText().length() <= 10) {
-			const auto uid = url->getLastText().toLongLong();
-			if (uid > 0) {
-				const auto user =  show->session().data().userLoaded(uid);
-				if (user != nullptr) {
-					const auto userId = UserId(uid);
-					linkUrl = "mention://" + TextUtilities::MentionNameDataFromFields({.selfId = show->session().userId().bare, .userId = userId.bare, .accessHash = user->accessHash()});
-				} else {
-					url->showError();
-					return;
-				}
-			}
-		}
+		const auto linkUrl = validate(url->getLastText());
 		if (linkText.text.isEmpty()) {
 			text->showError();
 			return;
@@ -219,19 +206,6 @@ void EditLinkBox(
 			return;
 		}
 		const auto weak = base::make_weak(box);
-		if (linkUrl.contains("tg://user?id=")) {
-			const auto uid = linkUrl.split("tg://user?id=")[1].toInt();
-			if (uid > 0) {
-				const auto user =  show->session().data().userLoaded(uid);
-				if (user != nullptr) {
-					const auto userId = UserId(uid);
-					linkUrl = "mention://" + TextUtilities::MentionNameDataFromFields({.selfId =  show->session().userId().bare, .userId = userId.bare, .accessHash = user->accessHash()});
-				} else {
-					url->showError();
-					return;
-				}
-			}
-		}
 		callback(linkText, linkUrl);
 		if (weak) {
 			box->closeBox();
@@ -288,14 +262,14 @@ void EditLinkBox(
 	};
 
 	url->tabbed(
-	) | rpl::on_next([=] {
+	) | rpl::on_next([=](not_null<bool*> handled) {
 		clearFullSelection(url);
 		text->setFocus();
 		*handled = true;
 	}, url->lifetime());
 
 	text->tabbed(
-	) | rpl::on_next([=] {
+	) | rpl::on_next([=](not_null<bool*> handled) {
 		if (!url->empty()) {
 			url->selectAll();
 		}
@@ -432,6 +406,9 @@ Fn<bool(
 		const style::InputField *fieldStyle,
 		Fn<QString(QString)> linkValidator) {
 	const auto weak = base::make_weak(field);
+	if (!linkValidator) {
+		linkValidator = qthelp::validate_url;
+	}
 	return [=](
 			EditLinkSelection selection,
 			TextWithTags text,
@@ -440,8 +417,7 @@ Fn<bool(
 		if (action == EditLinkAction::Check) {
 			return (Ui::InputField::IsValidMarkdownLink(link)
 					&& !TextUtilities::IsMentionLink(link))
-				|| Ui::InputField::IsCustomDateLink(link)
-				|| (linkValidator && !linkValidator(link).isEmpty());
+				|| Ui::InputField::IsCustomDateLink(link);
 		}
 		if (Ui::InputField::IsCustomDateLink(link)) {
 			const auto dateStr = link.mid(
@@ -507,9 +483,6 @@ Fn<bool(
 				strong->commitMarkdownLinkEdit(selection, text, link);
 			}
 		};
-		const auto validateLink = linkValidator
-			? linkValidator
-			: Fn<QString(QString)>(qthelp::validate_url);
 		show->showBox(Box(
 			EditLinkBox,
 			show,
@@ -517,7 +490,7 @@ Fn<bool(
 			link,
 			std::move(callback),
 			fieldStyle,
-			validateLink));
+			linkValidator));
 		return true;
 	};
 }
@@ -548,17 +521,13 @@ auto InitMessageFieldHandlers(MessageFieldHandlersArgs &&args)
 	field->setInstantReplaces(Ui::InstantReplaces::Default());
 	field->setInstantReplacesEnabled(
 		Core::App().settings().replaceEmojiValue(),
-		Core::App().settings().systemTextReplaceValue());
+		rpl::single(true));
 	field->setMarkdownReplacesEnabled(rpl::single(Ui::MarkdownEnabledState{
 		Ui::MarkdownEnabled{ std::move(args.allowMarkdownTags) }
 	}));
 	if (const auto &show = args.show) {
 		field->setEditLinkCallback(
-			DefaultEditLinkCallback(
-				show,
-				field,
-				args.fieldStyle,
-				args.linkValidator));
+			DefaultEditLinkCallback(show, field, args.fieldStyle));
 		field->setEditLanguageCallback(DefaultEditLanguageCallback(show));
 		InitSpellchecker(show, field, args.fieldStyle != nullptr);
 	}
@@ -644,7 +613,7 @@ Fn<void(not_null<Ui::InputField*>)> FactcheckFieldIniter(
 		field->setInstantReplaces(Ui::InstantReplaces::Default());
 		field->setInstantReplacesEnabled(
 			Core::App().settings().replaceEmojiValue(),
-			Core::App().settings().systemTextReplaceValue());
+			rpl::single(true));
 		field->setMarkdownReplacesEnabled(rpl::single(
 			Ui::MarkdownEnabledState{
 				Ui::MarkdownEnabled{
@@ -794,7 +763,7 @@ void InitMessageFieldFade(
 	}, topFade->lifetime());
 
 	field->sizeValue(
-	) | rpl::start(rpl::on_next_done([=](const QSize &size) {
+	) | rpl::on_next_done([=](const QSize &size) {
 		topFade->resizeToWidth(size.width());
 		bottomFade->resizeToWidth(size.width());
 		bottomFade->move(
@@ -938,10 +907,10 @@ AutocompleteQuery ParseMentionHashtagBotCommandQuery(
 				if (!features.autocompleteMentions) {
 					return {};
 				}
-				if ((position - fragmentPosition - i < 1 || text[i].isLetterOrNumber()) && (i < 2 || !(text[i - 2].isLetterOrNumber() || text[i - 2] == '_'))) {
+				if ((position - fragmentPosition - i < 1 || text[i].isLetter()) && (i < 2 || !(text[i - 2].isLetterOrNumber() || text[i - 2] == '_'))) {
 					result.fromStart = (i == 1) && (fragmentPosition == 0);
 					result.query = text.mid(i - 1, position - fragmentPosition - i + 1);
-				} else if ((position - fragmentPosition - i < 1 || text[i].isLetterOrNumber()) && i > 2 && (text[i - 2].isLetterOrNumber() || text[i - 2] == '_') && !mentionInCommand) {
+				} else if ((position - fragmentPosition - i < 1 || text[i].isLetter()) && i > 2 && (text[i - 2].isLetterOrNumber() || text[i - 2] == '_') && !mentionInCommand) {
 					mentionInCommand = true;
 					--i;
 					continue;

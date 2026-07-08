@@ -270,6 +270,7 @@ struct State final {
 		tr::lng_photo_caption());
 	Ui::ResizeFitChild(wrap, input);
 
+	using Limit = HistoryView::Controls::CharactersLimitLabel;
 	struct State final {
 		base::unique_qptr<ChatHelpers::TabbedPanel> emojiPanel;
 		base::unique_qptr<Limit> charsLimitation;

@@ -143,6 +143,8 @@ void AddMessage(
 		Window::Theme::DefaultChatThemeOn(widget->lifetime()));
 	widget->paintRequest(
 	) | rpl::on_next([=](const QRect &rect) {
+		Painter p(widget);
+		p.setClipRect(rect);
 		Window::SectionWidget::PaintBackground(
 			p,
 			theme->get(),

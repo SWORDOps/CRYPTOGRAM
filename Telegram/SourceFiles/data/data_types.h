@@ -130,6 +130,7 @@ struct GameData;
 struct BotAppData;
 struct PollData;
 struct TodoListData;
+struct WebPageAuction;
 
 using PhotoId = uint64;
 using VideoId = uint64;
@@ -144,6 +145,12 @@ using CallId = uint64;
 using BotAppId = uint64;
 using EffectId = uint64;
 using CollectibleId = uint64;
+
+struct DrawToReplyRequest {
+	FullMsgId messageId;
+	PhotoId photoId = 0;
+	DocumentId documentId = 0;
+};
 
 struct EmojiStatusId {
 	DocumentId documentId = 0;

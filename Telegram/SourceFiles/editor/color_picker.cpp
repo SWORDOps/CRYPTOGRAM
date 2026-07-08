@@ -294,17 +294,18 @@ ColorPicker::ColorPicker(
 , _sizeControl(std::in_place, parent)
 , _toolSelection(std::in_place, parent)
 , _brush(savedBrushes[ToolIndex(savedTool)])
-, _toolBrushes(savedBrushes) {
+	, _toolBrushes(savedBrushes) {
 	_colorButton->resize(Size(st::photoEditorColorButtonSize));
 
-	_canvasForCircle->setAttribute(Qt::WA_TransparentForMouseEvents);
-
-	_down.pos = QPoint(colorToPosition(savedBrush.color), 0);
-
-	_colorLine->paintRequest(
-	) | rpl::on_next([=] {
-		auto p = QPainter(_colorLine);
-		PainterHighQualityEnabler hq(p);
+	for (auto i = 0; i != int(_toolBrushes.size()); ++i) {
+		_toolBrushes[i].tool = ToolFromIndex(i);
+		NormalizeBrushColor(_toolBrushes[i]);
+	}
+	_brush = _toolBrushes[ToolIndex(savedTool)];
+	_brush.tool = savedTool;
+	NormalizeBrushColor(_brush);
+	_colorButtonFrom = _brush.color;
+	_colorButtonTo = _brush.color;
 
 	_toolSelection->setAttribute(Qt::WA_TransparentForMouseEvents);
 	_toolSelection->setAttribute(Qt::WA_TranslucentBackground, true);
@@ -380,13 +381,26 @@ ColorPicker::ColorPicker(
 	_sizeControlHoverArea->setMouseTracking(true);
 	_sizeControl->setMouseTracking(true);
 
-	_canvasForCircle->paintRequest(
-	) | rpl::on_next([=] {
-		auto p = QPainter(_canvasForCircle);
-		paintCircle(p);
-	}, _canvasForCircle->lifetime());
+	updateSizeControlPositionFromRatio(false);
+	moveSizeControl(_parent->size());
 
-	_colorLine->events(
+	_colorButton->setClickedCallback([=] {
+		setPaletteVisible(!_paletteVisible);
+	});
+
+	_sizeControl->paintOn([=](QPainter &p) {
+		paintSizeControl(p);
+	});
+
+	_parent->sizeValue(
+	) | rpl::on_next([=](const QSize &size) {
+		moveSizeControl(size);
+		if (_paletteVisible) {
+			rebuildPalette();
+		}
+	}, _sizeControl->lifetime());
+
+	_sizeControlHoverArea->events(
 	) | rpl::on_next([=](not_null<QEvent*> event) {
 		const auto type = event->type();
 		if (type == QEvent::Enter) {

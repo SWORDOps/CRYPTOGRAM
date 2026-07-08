@@ -508,13 +508,7 @@ HistoryInner::HistoryInner(
 		}
 	}, lifetime());
 
-	Core::App().settings().cornerReplyValue(
-	) | rpl::on_next([=](bool value) {
-		_useCornerReply = value;
-		if (!value) {
-			_replyButtonManager->updateButton({});
-		}
-	}, lifetime());
+
 
 	controller->adaptive().chatWideValue(
 	) | rpl::on_next([=](bool wide) {
@@ -603,25 +597,12 @@ void HistoryInner::setupSharingDisallowed() {
 			ChannelDataFlag::NoForwards
 		) | rpl::type_erased;
 
-	auto rights = chat
-		? chat->adminRightsValue()
-		: channel->adminRightsValue();
-	auto canDelete = std::move(
-		rights
-	) | rpl::map([=] {
-		return chat
-			? chat->canDeleteMessages()
-			: channel->canDeleteMessages();
-	});
-	rpl::combine(
-		_sharingDisallowed.value(),
-		std::move(canDelete)
-	) | rpl::filter([=](bool disallowed, bool canDelete) {
-		return hasSelectRestriction() && !getSelectedItems().empty();
-	}) | rpl::on_next([=] {
-		_widget->clearSelected();
-		if (_mouseAction == MouseAction::PrepareSelect) {
-			mouseActionCancel();
+	auto clearIfRestricted = [=] {
+		if (hasSelectRestriction() && !getSelectedItems().empty()) {
+			_widget->clearSelected();
+			if (_mouseAction == MouseAction::PrepareSelect) {
+				mouseActionCancel();
+			}
 		}
 	};
 

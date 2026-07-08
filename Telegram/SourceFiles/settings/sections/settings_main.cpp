@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -24,20 +24,20 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/application.h"
 #include "core/click_handler_types.h"
 #include "settings/cloud_password/settings_cloud_password_input.h"
-#include "settings/settings_advanced.h"
-#include "settings/settings_business.h"
-#include "settings/settings_calls.h"
-#include "settings/settings_chat.h"
+#include "settings/sections/settings_advanced.h"
+#include "settings/sections/settings_business.h"
+#include "settings/sections/settings_calls.h"
+#include "settings/sections/settings_chat.h"
 #include "settings/settings_codes.h"
-#include "settings/settings_credits.h"
+#include "settings/sections/settings_credits.h"
 #include "settings/settings_cryptogram.h"
-#include "settings/settings_folders.h"
-#include "settings/settings_information.h"
-#include "settings/settings_notifications.h"
+#include "settings/sections/settings_folders.h"
+#include "settings/sections/settings_information.h"
+#include "settings/sections/settings_notifications.h"
 #include "settings/settings_enhanced.h"
 #include "settings/settings_power_saving.h"
-#include "settings/settings_premium.h"
-#include "settings/settings_privacy_security.h"
+#include "settings/sections/settings_premium.h"
+#include "settings/sections/settings_privacy_security.h"
 #include "settings/settings_scale_preview.h"
 #include "boxes/language_box.h"
 #include "boxes/username_box.h"
@@ -385,84 +385,6 @@ void Cover::refreshUsernameGeometry(int newWidth) {
 	_username->moveToLeft(usernameLeft, usernameTop, newWidth);
 }
 
-[[nodiscard]] not_null<Ui::SettingsButton*> AddPremiumStar(
-		not_null<Ui::SettingsButton*> button,
-		bool credits,
-		Fn<bool()> isPaused) {
-	const auto stops = credits
-		? Ui::Premium::CreditsIconGradientStops()
-		: Ui::Premium::ButtonGradientStops();
-
-	const auto ministarsContainer = Ui::CreateChild<Ui::RpWidget>(button);
-	const auto &buttonSt = button->st();
-	const auto fullHeight = buttonSt.height
-		+ rect::m::sum::v(buttonSt.padding);
-	using MiniStars = Ui::Premium::ColoredMiniStars;
-	const auto ministars = button->lifetime().make_state<MiniStars>(
-		ministarsContainer,
-		false);
-	ministars->setColorOverride(stops);
-
-	const auto isPausedValue
-		= button->lifetime().make_state<rpl::variable<bool>>(isPaused());
-	isPausedValue->value() | rpl::on_next([=](bool value) {
-		ministars->setPaused(value);
-	}, ministarsContainer->lifetime());
-
-	ministarsContainer->paintRequest(
-	) | rpl::on_next([=] {
-		(*isPausedValue) = isPaused();
-		auto p = QPainter(ministarsContainer);
-		{
-			constexpr auto kScale = 0.35;
-			const auto r = ministarsContainer->rect();
-			p.translate(r.center());
-			p.scale(kScale, kScale);
-			p.translate(-r.center());
-		}
-		ministars->paint(p);
-	}, ministarsContainer->lifetime());
-
-	const auto badge = Ui::CreateChild<Ui::RpWidget>(button.get());
-
-	auto star = [&] {
-		const auto factor = style::DevicePixelRatio();
-		const auto size = Size(st::settingsButtonNoIcon.style.font->ascent);
-		auto image = QImage(
-			size * factor,
-			QImage::Format_ARGB32_Premultiplied);
-		image.setDevicePixelRatio(factor);
-		image.fill(Qt::transparent);
-		{
-			auto p = QPainter(&image);
-			auto star = QSvgRenderer(Ui::Premium::ColorizedSvg(stops));
-			star.render(&p, Rect(size));
-		}
-		return image;
-	}();
-	badge->resize(star.size() / style::DevicePixelRatio());
-	badge->paintRequest(
-	) | rpl::on_next([=] {
-		auto p = QPainter(badge);
-		p.drawImage(0, 0, star);
-	}, badge->lifetime());
-
-	button->sizeValue(
-	) | rpl::on_next([=](const QSize &s) {
-		badge->moveToLeft(
-			button->st().iconLeft
-				+ (st::menuIconShop.width() - badge->width()) / 2,
-			(s.height() - badge->height()) / 2);
-		ministarsContainer->moveToLeft(
-			badge->x() - (fullHeight - badge->height()) / 2,
-			0);
-	}, badge->lifetime());
-
-	ministarsContainer->resize(fullHeight, fullHeight);
-	ministars->setCenter(ministarsContainer->rect());
-
-	return button;
-}
 
 void BuildSectionButtons(SectionBuilder &builder) {
 	const auto session = builder.session();
@@ -1123,223 +1045,6 @@ void SetupValidatePasswordSuggestion(
 	Ui::AddSkip(content);
 }
 
-void SetupSections(
-		not_null<Window::SessionController*> controller,
-		not_null<Ui::VerticalLayout*> container,
-		Fn<void(Type)> showOther) {
-	Ui::AddDivider(container);
-	Ui::AddSkip(container);
-
-	SetupValidatePhoneNumberSuggestion(
-		controller,
-		container,
-		showOther);
-	SetupValidatePasswordSuggestion(
-		controller,
-		container,
-		showOther);
-
-	const auto addSection = [&](
-			rpl::producer<QString> label,
-			Type type,
-			IconDescriptor &&descriptor) {
-		AddButtonWithIcon(
-			container,
-			std::move(label),
-			st::settingsButton,
-			std::move(descriptor)
-		)->addClickHandler([=] {
-			showOther(type);
-		});
-	};
-	if (controller->session().supportMode()) {
-		SetupSupport(controller, container);
-
-		Ui::AddDivider(container);
-		Ui::AddSkip(container);
-	} else {
-		addSection(
-			tr::lng_settings_my_account(),
-			Information::Id(),
-			{ &st::menuIconProfile });
-	}
-
-	addSection(
-		tr::lng_settings_section_notify(),
-		Notifications::Id(),
-		{ &st::menuIconNotifications });
-	addSection(
-		tr::lng_settings_section_privacy(),
-		PrivacySecurity::Id(),
-		{ &st::menuIconLock });
-	addSection(
-		tr::lng_settings_section_chat_settings(),
-		Chat::Id(),
-		{ &st::menuIconChatBubble });
-
-	const auto preload = [=] {
-		controller->session().data().chatsFilters().requestSuggested();
-	};
-	const auto account = &controller->session().account();
-	const auto slided = container->add(
-		object_ptr<Ui::SlideWrap<Ui::SettingsButton>>(
-			container,
-			CreateButtonWithIcon(
-				container,
-				tr::lng_settings_section_filters(),
-				st::settingsButton,
-				{ &st::menuIconShowInFolder }))
-	)->setDuration(0);
-	if (controller->session().data().chatsFilters().has()
-		|| controller->session().settings().dialogsFiltersEnabled()) {
-		slided->show(anim::type::instant);
-		preload();
-	} else {
-		const auto enabled = [=] {
-			const auto result = account->appConfig().get<bool>(
-				u"dialog_filters_enabled"_q,
-				false);
-			if (result) {
-				preload();
-			}
-			return result;
-		};
-		const auto preloadIfEnabled = [=](bool enabled) {
-			if (enabled) {
-				preload();
-			}
-		};
-		slided->toggleOn(
-			rpl::single(rpl::empty) | rpl::then(
-				account->appConfig().refreshed()
-			) | rpl::map(
-				enabled
-			) | rpl::before_next(preloadIfEnabled));
-	}
-	slided->entity()->setClickedCallback([=] {
-		showOther(Folders::Id());
-	});
-
-	addSection(
-		tr::lng_settings_advanced(),
-		Advanced::Id(),
-		{ &st::menuIconManage });
-	addSection(
-		tr::lng_settings_section_devices(),
-		Calls::Id(),
-		{ &st::menuIconUnmute });
-	addSection(
-		tr::lng_settings_enhanced(),
-		Enhanced::Id(),
-		{ &st::menuIconManage });
-
-	SetupPowerSavingButton(&controller->window(), container);
-	SetupLanguageButton(&controller->window(), container);
-
-	// CRYPTOGRAM section (at bottom)
-	addSection(
-		rpl::single(QString("CRYPTOGRAM")),
-		Cryptogram::Id(),
-		{ &st::menuIconManage });
-
-	Ui::AddSkip(container);
-}
-
-void SetupPremium(
-		not_null<Window::SessionController*> controller,
-		not_null<Ui::VerticalLayout*> container,
-		Fn<void(Type)> showOther) {
-	if (!controller->session().premiumPossible()) {
-		return;
-	}
-	Ui::AddDivider(container);
-	Ui::AddSkip(container);
-
-	const auto isPaused = Window::PausedIn(
-		controller,
-		Window::GifPauseReason::Any);
-
-	AddPremiumStar(
-		AddButtonWithIcon(
-			container,
-			tr::lng_premium_summary_title(),
-			st::settingsButton),
-		false,
-		isPaused
-	)->addClickHandler([=] {
-		controller->setPremiumRef("settings");
-		showOther(PremiumId());
-	});
-	{
-		controller->session().credits().load();
-		AddPremiumStar(
-			AddButtonWithLabel(
-				container,
-				tr::lng_settings_credits(),
-				controller->session().credits().balanceValue(
-				) | rpl::map([=](CreditsAmount c) {
-					return c
-						? Lang::FormatCreditsAmountToShort(c).string
-						: QString();
-				}),
-				st::settingsButton),
-			true,
-			isPaused
-		)->addClickHandler([=] {
-			controller->setPremiumRef("settings");
-			showOther(CreditsId());
-		});
-	}
-	{
-		const auto wrap = container->add(
-			object_ptr<Ui::SlideWrap<Ui::VerticalLayout>>(
-				container,
-				object_ptr<Ui::VerticalLayout>(container)));
-		wrap->toggleOn(
-			controller->session().credits().tonBalanceValue(
-			) | rpl::map([](CreditsAmount c) -> bool { return !c.empty(); }));
-		wrap->finishAnimating();
-		controller->session().credits().tonLoad();
-		const auto button = AddButtonWithLabel(
-			wrap->entity(),
-			tr::lng_settings_currency(),
-			controller->session().credits().tonBalanceValue(
-			) | rpl::map([=](CreditsAmount c) {
-				return c
-					? Lang::FormatCreditsAmountToShort(c).string
-					: QString();
-			}),
-			st::settingsButton,
-			{ &st::menuIconTon });
-		button->addClickHandler([=] {
-			controller->setPremiumRef("settings");
-			showOther(CurrencyId());
-		});
-	}
-	const auto button = AddButtonWithIcon(
-		container,
-		tr::lng_business_title(),
-		st::settingsButton,
-		{ .icon = &st::menuIconShop });
-	button->addClickHandler([=] {
-		showOther(BusinessId());
-	});
-
-	if (controller->session().premiumCanBuy()) {
-		const auto button = AddButtonWithIcon(
-			container,
-			tr::lng_settings_gift_premium(),
-			st::settingsButton,
-			{ .icon = &st::menuIconGiftPremium }
-		);
-		Ui::NewBadge::AddToRight(button);
-
-		button->addClickHandler([=] {
-			Ui::ChooseStarGiftRecipient(controller);
-		});
-	}
-	Ui::AddSkip(container);
-}
 
 bool HasInterfaceScale() {
 	return true;

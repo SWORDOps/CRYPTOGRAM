@@ -660,12 +660,12 @@ void EditFilterBox(
 		) | rpl::on_next([=](const QRect &r) {
 			const auto h = st::normalFont->height;
 			const auto left = padding.left()
-				+ s.width()
+				+ r.width()
 				+ st::settingsFilterTagPreviewSkip;
 			preview->setGeometry(
 				left,
-				padding.top() + (s.height() - h) / 2,
-				w - left,
+				padding.top() + (r.height() - h) / 2,
+				r.width() - left,
 				h);
 		}, preview->lifetime());
 
@@ -680,6 +680,7 @@ void EditFilterBox(
 		preview->paintRequest() | rpl::on_next([=] {
 			auto p = QPainter(preview);
 			p.setOpacity(tag->alpha);
+			const auto shift = 0;
 			const auto size = tag->frame.size() / style::DevicePixelRatio();
 			const auto rect = QRect(
 				preview->width()

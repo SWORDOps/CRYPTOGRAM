@@ -1238,10 +1238,6 @@ void BuildScreenReaderSection(SectionBuilder &builder) {
 		) | rpl::filter([=](bool value) {
 			return (value != Ui::ScreenReaderModeDisabled());
 		}) | rpl::on_next([=](bool value) {
-			Core::App().settings().writePref<bool>(
-				Core::kScreenReaderModeDisabledKey,
-				value);
-			Core::App().saveSettingsDelayed();
 			Ui::SetScreenReaderModeDisabled(value);
 		}, toggle->lifetime());
 	}

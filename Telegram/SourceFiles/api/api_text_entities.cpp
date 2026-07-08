@@ -53,7 +53,7 @@ using namespace TextUtilities;
 	const auto user = session->data().user(UserId(parsed.userId));
 	const auto item = user->isLoaded()
 		? nullptr
-		: user->owner().messageWithPeer(user->id);
+		: user->owner().history(user->id)->lastMessage();
 	const auto input = item
 		? MTP_inputUserFromMessage(
 			item->history()->peer->input(),

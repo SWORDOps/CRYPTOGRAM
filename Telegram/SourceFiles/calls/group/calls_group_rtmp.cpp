@@ -256,7 +256,6 @@ void StartRtmpProcess::FillRtmpRows(
 			wrap.data(),
 			rpl::duplicate(text),
 			st::groupCallRtmpCopyButton);
-		button->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
 		button->setClickedCallback(key
 			? Fn<void()>([=] {
 				QGuiApplication::clipboard()->setText(state->key.current());
@@ -327,28 +326,10 @@ void StartRtmpProcess::FillRtmpRows(
 		container->resizeToWidth(container->widthNoMargins());
 	});
 	const auto streamKeyLabel = addLabel(std::move(keyLabelContent));
-	streamKeyLabel->setSelectable(false);
-	const auto streamKeyButton = Ui::CreateChild<Ui::IconButton>(
-		container.get(),
-		*showButtonStyle);
-
-	streamKeyLabel->topValue(
-	) | rpl::on_next([=, right = rowPadding.right()](int top) {
-		streamKeyButton->moveToRight(
-			st::groupCallRtmpShowButtonPosition.x(),
-			top + st::groupCallRtmpShowButtonPosition.y());
-		streamKeyButton->raise();
-	}, container->lifetime());
-	streamKeyButton->addClickHandler([=] {
-		const auto toggle = [=] {
-			const auto newValue = !state->hidden.current();
-			state->hidden = newValue;
-			streamKeyLabel->setSelectable(!newValue);
-			streamKeyLabel->setAttribute(
-				Qt::WA_TransparentForMouseEvents,
-				newValue);
-		};
-		if (!state->warned && state->hidden.current()) {
+	streamKeyLabel->setClickHandlerFilter([=](
+			const ClickHandlerPtr &handler,
+			Qt::MouseButton button) {
+		if (button == Qt::LeftButton) {
 			show->showBox(Ui::MakeConfirmBox({
 				.text = tr::lng_group_call_rtmp_key_warning(
 					tr::rich),

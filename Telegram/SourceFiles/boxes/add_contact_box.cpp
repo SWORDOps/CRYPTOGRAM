@@ -573,7 +573,7 @@ void GroupInfoBox::prepare() {
 	_title->setInstantReplaces(Ui::InstantReplaces::Default());
 	_title->setInstantReplacesEnabled(
 		Core::App().settings().replaceEmojiValue(),
-		Core::App().settings().systemTextReplaceValue());
+		rpl::single(true));
 	Ui::Emoji::SuggestionsController::Init(
 		getDelegate()->outerContainer(),
 		_title,
@@ -590,7 +590,7 @@ void GroupInfoBox::prepare() {
 		_description->setInstantReplaces(Ui::InstantReplaces::Default());
 		_description->setInstantReplacesEnabled(
 			Core::App().settings().replaceEmojiValue(),
-			Core::App().settings().systemTextReplaceValue());
+			rpl::single(true));
 		_description->setSubmitSettings(
 			Core::App().settings().sendSubmitWay());
 

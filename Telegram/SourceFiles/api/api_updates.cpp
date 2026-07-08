@@ -1528,7 +1528,6 @@ void Updates::applyUpdates(
 			).arg(_session->mtp().isTestMode() ? " TESTMODE" : ""));
 			return getDifference();
 		}
-		_session->data().fillMessagePeers(d);
 		if (updateAndApply(d.vpts().v, d.vpts_count().v, updates)) {
 			// Update date as well.
 			setState(0, d.vdate().v, _updatesQts, _updatesSeq);
@@ -1543,7 +1542,6 @@ void Updates::applyUpdates(
 			).arg(_session->mtp().isTestMode() ? " TESTMODE" : ""));
 			return getDifference();
 		}
-		_session->data().fillMessagePeers(d);
 		if (updateAndApply(d.vpts().v, d.vpts_count().v, updates)) {
 			// Update date as well.
 			setState(0, d.vdate().v, _updatesQts, _updatesSeq);
@@ -1573,7 +1571,6 @@ void Updates::applyUpdates(
 			const auto wasAlready = (lookupMessage() != nullptr);
 			feedUpdate(MTP_updateMessageID(d.vid(), MTP_long(randomId))); // ignore real date
 			if (const auto item = lookupMessage()) {
-				_session->data().fillMessagePeers(item->fullId(), d);
 				item->applySentMessage(sent.text, d, wasAlready);
 			}
 		}
@@ -1946,11 +1943,11 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 
 	case mtpc_updateMessagePoll: {
 		const auto &d = update.c_updateMessagePoll();
-		const auto wasRecentVoters = session().data().pollRecentVoters(
-			d.vpoll_id().v);
 		session().data().applyUpdate(d);
-		const auto notifyItem = session().data().findItemForPoll(
-			d.vpoll_id().v);
+		const auto wasRecentVoters = std::vector<not_null<PeerData*>>();
+		const auto notifyItem = session().data().message(
+			d.vpeer() ? peerFromMTP(*d.vpeer()) : PeerId(),
+			d.vmsg_id()->v);
 		if (notifyItem) {
 			CheckPollVoteNotificationSchedule(
 				notifyItem,
@@ -2038,7 +2035,10 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 	} break;
 
 	case mtpc_updateChatParticipantRank: {
-		session().data().applyUpdate(update.c_updateChatParticipantRank());
+		const auto &d = update.c_updateChatParticipantRank();
+		if (const auto chat = session().data().chatLoaded(d.vchat_id().v)) {
+			Data::ApplyChatUpdate(chat, d);
+		}
 	} break;
 
 	case mtpc_updateChatDefaultBannedRights: {

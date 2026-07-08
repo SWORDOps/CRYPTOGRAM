@@ -62,6 +62,7 @@ SystemMediaControlsManager::SystemMediaControlsManager()
 	}
 	using TrackState = Media::Player::TrackState;
 	const auto mediaPlayer = Media::Player::instance();
+	const auto type = AudioMsgId::Type::Song;
 
 	auto trackFilter = rpl::filter([=](const TrackState &state) {
 		const auto type = state.id.type();

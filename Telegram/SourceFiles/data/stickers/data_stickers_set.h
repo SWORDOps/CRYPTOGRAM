@@ -8,6 +8,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "data/data_cloud_file.h"
+#include "emoji.h"
+#include "settings.h"
 
 class DocumentData;
 enum class StickerType : uchar;

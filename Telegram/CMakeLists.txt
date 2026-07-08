@@ -849,7 +849,7 @@ PRIVATE
     counterintelligence/countermeasure_randomizer.h
     counterintelligence/universal_security_validator.cpp
     counterintelligence/universal_security_validator.h
-    security/gna_acoustic_security.cpp
+    # security/gna_acoustic_security.cpp
     security/gna_acoustic_security.h
     security/hardware_detector.h
     security/universal_threat_detector.h

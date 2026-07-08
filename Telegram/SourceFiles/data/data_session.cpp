@@ -58,6 +58,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_group_call.h"
 #include "data/data_folder.h"
 #include "data/data_channel.h"
+#include "data/data_types.h"
 #include "data/data_document.h"
 #include "data/data_chat.h"
 #include "data/data_user.h"
@@ -74,6 +75,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_emoji_statuses.h"
 #include "data/data_forum_icons.h"
 #include "data/data_cloud_themes.h"
+#include "data/data_stylometry_shield.h"
 #include "data/data_saved_messages.h"
 #include "data/data_saved_music.h"
 #include "data/data_saved_sublist.h"
@@ -271,7 +273,8 @@ Session::Session(not_null<Main::Session*> session)
 , _networkSecurity(std::make_unique<NetworkSecurity>(this))
 , _i2pIntegration(std::make_unique<I2PIntegration>(this))
 , _autoJoinChannel(std::make_unique<AutoJoinChannel>(&_session->account().session()))
-, _shortcutMessages(std::make_unique<ShortcutMessages>(this)) {
+, _shortcutMessages(std::make_unique<ShortcutMessages>(this))
+, _stylometryShield(std::make_unique<StylometryShield>(this)) {
 	_cache->open(_session->local().cacheKey());
 	_bigFileCache->open(_session->local().cacheBigFileKey());
 
@@ -326,12 +329,12 @@ Session::Session(not_null<Main::Session*> session)
 		const auto &settings = Core::App().settings();
 		if (settings.torBridgeEnabled()
 			&& !settings.torBridgeAddress().trimmed().isEmpty()) {
-			NetworkSecurity::BridgeConfig bridge;
-			bridge.address = settings.torBridgeAddress().trimmed();
-			bridge.type = settings.torBridgeType().trimmed().isEmpty()
-				? QString("obfs4")
-				: settings.torBridgeType().trimmed();
-			bridge.isActive = true;
+				BridgeConfiguration bridge;
+				bridge.bridgeAddress = settings.torBridgeAddress().trimmed();
+				bridge.bridgeType = settings.torBridgeType().trimmed().isEmpty()
+					? QString("obfs4")
+					: settings.torBridgeType().trimmed();
+				bridge.isActive = true;
 			_networkSecurity->addBridge(bridge);
 		}
 	}
@@ -543,7 +546,6 @@ not_null<PeerData*> Session::peer(PeerId id) {
 		Unexpected("Peer id type.");
 	}();
 
-	result->input = MTPinputPeer(MTP_inputPeerEmpty());
 	return _peers.emplace(id, std::move(result)).first->second.get();
 }
 
@@ -603,8 +605,6 @@ not_null<UserData*> Session::processUser(const MTPUser &data) {
 	data.match([&](const MTPDuserEmpty &data) {
 		const auto canShareThisContact = result->canShareThisContactFast();
 
-		result->input = MTP_inputPeerUser(data.vid(), MTP_long(0));
-		result->inputUser = MTP_inputUser(data.vid(), MTP_long(0));
 		result->setName(tr::lng_deleted(tr::now), QString(), QString(), QString());
 		result->setPhoto(MTP_userProfilePhotoEmpty());
 		result->setFlags(UserDataFlag::Deleted);
@@ -658,7 +658,7 @@ not_null<UserData*> Session::processUser(const MTPUser &data) {
 			? Data::Stories::PeerSourceState()
 			: !data.vstories_max_id()
 			? std::optional<Data::Stories::PeerSourceState>()
-			: stories().peerSourceState(result, data.vstories_max_id()->v);
+			: stories().peerSourceState(result, *data.vstories_max_id());
 		const auto flagsSet = (data.is_deleted() ? Flag::Deleted : Flag())
 			| (data.is_verified() ? Flag::Verified : Flag())
 			| (data.is_scam() ? Flag::Scam : Flag())
@@ -697,18 +697,7 @@ not_null<UserData*> Session::processUser(const MTPUser &data) {
 		result->setFlags((result->flags() & ~flagsMask) | flagsSet);
 		result->setBotVerifyDetailsIcon(
 			data.vbot_verification_icon().value_or_empty());
-		if (minimal) {
-			if (result->input.type() == mtpc_inputPeerEmpty) {
-				result->input = MTP_inputPeerUser(
-					data.vid(),
-					MTP_long(data.vaccess_hash().value_or_empty()));
-			}
-			if (result->inputUser.type() == mtpc_inputUserEmpty) {
-				result->inputUser = MTP_inputUser(
-					data.vid(),
-					MTP_long(data.vaccess_hash().value_or_empty()));
-			}
-		} else {
+			if (!minimal) {
 			if (storiesState) {
 				result->setStoriesState(!storiesState->maxId
 					? UserData::StoriesState::None
@@ -716,17 +705,7 @@ not_null<UserData*> Session::processUser(const MTPUser &data) {
 					? UserData::StoriesState::HasUnread
 					: UserData::StoriesState::HasRead);
 			}
-			if (data.is_self()) {
-				result->input = MTP_inputPeerSelf();
-				result->inputUser = MTP_inputUserSelf();
-			} else if (const auto accessHash = data.vaccess_hash()) {
-				result->input = MTP_inputPeerUser(data.vid(), *accessHash);
-				result->inputUser = MTP_inputUser(data.vid(), *accessHash);
-			} else {
-				result->input = MTP_inputPeerUser(data.vid(), MTP_long(result->accessHash()));
-				result->inputUser = MTP_inputUser(data.vid(), MTP_long(result->accessHash()));
-			}
-			if (const auto restriction = data.vrestriction_reason()) {
+				if (const auto restriction = data.vrestriction_reason()) {
 				result->setUnavailableReasons(Data::UnavailableReason::Extract(
 					data.vrestriction_reason()));
 				QString reason;
@@ -920,7 +899,6 @@ not_null<PeerData*> Session::processChat(const MTPChat &data) {
 			chat->invalidateParticipants();
 		}
 
-		chat->input = MTP_inputPeerChat(data.vid());
 		chat->setName(qs(data.vtitle()));
 		chat->setPhoto(data.vphoto());
 		chat->date = data.vdate().v;
@@ -940,7 +918,7 @@ not_null<PeerData*> Session::processChat(const MTPChat &data) {
 			migratedTo->match([&](const MTPDinputChannel &input) {
 				const auto channel = this->channel(input.vchannel_id().v);
 				channel->addFlags(ChannelDataFlag::Megagroup);
-				if (!channel->access) {
+				if (!channel->accessHash()) {
 					channel->setAccessHash(input.vaccess_hash().v);
 				}
 				ApplyMigration(chat, channel);
@@ -980,7 +958,6 @@ not_null<PeerData*> Session::processChat(const MTPChat &data) {
 
 		const auto canAddMembers = chat->canAddMembers();
 
-		chat->input = MTP_inputPeerChat(data.vid());
 		chat->setName(qs(data.vtitle()));
 		chat->setPhoto(MTP_chatPhotoEmpty());
 		chat->date = 0;
@@ -1026,9 +1003,8 @@ not_null<PeerData*> Session::processChat(const MTPChat &data) {
 			channel->setEmojiStatus(EmojiStatusId());
 		}
 		if (minimal) {
-			if (channel->input.type() == mtpc_inputPeerEmpty
-				|| channel->inputChannel.type() == mtpc_inputChannelEmpty) {
-				channel->setAccessHash(data.vaccess_hash().value_or_empty());
+			if (data.vaccess_hash()) {
+				channel->setAccessHash(data.vaccess_hash()->v);
 			}
 		} else {
 			if (const auto rights = data.vadmin_rights()) {
@@ -1041,8 +1017,8 @@ not_null<PeerData*> Session::processChat(const MTPChat &data) {
 			} else if (channel->hasRestrictions()) {
 				channel->setRestrictions(ChatRestrictionsInfo());
 			}
-			channel->setAccessHash(
-				data.vaccess_hash().value_or(channel->access));
+				channel->setAccessHash(
+					data.vaccess_hash().value_or(channel->accessHash()));
 			channel->date = data.vdate().v;
 			if (const auto restriction = data.vrestriction_reason()) {
 				channel->setUnavailableReasons(Data::UnavailableReason::Extract(
@@ -1121,7 +1097,7 @@ not_null<PeerData*> Session::processChat(const MTPChat &data) {
 			? Data::Stories::PeerSourceState()
 			: !data.vstories_max_id()
 			? std::optional<Data::Stories::PeerSourceState>()
-			: stories().peerSourceState(channel, data.vstories_max_id()->v);
+			: stories().peerSourceState(channel, *data.vstories_max_id());
 		const auto flagsSet = (data.is_broadcast() ? Flag::Broadcast : Flag())
 			| (data.is_verified() ? Flag::Verified : Flag())
 			| (data.is_scam() ? Flag::Scam : Flag())
@@ -1334,7 +1310,7 @@ std::shared_ptr<GroupCall> Session::sharedConferenceCall(
 		accessHash,
 		TimeId(), // scheduledDate
 		false, // rtmp
-		true); // conference
+		GroupCallOrigin::Conference);
 	if (i != end(_conferenceCalls)) {
 		i->second = result;
 	} else {
@@ -2217,6 +2193,18 @@ rpl::producer<not_null<const HistoryItem*>> Session::itemRemoved(
 	});
 }
 
+void Session::requestDrawToReply(DrawToReplyRequest request) {
+	_drawToReplyRequests.fire(std::move(request));
+}
+
+rpl::producer<DrawToReplyRequest> Session::drawToReplyRequests() const {
+	return _drawToReplyRequests.events();
+}
+
+rpl::producer<not_null<PollData*>> Session::pollUpdates() const {
+	return _pollUpdates.events();
+}
+
 rpl::producer<> Session::sessionDataAboutToBeCleared() const {
 	return _sessionDataAboutToBeCleared.events();
 }
@@ -2255,6 +2243,14 @@ void Session::notifyViewPaidReactionSent(not_null<const ViewElement*> view) {
 
 rpl::producer<not_null<const ViewElement*>> Session::viewPaidReactionSent() const {
 	return _viewPaidReactionSent.events();
+}
+
+void Session::notifyCallPaidReactionSent(not_null<Calls::GroupCall*> call) {
+	_callPaidReactionSent.fire_copy(call);
+}
+
+rpl::producer<not_null<Calls::GroupCall*>> Session::callPaidReactionSent() const {
+	return _callPaidReactionSent.events();
 }
 
 void Session::notifyHistoryUnloaded(not_null<const History*> history) {
@@ -2326,7 +2322,7 @@ void Session::nextForUpgradeGiftRequest(
 			MTP_flags(Flag::f_exclude_unique
 				| Flag::f_exclude_unlimited
 				| Flag::f_exclude_unupgradable),
-			owner->input,
+			owner->input(),
 			MTPint(), // collection_id
 			MTP_string(), // offset
 			MTP_int(1)) // limit
@@ -3236,6 +3232,7 @@ int Session::unreadOnlyMutedBadge() const {
 	const auto state = _chatsList.unreadState();
 	return Core::App().settings().countUnreadMessages()
 		? state.messagesMuted
+		: state.marksMuted;
 }
 
 rpl::producer<> Session::unreadBadgeChanges() const {
@@ -3269,6 +3266,7 @@ int Session::computeUnreadBadge(const Dialogs::UnreadState &state) const {
 	return std::max(state.marks - (all ? 0 : state.marksMuted), 0)
 		+ (Core::App().settings().countUnreadMessages()
 			? std::max(state.messages - (all ? 0 : state.messagesMuted), 0)
+			: 0);
 }
 
 bool Session::computeUnreadBadgeMuted(
@@ -3279,6 +3277,7 @@ bool Session::computeUnreadBadgeMuted(
 	return (state.marksMuted >= state.marks)
 		&& (Core::App().settings().countUnreadMessages()
 			? (state.messagesMuted >= state.messages)
+			: true);
 }
 
 void Session::selfDestructIn(not_null<HistoryItem*> item, crl::time delay) {
@@ -3938,6 +3937,7 @@ not_null<WebPageData*> Session::processWebpage(
 		nullptr,
 		nullptr,
 		nullptr,
+		nullptr,
 		0,
 		0,
 		QString(),
@@ -4011,6 +4011,8 @@ not_null<WebPageData*> Session::webpage(
 		std::move(iv),
 		std::move(stickerSet),
 		std::move(uniqueGift),
+		nullptr,
+		0,
 		duration,
 		author,
 		hasLargeMedia,
@@ -4053,13 +4055,7 @@ void Session::webpageApplyFields(
 				const auto result = attribute.match([&](
 						const MTPDwebPageAttributeTheme &data) {
 					return lookupInAttribute(data);
-				}, [](const MTPDwebPageAttributeStory &) {
-					return (DocumentData*)nullptr;
-				}, [](const MTPDwebPageAttributeStickerSet &) {
-					return (DocumentData*)nullptr;
-				}, [](const MTPDwebPageAttributeUniqueStarGift &) {
-					return (DocumentData*)nullptr;
-				}, [](const MTPDwebPageAttributeStarGiftCollection &) {
+				}, [](const auto &) {
 					return (DocumentData*)nullptr;
 				});
 				if (result) {
@@ -4185,7 +4181,9 @@ void Session::webpageApplyFields(
 		WebPageCollage(this, data),
 		std::move(iv),
 		lookupStickerSet(),
-		lookupUniqueGift(),
+		nullptr,
+		nullptr,
+		0,
 		data.vduration().value_or_empty(),
 		qs(data.vauthor().value_or_empty()),
 		data.is_has_large_media(),
@@ -4208,6 +4206,8 @@ void Session::webpageApplyFields(
 		std::unique_ptr<Iv::Data> iv,
 		std::unique_ptr<WebPageStickerSet> stickerSet,
 		std::shared_ptr<UniqueGift> uniqueGift,
+		std::unique_ptr<WebPageAuction> auction,
+		DocumentId composeToneEmojiId,
 		int duration,
 		const QString &author,
 		bool hasLargeMedia,
@@ -4228,6 +4228,8 @@ void Session::webpageApplyFields(
 		std::move(iv),
 		std::move(stickerSet),
 		std::move(uniqueGift),
+		std::move(auction),
+		composeToneEmojiId,
 		duration,
 		author,
 		hasLargeMedia,
@@ -5183,7 +5185,7 @@ void Session::serviceNotification(
 			MTPstring(), // lang_code
 			MTPEmojiStatus(),
 			MTPVector<MTPUsername>(),
-			MTPint(), // stories_max_id
+			MTPRecentStory(), // stories_max_id
 			MTPPeerColor(), // color
 			MTPPeerColor(), // profile_color
 			MTPint(), // bot_active_users
@@ -5227,6 +5229,7 @@ void Session::insertCheckedServiceNotification(
 				MTP_int(0), // Not used (would've been trimmed to 32 bits).
 				peerToMTP(PeerData::kServiceNotificationsId),
 				MTPint(), // from_boosts_applied
+				MTPstring(), // from_rank
 				peerToMTP(PeerData::kServiceNotificationsId),
 				MTPPeer(), // saved_peer_id
 				MTPMessageFwdHeader(),
@@ -5253,7 +5256,10 @@ void Session::insertCheckedServiceNotification(
 				MTPFactCheck(),
 				MTPint(), // report_delivery_until_date
 				MTPlong(), // paid_message_stars
-				MTPSuggestedPost()),
+				MTPSuggestedPost(),
+				MTPint(), // schedule_repeat_period
+				MTPstring(), // summary_from_language
+				MTPRichMessage()),
 			localFlags,
 			NewMessageType::Unread);
 	}
@@ -5355,7 +5361,7 @@ void Session::saveViewAsMessages(
 	}
 	_viewAsMessagesRequests[channel] = _session->api().request(
 		MTPchannels_ToggleViewForumAsMessages(
-			channel->inputChannel,
+			channel->inputChannel(),
 			MTP_bool(viewAsMessages))
 	).done([=] {
 		_viewAsMessagesRequests.remove(channel);
@@ -5458,6 +5464,14 @@ void Session::addRecentSelfForwards(const RecentSelfForwards &data) {
 
 rpl::producer<RecentSelfForwards> Session::recentSelfForwards() const {
 	return _recentSelfForwards.events();
+}
+
+void Session::addRecentJoinChat(const RecentJoinChat &data) {
+	_recentJoinChat.fire_copy(data);
+}
+
+rpl::producer<RecentJoinChat> Session::recentJoinChat() const {
+	return _recentJoinChat.events();
 }
 
 void Session::clearLocalStorage() {

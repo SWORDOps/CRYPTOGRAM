@@ -28,7 +28,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Core {
 namespace {
 
-constexpr auto kAutomationKey = std::string_view("automation.enabled");
+bool AutomationEnabledFlag = false;
 
 struct WindowEntry {
 	not_null<Window::Controller*> controller;
@@ -36,7 +36,7 @@ struct WindowEntry {
 };
 
 [[nodiscard]] bool AutomationEnabled() {
-	return Core::App().settings().readPref<bool>(kAutomationKey, false);
+	return AutomationEnabledFlag;
 }
 
 void FillAutomationConfirmBox(
@@ -99,9 +99,7 @@ void RequestEnableAutomation() {
 			u"Just to be sure — confirm once more to enable local "
 			u"automation."_q,
 			[=] {
-				Core::App().settings().writePref<bool>(
-					kAutomationKey,
-					true);
+				AutomationEnabledFlag = true;
 				box->closeBox();
 			});
 	};
@@ -221,7 +219,7 @@ QByteArray HandleExternalControl(const QString &command) {
 		return Error(u"local automation is disabled — confirm in the "
 			u"Telegram window to enable"_q);
 	} else if (command == u"automation-off"_q) { // TEMP test helper.
-		Core::App().settings().writePref<bool>(kAutomationKey, false);
+		AutomationEnabledFlag = false;
 		auto object = QJsonObject();
 		object.insert(u"ok"_q, true);
 		return Pack(object);

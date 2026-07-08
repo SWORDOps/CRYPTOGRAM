@@ -177,11 +177,6 @@ Session::Session(
 
 	_api->instance().setUserPhone(_user->phone());
 
-	// Wire E2E controller getter so MTProto init params can embed key bundle.
-	_api->instance().setE2eControllerGetter([data = _data.get()]() {
-		return data ? data->e2eController() : nullptr;
-	});
-
 	// Load current userpic and keep it loaded.
 	_user->loadUserpic();
 	changes().peerFlagsValue(

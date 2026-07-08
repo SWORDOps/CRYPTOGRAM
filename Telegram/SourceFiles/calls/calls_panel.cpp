@@ -179,8 +179,6 @@ bool Panel::isActive() const {
 }
 
 QRect Panel::panelGeometry() const {
-	const auto saved = Core::App().settings().callPanelPosition();
-	const auto adjusted = Core::AdjustToScale(saved, u"Call"_q);
 	const auto center = Core::App().getPointForCallPanelCenter();
 	const auto simple = QRect(0, 0, st::callWidth, st::callHeight);
 	const auto initial = simple.translated(center - simple.center());
@@ -194,7 +192,7 @@ QRect Panel::panelGeometry() const {
 	};
 	return ::Window::CountInitialGeometry(
 		window(),
-		adjusted,
+		initialPosition,
 		initialPosition,
 		{ st::callWidthMin, st::callHeightMin },
 		u"Call"_q);
@@ -249,39 +247,6 @@ void Panel::replaceCall(not_null<Call*> call) {
 }
 
 void Panel::savePanelGeometry() {
-	if (!window()->windowHandle()) {
-		return;
-	}
-	const auto state = window()->windowHandle()->windowState();
-	if (state == Qt::WindowMinimized) {
-		return;
-	}
-	const auto &savedPosition = Core::App().settings().callPanelPosition();
-	auto realPosition = savedPosition;
-	if (state == Qt::WindowMaximized) {
-		realPosition.maximized = 1;
-		realPosition.moncrc = 0;
-	} else {
-		auto r = window()->body()->mapToGlobal(window()->body()->rect());
-		realPosition.x = r.x();
-		realPosition.y = r.y();
-		realPosition.w = r.width();
-		realPosition.h = r.height();
-		realPosition.scale = cScale();
-		realPosition.maximized = 0;
-		realPosition.moncrc = 0;
-	}
-	realPosition = ::Window::PositionWithScreen(
-		realPosition,
-		window(),
-		{ st::callWidthMin, st::callHeightMin },
-		u"Call"_q);
-	if (realPosition.w >= st::callWidthMin
-		&& realPosition.h >= st::callHeightMin
-		&& realPosition != savedPosition) {
-		Core::App().settings().setCallPanelPosition(realPosition);
-		Core::App().saveSettingsDelayed();
-	}
 }
 
 void Panel::initWindow() {

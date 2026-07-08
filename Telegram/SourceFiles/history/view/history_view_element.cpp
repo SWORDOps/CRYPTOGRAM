@@ -1343,7 +1343,7 @@ void Element::prepareCustomEmojiPaint(
 }
 
 void Element::repaint(QRect r) const {
-	history()->owner().requestViewRepaint(this, r);
+	history()->owner().requestViewRepaint(this);
 }
 
 void Element::paintHighlight(
@@ -2071,9 +2071,6 @@ void Element::setTextWithLinks(
 		}
 	}
 	InitElementTextPart(this, _text);
-	if (const auto next = _text.nextFormattedDateUpdate()) {
-		history()->session().data().registerFormattedDateUpdate(next, this);
-	}
 	invalidateTextSizeCache();
 }
 

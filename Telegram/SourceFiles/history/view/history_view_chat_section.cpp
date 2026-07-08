@@ -23,6 +23,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/history_view_translate_bar.h"
 #include "history/view/history_view_translate_tracker.h"
 #include "history/view/history_view_self_forwards_tagger.h"
+#include "data/data_types.h"
 #include "history/view/history_view_draw_to_reply.h"
 #include "history/history.h"
 #include "history/history_drag_area.h"
@@ -3361,7 +3362,7 @@ void ChatWidget::listShowPremiumToast(not_null<DocumentData*> document) {
 	_stickerToast->showFor(document);
 }
 
-bool ChatWidget::handleDrawToReplyRequest(Data::DrawToReplyRequest request) {
+bool ChatWidget::handleDrawToReplyRequest(DrawToReplyRequest request) {
 	if (request.messageId.peer != _peer->id) {
 		return false;
 	}

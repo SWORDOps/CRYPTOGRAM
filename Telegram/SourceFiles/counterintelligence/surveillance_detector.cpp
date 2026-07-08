@@ -139,7 +139,7 @@ void SurveillanceDetector::initializeHardwareCapabilities() {
 
 void SurveillanceDetector::initializeAudioSystem() {
 #ifdef __has_include
-#if __has_include(<QtMultimedia/QAudioInput>)
+	#if __has_include(<QtMultimedia/QAudioSource>)
     // Setup audio format for high-quality analysis
     _audio_format.setSampleRate(SAMPLE_RATE);
     _audio_format.setChannelCount(CHANNEL_COUNT);
@@ -161,7 +161,7 @@ void SurveillanceDetector::initializeAudioSystem() {
     }
 
     // Create audio input
-    _audio_input = std::make_unique<QAudioInput>(selectedDevice, _audio_format);
+    _audio_input = std::make_unique<QAudioSource>(selectedDevice, _audio_format);
 
     qDebug() << "SurveillanceDetector: Audio system initialized"
              << "Device:" << selectedDevice.description()
@@ -262,7 +262,7 @@ void SurveillanceDetector::startDetection() {
 
     // Start audio capture if enabled and available
 #ifdef __has_include
-#if __has_include(<QtMultimedia/QAudioInput>)
+	#if __has_include(<QtMultimedia/QAudioSource>)
     if (_audio_analysis_enabled && _audio_input) {
         _audio_device = _audio_input->start();
         if (_audio_device) {
@@ -304,7 +304,7 @@ void SurveillanceDetector::stopDetection() {
 
     // Stop audio capture
 #ifdef __has_include
-#if __has_include(<QtMultimedia/QAudioInput>)
+	#if __has_include(<QtMultimedia/QAudioSource>)
     if (_audio_input && _audio_device) {
         _audio_input->stop();
         _audio_device = nullptr;

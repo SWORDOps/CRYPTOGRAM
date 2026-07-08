@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -39,6 +39,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/chat/attach/attach_prepare.h"
 #include "ui/chat/choose_theme_controller.h"
 #include "ui/widgets/menu/menu_add_action_callback_factory.h"
+#include "history/view/history_view_draw_to_reply.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/inner_dropdown.h"
 #include "ui/widgets/dropdown_menu.h"
@@ -420,10 +421,7 @@ HistoryWidget::HistoryWidget(
 	) | rpl::on_next([=] {
 		escape();
 	}, _field->lifetime());
-	_field->tabbed(
-	) | rpl::on_next([=] {
-		fieldTabbed();
-	}, _field->lifetime());
+
 	_field->heightChanges(
 	) | rpl::on_next([=] {
 		fieldResized();
@@ -662,26 +660,7 @@ HistoryWidget::HistoryWidget(
 			updateHistoryGeometry();
 		}
 	}, lifetime());
-	session().data().viewHeightAdjusted(
-	) | rpl::on_next([=](Data::Session::ViewHeightAdjusted data) {
-		const auto item = data.view->data();
-		const auto history = item->history();
-		if (item->mainView() == data.view
-			&& (history == _history || history == _migrated)) {
-			updateHistoryGeometry();
-		}
-	}, lifetime());
 
-	session().data().itemShowHighlightRequest(
-	) | rpl::on_next([=](not_null<HistoryItem*> item) {
-		const auto history = item->history();
-		if (history == _history || history == _migrated) {
-			if (item->mainView()) {
-				enqueueMessageHighlight({ item });
-				animatedScrollToItem(item->id);
-			}
-		}
-	}, lifetime());
 
 	session().data().itemDataChanges(
 	) | rpl::filter([=](not_null<HistoryItem*> item) {
@@ -3509,8 +3488,8 @@ void HistoryWidget::refreshSuggestPostToggle() {
 
 void HistoryWidget::setupSendAsToggle() {
 	session().sendAsPeers().updated(
-	) | rpl::filter([=](not_null<PeerData*> peer) {
-		return (peer == _peer);
+	) | rpl::filter([=](Main::SendAsKey key) {
+		return (key.peer == _peer);
 	}) | rpl::on_next([=] {
 		refreshSendAsToggle();
 		updateControlsVisibility();
@@ -4051,7 +4030,7 @@ void HistoryWidget::maybeMarkReactionsRead(not_null<HistoryItem*> item) {
 }
 
 bool HistoryWidget::handleDrawToReplyRequest(
-		Data::DrawToReplyRequest request) {
+		DrawToReplyRequest request) {
 	if (!_peer || request.messageId.peer != _peer->id) {
 		return false;
 	}

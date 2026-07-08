@@ -23,7 +23,7 @@ namespace {
 class Action final : public Menu::ItemBase {
 public:
 	Action(
-		not_null<PopupMenu*> parent,
+		not_null<Menu::Menu*> parent,
 		const DownloadsEntry &entry,
 		Fn<void(DownloadsAction)> callback);
 
@@ -57,10 +57,10 @@ private:
 };
 
 Action::Action(
-	not_null<PopupMenu*> parent,
+	not_null<Menu::Menu*> parent,
 	const DownloadsEntry &entry,
 	Fn<void(DownloadsAction)> callback)
-: ItemBase(parent->menu(), st::defaultMenu)
+: ItemBase(parent, st::defaultMenu)
 , _dummyAction(new QAction(parent))
 , _progress(this, st::botDownloadProgress)
 , _cancel(this, st::botDownloadCancel)

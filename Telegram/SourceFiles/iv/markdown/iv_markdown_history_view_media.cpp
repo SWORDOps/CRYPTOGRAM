@@ -651,9 +651,9 @@ void IvHistoryViewMediaHost::registerViewRequestBridge(MediaBlockHost *host) {
 	_state->bridgeHost = host;
 	_state->bridgeHostReferences = 1;
 	_state->session->viewRepaintRequest(
-	) | rpl::filter([=](::Data::RequestViewRepaint data) {
-		return (data.view == _state->view);
-	}) | rpl::on_next([=](::Data::RequestViewRepaint) {
+	) | rpl::filter([=](not_null<const HistoryView::Element*> view) {
+		return (view == _state->view);
+	}) | rpl::on_next([=](not_null<const HistoryView::Element*>) {
 		if (_state->bridgeHost) {
 			_state->bridgeHost->requestRepaint(QRect());
 		}

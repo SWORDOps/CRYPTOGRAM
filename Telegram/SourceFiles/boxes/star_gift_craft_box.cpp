@@ -1175,7 +1175,7 @@ void Craft(
 			const auto slug = gift ? gift->info.unique->slug : QString();
 			for (const auto &input : gifts) {
 				const auto action = (slug == input.unique->slug)
-					? Data::GiftUpdate::Action::Upgraded
+					? Data::GiftUpdate::Action::Convert
 					: Data::GiftUpdate::Action::Delete;
 				controller->session().data().notifyGiftUpdate({
 					.id = input.manageId,

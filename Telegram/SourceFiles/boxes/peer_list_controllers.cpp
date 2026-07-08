@@ -120,7 +120,7 @@ object_ptr<Ui::BoxContent> PrepareContactsBox(
 		raw->setSortMode(Mode::Online);
 
 		raw->wheelClicks() | rpl::on_next([=](not_null<PeerData*> p) {
-			sessionController->showInNewWindow(p);
+			window->showInNewWindow(p);
 		}, box->lifetime());
 
 		raw->setShowFinishedCallback([=] {

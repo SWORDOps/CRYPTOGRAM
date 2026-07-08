@@ -65,7 +65,7 @@ void SetButtonTwoLabels(
 		buttonSubtitle->sizeValue()
 	) | rpl::on_next([=](QSize outer, QSize title, QSize subtitle) {
 		const auto two = title.height() + subtitle.height();
-		const auto titleTop = withSubtitle
+		const auto titleTop = (subtitle.height() > 0)
 			? (outer.height() - two) / 2
 			: singleLineTextTop;
 		const auto subtitleTop = titleTop + title.height();

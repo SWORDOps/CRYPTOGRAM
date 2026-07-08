@@ -1020,32 +1020,8 @@ void CreateModerateMessagesBox(
 										: Data::ReactionId());
 						}
 					}
-				}
-				for (const auto &fromId : itemFromIds) {
-					for (const auto &peer : checked) {
-						if (peer->id == fromId) {
-							result--;
-							break;
-						}
-					}
-					return float64(result);
-				})
-			) | rpl::on_next([=](const QString &text) {
-				title->setText(text);
-				title->resizeToWidth(inner->width()
-					- rect::m::sum::h(st::boxRowPadding));
-			}, title->lifetime());
-		}
-		handleSubmition(deleteAll);
-
-		handleConfirmation(deleteAll, controller, [=](
-				not_null<PeerData*> p,
-				not_null<ChannelData*> c) {
-			p->session().api().deleteAllFromParticipant(c, p);
-		});
-
-		if (GetEnhancedInt("always_delete_for") == 1 || GetEnhancedInt("always_delete_for") == 3) {
-			deleteAll->setChecked(true);
+				}, deleteReactions->lifetime());
+			}
 		}
 	}
 	const auto makeTitleLoadingDescriptor = [] {
@@ -1090,10 +1066,6 @@ void CreateModerateMessagesBox(
 		return result;
 	};
 	auto title = [&]() -> rpl::producer<TextWithEntities> {
-		if (hasItems && (GetEnhancedInt("always_delete_for") == 1 || GetEnhancedInt("always_delete_for") == 3)) {
-			deleteMessages->setChecked(true);
-			deleteReactions->setChecked(true);
-		}
 		if (showMessagesCheckbox && !(hasReaction && !hasItems)) {
 			auto messageTitleData = rpl::combine(
 				deleteMessagesCounts->value(),
@@ -1366,7 +1338,7 @@ void CreateModerateMessagesBox(
 						tr::marked);
 			}) | rpl::flatten_latest(
 			) | rpl::on_next([=](const TextWithEntities &text) {
-				raw->setMarkedText(Ui::Text::Link(text, u"internal:"_q));
+				raw->setMarkedText(tr::link(text, u"internal:"_q));
 			}, label->lifetime());
 
 			Ui::AddSkip(inner);
@@ -1422,18 +1394,6 @@ void CreateModerateMessagesBox(
 					tr::lng_restrict_users_part_header(
 						lt_count,
 						rpl::single(participants.size()) | tr::to_count())));
-			auto [checkboxes, getRestrictions, changes] = CreateEditRestrictions(
-				box,
-				prepareFlags,
-				disabledMessages,
-				{ .isForum = peer->isForum() });
-			computeRestrictions = getRestrictions;
-			std::move(changes) | rpl::on_next([=] {
-				ban->setChecked(true);
-			}, ban->lifetime());
-			Ui::AddSkip(container);
-			Ui::AddDivider(container);
-			Ui::AddSkip(container);
 			container->add(std::move(checkboxes));
 		}
 
@@ -1568,8 +1528,8 @@ void DeleteChatBox(not_null<Ui::GenericBox*> box, not_null<PeerData*> peer) {
 				: maybeUser
 				? tr::lng_profile_delete_conversation(tr::bold)
 				: rpl::single(
-					userpicPeer->name()
-				) | Ui::Text::ToBold() | rpl::type_erased,
+					tr::bold(userpicPeer->name())
+				) | rpl::type_erased,
 			box->getDelegate()->style().title));
 
 	Ui::AddSkip(container);
@@ -1607,7 +1567,7 @@ void DeleteChatBox(not_null<Ui::GenericBox*> box, not_null<PeerData*> peer) {
 					: tr::lng_delete_for_everyone_check(
 						tr::now,
 						tr::marked),
-				GetEnhancedInt("always_delete_for") == 2 || GetEnhancedInt("always_delete_for") == 3,
+				false,
 				st::defaultBoxCheckbox));
 	}();
 

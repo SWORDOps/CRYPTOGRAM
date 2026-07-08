@@ -281,12 +281,9 @@ void ColorsPalette::show(Type type) {
 		return;
 	}
 	list.insert(list.begin(), scheme->accentColor);
-	const auto &settings = Core::App().settings();
+	auto &settings = Core::App().settings();
 	const auto color = settings.themesAccentColors().get(type);
-	const auto current = (settings.systemAccentColorEnabled()
-		? Window::Theme::SystemAccentColor()
-		: std::optional<QColor>()).value_or(
-			color.value_or(scheme->accentColor));
+	const auto current = color.value_or(scheme->accentColor);
 	const auto i = ranges::find(list, current);
 	if (i == end(list)) {
 		list.back() = current;
@@ -1071,16 +1068,7 @@ void BuildMessagesSection(SectionBuilder &builder) {
 		};
 	});
 
-	builder.add(nullptr, [] {
-		return SearchEntry{
-			.id = u"chat/corner-reply"_q,
-			.title = tr::lng_settings_chat_corner_reply(tr::now),
-			.keywords = { u"corner"_q, u"reply"_q },
-			.checkIcon = Core::App().settings().cornerReply()
-				? SearchEntryCheckIcon::Checked
-				: SearchEntryCheckIcon::Unchecked,
-		};
-	});
+
 
 	builder.add(nullptr, [] {
 		return SearchEntry{
@@ -1424,8 +1412,8 @@ void SetupStickersEmoji(
 			auto &&handle) {
 		const auto result = inner->add(
 			checkbox(label, checked),
-			st::settingsCheckboxPadding
-		)->checkedChanges(
+			st::settingsCheckboxPadding);
+		result->checkedChanges(
 		) | rpl::on_next(
 			std::move(handle),
 			inner->lifetime());
@@ -1441,7 +1429,8 @@ void SetupStickersEmoji(
 				inner,
 				checkbox(label, checked),
 				st::settingsCheckboxPadding)
-		)->setDuration(0)->toggleOn(std::move(shown))->entity()->checkedChanges(
+		)->setDuration(0)->toggleOn(std::move(shown));
+		wrap->entity()->checkedChanges(
 		) | rpl::on_next(
 			std::move(handle),
 			inner->lifetime());
@@ -1764,33 +1753,15 @@ void SetupMessages(
 
 	Ui::AddSkip(inner, st::settingsSendTypeSkip);
 
-	const auto cornerReply = inner->add(
-		object_ptr<Ui::Checkbox>(
-			inner,
-			tr::lng_settings_chat_corner_reply(tr::now),
-			Core::App().settings().cornerReply(),
-			st::settingsCheckbox),
-		st::settingsCheckboxPadding);
-	cornerReply->checkedChanges(
-	) | rpl::on_next([=](bool checked) {
-		Core::App().settings().setCornerReply(checked);
-		Core::App().saveSettingsDelayed();
-	}, inner->lifetime());
-	if (highlights) {
-		highlights->push_back({ u"chat/corner-reply"_q, {
-			cornerReply,
-			{ .radius = st::boxRadius },
-		} });
-	}
-
 	const auto cornerReaction = inner->add(
 		object_ptr<Ui::Checkbox>(
 			inner,
 			tr::lng_settings_chat_corner_reaction(tr::now),
 			Core::App().settings().cornerReaction(),
 			st::settingsCheckbox),
-		st::settingsCheckboxPadding
-	)->checkedChanges(
+		st::settingsCheckboxPadding);
+		
+	cornerReaction->checkedChanges(
 	) | rpl::on_next([=](bool checked) {
 		Core::App().settings().setCornerReaction(checked);
 		Core::App().saveSettingsDelayed();
@@ -2346,16 +2317,6 @@ void SetupDefaultThemes(
 	const auto palette = Ui::CreateChild<ColorsPalette>(
 		container.get(),
 		container.get());
-	const auto systemAccentWrap = container->add(
-		object_ptr<Ui::SlideWrap<Ui::Checkbox>>(
-			container,
-			object_ptr<Ui::Checkbox>(
-				container,
-				tr::lng_settings_theme_system_accent_color(tr::now),
-				Core::App().settings().systemAccentColorEnabled(),
-				st::settingsCheckbox)),
-		st::settingsCheckboxPadding);
-	systemAccentWrap->setDuration(0);
 
 	const auto chosen = [] {
 		const auto &object = Background()->themeObject();
@@ -2431,15 +2392,13 @@ void SetupDefaultThemes(
 			palette->show(type);
 		}
 
-		const auto &settings = Core::App().settings();
+		auto &settings = Core::App().settings();
 		const auto i = checks.find(type);
 		const auto scheme = ranges::find(kSchemesList, type, &Scheme::type);
 		if (scheme == end(kSchemesList)) {
 			return;
 		}
-		const auto color = settings.systemAccentColorEnabled()
-			? Window::Theme::SystemAccentColor()
-			: settings.themesAccentColors().get(type);
+		const auto color = settings.themesAccentColors().get(type);
 		if (i != end(checks)) {
 			if (color) {
 				const auto colorizer = ColorizerFrom(*scheme, *color);
@@ -2448,11 +2407,6 @@ void SetupDefaultThemes(
 				i->second->setColors(ColorsFromScheme(*scheme));
 			}
 		}
-	};
-	const auto refreshSystemAccentVisibility = [=](Type type) {
-		systemAccentWrap->toggle(
-			IsSystemAccentColorSupported() && (type != Type(-1)),
-			anim::type::instant);
 	};
 	group->setChangedCallback([=](Type type) {
 		const auto scheme = ranges::find(
@@ -2468,22 +2422,6 @@ void SetupDefaultThemes(
 	for (const auto &scheme : kSchemesList) {
 		refreshColorizer(scheme.type);
 	}
-	refreshSystemAccentVisibility(chosen());
-	systemAccentWrap->entity()->checkedChanges(
-	) | rpl::on_next([=](bool checked) {
-		auto &settings = Core::App().settings();
-		if (settings.systemAccentColorEnabled() == checked) {
-			return;
-		}
-		settings.setSystemAccentColorEnabled(checked);
-		Local::writeSettings();
-
-		const auto type = chosen();
-		const auto scheme = ranges::find(kSchemesList, type, &Scheme::type);
-		if (scheme != end(kSchemesList)) {
-			apply(*scheme);
-		}
-	}, container->lifetime());
 
 	if (highlights) {
 		const auto add = st::roundRadiusSmall;
@@ -2494,12 +2432,6 @@ void SetupDefaultThemes(
 				.shape = HighlightShape::Ellipse,
 			},
 		} });
-		if (IsSystemAccentColorSupported()) {
-			highlights->push_back({ u"chat/themes-system-accent"_q, {
-				systemAccentWrap->entity(),
-				{ .radius = st::boxRadius }
-			} });
-		}
 	}
 
 	Background()->updates(
@@ -2509,7 +2441,6 @@ void SetupDefaultThemes(
 		return chosen();
 	}) | rpl::on_next([=](Type type) {
 		refreshColorizer(type);
-		refreshSystemAccentVisibility(type);
 		group->setValue(type);
 	}, container->lifetime());
 
@@ -2561,11 +2492,6 @@ void SetupDefaultThemes(
 		}
 		auto &settings = Core::App().settings();
 		auto changed = false;
-		if (settings.systemAccentColorEnabled()) {
-			settings.setSystemAccentColorEnabled(false);
-			systemAccentWrap->entity()->setChecked(false);
-			changed = true;
-		}
 		auto &colors = settings.themesAccentColors();
 		if (colors.get(type) != color) {
 			colors.set(type, color);

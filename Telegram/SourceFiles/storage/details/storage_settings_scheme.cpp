@@ -1123,7 +1123,7 @@ bool ReadSetting(
 
 		if (v == 2) {
 			Core::App().settings().setVoicePlaybackSpeed(2.);
-			Core::App().settings().setAudioPlaybackSpeed(2.);
+			Core::App().settings().setVideoPlaybackSpeed(2.);
 		}
 		context.legacyRead = true;
 	} break;

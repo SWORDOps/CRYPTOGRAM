@@ -409,12 +409,12 @@ void AddPollOptionWidget::showStickerPanel() {
 }
 
 void AddPollOptionWidget::subscribeToPollUpdates() {
-	_session->data().pollUpdates(
-	) | rpl::filter([=](not_null<PollData*> poll) {
-		return (poll == _poll);
-	}) | rpl::on_next([=](not_null<PollData*> poll) {
-		if (poll->closed()
-			|| (int(poll->answers.size())
+	_session->data().itemRepaintRequest(
+	) | rpl::filter([=](not_null<const HistoryItem*> item) {
+		return (item->fullId() == _itemId);
+	}) | rpl::on_next([=](not_null<const HistoryItem*>) {
+		if (_poll->closed()
+			|| (int(_poll->answers.size())
 				>= _session->appConfig().pollOptionsLimit())) {
 			_cancelledEvents.fire({});
 		}

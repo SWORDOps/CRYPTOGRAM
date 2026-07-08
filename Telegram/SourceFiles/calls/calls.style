@@ -534,6 +534,41 @@ callTitle: WindowTitle(defaultWindowTitle) {
 	}
 	closeIconActive: callTitleCloseIcon;
 	closeIconActiveOver: callTitleCloseIconOver;
+	top: IconButton(callTitleButton) {
+		width: 25px;
+		icon: icon {
+			{ size(25px, 21px), callBgButton },
+			{ "title_button_top", callNameFg, point(5px, 4px) },
+		};
+		iconOver: icon {
+			{ size(25px, 21px), callBgButton },
+			{ "title_button_top", callNameFg, point(5px, 4px) },
+		};
+	}
+	topIconActive: icon {
+		{ size(25px, 21px), callBgButton },
+		{ "title_button_top", callNameFg, point(5px, 4px) },
+	};
+	topIconActiveOver: icon {
+		{ size(25px, 21px), callBgButton },
+		{ "title_button_top", callNameFg, point(5px, 4px) },
+	};
+	top2Icon: icon {
+		{ size(25px, 21px), callBgButton },
+		{ "title_button_top2", callNameFg, point(5px, 4px) },
+	};
+	top2IconOver: icon {
+		{ size(25px, 21px), callBgButton },
+		{ "title_button_top2", callNameFg, point(5px, 4px) },
+	};
+	top2IconActive: icon {
+		{ size(25px, 21px), callBgButton },
+		{ "title_button_top2", callNameFg, point(5px, 4px) },
+	};
+	top2IconActiveOver: icon {
+		{ size(25px, 21px), callBgButton },
+		{ "title_button_top2", callNameFg, point(5px, 4px) },
+	};
 }
 callTitleShadowRight: icon {{ "calls/calls_shadow_controls", windowShadowFg }};
 callTitleShadowLeft: icon {{ "calls/calls_shadow_controls-flip_horizontal", windowShadowFg }};
@@ -1187,6 +1222,9 @@ groupCallTitleCloseIconOver: icon {
 	{ windowTitleButtonSize, titleButtonCloseBgOver },
 	{ "title_button_close", titleButtonCloseFgOver },
 };
+groupCallPinOnTop: icon {{ "calls/navbar_pin", groupCallMemberNotJoinedStatus, point(0px, 2px) }};
+groupCallPinOnTopOver: icon {{ "calls/navbar_pin", groupCallMembersFg, point(0px, 2px) }};
+groupCallPinnedOnTop: icon {{ "calls/navbar_pin_filled", groupCallMembersFg }};
 groupCallTitle: WindowTitle(defaultWindowTitle) {
 	height: 0px;
 	bg: groupCallBg;
@@ -1216,13 +1254,17 @@ groupCallTitle: WindowTitle(defaultWindowTitle) {
 	}
 	closeIconActive: groupCallTitleCloseIcon;
 	closeIconActiveOver: groupCallTitleCloseIconOver;
+	top: IconButton(groupCallTitleButton) {
+		icon: groupCallPinOnTop;
+		iconOver: groupCallPinOnTopOver;
+	}
+	topIconActive: groupCallPinnedOnTop;
+	topIconActiveOver: groupCallPinnedOnTop;
+	top2Icon: groupCallPinnedOnTop;
+	top2IconOver: groupCallPinnedOnTop;
+	top2IconActive: groupCallPinnedOnTop;
+	top2IconActiveOver: groupCallPinnedOnTop;
 }
-groupCallPinOnTop: IconButton(groupCallTitleButton) {
-	icon: icon{{ "calls/navbar_pin", groupCallMemberNotJoinedStatus }};
-	iconOver: icon{{ "calls/navbar_pin", groupCallMembersFg }};
-	iconPosition: point(0px, 2px);
-}
-groupCallPinnedOnTop: icon{{ "calls/navbar_pin_filled", groupCallMembersFg }};
 
 groupCallMajorBlobMaxRadius: 4px;
 

@@ -93,7 +93,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_info.h"
 #include "styles/style_window.h"
 #include "base/qt/qt_common_adapters.h"
-#include "boxes/abstract_box.h"
 
 #include <QtCore/QMimeData>
 #include <QtGui/QTextBlock>
@@ -397,13 +396,13 @@ Widget::Widget(
 		_scroll->heightValue(),
 		_topBarSuggestionHeightChanged.events_starting_with(0)
 	) | rpl::on_next([=](int height, int topBarHeight) {
-		innerList->setMinimumHeight(height);
+		_innerList->setMinimumHeight(height);
 		_inner->setMinimumHeight(height - topBarHeight);
 		_inner->refresh();
-	}, innerList->lifetime());
+	}, _innerList->lifetime());
 	_scroll->widthValue() | rpl::on_next([=](int width) {
-		innerList->resizeToWidth(width);
-	}, innerList->lifetime());
+		_innerList->resizeToWidth(width);
+	}, _innerList->lifetime());
 	_scrollToTop->raise();
 	_lockUnlock->toggle(false, anim::type::instant);
 
@@ -554,6 +553,20 @@ Widget::Widget(
 	_search->submits(
 	) | rpl::on_next([=] { submit(); }, _search->lifetime());
 
+	_search->setMimeDataHook([=](
+			not_null<const QMimeData*> data,
+			Ui::InputField::MimeAction action) {
+		if (data->hasFormat(u"application/x-telegram-dialog"_q)) {
+			if (const auto history = HistoryFromMimeData(data, &session())) {
+				if (action != Ui::InputField::MimeAction::Check) {
+					controller->searchInChat(history);
+				}
+				return true;
+			}
+		}
+		return false;
+	});
+
 	QObject::connect(
 		_search->rawTextEdit().get(),
 		&QTextEdit::cursorPositionChanged,
@@ -700,7 +713,6 @@ Widget::Widget(
 
 		setupMoreChatsBar();
 		setupDownloadBar();
-		setupShortcuts(controller);
 	}
 	setupSwipeBack();
 
@@ -924,8 +936,7 @@ void Widget::chosenRow(const ChosenRow &row) {
 			session().data().saveViewAsMessages(topic->forum(), false);
 			controller()->showThread(topic, row.message.fullId.msg, params);
 		}
-	} else if (!GetEnhancedBool("hide_stories")
-		&& history
+	} else if (history
 		&& row.userpicClick
 		&& (row.message.fullId.msg == ShowAtUnreadMsgId)
 		&& history->peer->hasActiveStories()
@@ -996,7 +1007,7 @@ void Widget::chosenRow(const ChosenRow &row) {
 			hideChildList();
 		}
 	} else if (const auto folder = row.key.folder()) {
-		if (!GetEnhancedBool("hide_stories") && row.userpicClick) {
+		if (row.userpicClick) {
 			const auto list = Data::StorySourcesList::Hidden;
 			const auto &sources = session().data().stories().sources(list);
 			if (!sources.empty()) {
@@ -1080,8 +1091,9 @@ void Widget::setupTopBarSuggestions() {
 		return;
 	}
 	using namespace rpl::mappers;
-	crl::on_main(&session(), [=, session = &session()] {
-		session->api().authorizations().unreviewedChanges(
+	crl::on_main(_innerList, [=] {
+		const auto owner = &session().data();
+		session().api().authorizations().unreviewedChanges(
 		) | rpl::on_next([=] {
 			updateForceDisplayWide();
 		}, lifetime());
@@ -1110,7 +1122,12 @@ void Widget::setupTopBarSuggestions() {
 					&& !searchInPeer
 					&& (id == owner->chatsFilters().defaultId());
 			});
-			return TopBarSuggestionValue(dialogs, session, std::move(on));
+			return TopBarSuggestionValue(
+				this,
+				&session(),
+				std::move(on),
+				_childListShown.value(),
+				_prepareTopBarSnapshot.events());
 		}) | rpl::flatten_latest() | rpl::on_next([=](
 				Ui::SlideWrap<Ui::RpWidget> *raw) {
 			if (raw) {
@@ -1289,34 +1306,6 @@ void Widget::setupDownloadBar() {
 	}, lifetime());
 }
 
-void Widget::setupShortcuts(not_null<Window::SessionController *> controller) {
-	Shortcuts::Requests(
-	) | rpl::filter([=] {
-		return isActiveWindow()
-		       && !controller->isLayerShown()
-		       && !controller->window().locked();
-	}) | rpl::on_next([=](not_null<Shortcuts::Request*> request) {
-		using Command = Shortcuts::Command;
-
-		request->check(Command::GlobalSearch) && request->handle([=] {
-			if (_openedFolder) {
-				controller->closeFolder();
-				setInnerFocus();
-				return true;
-			} else {
-				if (controller->adaptive().isOneColumn()) {
-					controller->clearSectionStack();
-					controller->showBackFromStack();
-				} else {
-					setInnerFocus();
-				}
-				return true;
-			}
-			return false;
-		});
-	}, lifetime());
-}
-
 void Widget::updateScrollUpVisibility() {
 	if (_scrollToAnimation.animating()) {
 		return;
@@ -1406,9 +1395,6 @@ void Widget::setupMainMenuToggle() {
 }
 
 void Widget::setupStories() {
-	if (GetEnhancedBool("hide_stories")) {
-		return;
-	}
 	_stories->verticalScrollEvents(
 	) | rpl::on_next([=](not_null<QWheelEvent*> e) {
 		_scroll->viewportEvent(e);
@@ -1531,9 +1517,6 @@ void Widget::setupStories() {
 }
 
 void Widget::storiesToggleExplicitExpand(bool expand) {
-	if (GetEnhancedBool("hide_stories")) {
-		return;
-	}
 	if (_storiesExplicitExpand == expand) {
 		return;
 	}
@@ -1744,6 +1727,7 @@ void Widget::toggleFiltersMenu(bool enabled) {
 
 		_chatFilters = base::make_unique_q<NoScrollPropagationWidget>(this);
 		const auto raw = _chatFilters.get();
+		const auto idBeforeTabs = controller()->activeChatsFilterCurrent();
 		const auto inner = Ui::AddChatFiltersTabsStrip(
 			_chatFilters.get(),
 			&session(),
@@ -1756,6 +1740,9 @@ void Widget::toggleFiltersMenu(bool enabled) {
 			Window::GifPauseReason::Any,
 			controller(),
 			true);
+		if (controller()->activeChatsFilterCurrent() != idBeforeTabs) {
+			controller()->setActiveChatsFilter(idBeforeTabs);
+		}
 		raw->show();
 		raw->stackUnder(_scroll);
 		raw->resizeToWidth(width());
@@ -1975,7 +1962,7 @@ void Widget::changeOpenedFolder(Data::Folder *folder, anim::type animated) {
 		controller()->closeForum();
 		_openedFolder = folder;
 		_inner->changeOpenedFolder(folder);
-		if (!GetEnhancedBool("hide_stories") && _stories) {
+		if (_stories) {
 			storiesExplicitCollapse();
 		}
 		updateFrozenAccountBar();
@@ -2279,7 +2266,7 @@ void Widget::raiseWithTooltip() {
 	raise();
 	if (_stories) {
 		Ui::PostponeCall(this, [=] {
-			if (_stories) _stories->raiseTooltip();
+			_stories->raiseTooltip();
 		});
 	}
 }
@@ -2398,10 +2385,6 @@ void Widget::stopWidthAnimation() {
 }
 
 void Widget::updateStoriesVisibility() {
-	if (GetEnhancedBool("hide_stories")) {
-		_stories = nullptr;
-	}
-	
 	updateLockUnlockVisibility(anim::type::normal);
 	if (!_stories) {
 		return;
@@ -2814,8 +2797,7 @@ bool Widget::search(bool inCache, SearchRequestDelay delay) {
 }
 
 bool Widget::peerSearchRequired() const {
-	return !GetEnhancedBool("disable_global_search")
-		&& _searchState.filterChatsList() && !_openedForum;
+	return _searchState.filterChatsList() && !_openedForum;
 }
 
 bool Widget::searchForTopicsRequired(const QString &query) const {

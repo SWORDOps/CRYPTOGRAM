@@ -1226,13 +1226,6 @@ void ChannelData::updateSubscriptionUntilDate(TimeId subscriptionUntilDate) {
 }
 
 MTPInputChannel ChannelData::inputChannel() const {
-	const auto item = isLoaded() ? nullptr : owner().messageWithPeer(id);
-	if (item) {
-		return MTP_inputChannelFromMessage(
-			item->history()->peer->input(),
-			MTP_int(item->id.bare),
-			MTP_long(peerToChannel(id).bare));
-	}
 	return MTP_inputChannel(
 		MTP_long(peerToChannel(id).bare),
 		MTP_long(_accessHash));

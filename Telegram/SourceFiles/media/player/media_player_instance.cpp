@@ -67,11 +67,13 @@ base::options::toggle OptionDisableAutoplayNext({
 		return 1.;
 	}
 	const auto document = audioId.audio();
+	const auto speed = Core::App().settings().voicePlaybackSpeed(
+			true);
 	return (document
 		&& !document->isVoiceMessage()
 		&& !document->isVideoMessage())
-		? Core::App().settings().audioPlaybackSpeed()
-		: Core::App().settings().voicePlaybackSpeed();
+		? speed
+		: speed;
 }
 
 } // namespace

@@ -23,7 +23,6 @@
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
 #include <QtCharts/QValueAxis>
-QT_CHARTS_USE_NAMESPACE
 #define CRYPTOGRAM_HAVE_QTCHARTS 1
 #endif
 #endif

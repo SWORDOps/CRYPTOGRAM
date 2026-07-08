@@ -160,7 +160,7 @@ Widget::Widget(
 
 	_speedController->saved(
 	) | rpl::on_next([=] {
-		instance()->updateVoicePlaybackSpeed();
+		instance()->updatePlaybackSpeed();
 	}, lifetime());
 
 	instance()->trackChanged(
@@ -442,14 +442,14 @@ void Widget::saveOrder(OrderMode mode) {
 float64 Widget::speedLookup(bool lastNonDefault) const {
 	const auto &settings = Core::App().settings();
 	return (_type == AudioMsgId::Type::Song)
-		? settings.audioPlaybackSpeed(lastNonDefault)
+		? settings.voicePlaybackSpeed(lastNonDefault)
 		: settings.voicePlaybackSpeed(lastNonDefault);
 }
 
 void Widget::saveSpeed(float64 speed) {
 	auto &settings = Core::App().settings();
 	if (_type == AudioMsgId::Type::Song) {
-		settings.setAudioPlaybackSpeed(speed);
+		settings.setVoicePlaybackSpeed(speed);
 	} else {
 		settings.setVoicePlaybackSpeed(speed);
 	}

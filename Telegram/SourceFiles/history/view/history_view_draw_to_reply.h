@@ -7,9 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+struct DrawToReplyRequest;
 namespace Data {
 class Session;
-struct DrawToReplyRequest;
 } // namespace Data
 
 namespace Window {
@@ -20,7 +20,7 @@ namespace HistoryView {
 
 [[nodiscard]] QImage ResolveDrawToReplyImage(
 	not_null<Data::Session*> data,
-	const Data::DrawToReplyRequest &request);
+	const DrawToReplyRequest &request);
 
 void OpenDrawToReplyEditor(
 	not_null<Window::SessionController*> controller,

@@ -357,6 +357,9 @@ boostReplaceUserpicsRow: UserpicsRow {
 }
 
 showOrTitleIconMargin: 8px;
+showOrIconMargin: margins(0px, 8px, 0px, 8px);
+showOrIconPadding: margins(8px, 8px, 8px, 8px);
+showOrIconBg: windowBgOver;
 showOrTitlePadding: margins(0px, 0px, 0px, 5px);
 showOrAboutPadding: margins(0px, 0px, 0px, 16px);
 showOrShowButton: RoundButton(defaultActiveButton) {

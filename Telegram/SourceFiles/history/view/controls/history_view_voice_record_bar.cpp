@@ -1246,12 +1246,7 @@ void ListenWrap::initPlayProgress() {
 	};
 	animation->init(std::move(animationCallback));
 
-	const auto isPressed = _lifetime.make_state<bool>(false);
 
-	isPointer->changes(
-	) | rpl::on_next([=](bool pointer) {
-		_parent->setCursor(pointer ? style::cur_pointer : style::cur_default);
-	}, _lifetime);
 
 	_parent->events(
 	) | rpl::filter([=](not_null<QEvent*> e) {

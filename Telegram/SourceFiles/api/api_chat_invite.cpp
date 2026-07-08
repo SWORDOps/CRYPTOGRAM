@@ -37,6 +37,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/text/text_utilities.h"
 #include "ui/toast/toast.h"
 #include "ui/vertical_list.h"
+#include "ui/layers/box_content.h"
 #include "window/window_session_controller.h"
 #include "styles/style_boxes.h"
 #include "styles/style_chat_helpers.h"
@@ -760,6 +761,67 @@ void CheckChatInvite(
 
 } // namespace Api
 
+class ConfirmInviteBox final : public Ui::BoxContent {
+public:
+	struct ChatInvite;
+	struct Participant;
+
+	ConfirmInviteBox(
+		QWidget *parent,
+		not_null<Main::Session*> session,
+		const MTPDchatInvite &data,
+		ChannelData *invitePeekChannel,
+		Fn<void()> submit);
+	ConfirmInviteBox(
+		not_null<Main::Session*> session,
+		ChatInvite &&invite,
+		ChannelData *invitePeekChannel,
+		Fn<void()> submit);
+	~ConfirmInviteBox() override;
+
+	static ChatInvite Parse(
+		not_null<Main::Session*> session,
+		const MTPDchatInvite &data);
+	static Info::Profile::BadgeType BadgeForInvite(
+		const ChatInvite &invite);
+
+	void prepare() override;
+	void resizeEvent(QResizeEvent *e) override;
+	void paintEvent(QPaintEvent *e) override;
+
+public:
+	struct ChatInvite {
+		QString title;
+		QString about;
+		PhotoData *photo = nullptr;
+		int participantsCount = 0;
+		std::vector<Participant> participants;
+		bool isPublic = false;
+		bool isChannel = false;
+		bool isMegagroup = false;
+		bool isBroadcast = false;
+		bool isRequestNeeded = false;
+		bool isFake = false;
+		bool isScam = false;
+		bool isVerified = false;
+	};
+
+private:
+	const not_null<Main::Session*> _session;
+	Fn<void()> _submit;
+	object_ptr<Ui::FlatLabel> _title = { nullptr };
+	std::unique_ptr<Info::Profile::Badge> _badge;
+	object_ptr<Ui::FlatLabel> _status = { nullptr };
+	object_ptr<Ui::FlatLabel> _about = { nullptr };
+	object_ptr<Ui::FlatLabel> _aboutRequests = { nullptr };
+	std::vector<Participant> _participants;
+	bool _isChannel = false;
+	bool _requestApprove = false;
+	std::shared_ptr<Data::PhotoMedia> _photo;
+	std::unique_ptr<Ui::EmptyUserpic> _photoEmpty;
+	int _userWidth = 0;
+};
+
 struct ConfirmInviteBox::Participant {
 	not_null<UserData*> user;
 	Ui::PeerUserpicView userpic;
@@ -905,7 +967,13 @@ void ConfirmInviteBox::prepare() {
 		_participants.pop_back();
 	}
 
-	auto newHeight = st::confirmInviteStatusTop + _status->height() + st::boxPadding.bottom();
+	const auto titleTop = st::confirmInvitePhotoTop
+		+ st::confirmInvitePhotoSize
+		+ st::confirmInvitePhotoTop;
+	const auto statusTop = titleTop
+		+ _title->height()
+		+ st::confirmInvitePhotoTop;
+	auto newHeight = statusTop + _status->height() + st::boxPadding.bottom();
 	if (!_participants.empty()) {
 		int skip = (st::confirmInviteUsersWidth - 4 * st::confirmInviteUserPhotoSize) / 5;
 		int padding = skip / 2;
@@ -941,6 +1009,12 @@ void ConfirmInviteBox::resizeEvent(QResizeEvent *e) {
 	BoxContent::resizeEvent(e);
 
 	const auto padding = st::boxRowPadding;
+	const auto titleTop = st::confirmInvitePhotoTop
+		+ st::confirmInvitePhotoSize
+		+ st::confirmInvitePhotoTop;
+	const auto statusTop = titleTop
+		+ _title->height()
+		+ st::confirmInvitePhotoTop;
 	auto nameWidth = width() - padding.left() - padding.right();
 	auto badgeWidth = 0;
 	if (const auto widget = _badge->widget()) {
@@ -950,7 +1024,7 @@ void ConfirmInviteBox::resizeEvent(QResizeEvent *e) {
 	_title->resizeToWidth(std::min(nameWidth, _title->textMaxWidth()));
 	_title->moveToLeft(
 		(width() - _title->width() - badgeWidth) / 2,
-		st::confirmInviteTitleTop);
+		titleTop);
 	const auto badgeLeft = _title->x() + _title->width();
 	const auto badgeTop = _title->y();
 	const auto badgeBottom = _title->y() + _title->height();
@@ -958,7 +1032,7 @@ void ConfirmInviteBox::resizeEvent(QResizeEvent *e) {
 
 	_status->move(
 		(width() - _status->width()) / 2,
-		st::confirmInviteStatusTop);
+		statusTop);
 	auto bottom = _status->y()
 		+ _status->height()
 		+ st::boxPadding.bottom()

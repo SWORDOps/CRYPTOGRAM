@@ -9,12 +9,23 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "info/profile/info_profile_badge.h"
 #include "info/profile/info_profile_trust_flag.h"
+#include "info/info_controller.h"
 #include "ui/wrap/padding_wrap.h"
 #include "ui/abstract_button.h"
 
 namespace Window {
 class SessionController;
 } // namespace Window
+
+namespace Ui {
+class RoundButton;
+class UserpicButton;
+class StarsRating;
+} // namespace Ui
+
+namespace style {
+struct InfoProfileCover;
+} // namespace style
 
 namespace HistoryView {
 class StickerPlayer;
@@ -27,6 +38,9 @@ class ForumTopic;
 namespace Info::Profile {
 
 [[nodiscard]] QMargins LargeCustomEmojiMargins();
+
+class MusicButton;
+class BadgeTooltip;
 
 class TopicIconView final {
 public:
@@ -105,14 +119,12 @@ public:
 
 	Cover *setOnlineCount(rpl::producer<int> &&count);
 
-	[[nodiscard]] rpl::producer<Section> showSection() const {
+	[[nodiscard]] rpl::producer<Info::Section> showSection() const {
 		return _showSection.events();
 	}
 	[[nodiscard]] std::optional<QImage> updatedPersonalPhoto() const;
 
 private:
-	class BadgeTooltip;
-
 	Cover(
 		QWidget *parent,
 		not_null<Window::SessionController*> controller,
@@ -168,7 +180,7 @@ private:
 
 	std::unique_ptr<MusicButton> _musicButton;
 
-	rpl::event_stream<Section> _showSection;
+	rpl::event_stream<Info::Section> _showSection;
 
 };
 

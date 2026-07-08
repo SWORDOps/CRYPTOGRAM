@@ -1397,12 +1397,14 @@ void ShareBox::Inner::chooseForumTopic(not_null<Data::Forum*> forum) {
 			return;
 		}
 		const auto chat = getChat(row);
-		Assert(!chat->topic);
-		chat->topic = topic;
-		chat->topic->destroyed(
-		) | rpl::on_next([=] {
-			changePeerCheckState(chat, false);
-		}, chat->topicLifetime);
+		if (const auto topic = thread->asTopic()) {
+			Assert(!chat->topic);
+			chat->topic = topic;
+			chat->topic->destroyed(
+			) | rpl::on_next([=] {
+				changePeerCheckState(chat, false);
+			}, chat->topicLifetime);
+		}
 		updateChatName(chat);
 		changePeerCheckState(chat, true);
 	};

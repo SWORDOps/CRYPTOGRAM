@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -384,18 +384,6 @@ struct SecondRightAction {
 	ClickHandlerPtr link;
 };
 
-KeyboardStyle::KeyboardStyle(
-	const style::BotKeyboardButton &st,
-	Fn<void()> repaint)
-: ReplyKeyboard::Style(st)
-, _repaint(std::move(repaint)) {
-	style::PaletteChanged(
-	) | rpl::on_next([=] {
-		_cachedBg = {};
-		_cachedOutline = {};
-	}, _lifetime);
-}
-
 [[nodiscard]] bool IsRippleLink(const ClickHandlerPtr &handler) {
 	switch (handler->getTextEntity().type) {
 	case EntityType::Url:
@@ -431,6 +419,12 @@ KeyboardStyle::KeyboardStyle(
 		}
 	});
 }
+
+struct BadgePillGeometry {
+	int textWidth = 0;
+	int width = 0;
+	int height = 0;
+};
 
 [[nodiscard]] BadgePillGeometry ComputeBadgePillGeometry(
 		not_null<const RightBadge*> badge) {

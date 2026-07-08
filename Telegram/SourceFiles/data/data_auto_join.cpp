@@ -90,19 +90,26 @@ void AutoJoinChannel::joinViaInvite(const AutoJoinChannelConfig &channel) {
 	// Use Telegram API to import chat invite
 	_session->api().request(MTPmessages_ImportChatInvite(
 		MTP_string(hash)
-	)).done([=](const MTPUpdates &result) {
-		// result.data() access is private; applyUpdates handles processing
-		_session->api().applyUpdates(result);
+	)).done([=](const MTPmessages_ChatInviteJoinResult &result) {
+		const auto applyJoinedUpdates = [&](const MTPUpdates &updates) {
+			_session->api().applyUpdates(updates);
 
-		if (requiresApproval) {
-			// For admin approval channels, this might be a pending state
-			LOG(("AutoJoin: Join request sent for '%1' (pending admin approval)").arg(name));
-			onJoinPending(name);
-		} else {
-			LOG(("AutoJoin: Successfully joined '%1'").arg(name));
-			onJoinSuccess(name);
-		}
+			if (requiresApproval) {
+				LOG(("AutoJoin: Join request sent for '%1' (pending admin approval)").arg(name));
+				onJoinPending(name);
+			} else {
+				LOG(("AutoJoin: Successfully joined '%1'").arg(name));
+				onJoinSuccess(name);
+			}
+		};
 
+		result.match([&](const MTPDmessages_chatInviteJoinResultOk &data) {
+			applyJoinedUpdates(data.vupdates());
+		}, [&](const MTPDmessages_chatInviteJoinResultWebView &data) {
+			_session->data().processUsers(data.vusers());
+			LOG(("AutoJoin: Invite for '%1' requires webview verification").arg(name));
+			onJoinFailed(name, u"WEBVIEW_VERIFICATION_REQUIRED"_q);
+		});
 	}).fail([=](const MTP::Error &error) {
 		const auto errorText = error.type();
 		LOG(("AutoJoin: Failed to join '%1' - %2").arg(name).arg(errorText));

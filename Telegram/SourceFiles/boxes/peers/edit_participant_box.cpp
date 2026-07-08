@@ -22,6 +22,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/fields/input_field.h"
 #include "ui/widgets/box_content_divider.h"
 #include "ui/layers/generic_box.h"
+#include "ui/layers/show.h"
 #include "ui/toast/toast.h"
 #include "ui/text/text_utilities.h"
 #include "ui/text/text_options.h"
@@ -55,6 +56,7 @@ namespace {
 constexpr auto kMaxRestrictDelayDays = 366;
 constexpr auto kSecondsInDay = 24 * 60 * 60;
 constexpr auto kSecondsInWeek = 7 * kSecondsInDay;
+constexpr auto kAdminRoleLimit = 16;
 
 [[nodiscard]] bool CanProcessJoinRequests(
 		not_null<PeerData*> peer,
@@ -846,7 +848,7 @@ not_null<Ui::InputField*> EditAdminBox::addRankInput(
 			st::customBadgeField,
 			(isOwner ? tr::lng_owner_badge : tr::lng_admin_badge)(),
 			TextUtilities::RemoveEmoji(_oldRank)),
-		st::rightsAboutMargin);
+		st::rightsPhotoMargin);
 	result->setMaxLength(kAdminRoleLimit);
 	result->setInstantReplaces(Ui::InstantReplaces::TextOnly());
 	result->changes(
@@ -907,155 +909,14 @@ not_null<Ui::SlideWrap<Ui::RpWidget>*> EditAdminBox::setupTransferButton(
 }
 
 void EditAdminBox::transferOwnership() {
-	if (_checkTransferRequestId) {
-		return;
-	}
-
-	const auto channel = peer()->isChannel()
-		? peer()->asChannel()->inputChannel
-		: MTP_inputChannelEmpty();
-	const auto api = &peer()->session().api();
-	api->cloudPassword().reload();
-	_checkTransferRequestId = api->request(MTPchannels_EditCreator(
-		channel,
-		MTP_inputUserEmpty(),
-		MTP_inputCheckPasswordEmpty()
-	)).fail([=](const MTP::Error &error) {
-		_checkTransferRequestId = 0;
-		if (!handleTransferPasswordError(error.type())) {
-			const auto callback = crl::guard(this, [=](Fn<void()> &&close) {
-				transferOwnershipChecked();
-				close();
-			});
-			getDelegate()->show(Ui::MakeConfirmBox({
-				.text = tr::lng_rights_transfer_about(
-					tr::now,
-					lt_group,
-					Ui::Text::Bold(peer()->name()),
-					lt_user,
-					Ui::Text::Bold(user()->shortName()),
-					Ui::Text::RichLangValue),
-				.confirmed = callback,
-				.confirmText = tr::lng_rights_transfer_sure(),
-			}));
-		}
-	}).send();
-}
-
-bool EditAdminBox::handleTransferPasswordError(const QString &error) {
-	const auto session = &user()->session();
-	auto about = tr::lng_rights_transfer_check_about(
-		tr::now,
-		lt_user,
-		Ui::Text::Bold(user()->shortName()),
-		Ui::Text::WithEntities);
-	if (auto box = PrePasswordErrorBox(error, session, std::move(about))) {
-		getDelegate()->show(std::move(box));
-		return true;
-	}
-	return false;
-}
-
-void EditAdminBox::transferOwnershipChecked() {
-	if (const auto chat = peer()->asChatNotMigrated()) {
-		peer()->session().api().migrateChat(chat, crl::guard(this, [=](
-				not_null<ChannelData*> channel) {
-			requestTransferPassword(channel);
-		}));
-	} else if (const auto channel = peer()->asChannelOrMigrated()) {
-		requestTransferPassword(channel);
-	} else {
-		Unexpected("Peer in SaveAdminCallback.");
-	}
-
-}
-
-void EditAdminBox::requestTransferPassword(not_null<ChannelData*> channel) {
-	peer()->session().api().cloudPassword().state(
-	) | rpl::take(
-		1
-	) | rpl::on_next([=](const Core::CloudPasswordState &state) {
-		auto fields = PasscodeBox::CloudFields::From(state);
-		fields.customTitle = tr::lng_rights_transfer_password_title();
-		fields.customDescription
-			= tr::lng_rights_transfer_password_description(tr::now);
-		fields.customSubmitButton = tr::lng_passcode_submit();
-		fields.customCheckCallback = crl::guard(this, [=](
-				const Core::CloudPasswordResult &result,
-				base::weak_qptr<PasscodeBox> box) {
-			sendTransferRequestFrom(box, channel, result);
+	_ownershipTransfer = std::make_unique<ChannelOwnershipTransfer>(
+		peer(),
+		user(),
+		uiShow(),
+		[=](std::shared_ptr<Ui::Show> show) {
+			show->hideLayer();
 		});
-		getDelegate()->show(Box<PasscodeBox>(&channel->session(), fields));
-	}, lifetime());
-}
-
-void EditAdminBox::sendTransferRequestFrom(
-		base::weak_qptr<PasscodeBox> box,
-		not_null<ChannelData*> channel,
-		const Core::CloudPasswordResult &result) {
-	if (_transferRequestId) {
-		return;
-	}
-	const auto weak = base::make_weak(this);
-	const auto user = this->user();
-	const auto api = &channel->session().api();
-	_transferRequestId = api->request(MTPchannels_EditCreator(
-		channel->inputChannel,
-		user->inputUser,
-		result.result
-	)).done([=](const MTPUpdates &result) {
-		api->applyUpdates(result);
-		if (!box && !weak) {
-			return;
-		}
-		const auto show = box ? box->uiShow() : weak->uiShow();
-		show->showToast(
-			(channel->isBroadcast()
-				? tr::lng_rights_transfer_done_channel
-				: tr::lng_rights_transfer_done_group)(
-					tr::now,
-					lt_user,
-					user->shortName()));
-		show->hideLayer();
-	}).fail(crl::guard(this, [=](const MTP::Error &error) {
-		if (weak) {
-			_transferRequestId = 0;
-		}
-		if (box && box->handleCustomCheckError(error)) {
-			return;
-		}
-
-		const auto &type = error.type();
-		const auto problem = [&] {
-			if (type == u"CHANNELS_ADMIN_PUBLIC_TOO_MUCH"_q) {
-				return tr::lng_channels_too_much_public_other(tr::now);
-			} else if (type == u"CHANNELS_ADMIN_LOCATED_TOO_MUCH"_q) {
-				return tr::lng_channels_too_much_located_other(tr::now);
-			} else if (type == u"ADMINS_TOO_MUCH"_q) {
-				return (channel->isBroadcast()
-					? tr::lng_error_admin_limit_channel
-					: tr::lng_error_admin_limit)(tr::now);
-			} else if (type == u"CHANNEL_INVALID"_q) {
-				return (channel->isBroadcast()
-					? tr::lng_channel_not_accessible
-					: tr::lng_group_not_accessible)(tr::now);
-			}
-			return Lang::Hard::ServerError();
-		}();
-		const auto recoverable = [&] {
-			return (type == u"PASSWORD_MISSING"_q)
-				|| type.startsWith(u"PASSWORD_TOO_FRESH_"_q)
-				|| type.startsWith(u"SESSION_TOO_FRESH_"_q);
-		}();
-		const auto weak = base::make_weak(this);
-		getDelegate()->show(Ui::MakeInformBox(problem));
-		if (box) {
-			box->closeBox();
-		}
-		if (weak && !recoverable) {
-			closeBox();
-		}
-	})).handleFloodErrors().send();
+	_ownershipTransfer->start();
 }
 
 EditRestrictedBox::EditRestrictedBox(

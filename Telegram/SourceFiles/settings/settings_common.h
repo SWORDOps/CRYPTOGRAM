@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -198,8 +198,9 @@ protected:
 		not_null<Ui::VerticalLayout*> container,
 		SectionBuildMethod method);
 
-private:
 	const not_null<Window::SessionController*> _controller;
+
+private:
 	rpl::event_stream<Type> _showOtherRequests;
 	rpl::event_stream<> _showFinished;
 

@@ -699,7 +699,8 @@ object_ptr<Ui::RpWidget> LastSeenPrivacyController::setupBelowWidget(
 		content,
 		tr::lng_edit_lastseen_hide_read_time(),
 		st::settingsButtonNoIcon
-	))->toggleOn(privacy->hideReadTime())->toggledValue(
+	))->toggleOn(privacy->hideReadTime());
+	hideReadTimeButton->toggledValue(
 	) | rpl::on_next([=](bool value) {
 		_hideReadTime = value;
 	}, content->lifetime());

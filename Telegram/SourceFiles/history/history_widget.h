@@ -29,10 +29,10 @@ namespace MTP {
 class Error;
 } // namespace MTP
 
+struct DrawToReplyRequest;
 namespace Data {
 class ForumTopic;
 class PhotoMedia;
-struct DrawToReplyRequest;
 struct SendError;
 } // namespace Data
 
@@ -169,7 +169,7 @@ public:
 	bool isItemCompletelyHidden(HistoryItem *item) const;
 	void updateTopBarSelection();
 	void updateTopBarChooseForReport();
-	bool handleDrawToReplyRequest(Data::DrawToReplyRequest request);
+	bool handleDrawToReplyRequest(DrawToReplyRequest request);
 
 	void loadMessages();
 	void loadMessagesDown();

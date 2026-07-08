@@ -468,7 +468,7 @@ object_ptr<Ui::RpWidget> AddReactionsSelector(
 				raw->setTextWithTags(
 					ComposeEmojiList(
 						reactions,
-						all
+						args.all
 							? CollectAvailableReactions(
 								&args.controller->session())
 							: DefaultSelected()));

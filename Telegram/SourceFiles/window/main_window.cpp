@@ -379,10 +379,6 @@ MainWindow::MainWindow(not_null<Controller*> controller)
 	controller->show(Ui::MakeConfirmBox({
 		.text = tr::lng_screen_reader_confirm_text(tr::now),
 		.confirmed = [=](Fn<void()> close) {
-			Core::App().settings().writePref<bool>(
-				Core::kScreenReaderModeDisabledKey,
-				true);
-			Core::App().saveSettingsDelayed();
 			Ui::SetScreenReaderModeDisabled(true);
 			close();
 		},

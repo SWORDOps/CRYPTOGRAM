@@ -499,8 +499,7 @@ void Application::startSettingsAndBackground() {
 	Local::rewriteSettingsIfNeeded();
 	Window::Theme::Background()->start();
 	checkSystemDarkMode();
-	Ui::SetScreenReaderModeDisabled(
-		settings().readPref<bool>(kScreenReaderModeDisabledKey));
+	Ui::SetScreenReaderModeDisabled(Ui::ScreenReaderModeDisabled());
 }
 
 void Application::checkSystemDarkMode() {

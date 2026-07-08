@@ -31,8 +31,14 @@ RateTranscribe::RateTranscribe(
 	not_null<Ui::PopupMenu*> popupMenu,
 	const style::Menu &st,
 	Fn<void(bool)> rate)
-: Ui::Menu::ItemBase(parent->menu(), st)
-, _dummyAction(Ui::CreateChild<QAction>(this)) {
+: Ui::Menu::ItemBase(popupMenu->menu(), st)
+, _dummyAction(Ui::CreateChild<QAction>(this))
+, _leftButton(Ui::CreateChild<Ui::IconButton>(
+	this,
+	st::menuTranscribeDummyButton))
+, _rightButton(Ui::CreateChild<Ui::IconButton>(
+	this,
+	st::menuTranscribeDummyButton)) {
 	setAcceptBoth(true);
 
 	fitToMenuWidth();
@@ -58,19 +64,13 @@ RateTranscribe::RateTranscribe(
 	}, content->lifetime());
 	Ui::AddSkip(content);
 
-	// const auto leftButton = Ui::CreateChild<Ui::IconButton>(
-	// 	this,
-	// 	st::menuTranscribeDummyButton);
-	// const auto rightButton = Ui::CreateChild<Ui::IconButton>(
-	// 	this,
-	// 	st::menuTranscribeDummyButton);
 	{
 		_leftButton->resize(Size(st::menuTranscribeDummyButton.width));
 		const auto label = Ui::CreateChild<Ui::FlatLabel>(
 			_leftButton,
 			QString::fromUtf8("\U0001F44D"));
 		label->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-		leftButton->sizeValue() | rpl::on_next([=](QSize s) {
+		_leftButton->sizeValue() | rpl::on_next([=](QSize s) {
 			label->moveToLeft(
 				(s.width() - label->width()) / 2,
 				(s.height() - label->height()) / 2);
@@ -82,7 +82,7 @@ RateTranscribe::RateTranscribe(
 			_rightButton,
 			QString::fromUtf8("\U0001F44E"));
 		label->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-		rightButton->sizeValue() | rpl::on_next([=](QSize s) {
+		_rightButton->sizeValue() | rpl::on_next([=](QSize s) {
 			label->moveToLeft(
 				(s.width() - label->width()) / 2,
 				(s.height() - label->height()) / 2);

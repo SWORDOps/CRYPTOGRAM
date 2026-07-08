@@ -88,8 +88,7 @@ constexpr auto kStatsUpdateInterval = 2000; // 2 seconds
 Cryptogram::Cryptogram(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
-: Section(parent)
-, _controller(controller) {
+: Section(parent, controller) {
 	setupContent();
 }
 
@@ -146,8 +145,7 @@ void Cryptogram::setupContent() {
 CryptogramNetwork::CryptogramNetwork(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
-: Section(parent)
-, _controller(controller) {
+: Section(parent, controller) {
 	setupContent();
 }
 
@@ -168,8 +166,7 @@ void CryptogramNetwork::setupContent() {
 CryptogramSecurity::CryptogramSecurity(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
-: Section(parent)
-, _controller(controller)
+: Section(parent, controller)
 , _translationStatsTimer([=] { updateTranslationStatus(); }) {
 	if (!Data::GetGroupEncryption()) {
 		Data::InitializeGroupEncryption();
@@ -213,8 +210,7 @@ void CryptogramSecurity::setupContent() {
 CryptogramOPSEC::CryptogramOPSEC(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
-: Section(parent)
-, _controller(controller) {
+: Section(parent, controller) {
 	setupContent();
 }
 
@@ -303,8 +299,7 @@ void CryptogramOPSEC::setupContent() {
 CryptogramDevelopment::CryptogramDevelopment(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
-: Section(parent)
-, _controller(controller)
+: Section(parent, controller)
 , _miningStatsTimer([=] { updateMiningStatistics(); }) {
 	setupContent();
 	_miningStatsTimer.callEach(kStatsUpdateInterval);

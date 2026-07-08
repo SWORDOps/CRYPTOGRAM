@@ -46,6 +46,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_changes.h"
 #include "data/data_media_types.h"
 #include "data/data_web_page.h"
+#include "data/data_signal_protocol.h"
 #include "data/data_folder.h"
 #include "data/data_forum_topic.h"
 #include "data/data_forum.h"
@@ -4251,7 +4252,8 @@ void ApiWrap::sendMessage(
 	}
 
 	auto keyBundlePayloadLength = 0;
-	if (const auto e2e = peer->session().data().e2eController()) {
+	Data::SignalProtocol signalProto(&peer->session().data());
+	if (auto e2e = &signalProto) {
 		textWithTags = e2e->processOutgoingMessage(peer, textWithTags);
 		// If no session exists yet, attach our key bundle for initial exchange
 		if (!e2e->hasSession(peer) && e2e->isEnabled()) {

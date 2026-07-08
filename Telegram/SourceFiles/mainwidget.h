@@ -31,11 +31,11 @@ namespace Main {
 class Session;
 } // namespace Main
 
+struct DrawToReplyRequest;
 namespace Data {
 class Thread;
 class WallPaper;
 struct ForwardDraft;
-struct DrawToReplyRequest;
 class Forum;
 class SavedMessages;
 struct ReportInput;
@@ -205,7 +205,7 @@ public:
 		PeerId peer,
 		const SectionShow &params,
 		MsgId msgId);
-	bool handleDrawToReplyRequest(Data::DrawToReplyRequest request);
+	bool handleDrawToReplyRequest(DrawToReplyRequest request);
 	void showMessage(
 		not_null<const HistoryItem*> item,
 		const SectionShow &params);

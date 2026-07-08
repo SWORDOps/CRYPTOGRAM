@@ -202,15 +202,7 @@ void DoneSetReminder(std::shared_ptr<ChatHelpers::Show> show) {
 		}
 		return false;
 	};
-	show->showToast({
-		.text = text,
-		.filter = filter,
-		.iconLottie = u"toast/saved_messages"_q,
-		.iconPadding = st::selfForwardsTaggerIconPadding,
-		.st = &st::selfForwardsTaggerToast,
-		.attach = RectPart::Top,
-		.duration = kReminderSetToastDuration,
-	});
+	show->showToast(TextWithEntities(text));
 };
 
 } // namespace

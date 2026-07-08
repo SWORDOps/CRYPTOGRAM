@@ -80,12 +80,7 @@ void TranscribeButton::setLoading(bool loading) {
 		_animation = std::make_unique<Ui::InfiniteRadialAnimation>(
 			[=, itemId = _item->fullId()] {
 				if (const auto item = session->data().message(itemId)) {
-					session->data().requestItemRepaint(
-						item,
-						_lastPaintedPoint.isNull()
-							? QRect()
-							: (QRect(_lastPaintedPoint, size()))
-								+ Margins(st::lineWidth));
+					session->data().requestItemRepaint(item);
 				}
 			},
 			st::historyTranscribeRadialAnimation);

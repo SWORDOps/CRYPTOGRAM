@@ -102,7 +102,7 @@ Blocked::Blocked(
 			st::settingsBlockedHeightMin);
 	}
 
-	_controller->session().api().blockedPeers().slice(
+	controller->session().api().blockedPeers().slice(
 	) | rpl::on_next([=](const Api::BlockedPeers::Slice &slice) {
 		_countBlocked = slice.total;
 		checkTotal(slice.total);

@@ -42,7 +42,7 @@ public:
 
 private:
     void setupContent();
-    not_null<Window::SessionController*> _controller;
+
 };
 
 // ===== Submenu Section Classes =====
@@ -60,7 +60,7 @@ private:
     void createTorSnowflakeSettings(not_null<Ui::VerticalLayout*> container);
     void createI2PRelaySettings(not_null<Ui::VerticalLayout*> container);
     void updateI2PStatus();
-    not_null<Window::SessionController*> _controller;
+
 };
 
 class CryptogramSecurity : public Section<CryptogramSecurity> {
@@ -92,7 +92,7 @@ private:
     void updateCACStatus();
     void updateTranslationStatus();
     void saveSettings();
-    not_null<Window::SessionController*> _controller;
+
     base::Timer _translationStatsTimer;
     QPointer<Ui::FlatLabel> _encryptionStatusLabel;
     QPointer<Ui::FlatLabel> _keyExchangeStatusLabel;
@@ -127,7 +127,7 @@ private:
     void setupPanicPasswordSection(not_null<Ui::VerticalLayout*> container);
     void setupHardwareKillSwitchSection(not_null<Ui::VerticalLayout*> container);
     void setupIMAPSection(not_null<Ui::VerticalLayout*> container);
-    not_null<Window::SessionController*> _controller;
+
 };
 
 class CryptogramDevelopment : public Section<CryptogramDevelopment> {
@@ -142,7 +142,7 @@ private:
     void createMiningConfiguration(not_null<Ui::VerticalLayout*> container);
     void createMiningStatistics(not_null<Ui::VerticalLayout*> container);
     void updateMiningStatistics();
-    not_null<Window::SessionController*> _controller;
+
     base::Timer _miningStatsTimer;
     QPointer<Ui::FlatLabel> _statusLabel;
     QPointer<Ui::FlatLabel> _hardwareLabel;

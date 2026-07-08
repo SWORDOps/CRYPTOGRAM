@@ -314,6 +314,7 @@ mediaviewTitleButton: IconButton(windowTitleButton) {
 	width: 44px;
 	height: 32px;
 }
+mediaviewTitleTop: icon {{ "title_button_top", transparent }};
 mediaviewTitle: WindowTitle(defaultWindowTitle) {
 	height: 0px;
 	bg: mediaviewBg;
@@ -342,6 +343,16 @@ mediaviewTitle: WindowTitle(defaultWindowTitle) {
 	}
 	closeIconActive: mediaviewTitleClose;
 	closeIconActiveOver: mediaviewTitleClose;
+	top: IconButton(mediaviewTitleButton) {
+		icon: mediaviewTitleTop;
+		iconOver: mediaviewTitleTop;
+	}
+	topIconActive: mediaviewTitleTop;
+	topIconActiveOver: mediaviewTitleTop;
+	top2Icon: mediaviewTitleTop;
+	top2IconOver: mediaviewTitleTop;
+	top2IconActive: mediaviewTitleTop;
+	top2IconActiveOver: mediaviewTitleTop;
 }
 
 mediaviewTitleButtonMac: icon{

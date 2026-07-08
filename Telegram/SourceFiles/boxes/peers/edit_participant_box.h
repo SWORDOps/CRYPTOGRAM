@@ -13,6 +13,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Ui {
 class FlatLabel;
+class InputField;
 class LinkButton;
 class Checkbox;
 class Radiobutton;
@@ -103,6 +104,8 @@ private:
 	void finishAddAdmin();
 	void confirmGuardBotSave(ChatAdminRightsInfo rights, Fn<void()> done);
 	void refreshButtons();
+	not_null<Ui::InputField*> addRankInput(
+		not_null<Ui::VerticalLayout*> container);
 	[[nodiscard]] bool canTransferOwnership() const;
 	not_null<Ui::SlideWrap<Ui::RpWidget>*> setupTransferButton(
 		not_null<Ui::VerticalLayout*> container,

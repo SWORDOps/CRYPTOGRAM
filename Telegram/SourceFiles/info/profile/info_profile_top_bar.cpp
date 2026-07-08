@@ -379,7 +379,7 @@ TopBar::TopBar(
 			const auto shown = sublist
 				? sublist->sublistPeer().get()
 				: peer.get();
-			const auto section = Section::Type::Members;
+			const auto section = Info::Section::Type::Members;
 			controller->showSection(topic
 				? std::make_shared<Info::Memento>(topic, section)
 				: std::make_shared<Info::Memento>(shown, section));

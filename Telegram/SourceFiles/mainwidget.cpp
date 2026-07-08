@@ -1585,7 +1585,7 @@ void MainWidget::showHistory(
 	controller()->dropSubsectionTabs();
 }
 
-bool MainWidget::handleDrawToReplyRequest(Data::DrawToReplyRequest request) {
+bool MainWidget::handleDrawToReplyRequest(DrawToReplyRequest request) {
 	if (_mainSection) {
 		using namespace HistoryView;
 		if (const auto с = dynamic_cast<ChatWidget*>(_mainSection.data())) {

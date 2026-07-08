@@ -4,8 +4,9 @@
 #include <QtCore/QTimer>
 #include <QtCore/QQueue>
 #ifdef __has_include
-#if __has_include(<QtMultimedia/QAudioInput>)
-#include <QtMultimedia/QAudioInput>
+#if __has_include(<QtMultimedia/QAudioSource>)
+#include <QtMultimedia/QAudioSource>
+#include <QtMultimedia/QAudioDevice>
 #include <QtMultimedia/QAudioFormat>
 #endif
 #endif
@@ -134,9 +135,9 @@ private:
 
     // Audio processing
 #ifdef __has_include
-#if __has_include(<QtMultimedia/QAudioInput>)
-    std::unique_ptr<QAudioInput> _audio_input;
-    QAudioFormat _audio_format;
+#if __has_include(<QtMultimedia/QAudioSource>)
+	    std::unique_ptr<QAudioSource> _audio_input;
+	    QAudioFormat _audio_format;
 #endif
 #endif
     QIODevice *_audio_device = nullptr;

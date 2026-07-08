@@ -332,16 +332,7 @@ void UserData::setBotManagerId(UserId managerId) {
 }
 
 MTPInputUser UserData::inputUser() const {
-	const auto item = isLoaded() ? nullptr : owner().messageWithPeer(id);
-	if (item) {
-		const auto peer = item->history()->peer;
-		Assert(peer.get() != this);
-
-		return MTP_inputUserFromMessage(
-			item->history()->peer->input(),
-			MTP_int(item->id.bare),
-			MTP_long(peerToUser(id).bare));
-	} else if (isSelf()) {
+	if (isSelf()) {
 		return MTP_inputUserSelf();
 	}
 	return MTP_inputUser(
@@ -673,9 +664,6 @@ void UserData::setNoForwardsFlags(bool myEnabled, bool peerEnabled) {
 	setFlags((flags() & ~mask)
 		| (myEnabled ? Flag::NoForwardsMyEnabled : Flag())
 		| (peerEnabled ? Flag::NoForwardsPeerEnabled : Flag()));
-	if (!myEnabled && !peerEnabled) {
-		owner().clearSharingDisabledTime(this);
-	}
 }
 
 int UserData::starsPerMessage() const {

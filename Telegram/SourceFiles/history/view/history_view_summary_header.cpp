@@ -178,7 +178,7 @@ void SummaryHeader::paint(
 			const auto r = QRect(x, y, w, _height);
 			Ui::PostponeCall(session, [=, itemId = view->data()->fullId()] {
 				if (const auto i = session->data().message(itemId)) {
-					session->data().requestItemRepaint(i, r);
+					session->data().requestItemRepaint(i);
 				}
 			});
 		}

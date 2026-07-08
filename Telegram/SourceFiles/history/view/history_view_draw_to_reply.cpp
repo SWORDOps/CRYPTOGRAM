@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_draw_to_reply.h"
 
+#include "data/data_types.h"
 #include "data/data_document.h"
 #include "data/data_document_media.h"
 #include "data/data_photo_media.h"
@@ -21,7 +22,7 @@ namespace HistoryView {
 
 QImage ResolveDrawToReplyImage(
 		not_null<Data::Session*> data,
-		const Data::DrawToReplyRequest &request) {
+		const DrawToReplyRequest &request) {
 	auto image = QImage();
 	if (request.photoId) {
 		const auto photo = data->photo(request.photoId);

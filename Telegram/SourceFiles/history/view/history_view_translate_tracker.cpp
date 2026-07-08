@@ -386,6 +386,8 @@ void TranslateTracker::recognizeCollected() {
 void TranslateTracker::trackSkipLanguages() {
 	Core::App().settings().skipTranslationLanguagesValue(
 	) | rpl::on_next([=](const std::vector<LanguageId> &skip) {
+		const auto wasOfferedFrom = _history->translateOfferedFrom();
+		const auto wasTranslatedTo = _history->translatedTo();
 		checkRecognized(skip);
 		if (wasTranslatedTo
 			&& wasOfferedFrom

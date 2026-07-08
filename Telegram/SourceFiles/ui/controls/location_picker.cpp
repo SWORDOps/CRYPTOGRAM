@@ -1069,8 +1069,6 @@ void LocationPicker::setupWebview() {
 }
 
 void LocationPicker::showWebviewError() {
-	delete base::take(_mapPlaceholder);
-
 	const auto wrap = CreateChild<RpWidget>(_container);
 
 	const auto available = Webview::Availability();

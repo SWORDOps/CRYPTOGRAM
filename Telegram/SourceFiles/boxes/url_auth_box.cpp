@@ -656,32 +656,9 @@ void RequestUrl(
 			requestDecline();
 		}, state->boxDeclineLifetime);
 	};
-	const auto auth = addCheckbox(
-		tr::lng_url_auth_login_option(
-			tr::now,
-			lt_domain,
-			Ui::Text::Bold(domain),
-			lt_user,
-			Ui::Text::Bold(session->user()->name()),
-			Ui::Text::WithEntities));
-	const auto allow = bot
-		? addCheckbox(tr::lng_url_auth_allow_messages(
-			tr::now,
-			lt_bot,
-			Ui::Text::Bold(bot->firstName),
-			Ui::Text::WithEntities))
-		: nullptr;
-	if (allow) {
-		rpl::single(
-			auth->checked()
-		) | rpl::then(
-			auth->checkedChanges()
-		) | rpl::on_next([=](bool checked) {
-			if (!checked) {
-				allow->setChecked(false);
-			}
-			allow->setDisabled(!checked);
-		}, auth->lifetime());
+	if (!matchCodesFirst || matchCodes.isEmpty()) {
+		showAuthBox();
+		return;
 	}
 	auto matchCodesBox = base::weak_qptr<Ui::BoxContent>();
 	matchCodesBox = show->show(

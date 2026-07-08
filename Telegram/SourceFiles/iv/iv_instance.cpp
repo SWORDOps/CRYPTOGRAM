@@ -810,10 +810,6 @@ void Instance::showOpenedPage(
 		Core::App().hideMediaView();
 	}
 
-	if (Core::App().settings().normalizeIvZoom()) {
-		Core::App().saveSettingsDelayed();
-	}
-
 	primeFullRequest(session, data);
 	const auto guard = gsl::finally([&] {
 		if (requestFullOnOpen) {

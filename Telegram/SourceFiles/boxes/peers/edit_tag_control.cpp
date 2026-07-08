@@ -232,8 +232,8 @@ EditTagControl::PreviewWidget::PreviewWidget(
 	_delegate->setTagText(initialText);
 
 	_history->owner().viewRepaintRequest(
-	) | rpl::on_next([=](Data::RequestViewRepaint data) {
-		if (data.view == _item.get()) {
+	) | rpl::on_next([=](not_null<const Element*> view) {
+		if (view == _item.get()) {
 			update();
 		}
 	}, lifetime());

@@ -201,6 +201,7 @@ MarkdownTable {
 	cellPadding: margins;
 	border: pixels;
 	borderFg: color;
+	table: Table;
 	radius: pixels;
 	headerBg: color;
 	headerBgOpacity: double;
@@ -472,11 +473,15 @@ defaultMarkdownDisplayMath: MarkdownDisplayMath {
 	overflowWidth: 4px;
 	overflowFg: windowSubTextFg;
 }
+markdownTable: Table(defaultTable) {
+	radius: 6px;
+}
 defaultMarkdownTable: MarkdownTable {
 	cellPadding: margins(8px, 10px, 8px, 10px);
 	border: 1px;
 	borderFg: inputBorderFg;
-	radius: defaultTable.radius;
+	table: markdownTable;
+	radius: 6px;
 	headerBg: windowBgOver;
 	headerBgOpacity: 1.0;
 	headerStyle: defaultMarkdownTableHeaderStyle;

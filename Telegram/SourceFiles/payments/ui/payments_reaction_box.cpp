@@ -596,7 +596,7 @@ void PaidReactionsBox(
 				tr::rich)
 			: tr::lng_paid_react_about(
 				lt_channel,
-				rpl::single(Text::Bold(args.channel)),
+				rpl::single(Text::Bold(args.name)),
 				Text::RichLangValue)),
 		st::boostText);
 	labelWrap->widthValue() | rpl::on_next([=](int width) {
@@ -611,6 +611,7 @@ void PaidReactionsBox(
 
 	if (!videoStream) {
 		addTopReactors();
+	}
 
 	const auto named = box->addRow(
 		object_ptr<Checkbox>(

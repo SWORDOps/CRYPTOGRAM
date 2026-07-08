@@ -17,9 +17,9 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <QtCore/QStringList>
 #include <QtCore/QDateTime>
 #ifdef __has_include
-#if __has_include(<QtMultimedia/QAudioInput>)
-#include <QtMultimedia/QAudioInput>
-#include <QtMultimedia/QAudioOutput>
+#if __has_include(<QtMultimedia/QAudioSource>)
+#include <QtMultimedia/QAudioSource>
+#include <QtMultimedia/QAudioSink>
 #define CRYPTOGRAM_HAVE_QTMULTIMEDIA 1
 #endif
 #endif
@@ -29,7 +29,13 @@ namespace Security {
 
 // Forward declarations
 enum class SecurityTier;
-using SpyGram::Counterintelligence::ThreatLevel;
+enum class ThreatLevel {
+    None = 0,
+    Low,
+    Medium,
+    High,
+    Critical
+};
 
 // GNA (Gaussian Neural Accelerator) capabilities
 struct GNACapabilities {
@@ -255,8 +261,8 @@ private:
 
     // Audio interface
 #ifdef CRYPTOGRAM_HAVE_QTMULTIMEDIA
-    std::unique_ptr<QAudioInput> _audioInput;
-    std::unique_ptr<QAudioOutput> _audioOutput;
+    std::unique_ptr<QAudioSource> _audioInput;
+    std::unique_ptr<QAudioSink> _audioOutput;
 #endif
 
     // Performance tracking

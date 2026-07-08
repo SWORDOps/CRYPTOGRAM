@@ -978,11 +978,6 @@ Panel::Button::Button(
 , _st(st)
 , _bg(st::windowBgActive->c)
 , _roundRect(st::callRadius, st::windowBgActive) {
-	_textFull.value(
-	) | rpl::on_next([=](const QString &text) {
-		_text.setText(st::semiboldTextStyle, text);
-		update();
-	}, lifetime());
 
 	resize(
 		_st.padding.left() + _text.maxWidth() + _st.padding.right(),

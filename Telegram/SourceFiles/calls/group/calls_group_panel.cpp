@@ -310,16 +310,6 @@ void Panel::minimize() {
 	window()->setWindowState(window()->windowState() | Qt::WindowMinimized);
 }
 
-void Panel::pinToTop(bool isPinned) {
-	if (isPinned) {
-		window()->setWindowFlags(Qt::WindowStaysOnTopHint);
-		window()->show();
-	} else {
-		window()->setWindowFlags((window()->windowFlags() & ~Qt::WindowStaysOnTopHint));
-		window()->show();
-	}
-}
-
 void Panel::close() {
 	window()->close();
 }
@@ -1423,7 +1413,7 @@ void Panel::subscribeToChanges(not_null<Data::GroupCall*> real) {
 }
 
 void Panel::createPinOnTop() {
-	_pinOnTop.create(widget(), st::groupCallPinOnTop);
+	_pinOnTop.create(widget(), st::groupCallTitle.top);
 	const auto pinned = [=] {
 		const auto handle = window()->windowHandle();
 		return handle && (handle->flags() & Qt::WindowStaysOnTopHint);
@@ -2143,10 +2133,26 @@ void Panel::trackControl(Ui::RpWidget *widget, rpl::lifetime &lifetime) {
 	const auto over = std::make_shared<bool>();
 	widget->events(
 	) | rpl::on_next([=](not_null<QEvent*> e) {
-		if (e->type() == QEvent::Enter) {
-			trackControlOver(widget, true);
-		} else if (e->type() == QEvent::Leave) {
-			trackControlOver(widget, false);
+		const auto type = e->type();
+		if (type == QEvent::Enter) {
+			// Enter events may come from widget destructors,
+			// in that case sync-showing tooltip (calling Grab)
+			// crashes the whole thing.
+			*over = true;
+			crl::on_main(widget, [=] {
+				if (*over) {
+					trackControlOver(widget, true);
+				}
+			});
+			toggleWideControls(true);
+		} else if (type == QEvent::Leave) {
+			*over = false;
+			crl::on_main(widget, [=] {
+				if (!*over) {
+					trackControlOver(widget, false);
+				}
+			});
+			toggleWideControls(false);
 		}
 	}, lifetime);
 }

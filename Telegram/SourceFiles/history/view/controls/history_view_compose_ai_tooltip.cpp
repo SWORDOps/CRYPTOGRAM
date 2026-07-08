@@ -46,16 +46,12 @@ ComposeTooltipManager::ComposeTooltipManager(
 }
 
 void ComposeTooltipManager::hideAndRemember() {
-	if (!Core::App().settings().readPref<bool>(_prefKey)) {
-		Core::App().settings().writePref<bool>(_prefKey, true);
-	}
 	_shown = false;
 	_tooltip->toggleAnimated(false);
 }
 
 void ComposeTooltipManager::updateVisibility(bool buttonShown) {
-	const auto showTooltip = buttonShown
-		&& !Core::App().settings().readPref<bool>(_prefKey);
+	const auto showTooltip = buttonShown;
 	if (showTooltip) {
 		updateGeometry();
 	}

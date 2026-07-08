@@ -532,7 +532,7 @@ not_null<HistoryItem*> History::createItem(
 		MessageFlags localFlags,
 		bool detachExistingItem,
 		bool newMessage) {
-	owner().fillMessagePeers(peer->id, message);
+	// owner().fillMessagePeers(peer->id, message);
 	if (const auto result = owner().message(peer, id)) {
 		if (detachExistingItem) {
 			result->removeMainView(Data::ViewRemovalReason::Detached);
@@ -1561,7 +1561,7 @@ void History::applyServiceChanges(
 		if (data.is_auction_acquired() && data.vto_id()) {
 			const auto to = peer->owner().peer(peerFromMTP(*data.vto_id()));
 			data.vgift().match([&](const MTPDstarGift &data) {
-				peer->owner().notifyGiftAuctionGot({ data.vid().v, to });
+				// peer->owner().notifyGiftAuctionGot({ data.vid().v, to });
 			}, [](const auto &) {});
 		}
 	}, [&](const MTPDmessageActionNoForwardsToggle &data) {
@@ -1588,7 +1588,7 @@ void History::viewHeightAdjusted(not_null<Element*> view, int delta) {
 	if (view->data()->mainView() == view) {
 		mainViewHeightAdjusted(view, delta);
 	}
-	owner().notifyViewHeightAdjusted(view, delta);
+	// owner().notifyViewHeightAdjusted(view, delta);
 }
 
 void History::mainViewHeightAdjusted(not_null<Element*> view, int delta) {

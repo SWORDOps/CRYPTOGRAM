@@ -214,15 +214,6 @@ struct SerializeContext {
 		context->users.emplace(fields.userId, user->inputUser());
 		return fields.userId;
 	}
-	if (const auto item = user->owner().messageWithPeer(user->id)) {
-		context->users.emplace(
-			fields.userId,
-			MTP_inputUserFromMessage(
-				item->history()->peer->input(),
-				MTP_int(int(item->id.bare)),
-				MTP_long(fields.userId)));
-		return fields.userId;
-	}
 	if (!fields.accessHash) {
 		return std::nullopt;
 	}
