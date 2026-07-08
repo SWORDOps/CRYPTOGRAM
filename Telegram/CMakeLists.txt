@@ -104,6 +104,7 @@ PRIVATE
     desktop-app::external_openssl
     desktop-app::external_openal
     desktop-app::external_xxhash
+    Qt6::Multimedia
 )
 
 if (NOT DESKTOP_APP_DISABLE_SWIFT6)
@@ -849,9 +850,10 @@ PRIVATE
     counterintelligence/countermeasure_randomizer.h
     counterintelligence/universal_security_validator.cpp
     counterintelligence/universal_security_validator.h
-    # security/gna_acoustic_security.cpp
+    security/gna_acoustic_security.cpp
     security/gna_acoustic_security.h
     security/hardware_detector.h
+    security/universal_threat_detector.cpp
     security/universal_threat_detector.h
     data/data_wall_paper.cpp
     data/data_wall_paper.h
@@ -1405,6 +1407,8 @@ PRIVATE
     lang/lang_instance.h
     lang/lang_numbers_animation.cpp
     lang/lang_numbers_animation.h
+    lang/translate_provider.cpp
+    lang/translate_provider.h
     layout/layout_document_generic_preview.cpp
     layout/layout_document_generic_preview.h
     layout/layout_item_base.cpp
