@@ -2,6 +2,7 @@
 name: Android APK Production
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -9,6 +10,7 @@ on:
     tags:
       - 'v*'
     paths:
+      - 'telegram-android'
       - 'telegram-android/**'
       - 'TMessagesProj/**'
       - '.github/workflows/android-apk.yml'
