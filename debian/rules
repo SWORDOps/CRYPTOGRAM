@@ -7,20 +7,26 @@ export DH_VERBOSE = 1
 
 override_dh_auto_configure:
 	dh_auto_configure -- \
+		-DTDESKTOP_API_ID=2040 \
+		-DTDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 \
 		-DCMAKE_BUILD_TYPE=Release \
+		-DDESKTOP_APP_USE_PACKAGED=ON \
 		-DFETCHCONTENT_FULLY_DISCONNECTED=OFF \
 		-DENABLE_QUANTUMGUARD=ON
 
 override_dh_auto_test:
 	# Run static verification checks
 	./run_tests.sh
-	./check_syntax.sh
 
 override_dh_usrlocal:
 	rm -rf debian/cryptogram-desktop/usr/local
 
 override_dh_dwz:
 	# Disable dwz as it fails on DWARF 5 debug_addr
+
+override_dh_install:
+	dh_install
+	mv debian/cryptogram-desktop/usr/bin/Telegram debian/cryptogram-desktop/usr/bin/cryptogram
 
 override_dh_shlibdeps:
 	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info

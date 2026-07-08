@@ -1,1 +1,2 @@
 build_release/bin/Telegram /usr/bin/
+debian/cryptogram-desktop.desktop /usr/share/applications/
