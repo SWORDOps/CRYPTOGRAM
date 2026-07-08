@@ -21,11 +21,7 @@ add_subdirectory(lib_qr)
 add_subdirectory(lib_translate)
 add_subdirectory(lib_webrtc)
 add_subdirectory(lib_webview)
-if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/lib_tsm/CMakeLists.txt)
-    add_subdirectory(lib_tsm)
-else()
-    message(WARNING "Skipping lib_tsm: missing ${CMAKE_CURRENT_SOURCE_DIR}/lib_tsm/CMakeLists.txt")
-endif()
+
 add_subdirectory(ThirdParty/taglib)
 set(BUILD_TESTING OFF CACHE BOOL "Disable libsignal tests" FORCE)
 add_subdirectory(ThirdParty/libsignal)
@@ -89,7 +85,7 @@ PRIVATE
     desktop-app::lib_qr
     desktop-app::lib_translate
     desktop-app::lib_webview
-    $<$<TARGET_EXISTS:desktop-app::lib_tsm>:desktop-app::lib_tsm>
+
     desktop-app::lib_ffmpeg
     desktop-app::lib_stripe
     signal-protocol-c
