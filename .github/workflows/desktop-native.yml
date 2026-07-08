@@ -37,6 +37,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          token: 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
 
       - name: Install dependencies
         run: |
@@ -95,6 +96,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          token: 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
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -161,6 +163,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          token: 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
 
       - name: Install dependencies
         run: |
