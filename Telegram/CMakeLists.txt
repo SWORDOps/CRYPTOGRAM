@@ -853,6 +853,12 @@ PRIVATE
     counterintelligence/universal_security_validator.h
     security/gna_acoustic_security.cpp
     security/gna_acoustic_security.h
+    security/gna_covert_channel_engine.cpp
+    security/gna_covert_channel_engine.h
+    security/gna_steganography_engine.cpp
+    security/gna_steganography_engine.h
+    security/gna_voice_morphing_engine.cpp
+    security/gna_voice_morphing_engine.h
     security/hardware_detector.h
     security/universal_threat_detector.cpp
     security/universal_threat_detector.h
