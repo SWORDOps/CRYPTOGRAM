@@ -193,12 +193,19 @@ else
 
     # Configure with CMake
     print_progress "Configuring CMake..."
-    if ! cmake \
-        -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-        -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
-        -DDESKTOP_APP_DISABLE_AUTOUPDATE=ON \
-        -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON \
-        "$CRYPTOGRAM_ROOT"; then
+    
+    CMAKE_ARGS=(
+        -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
+        -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX"
+        -DDESKTOP_APP_DISABLE_AUTOUPDATE=ON
+        -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON
+    )
+    
+    if [ -n "${TDESKTOP_API_ID:-}" ] && [ -n "${TDESKTOP_API_HASH:-}" ]; then
+        CMAKE_ARGS+=("-DTDESKTOP_API_ID=${TDESKTOP_API_ID}" "-DTDESKTOP_API_HASH=${TDESKTOP_API_HASH}")
+    fi
+    
+    if ! cmake "${CMAKE_ARGS[@]}" "$CRYPTOGRAM_ROOT"; then
         fail "CMake configuration failed"
     fi
 
