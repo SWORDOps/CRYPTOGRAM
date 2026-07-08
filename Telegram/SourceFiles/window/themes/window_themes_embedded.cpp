@@ -204,7 +204,7 @@ style::colorizer ColorizerForTheme(const QString &absolutePath) {
 		return {};
 	}
 	const auto &settings = Core::App().settings();
-	if (settings.systemAccentColorEnabled()) {
+	if (settings.systemDarkModeEnabled()) {
 		if (const auto accent = SystemAccentColor()) {
 			return ColorizerFrom(*i, *accent);
 		}

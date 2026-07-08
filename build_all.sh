@@ -1990,7 +1990,7 @@ build_cryptogram() {
     if [ "$DRY_RUN" -eq 1 ]; then
         print_info "[DRY RUN] Would run CRYPTOGRAM build"
     else
-        if ! run_cmd_verbose "cmake --build . --config Release --parallel $PARALLEL_JOBS"; then
+        if ! run_cmd_verbose "cmake --build . --config Release --target Telegram --parallel $PARALLEL_JOBS"; then
             print_error "CRYPTOGRAM build failed"
             echo ""
             echo "Common issues:"

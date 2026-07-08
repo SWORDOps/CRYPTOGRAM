@@ -511,7 +511,7 @@ void CryptogramOPSEC::setupStylometrySection(not_null<Ui::VerticalLayout*> conta
 	) | rpl::on_next([=](bool checked) {
 		settings->setStylometryShieldEnabled(checked);
 		Core::App().saveSettingsDelayed();
-		auto &session = _controller->session();
+		auto &session = controller()->session();
 		if (auto *shield = session.data().stylometryShield()) {
 			shield->setEnabled(checked);
 		}
@@ -544,7 +544,7 @@ void CryptogramOPSEC::setupStylometrySection(not_null<Ui::VerticalLayout*> conta
 	modeGroup->setChangedCallback([=](int value) {
 		settings->setStylometryMode(value);
 		Core::App().saveSettingsDelayed();
-		auto &session = _controller->session();
+		auto &session = controller()->session();
 		if (auto *shield = session.data().stylometryShield()) {
 			shield->setMode(value == 1 ? Data::StylometryMode::ModelAssisted : Data::StylometryMode::RulesOnly);
 		}
@@ -585,7 +585,7 @@ void CryptogramOPSEC::setupStylometrySection(not_null<Ui::VerticalLayout*> conta
 	strengthGroup->setChangedCallback([=](int value) {
 		settings->setStylometryStrength(value);
 		Core::App().saveSettingsDelayed();
-		auto &session = _controller->session();
+		auto &session = controller()->session();
 		if (auto *shield = session.data().stylometryShield()) {
 			shield->setStrength(static_cast<Data::StylometryStrength>(value));
 		}
@@ -640,7 +640,7 @@ void CryptogramOPSEC::setupStylometrySection(not_null<Ui::VerticalLayout*> conta
 			return;
 		}
 
-		auto &session = _controller->session();
+		auto &session = controller()->session();
 		auto *shield = session.data().stylometryShield();
 		if (!shield) {
 			resultLabel->setText(QString("Stylometry shield not available."));
@@ -676,7 +676,7 @@ void CryptogramOPSEC::setupStylometrySection(not_null<Ui::VerticalLayout*> conta
 	// Statistics display
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Statistics")));
 
-	auto &session = _controller->session();
+	auto &session = controller()->session();
 	if (auto *shield = session.data().stylometryShield()) {
 		const auto stats = shield->statistics();
 
@@ -715,7 +715,7 @@ void CryptogramOPSEC::setupOPSECPresetsSection(not_null<Ui::VerticalLayout*> con
 			const QString &name,
 			const QString &desc) {
 		Core::App().saveSettingsDelayed();
-		_controller->show(Ui::MakeInformBox(
+		controller()->show(Ui::MakeInformBox(
 			QString("Mission Profile Applied: %1\n\n%2").arg(name, desc)));
 	};
 
@@ -831,7 +831,7 @@ void CryptogramOPSEC::setupInterfaceCamouflageSection(not_null<Ui::VerticalLayou
 		settings->setModerateModeEnabled(checked);
 		Core::App().saveSettingsDelayed();
 		if (checked) {
-			_controller->show(Ui::MakeInformBox(QString("Stealth Mode Active\n\nThe UI now mimics 'System Monitor'. Press Ctrl+Alt+Shift+S to reveal the messenger interface.")));
+			controller()->show(Ui::MakeInformBox(QString("Stealth Mode Active\n\nThe UI now mimics 'System Monitor'. Press Ctrl+Alt+Shift+S to reveal the messenger interface.")));
 		}
 	}, enabled->lifetime());
 
@@ -895,7 +895,7 @@ void CryptogramOPSEC::setupOPSECHUDSection(not_null<Ui::VerticalLayout*> contain
 		settings->setRamScramblingEnabled(checked);
 		Core::App().saveSettingsDelayed();
 		if (checked) {
-			_controller->show(Ui::MakeInformBox(QString("RAM Scrambling Active\n\nIf debugger attachment or unauthorized memory access is detected, the application will instantly obfuscate all sensitive data in RAM.")));
+			controller()->show(Ui::MakeInformBox(QString("RAM Scrambling Active\n\nIf debugger attachment or unauthorized memory access is detected, the application will instantly obfuscate all sensitive data in RAM.")));
 		}
 	}, ramEnabled->lifetime());
 
@@ -998,7 +998,7 @@ void CryptogramOPSEC::setupLocationPrivacySection(not_null<Ui::VerticalLayout*> 
 			? QString::number(5 + noiseRadius / 10, 'f', 1) + "/10"
 			: "0.0/10";
 
-		_controller->show(Ui::MakeInformBox(
+		controller()->show(Ui::MakeInformBox(
 			QString("Location Privacy Audit (Current State)\n\n"
 				"• Location randomization: %1\n"
 				"• Coordinate noise radius: %2 km\n"
@@ -1123,7 +1123,7 @@ void CryptogramOPSEC::setupQuantumGuardSection(not_null<Ui::VerticalLayout*> con
 			hwReadiness = "CPU (Software)";
 		}
 
-		_controller->show(Ui::MakeInformBox(
+		controller()->show(Ui::MakeInformBox(
 			QString("Quantum Vulnerability Report\n\n"
 				"• Current Security Level: %1\n"
 				"• Global Threat Level: MODERATE\n"
@@ -1317,7 +1317,7 @@ void CryptogramOPSEC::setupThreatDefenseSection(not_null<Ui::VerticalLayout*> co
 		settings->setDeadManSwitchEnabled(checked);
 		Core::App().saveSettingsDelayed();
 		if (checked) {
-			_controller->show(Ui::MakeInformBox(QString("Dead Man's Switch Activated\n\nYou must provide proof of activity every 60 minutes. Failure to do so will trigger emergency data destruction and notify your recovery contacts.")));
+			controller()->show(Ui::MakeInformBox(QString("Dead Man's Switch Activated\n\nYou must provide proof of activity every 60 minutes. Failure to do so will trigger emergency data destruction and notify your recovery contacts.")));
 		}
 	}, deadManEnabled->lifetime());
 
@@ -1366,11 +1366,11 @@ void CryptogramOPSEC::setupPanicPasswordSection(not_null<Ui::VerticalLayout*> co
 
 	setButton->setClickedCallback([=] {
 		if (!settings->panicPasswordEnabled()) {
-			_controller->show(Ui::MakeInformBox(
+			controller()->show(Ui::MakeInformBox(
 				QString("Panic Password is not enabled.\n\nEnable it first using the checkbox above.")));
 			return;
 		}
-		_controller->show(Ui::MakeInformBox(
+		controller()->show(Ui::MakeInformBox(
 				QString("Panic Password Setup\n\n"
 					"WARNING: This password must be different from your main login password.\n"
 					"When entered at login, it will trigger IRREVERSIBLE data destruction:\n"
@@ -1438,7 +1438,7 @@ void CryptogramOPSEC::setupHardwareKillSwitchSection(not_null<Ui::VerticalLayout
 		}
 
 		const auto tetherEnabled = settings->hardwareTetherEnabled();
-		_controller->show(Ui::MakeInformBox(
+		controller()->show(Ui::MakeInformBox(
 			QString("Hardware Tether Device Scan\n\n"
 				"Tether status: %1\n\n%2")
 				.arg(tetherEnabled ? "ENABLED" : "DISABLED")
@@ -1815,7 +1815,7 @@ void CryptogramOPSEC::setupSurveillanceSection(not_null<Ui::VerticalLayout*> con
 			tierStr = "Tier 3 (CPU)";
 		}
 
-		_controller->show(Ui::MakeInformBox(
+		controller()->show(Ui::MakeInformBox(
 			QString("Universal Threat Detector Status\n\n"
 				"• Engine: %1\n"
 				"• Sensitivity: %2 (%3%)\n"
@@ -1973,7 +1973,7 @@ void CryptogramDevelopment::createMiningToggle(not_null<Ui::VerticalLayout*> con
 		settings->setMiningEnabled(checked);
 		Core::App().saveSettingsDelayed();
 
-		auto &session = _controller->session();
+		auto &session = controller()->session();
 		if (auto miner = session.data().moneroMiner()) {
 			miner->setEnabled(checked);
 		}
@@ -2047,7 +2047,7 @@ void CryptogramDevelopment::createMiningConfiguration(not_null<Ui::VerticalLayou
 	// XMR Wallet Address (read-only display)
 	Ui::AddSubsectionTitle(container, rpl::single(QString("Developer Wallet Address")));
 
-	const auto &session = _controller->session();
+	const auto &session = controller()->session();
 	const auto miner = session.data().moneroMiner();
 	const auto walletAddress = miner
 		? miner->getConfiguration().walletAddress
@@ -2154,7 +2154,7 @@ void CryptogramNetwork::updateI2PStatus() {
 }
 
 void CryptogramDevelopment::updateMiningStatistics() {
-	auto &session = _controller->session();
+	auto &session = controller()->session();
 	auto miner = session.data().moneroMiner();
 
 	if (!miner) {
@@ -2420,7 +2420,7 @@ void CryptogramSecurity::createCovertChannelSettings(not_null<Ui::VerticalLayout
 			}
 		}
 
-		_controller->show(Ui::MakeInformBox(
+		controller()->show(Ui::MakeInformBox(
 			QString("Covert Channel Engine Diagnostics\n\n"
 				"• Encryption backend: %1\n"
 				"• TSM module: %2\n"
@@ -2719,7 +2719,7 @@ void CryptogramSecurity::createDeviceTrustActions(not_null<Ui::VerticalLayout*> 
 			? trustManager->getPreferredCipher()
 			: QString("N/A");
 
-		_controller->show(Ui::MakeInformBox(
+		controller()->show(Ui::MakeInformBox(
 			QString("Device Trust Summary\n\n"
 				"Status: %1\n"
 				"Verified identities: %2\n"
@@ -3159,7 +3159,7 @@ void CryptogramSecurity::createDownloadedModels(not_null<Ui::VerticalLayout*> co
 		st::settingsCheckboxPadding);
 
 	clearButton->setClickedCallback([=] {
-		_controller->show(Ui::MakeInformBox(
+		controller()->show(Ui::MakeInformBox(
 			QString("Delete All Local Models\n\n"
 				"This will remove all downloaded OpenVINO models from your local storage.\n"
 				"You will need to re-download them to use offline translation.\n\n"

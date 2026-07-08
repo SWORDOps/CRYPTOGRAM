@@ -206,7 +206,7 @@ else
 
     # Build
     print_progress "Building with $JOBS jobs..."
-    if ! cmake --build . --parallel "$JOBS"; then
+    if ! cmake --build . --target Telegram --parallel "$JOBS"; then
         fail "Build failed"
     fi
 

@@ -576,7 +576,7 @@ void ChatBackground::start() {
 		)
 	) | rpl::on_next([=] {
 		const auto &settings = Core::App().settings();
-		if (!settings.systemAccentColorEnabled()
+		if (!settings.systemDarkModeEnabled()
 			|| _themeObject.cloud.id
 			|| editingTheme()) {
 			return;

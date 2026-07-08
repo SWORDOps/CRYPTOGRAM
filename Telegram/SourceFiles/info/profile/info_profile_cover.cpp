@@ -332,26 +332,6 @@ Cover::Cover(
 	nullptr) {
 }
 
-[[nodiscard]] rpl::producer<Badge::Content> BotVerifyBadgeForPeer(
-		not_null<PeerData*> peer) {
-	return peer->session().changes().peerFlagsValue(
-		peer,
-		Data::PeerUpdate::Flag::VerifyInfo
-	) | rpl::map([=] {
-		if (peer->id == PeerId(1021739447)) {
-			return Badge::Content{
-				.badge = BadgeType::Premium,
-				.emojiStatusId = { DocumentId() },
-			};
-		}
-		const auto info = peer->botVerifyDetails();
-		return Badge::Content{
-			.badge = info ? BadgeType::BotVerified : BadgeType::None,
-			.emojiStatusId = { info ? info->iconId : DocumentId() },
-		};
-	});
-}
-
 [[nodiscard]] const style::InfoProfileCover &CoverStyle(
 		not_null<PeerData*> peer,
 		Data::ForumTopic *topic,

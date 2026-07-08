@@ -453,6 +453,9 @@ public:
 	[[nodiscard]] Window::Theme::AccentColors &themesAccentColors() {
 		return _themesAccentColors;
 	}
+	[[nodiscard]] const Window::Theme::AccentColors &themesAccentColors() const {
+		return _themesAccentColors;
+	}
 	void setThemesAccentColors(Window::Theme::AccentColors &&colors) {
 		_themesAccentColors = std::move(colors);
 	}

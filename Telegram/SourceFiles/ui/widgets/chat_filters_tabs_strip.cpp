@@ -119,7 +119,7 @@ void ShowMenu(
 				filters->requestSuggested();
 				filters->suggestedUpdated(
 				) | rpl::take(1) | rpl::on_next([=] {
-					controller->showSettings(Settings::Folders::Id());
+					controller->showSettings(Settings::FoldersId());
 				}, parent->lifetime());
 			}
 		};

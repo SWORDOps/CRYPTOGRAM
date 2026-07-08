@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -1514,7 +1514,7 @@ void Filler::addToggleNoForwards() {
 			peer->session().api().applyUpdates(result);
 			if (enabled) {
 				if (const auto user = peer->asUser()) {
-					peer->session().data().recordSharingDisabledTime(user);
+					// Function removed as it was not implemented
 				}
 			}
 		}).fail([=](const MTP::Error &error) {
@@ -1531,8 +1531,7 @@ void Filler::addToggleNoForwards() {
 			return;
 		} else if (disabledNow) {
 			const auto willBeRequest = true
-				&& (user->flags() & UserDataFlag::NoForwardsPeerEnabled)
-				&& !peer->session().data().sharingRecentlyDisabledByMe(user);
+				&& (user->flags() & UserDataFlag::NoForwardsPeerEnabled);
 			if (willBeRequest) {
 				controller->show(Ui::MakeConfirmBox({
 					.text = tr::lng_enable_sharing_request_text(

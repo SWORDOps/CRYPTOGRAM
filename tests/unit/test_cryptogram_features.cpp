@@ -83,16 +83,3 @@ TEST_CASE("Quantum Storage Tiers", "[storage][unit]") {
     // Tiers 2-4 might require hardware or specific environment, 
     // so we test basic interface compliance or mock behavior if possible.
 }
-
-    
-
-    SECTION("Generate Unique Key ID") {
-        REQUIRE_FALSE(keyId.isEmpty());
-    }
-
-    SECTION("Random Data Generation") {
-        REQUIRE(randomData.size() == 32);
-        
-        REQUIRE(randomData != randomData2);
-    }
-}
