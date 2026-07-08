@@ -67,6 +67,7 @@ endif()
 
 set_target_properties(Telegram PROPERTIES AUTOMOC ON)
 
+find_package(Qt6 COMPONENTS Multimedia REQUIRED)
 target_link_libraries(Telegram
 PRIVATE
     tdesktop::lib_tgcalls
