@@ -842,6 +842,204 @@ not_null<Ui::VerticalLayout*> SetupFoldersList(
 	return wrap;
 }
 
+
+void BuildTopContent(SectionBuilder &builder, rpl::producer<> showFinished) {
+	builder.add([showFinished = std::move(showFinished)](
+			const WidgetContext &ctx) mutable {
+		const auto parent = ctx.container;
+		const auto divider = Ui::CreateChild<Ui::BoxContentDivider>(
+			parent.get());
+		const auto verticalLayout = parent->add(
+			object_ptr<Ui::VerticalLayout>(parent.get()));
+
+		auto icon = CreateLottieIcon(
+			verticalLayout,
+			{
+				.name = u"filters"_q,
+				.sizeOverride = {
+					st::settingsFilterIconSize,
+					st::settingsFilterIconSize,
+				},
+			},
+			st::settingsFilterIconPadding);
+		std::move(
+			showFinished
+		) | rpl::on_next([animate = std::move(icon.animate)] {
+			animate(anim::repeat::once);
+		}, verticalLayout->lifetime());
+		verticalLayout->add(std::move(icon.widget));
+
+		verticalLayout->add(
+			object_ptr<Ui::FlatLabel>(
+				verticalLayout,
+				tr::lng_filters_about(),
+				st::settingsFilterDividerLabel),
+			st::settingsFilterDividerLabelPadding,
+			style::al_top)->setTryMakeSimilarLines(true);
+
+		verticalLayout->geometryValue(
+		) | rpl::on_next([=](const QRect &r) {
+			divider->setGeometry(r);
+		}, divider->lifetime());
+
+		return SectionBuilder::WidgetToAdd{};
+	});
+}
+
+void BuildFoldersListSection(
+		SectionBuilder &builder,
+		not_null<FoldersState*> state) {
+	builder.addSkip();
+	builder.addSubsectionTitle(tr::lng_filters_subtitle());
+
+	builder.add([=](const WidgetContext &ctx) {
+		const auto wrap = SetupFoldersList(
+			ctx.controller,
+			ctx.container,
+			state,
+			ctx.highlights);
+		return SectionBuilder::WidgetToAdd{};
+	});
+}
+
+void BuildTagsSection(SectionBuilder &builder, not_null<FoldersState*> state) {
+	if (!builder.session()->premiumPossible()) {
+		return;
+	}
+
+	builder.addDivider();
+	builder.addSkip();
+
+	const auto session = builder.session();
+
+	builder.add([=](const WidgetContext &ctx) {
+		const auto controller = ctx.controller;
+		const auto content = ctx.container;
+
+		struct TagsState final {
+			rpl::event_stream<bool> tagsTurnOff;
+			base::Timer requestTimer;
+			Fn<void()> sendCallback;
+		};
+
+		auto premium = Data::AmPremiumValue(session);
+		const auto tagsButton = content->add(
+			object_ptr<Ui::SettingsButton>(
+				content,
+				tr::lng_filters_enable_tags(),
+				st::settingsButtonNoIconLocked));
+		if (ctx.highlights) {
+			ctx.highlights->push_back({ u"folders/show-tags"_q, { tagsButton } });
+		}
+		const auto tagsState = tagsButton->lifetime().make_state<TagsState>();
+		tagsButton->toggleOn(rpl::merge(
+			rpl::combine(
+				session->data().chatsFilters().tagsEnabledValue(),
+				rpl::duplicate(premium),
+				rpl::mappers::_1 && rpl::mappers::_2),
+			tagsState->tagsTurnOff.events()));
+		rpl::duplicate(premium) | rpl::on_next([=](bool value) {
+			tagsButton->setToggleLocked(!value);
+		}, tagsButton->lifetime());
+
+		const auto send = [=,
+				weak = base::make_weak(tagsButton)](bool checked) {
+			session->data().chatsFilters().requestToggleTags(checked, [=] {
+				if ([[maybe_unused]] const auto strong = weak.get()) {
+					tagsState->tagsTurnOff.fire(!checked);
+				}
+			});
+		};
+
+		tagsButton->toggledValue(
+		) | rpl::filter([=](bool checked) {
+			const auto premium = session->premium();
+			if (checked && !premium) {
+				ShowPremiumPreviewToBuy(controller, PremiumFeature::FilterTags);
+				tagsState->tagsTurnOff.fire(false);
+			}
+			if (!premium) {
+				state->tagsButtonEnabled.fire(false);
+			} else {
+				state->tagsButtonEnabled.fire_copy(checked);
+			}
+			const auto proceed = premium
+				&& (checked != session->data().chatsFilters().tagsEnabled());
+			if (!proceed) {
+				tagsState->requestTimer.cancel();
+			}
+			return proceed;
+		}) | rpl::on_next([=](bool v) {
+			tagsState->sendCallback = [=] { send(v); };
+			tagsState->requestTimer.cancel();
+			tagsState->requestTimer.setCallback([=] { send(v); });
+			tagsState->requestTimer.callOnce(500);
+		}, tagsButton->lifetime());
+
+		tagsButton->lifetime().add([=] {
+			if (tagsState->requestTimer.isActive()) {
+				if (tagsState->sendCallback) {
+					tagsState->sendCallback();
+				}
+			}
+		});
+
+		return SectionBuilder::WidgetToAdd{};
+	});
+
+	builder.addSkip();
+
+	builder.add([=](const WidgetContext &ctx) {
+		auto premium = Data::AmPremiumValue(session);
+		const auto about = Ui::AddDividerText(
+			ctx.container,
+			rpl::conditional(
+				rpl::duplicate(premium),
+				tr::lng_filters_enable_tags_about(tr::rich),
+				tr::lng_filters_enable_tags_about_premium(
+					lt_link,
+					tr::lng_effect_premium_link() | rpl::map([](QString t) {
+						return tr::link(std::move(t), u"internal:"_q);
+					}),
+					tr::rich)));
+		about->setClickHandlerFilter([=](const auto &...) {
+			Settings::ShowPremium(ctx.controller, u"folder_tags"_q);
+			return true;
+		});
+		return SectionBuilder::WidgetToAdd{};
+	});
+}
+
+void BuildViewSection(SectionBuilder &builder) {
+	builder.add([](const WidgetContext &ctx) {
+		const auto controller = ctx.controller;
+		const auto parent = ctx.container;
+
+		const auto wrap = parent->add(
+			object_ptr<Ui::SlideWrap<Ui::VerticalLayout>>(
+				parent,
+				object_ptr<Ui::VerticalLayout>(parent)));
+		wrap->toggleOn(controller->enoughSpaceForFiltersValue());
+		const auto content = wrap->entity();
+
+		Ui::AddDivider(content);
+		Ui::AddSkip(content);
+		const auto title = Ui::AddSubsectionTitle(
+			content,
+			tr::lng_filters_view_subtitle());
+		if (ctx.highlights) {
+			ctx.highlights->push_back({
+				u"folders/tab-view"_q,
+				{ title.get(), SubsectionTitleHighlight() },
+			});
+		}
+
+		const auto group = std::make_shared<Ui::RadioenumGroup<bool>>(
+			Core::App().settings().chatFiltersHorizontal());
+		const auto addSend = [&](bool value, const QString &text) {
+			content->add(
+				object_ptr<Ui::Radioenum<bool>>(
+					content,
 					group,
 					value,
 					text,
@@ -898,6 +1096,12 @@ Folders::Folders(
 Folders::~Folders() {
 	if (!Core::Quitting() && _state->save) {
 		_state->save(nullptr, nullptr);
+	}
+}
+
+rpl::producer<QString> Folders::title() {
+	return tr::lng_filters_title();
+}
 
 void Folders::setupContent() {
 	controller()->session().data().chatsFilters().requestSuggested();
