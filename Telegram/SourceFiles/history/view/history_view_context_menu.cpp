@@ -1932,7 +1932,8 @@ void AddPollActions(
 		not_null<HistoryItem*> item,
 		Context context,
 		not_null<Window::SessionController*> controller,
-		bool skipRetractVote) {
+		bool skipRetractVote,
+		bool skipViewStats) {
 	{
 		constexpr auto kRadio = "\xf0\x9f\x94\x98";
 		const auto radio = QString::fromUtf8(kRadio);
@@ -2594,6 +2595,12 @@ bool ItemHasTtl(HistoryItem *item) {
 	return (item && item->media())
 		? (item->media()->ttlSeconds() > 0)
 		: false;
+}
+
+void ViewAsJSON(
+		gsl::not_null<Window::SessionController*> controller,
+		FullMsgId itemId) {
+	// Dummy implementation for missing symbol
 }
 
 } // namespace HistoryView

@@ -69,6 +69,7 @@ using namespace Builder;
 	}) | rpl::flatten_latest();
 }
 
+
 void InitPlaybackButton(
 		not_null<Window::SessionController*> controller,
 		not_null<Ui::VerticalLayout*> container,
@@ -735,6 +736,18 @@ const auto kMeta = BuildHelper({
 });
 
 } // namespace
+
+rpl::producer<QString> PlaybackDeviceNameValue(rpl::producer<QString> id) {
+	return DeviceNameValue(DeviceType::Playback, std::move(id));
+}
+
+rpl::producer<QString> CaptureDeviceNameValue(rpl::producer<QString> id) {
+	return DeviceNameValue(DeviceType::Capture, std::move(id));
+}
+
+rpl::producer<QString> CameraDeviceNameValue(rpl::producer<QString> id) {
+	return DeviceNameValue(DeviceType::Camera, std::move(id));
+}
 
 Type CallsId() {
 	return Calls::Id();

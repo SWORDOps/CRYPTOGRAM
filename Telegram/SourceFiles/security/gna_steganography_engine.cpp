@@ -45,7 +45,7 @@ GNASteganographyEngine::GNASteganographyEngine(const GNACapabilities& capabiliti
     _audioFormat.setSampleRate(_capabilities.sampleRateHz);
     _audioFormat.setChannelCount(qMin(_capabilities.maxChannels, 2));
     _audioFormat.setSampleFormat(QAudioFormat::Int16);
-    _audioFormat.setByteOrder(QAudioFormat::LittleEndian);
+    // _audioFormat.setByteOrder(QAudioFormat::LittleEndian);
 
     // Initialize default configuration
     _config.method = SteganographyMethod::LSB;
@@ -397,7 +397,7 @@ SteganographyAnalysis GNASteganographyEngine::analyzeAudioForSteganography(const
             analysis.analysisDetails = "No steganographic content detected";
         }
 
-        analysis.statisticalSignificance = qMax({chiSquare, ksTest, entropy - 7.8, 0.8 - autocorr});
+        analysis.statisticalSignificance = std::max({chiSquare, ksTest, entropy - 7.8, 0.8 - autocorr});
 
     } catch (const std::exception& e) {
         qWarning() << "Analysis exception:" << e.what();
@@ -432,7 +432,7 @@ EmbeddingCapacity GNASteganographyEngine::estimateEmbeddingCapacity(const QByteA
     capacity.maxBytesPhase = static_cast<int>(sampleCount * 0.03 / 8);  // 3% of samples
 
     // Recommended capacity (conservative estimate)
-    capacity.recommendedBytes = qMin({capacity.maxBytesLSB, capacity.maxBytesSpectral,
+    capacity.recommendedBytes = std::min({capacity.maxBytesLSB, capacity.maxBytesSpectral,
                                      capacity.maxBytesEcho, capacity.maxBytesPhase}) / 2;
 
     // Quality impact estimate

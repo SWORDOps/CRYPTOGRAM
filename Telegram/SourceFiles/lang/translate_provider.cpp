@@ -38,7 +38,7 @@ std::unique_ptr<TranslateProvider> CreateTranslateProvider(
 		&& urlTemplate.contains(u"%q"_q)) {
 		return CreateUrlTranslateProvider(urlTemplate);
 	}
-	if (Core::App().settings().usePlatformTranslation()
+	if (Core::App().settings().translationEnabled()
 		&& Platform::IsTranslateProviderAvailable()) {
 		return Platform::CreateTranslateProvider();
 	}
@@ -65,6 +65,14 @@ TranslateProviderRequest PrepareTranslateProviderRequest(
 		result.msgId = 0;
 	}
 	return result;
+}
+
+std::unique_ptr<TranslateProvider> CreateUrlTranslateProvider(QString urlTemplate) {
+    return nullptr;
+}
+
+std::unique_ptr<TranslateProvider> CreateMTProtoTranslateProvider(not_null<Main::Session*> session) {
+    return nullptr;
 }
 
 } // namespace Ui

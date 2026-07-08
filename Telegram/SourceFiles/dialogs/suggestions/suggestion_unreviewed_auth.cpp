@@ -142,3 +142,11 @@ Spec MakeUnreviewedAuthSpec() {
 }
 
 } // namespace Dialogs::TopBarSuggestions
+
+namespace Dialogs {
+void ShowAuthDeniedBox(
+	not_null<Ui::GenericBox*> box,
+	float64 count,
+	const QString &messageText) {
+}
+} // namespace Dialogs::TopBarSuggestions

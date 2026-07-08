@@ -14,10 +14,9 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <QtCore/QMutex>
 #include <memory>
 
-namespace Security {
+#include "gna_acoustic_security.h"
 
-// Forward declarations
-struct GNACapabilities;
+namespace Security {
 struct VoiceMorphingConfig;
 enum class VoiceSecurityMode;
 

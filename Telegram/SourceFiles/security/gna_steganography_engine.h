@@ -19,10 +19,9 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <QtMultimedia/QAudioFormat>
 #include <memory>
 
-namespace Security {
+#include "gna_acoustic_security.h"
 
-// Forward declarations
-struct GNACapabilities;
+namespace Security {
 
 namespace GNAEngines {
 

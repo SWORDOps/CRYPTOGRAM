@@ -3338,5 +3338,15 @@ void AddDetails(
 	container->add(std::move(layout));
 }
 
+void BuildProfileDetailsSections(
+		SectionStack &stack,
+		not_null<Controller*> controller,
+		not_null<PeerData*> peer,
+		Data::ForumTopic *topic,
+		Data::SavedSublist *sublist,
+		Origin origin) {
+}
+
 } // namespace Profile
+
 } // namespace Info

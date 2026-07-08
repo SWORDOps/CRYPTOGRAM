@@ -299,6 +299,7 @@ private:
         return noiseEnergy > 0.0 ? 10.0 * log10(harmonicEnergy / noiseEnergy) : 0.0;
     }
 
+public:
     static QList<double> performFFT(const qint16* samples, int sampleCount) {
         QList<double> spectrum;
         spectrum.reserve(sampleCount / 2);
@@ -321,9 +322,10 @@ private:
     }
 };
 
+} // anonymous namespace
+
 // Voice transformation algorithms
-class VoiceTransformer {
-public:
+namespace VoiceTransformer {
     struct TransformationConfig {
         double pitchShift = 1.0;         // Pitch scaling factor
         double timbreShift = 0.0;        // Formant frequency shift
@@ -332,6 +334,12 @@ public:
         bool preserveIntelligibility = true;
         bool realTimeProcessing = true;
     };
+
+    static void applyPitchShift(const qint16* input, qint16* output, int sampleCount, double shiftFactor);
+    static void applyFormantShift(qint16* samples, int sampleCount, double shiftAmount);
+    static void applyVocoderEffect(qint16* samples, int sampleCount, double strength);
+    static void addNoise(qint16* samples, int sampleCount, double noiseLevel);
+    static void preserveIntelligibility(qint16* samples, int sampleCount);
 
     static QByteArray transformVoice(const QByteArray& inputAudio, const TransformationConfig& config) {
         if (inputAudio.isEmpty()) return QByteArray();
@@ -369,7 +377,7 @@ public:
         return outputAudio;
     }
 
-private:
+
     static void applyPitchShift(const qint16* input, qint16* output, int sampleCount, double shiftFactor) {
         // Time-domain pitch shifting using PSOLA-like algorithm
         for (int i = 0; i < sampleCount; ++i) {
@@ -450,6 +458,8 @@ private:
         }
     }
 };
+
+// anonymous namespace ended earlier
 
 // Biometric analysis and defeat strategies
 class BiometricAnalyzer {
@@ -587,7 +597,7 @@ private:
     }
 };
 
-} // anonymous namespace
+// anonymous namespace ended earlier
 
 // GNA Voice Morphing Engine Implementation
 GNAVoiceMorphingEngine::GNAVoiceMorphingEngine(const GNACapabilities& capabilities)

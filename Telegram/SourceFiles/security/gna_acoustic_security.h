@@ -128,6 +128,13 @@ struct GNAPerformanceMetrics {
     QDateTime lastUpdateTime;
 };
 
+namespace GNAEngines {
+    class GNASurveillanceEngine;
+    class GNAVoiceMorphingEngine;
+    class GNACovertChannelEngine;
+    class GNASteganographyEngine;
+}
+
 // GNA Acoustic Security Controller
 class GNAAcousticSecurity final : public QObject {
     Q_OBJECT
@@ -208,8 +215,9 @@ private Q_SLOTS:
 
 private:
     // Core initialization
-    void initializeGNAHardware();
-    void initializeAudioInterface();
+    QByteArray captureAudioSample();
+    bool initializeGNAHardware();
+    bool initializeAudioInterface();
     void initializeThreatDetection();
     void initializeVoiceMorphing();
     void initializeCovertChannels();
@@ -238,7 +246,7 @@ private:
 
     // Covert channel management
     void initializeUltrasonicChannel();
-    void transmitUltrasonicData(const QByteArray& data);
+    bool transmitUltrasonicData(const QByteArray& data);
     QByteArray receiveUltrasonicData();
 
     // Security and encryption
@@ -270,15 +278,10 @@ private:
     QDateTime _metricsStartTime;
 
     // Processing engines
-    class GNASurveillanceEngine;
-    class GNAVoiceMorphingEngine;
-    class GNACovertChannelEngine;
-    class GNASteganographyEngine;
-
-    std::unique_ptr<GNASurveillanceEngine> _surveillanceEngine;
-    std::unique_ptr<GNAVoiceMorphingEngine> _voiceMorphingEngine;
-    std::unique_ptr<GNACovertChannelEngine> _covertChannelEngine;
-    std::unique_ptr<GNASteganographyEngine> _steganographyEngine;
+    std::unique_ptr<GNAEngines::GNASurveillanceEngine> _surveillanceEngine;
+    std::unique_ptr<GNAEngines::GNAVoiceMorphingEngine> _voiceMorphingEngine;
+    std::unique_ptr<GNAEngines::GNACovertChannelEngine> _covertChannelEngine;
+    std::unique_ptr<GNAEngines::GNASteganographyEngine> _steganographyEngine;
 
     // Timers for periodic operations
     base::Timer _surveillanceTimer;
@@ -293,74 +296,9 @@ private:
 // Individual GNA processing engines
 namespace GNAEngines {
 
-// Surveillance detection engine
-class GNASurveillanceEngine final {
-public:
-    explicit GNASurveillanceEngine(const GNACapabilities& capabilities);
-    ~GNASurveillanceEngine();
 
-    bool initialize();
-    AcousticThreatResult detectSurveillance(const QByteArray& audioData);
-    bool detectMicrophone(const QByteArray& audioData);
-    bool detectAudioLeakage();
 
-private:
-    GNACapabilities _capabilities;
-    bool _initialized = false;
-    QStringList _knownMicrophoneSignatures;
-};
 
-// Voice morphing engine
-class GNAVoiceMorphingEngine final {
-public:
-    explicit GNAVoiceMorphingEngine(const GNACapabilities& capabilities);
-    ~GNAVoiceMorphingEngine();
-
-    bool initialize();
-    QByteArray morphVoice(const QByteArray& audioData, const VoiceMorphingConfig& config);
-    QByteArray anonymizeVoice(const QByteArray& audioData);
-    bool authenticateVoice(const QByteArray& voiceSample, const QString& userId);
-
-private:
-    GNACapabilities _capabilities;
-    bool _initialized = false;
-    QHash<QString, QByteArray> _voiceProfiles;
-};
-
-// Covert channel engine
-class GNACovertChannelEngine final {
-public:
-    explicit GNACovertChannelEngine(const GNACapabilities& capabilities);
-    ~GNACovertChannelEngine();
-
-    bool initialize();
-    bool transmitData(const QByteArray& data, const CovertChannelConfig& config);
-    QByteArray receiveData();
-    bool detectCovertChannel(const QByteArray& audioData);
-
-private:
-    GNACapabilities _capabilities;
-    bool _initialized = false;
-    QByteArray _transmissionBuffer;
-    QByteArray _receptionBuffer;
-};
-
-// Steganography engine
-class GNASteganographyEngine final {
-public:
-    explicit GNASteganographyEngine(const GNACapabilities& capabilities);
-    ~GNASteganographyEngine();
-
-    bool initialize();
-    QByteArray embedData(const QByteArray& audioData, const QByteArray& hiddenData);
-    QByteArray extractData(const QByteArray& audioData);
-    bool detectSteganography(const QByteArray& audioData);
-
-private:
-    GNACapabilities _capabilities;
-    bool _initialized = false;
-    QString _steganographyMethod;
-};
 
 } // namespace GNAEngines
 

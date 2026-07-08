@@ -718,7 +718,7 @@ double HardwareDetector::calculateGPUScore(const GPUInfo &gpu) const {
     return qBound(0.0, score, 100.0);
 }
 
-QString HardwareDetector::executeCommand(const QString &command) {
+QString HardwareDetector::executeCommand(const QString &command) const {
     QProcess process;
     process.start("/bin/sh", QStringList() << "-c" << command);
     process.waitForFinished(5000); // 5 second timeout

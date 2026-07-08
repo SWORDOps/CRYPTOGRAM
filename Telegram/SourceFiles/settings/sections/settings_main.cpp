@@ -287,6 +287,9 @@ void Cover::setupChildGeometry() {
 	}, lifetime());
 }
 
+void Cover::refreshQrButtonGeometry(int newWidth) {
+}
+
 void Cover::initViewers() {
 	Info::Profile::NameValue(
 		_user

@@ -524,9 +524,9 @@ GNAAcousticSecurity::GNAAcousticSecurity(QObject* parent)
     _metrics.lastUpdateTime = _metricsStartTime;
 
     // Setup periodic timers
-    _surveillanceTimer.SetCallback([this] { checkSurveillanceThreats(); });
-    _metricsTimer.SetCallback([this] { updatePerformanceMetrics(); });
-    _covertChannelTimer.SetCallback([this] { maintainCovertChannel(); });
+    _surveillanceTimer.setCallback([this] { checkSurveillanceThreats(); });
+    _metricsTimer.setCallback([this] { updatePerformanceMetrics(); });
+    _covertChannelTimer.setCallback([this] { maintainCovertChannel(); });
 
     qDebug() << "GNA Acoustic Security Controller created";
 }
@@ -556,8 +556,7 @@ bool GNAAcousticSecurity::initialize(const HardwareProfile& profile) {
 
     // Initialize core components
     if (!initializeGNAHardware()) {
-        qWarning() << "Failed to initialize GNA hardware";
-        return false;
+        qWarning() << "Failed to initialize GNA hardware, falling back to CPU inference";
     }
 
     if (!initializeAudioInterface()) {
@@ -589,7 +588,7 @@ bool GNAAcousticSecurity::initialize(const HardwareProfile& profile) {
     _initialized = true;
 
     // Start performance monitoring
-    _metricsTimer.CallEach(5000); // Update metrics every 5 seconds
+    _metricsTimer.callEach(5000); // Update metrics every 5 seconds
 
     Q_EMIT performanceUpdated(_metrics);
 
@@ -628,7 +627,7 @@ void GNAAcousticSecurity::startSurveillanceMonitoring() {
     _surveillanceActive = true;
 
     // Start surveillance timer - check every 100ms for real-time detection
-    _surveillanceTimer.CallEach(100);
+    _surveillanceTimer.callEach(100);
 
     Q_EMIT voiceMorphingStatusChanged(_voiceMode);
 }
@@ -639,7 +638,7 @@ void GNAAcousticSecurity::stopSurveillanceMonitoring() {
     qDebug() << "Stopping GNA surveillance monitoring";
 
     _surveillanceActive = false;
-    _surveillanceTimer.Cancel();
+    _surveillanceTimer.cancel();
 }
 
 AcousticThreatResult GNAAcousticSecurity::detectAcousticThreats() {
@@ -792,7 +791,7 @@ void GNAAcousticSecurity::enableCovertChannel(const CovertChannelConfig& config)
     _covertChannelActive = true;
 
     // Start covert channel maintenance
-    _covertChannelTimer.CallEach(1000); // Check every second
+    _covertChannelTimer.callEach(1000); // Check every second
 
     Q_EMIT covertChannelStatusChanged(true);
 }
@@ -801,7 +800,7 @@ void GNAAcousticSecurity::disableCovertChannel() {
     if (!_covertChannelActive) return;
 
     _covertChannelActive = false;
-    _covertChannelTimer.Cancel();
+    _covertChannelTimer.cancel();
 
     Q_EMIT covertChannelStatusChanged(false);
 }

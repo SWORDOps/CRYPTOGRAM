@@ -42,7 +42,7 @@ GNACovertChannelEngine::GNACovertChannelEngine(const GNACapabilities& capabiliti
     _audioFormat.setSampleRate(_capabilities.sampleRateHz);
     _audioFormat.setChannelCount(qMin(_capabilities.maxChannels, 2));
     _audioFormat.setSampleFormat(QAudioFormat::Int16);
-    _audioFormat.setByteOrder(QAudioFormat::LittleEndian);
+    // _audioFormat.setByteOrder(QAudioFormat::LittleEndian);
 
     // Connect emergency beacon timer
     QObject::connect(_beaconTimer.get(), &QTimer::timeout, [this]() {

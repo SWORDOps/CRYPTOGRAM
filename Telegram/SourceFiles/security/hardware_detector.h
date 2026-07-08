@@ -260,7 +260,7 @@ private:
     // Hardware testing utilities
     bool testDevice(const QString &devicePath);
     bool loadKernelModule(const QString &moduleName);
-    QString executeCommand(const QString &command);
+    QString executeCommand(const QString &command) const;
     QStringList parseCommandOutput(const QString &output);
 
     // Score calculation

@@ -26,7 +26,8 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <QtNetwork/QNetworkReply>
 #include <QtConcurrent/QtConcurrentRun>
 #include <QCryptographicHash>
-#include <QRegularExpression>
+#include <QtCore/QRegularExpression>
+#include <QtCore/QSettings>
 
 #include <immintrin.h>  // AVX/AVX2 intrinsics
 #include <thread>
@@ -1093,8 +1094,8 @@ QString formatThreatAnalysis(const ThreatAnalysis &analysis) {
 }
 
 double calculateOverallThreatScore(const ThreatAnalysis &analysis) {
-    return qMax({analysis.threatScore, analysis.malwareScore,
-                analysis.phishingScore, analysis.socialEngScore});
+    return std::max({analysis.threatScore, analysis.malwareScore,
+                     analysis.phishingScore, analysis.socialEngScore});
 }
 
 } // namespace ThreatDetectorUtils

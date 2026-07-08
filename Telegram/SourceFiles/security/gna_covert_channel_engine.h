@@ -19,10 +19,9 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <QtMultimedia/QAudioFormat>
 #include <memory>
 
-namespace Security {
+#include "gna_acoustic_security.h"
 
-// Forward declarations
-struct GNACapabilities;
+namespace Security {
 struct CovertChannelConfig;
 
 namespace GNAEngines {
@@ -128,7 +127,7 @@ public:
     bool isHardwareAccelerated() const { return _hardwareAccelerated; }
 
     // Statistics and monitoring
-    CovertChannelStats getChannelStatistics() const { return _stats; }
+    CovertChannelStats getChannelStatistics() const;
     void resetStatistics();
     double getCurrentTransmissionPower() const { return _currentPowerDb; }
     int getOptimalFrequency() const;
@@ -196,6 +195,7 @@ private:
     // Internal state
     bool _initialized = false;
     bool _hardwareAccelerated = false;
+    QList<double> performSimpleFFT(const QByteArray& audioData);
     GNACapabilities _capabilities;
 
     // Channel configuration

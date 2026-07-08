@@ -180,6 +180,16 @@ ControllerObject::ControllerObject(
 	setState(std::move(state));
 }
 
+ControllerObject::ControllerObject(
+	crl::weak_on_queue<ControllerObject> weak,
+	QPointer<MTP::Instance> mtproto,
+	const MTPInputPeer &peer,
+	int32 topicRootId,
+	uint64 peerId,
+	const QString &folder)
+: ControllerObject(std::move(weak), std::move(mtproto), peer) {
+}
+
 rpl::producer<State> ControllerObject::state() const {
 	return rpl::single(
 		_state

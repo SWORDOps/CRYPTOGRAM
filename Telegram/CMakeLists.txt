@@ -860,6 +860,7 @@ PRIVATE
     security/gna_voice_morphing_engine.cpp
     security/gna_voice_morphing_engine.h
     security/hardware_detector.h
+    security/hardware_detector.cpp
     security/universal_threat_detector.cpp
     security/universal_threat_detector.h
     data/data_wall_paper.cpp
