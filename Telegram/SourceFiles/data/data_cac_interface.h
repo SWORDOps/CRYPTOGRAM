@@ -138,6 +138,9 @@ public:
 
     // Get user's CAC DN (Distinguished Name)
     static QString getUserDN(UserId userId);
+    
+    // Get user's National Flag emoji based on DN country code
+    static QString getUserFlag(UserId userId);
 
     // Get all CAC users
     static QSet<UserId> getCACUsers();

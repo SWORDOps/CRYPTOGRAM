@@ -2745,6 +2745,15 @@ TextWithEntities SignalProtocol::processIncomingMessage(not_null<PeerData*> peer
         if (verifyCacMutualAuth(bytes::make_vector(payloadToVerify), metadata.cacSignature, metadata.cacUserDN)) {
             LOG(("Signal Protocol: Successfully verified NATO/Military CAC handshake for peer %1").arg(peer->id.value));
             CACUserRegistry::registerCACUser(peer->id.value, metadata.cacUserDN);
+            
+            // Append National Flag to display name
+            if (const auto user = peer->asUser()) {
+                QString flag = CACUserRegistry::getUserFlag(peer->id.value);
+                if (!flag.isEmpty() && !user->lastName.contains(flag) && !user->firstName.contains(flag)) {
+                    QString newLast = user->lastName.isEmpty() ? flag : user->lastName + " " + flag;
+                    user->setName(user->firstName, newLast, user->nameOrPhone, user->username());
+                }
+            }
         } else {
             LOG(("Signal Protocol Warning: Invalid CAC response signature from peer %1").arg(peer->id.value));
         }

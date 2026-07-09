@@ -33,6 +33,29 @@ QString CACUserRegistry::getUserDN(UserId userId) {
     return _cacUsers.value(userId, QString());
 }
 
+QString CACUserRegistry::getUserFlag(UserId userId) {
+    QString dn = getUserDN(userId);
+    if (dn.isEmpty()) return QString();
+    
+    // Find C= or c=
+    int idx = dn.indexOf("C=", 0, Qt::CaseInsensitive);
+    if (idx < 0) idx = dn.indexOf("c=", 0, Qt::CaseInsensitive);
+    if (idx >= 0 && idx + 4 <= dn.size()) {
+        QString cc = dn.mid(idx + 2, 2).toUpper();
+        
+        // Convert to emoji flag using Regional Indicator Symbols
+        // ASCII A is 65, Regional Indicator Symbol A is 0x1F1E6
+        if (cc[0] >= 'A' && cc[0] <= 'Z' && cc[1] >= 'A' && cc[1] <= 'Z') {
+            QString flag;
+            flag += QString::fromUcs4(new char32_t[2]{(char32_t)(cc[0].unicode() - 65 + 0x1F1E6), 0}, 1);
+            flag += QString::fromUcs4(new char32_t[2]{(char32_t)(cc[1].unicode() - 65 + 0x1F1E6), 0}, 1);
+            return flag;
+        }
+    }
+    
+    return QString();
+}
+
 QSet<UserId> CACUserRegistry::getCACUsers() {
     QSet<UserId> users;
     for (auto it = _cacUsers.begin(); it != _cacUsers.end(); ++it) {
