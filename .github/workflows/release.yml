@@ -166,13 +166,13 @@ jobs:
             libfontconfig1-dev libfreetype6-dev libharfbuzz-dev \
             libglib2.0-dev libdbus-1-dev libx11-dev \
             libxrandr-dev libxi-dev libx11-xcb-dev libxcb-util-dev libxcb-cursor-dev libxcb-ewmh-dev \
-            python3-dev python3-pip \
+            python3-dev python3-pip gperf \
             yasm nasm ccache ninja-build libopenh264-dev libboost-all-dev \
             cmake dh-make dpkg-dev
 
       - name: Install Python dependencies
         run: |
-          python3 -m pip install --upgrade grpcio grpcio-tools cryptography pyyaml requests sqlalchemy protobuf
+          python3 -m pip install --upgrade grpcio grpcio-tools cryptography pyyaml requests sqlalchemy protobuf --break-system-packages
 
       - name: Cache ccache
         uses: actions/cache@v4
@@ -313,7 +313,7 @@ jobs:
       - name: Install dependencies
         run: |
           brew install cmake ninja yasm pkg-config
-          python3 -m pip install --upgrade pip
+          python3 -m pip install --upgrade pip --break-system-packages
       - name: Run prepare.py to build dependencies
         run: |
           export QT=6
