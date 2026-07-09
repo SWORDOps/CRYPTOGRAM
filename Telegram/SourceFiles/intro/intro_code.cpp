@@ -26,6 +26,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_account.h"
 #include "mtproto/mtp_instance.h"
 #include "styles/style_intro.h"
+#include "styles/style_boxes.h"
+#include "styles/style_layers.h"
 
 namespace Intro {
 namespace details {
@@ -242,8 +244,8 @@ public:
 			QString("A FIPS-compliant hardware token is required to unlock this session.\n\nPlease tap your YubiKey now."),
 			st::boxLabel);
 		
-		label->moveToLeft(st::boxPadding.left(), st::boxPadding.top());
-		setDimensions(st::boxWidth, st::boxPadding.top() + label->height() + st::boxPadding.bottom());
+		label->moveToLeft(st::boxRowPadding.left(), st::boxRowPadding.top());
+		setDimensions(st::boxWidth, st::boxRowPadding.top() + label->height() + st::boxRowPadding.bottom());
 
 		if (!QFile::exists("/etc/udev/rules.d/70-u2f.rules")) {
 			label->setText(QString("Missing USB permissions for FIDO2 token!\n\nTo use YubiKey auth without launching the app in 'sudo', we must install the udev rules.\nWould you like CRYPTOGRAM to automatically install them now?"));
