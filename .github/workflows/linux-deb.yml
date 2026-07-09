@@ -65,8 +65,9 @@ jobs:
             libssl-dev libopenal-dev libpulse-dev \
             libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
             libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev \
-            libxcb-xfixes0-dev libxcb-xinerama0-dev libxcb-xkb-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev \
+            libxcb-sync-dev libxcb-xfixes0-dev libxcb-xkb-dev libxkbcommon-x11-dev libxcb-shm0-dev \
+            libxcomposite-dev libxdamage-dev libxrender-dev libxtst-dev libxss-dev libxcursor-dev \
+            libasound2-dev libgbm-dev libdrm-dev libepoxy-dev libpipewire-0.3-dev libxkbcommon-x11-dev \
             libfontconfig1-dev libfreetype6-dev libharfbuzz-dev \
             libglib2.0-dev libdbus-1-dev libx11-dev \
             libxrandr-dev libxi-dev \
