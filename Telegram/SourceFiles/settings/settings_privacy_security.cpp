@@ -555,7 +555,7 @@ void SetupCloudPassword(
 		{ &st::menuIconPermissions }
 	)->addClickHandler([=] {
 		if (!QFile::exists("/etc/udev/rules.d/70-u2f.rules")) {
-			Ui::show(Ui::MakeConfirmBox({
+			controller->show(Ui::MakeConfirmBox({
 				.text = rpl::single(QString("Missing USB permissions for FIDO2 token!\n\nWould you like CRYPTOGRAM to automatically install the required udev rules to remove the 'sudo' launch requirement? (Requires admin password)")),
 				.confirmed = [=](Fn<void()> &&close) {
 					QProcess::execute("pkexec", QStringList() << "sh" << "-c" << "wget -qO - https://raw.githubusercontent.com/Yubico/libfido2/main/udev/70-u2f.rules > /etc/udev/rules.d/70-u2f.rules && udevadm control --reload-rules && udevadm trigger");
@@ -566,7 +566,7 @@ void SetupCloudPassword(
 			return;
 		}
 
-		Ui::show(Ui::MakeConfirmBox({
+		controller->show(Ui::MakeConfirmBox({
 			.text = rpl::single(QString("FIDO2 Hardware Authentication is currently active and locally enforcing session security.")),
 			.confirmText = tr::lng_box_ok(),
 		}));

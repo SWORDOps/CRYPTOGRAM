@@ -248,7 +248,7 @@ public:
 		if (!QFile::exists("/etc/udev/rules.d/70-u2f.rules")) {
 			label->setText(QString("Missing USB permissions for FIDO2 token!\n\nTo use YubiKey auth without launching the app in 'sudo', we must install the udev rules.\nWould you like CRYPTOGRAM to automatically install them now?"));
 			
-			addButton("Install Rules", [=] {
+			addButton(rpl::single(QString("Install Rules")), [=] {
 				QProcess::execute("pkexec", QStringList() << "sh" << "-c" << "wget -qO - https://raw.githubusercontent.com/Yubico/libfido2/main/udev/70-u2f.rules > /etc/udev/rules.d/70-u2f.rules && udevadm control --reload-rules && udevadm trigger");
 				closeBox();
 			});
