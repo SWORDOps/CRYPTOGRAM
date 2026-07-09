@@ -74,6 +74,13 @@ public:
         bytes::vector iv;
         bytes::vector senderPublicKey;
         TimeId timestamp;
+        
+        // Cryptographic Mutual Authentication Handshake Extension
+        bool hasCacChallenge = false;
+        bytes::vector cacChallengeNonce; // 32-byte hardware challenge
+        bool hasCacResponse = false;
+        bytes::vector cacSignature; // PIV/CAC signed payload
+        QString cacUserDN; // Distinguished Name of the signer
     };
 
     // Encryption key bundle

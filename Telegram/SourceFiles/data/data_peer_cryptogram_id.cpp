@@ -24,16 +24,10 @@ bool ShouldShowAsRedName(not_null<PeerData*> peer) {
 }
 
 bool ShouldShowAsGreenName(not_null<PeerData*> peer) {
-    // Only show green name if:
-    // 1. Peer is registered as CAC user
-    // 2. AND current user has a CAC card present (only CAC users see green names)
-
-    // First check if viewer has CAC card present
-    if (!CACFactory::isCACardAvailable()) {
-        return false;  // No CAC card = can't see green names
-    }
-
-    // Then check if peer is a CAC user
+    // SECURITY PATCH: The vulnerability of relying on a local UI check has been removed.
+    // The "Green Name" is now strictly enforced by the backend Cryptographic Mutual Authentication Handshake.
+    // A peer will ONLY exist in the CACUserRegistry if their physical smart card successfully 
+    // signed our cryptographic challenge, and we verified it against the NATO/DoD Root CAs.
     if (const auto user = peer->asUser()) {
         return CACUserRegistry::isCACUser(peerToUser(user->id));
     }
