@@ -1,0 +1,90 @@
+name: Mac and Windows Native
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  macOS:
+    name: macOS Telegram Native
+    runs-on: macos-14
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        run: |
+          brew install cmake ninja yasm pkg-config
+          python3 -m pip install --upgrade pip
+
+      - name: Run prepare.py to build dependencies
+        run: |
+          export QT=6
+          python3 Telegram/build/prepare/prepare.py
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDESKTOP_APP_USE_PACKAGED=OFF \
+            -DTG_OWT_PACKAGED_BUILD=OFF
+        
+      - name: Build Telegram
+        run: |
+          cmake --build build --config Release --parallel 4
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptogram-macos
+          path: build/Telegram/Telegram.app
+          retention-days: 30
+
+  Windows:
+    name: Windows Telegram Native
+    runs-on: windows-2022
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Setup Visual Studio Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Run prepare.py to build dependencies
+        shell: cmd
+        run: |
+          set QT=6
+          set Platform=x64
+          python Telegram/build/prepare/prepare.py
+
+      - name: Configure CMake
+        shell: cmd
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDESKTOP_APP_USE_PACKAGED=OFF -DTG_OWT_PACKAGED_BUILD=OFF
+
+      - name: Build Telegram
+        shell: cmd
+        run: |
+          cmake --build build --config Release --parallel 4
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptogram-windows
+          path: build/Telegram/Telegram.exe
+          retention-days: 30
