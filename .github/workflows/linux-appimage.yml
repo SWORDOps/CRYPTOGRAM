@@ -1,0 +1,127 @@
+---
+name: Linux AppImage Production
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LEGAL'
+      - 'LICENSE'
+      - 'telegram-android/**'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LEGAL'
+      - 'LICENSE'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  appimage:
+    name: Build AppImage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN }}
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential git pkg-config \
+            qt6-base-dev qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
+            qt6-image-formats-plugins qt6-l10n-tools qt6-declarative-dev \
+            libqt6core5compat6-dev libqt6svg6-dev libqt6wayland6-dev qtwayland5 \
+            libssl-dev libopenal-dev libpulse-dev \
+            libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
+            libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxcb-xinerama0-dev libxcb-xkb-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev \
+            libglib2.0-dev libdbus-1-dev libx11-dev \
+            libxrandr-dev libxi-dev \
+            python3-dev python3-pip \
+            yasm nasm ccache ninja-build fuse \
+            cmake dh-make dpkg-dev mold liblz4-dev libxxhash-dev libminizip-dev qt6-shader-baker libqt6shadertools6-dev
+
+      - name: Configure ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-appimage-${{ github.sha }}
+          restore-keys: |
+            ccache-appimage-
+
+      - name: Build Binary
+        run: |
+          chmod +x build_linux.sh
+          # Build via the same script used for .deb but we'll intercept the binary
+          ./build_linux.sh
+        env:
+          BUILD_TYPE: Release
+
+      - name: Package AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          # Exclude the troublesome standard library which often breaks portability
+          EXTRA_QT_PLUGINS: wayland
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
+          
+          # Find the built binary
+          if [ -f "build_release/bin/Telegram" ]; then
+            cp build_release/bin/Telegram AppDir/usr/bin/cryptogram
+          elif [ -f "build_release/Telegram" ]; then
+            cp build_release/Telegram AppDir/usr/bin/cryptogram
+          else
+            echo "::error::Could not find Telegram binary!"
+            exit 1
+          fi
+          
+          # Create Desktop file
+          cat <<EOF > AppDir/usr/share/applications/cryptogram.desktop
+          [Desktop Entry]
+          Type=Application
+          Name=CRYPTOGRAM
+          Exec=cryptogram
+          Icon=cryptogram
+          Categories=Network;InstantMessaging;
+          EOF
+          
+          # Grab our custom icon
+          cp Telegram/Resources/art/icon256.png AppDir/usr/share/icons/hicolor/256x256/apps/cryptogram.png
+          
+          # Download linuxdeploy tools
+          wget -c "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          wget -c "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+          chmod +x linuxdeploy*.AppImage
+          
+          # Run linuxdeploy to bundle libraries
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --plugin qt --output appimage
+          
+          # Rename output file
+          mv CRYPTOGRAM*.AppImage CRYPTOGRAM-Linux-x86_64.AppImage
+
+      - name: Upload AppImage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptogram-linux-appimage
+          path: CRYPTOGRAM-Linux-x86_64.AppImage
+          retention-days: 30
