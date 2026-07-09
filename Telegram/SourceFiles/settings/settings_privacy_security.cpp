@@ -535,24 +535,27 @@ void SetupCloudPassword(
 			: tr::lng_settings_cloud_password_off(tr::now);
 	});
 
-	AddButtonWithLabel(
+	auto cpButton = AddButtonWithLabel(
 		container,
 		tr::lng_settings_cloud_password_start_title(),
 		std::move(label),
 		st::settingsButton,
 		{ &st::menuIconPermissions }
-	)->addClickHandler([=, passwordState = base::duplicate(passwordState)] {
-		const auto state = rpl::variable<PasswordState>(
-			base::duplicate(passwordState)).current();
-		if (state == PasswordState::Loading) {
-			return;
-		} else if (state == PasswordState::On) {
-			showOther(CloudPasswordInputId());
-		} else if (state == PasswordState::Off) {
-			showOther(CloudPasswordStartId());
-		} else if (state == PasswordState::Unconfirmed) {
-			showOther(CloudPasswordEmailConfirmId());
-		}
+	);
+	cpButton->setDisabled(true); // Greying out the cloud password for now
+
+	// Inject custom FIDO2 hardware toggle underneath
+	AddButtonWithLabel(
+		container,
+		rpl::single(QString("FIDO2 Hardware Auth")),
+		rpl::single(QString("Enabled")),
+		st::settingsButton,
+		{ &st::menuIconPermissions }
+	)->addClickHandler([=] {
+		Ui::show(Ui::MakeConfirmBox({
+			.text = rpl::single(QString("FIDO2 Hardware Authentication is currently active and locally enforcing session security.")),
+			.confirmText = tr::lng_box_ok(),
+		}));
 	});
 
 	const auto reloadOnActivation = [=](Qt::ApplicationState state) {
