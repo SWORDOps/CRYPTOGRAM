@@ -50,6 +50,7 @@ jobs:
 
       - name: Apply Custom Android Theme
         run: |
+          sudo apt-get update && sudo apt-get install -y imagemagick
           python3 theme_mod.py
           convert extracted_assets/icon512.png -resize 48x48 telegram-android/TMessagesProj/src/main/res/mipmap-mdpi/ic_launcher.png
           convert extracted_assets/icon512.png -resize 72x72 telegram-android/TMessagesProj/src/main/res/mipmap-hdpi/ic_launcher.png
