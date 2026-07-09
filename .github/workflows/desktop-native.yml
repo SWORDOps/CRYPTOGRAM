@@ -52,8 +52,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$(brew --prefix qt@6);$(brew --prefix openssl@3)" \
             -DDESKTOP_APP_DISABLE_AUTOUPDATE=ON \
-            -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON \
-            -DDESKTOP_APP_USE_PACKAGED=ON
+            -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON
 
       - name: Build Telegram
         run: cmake --build build_macos --target Telegram --parallel "$(sysctl -n hw.logicalcpu)"
@@ -130,8 +129,7 @@ jobs:
           cmake -S . -B build_windows -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DDESKTOP_APP_DISABLE_AUTOUPDATE=ON \
-            -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON \
-            -DDESKTOP_APP_USE_PACKAGED=ON
+            -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON
 
       - name: Build Telegram
         run: cmake --build build_windows --target Telegram --parallel "$(nproc)"
@@ -191,8 +189,7 @@ jobs:
           cmake -S . -B build_linux -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DDESKTOP_APP_DISABLE_AUTOUPDATE=ON \
-            -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON \
-            -DDESKTOP_APP_USE_PACKAGED=ON
+            -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON
 
       - name: Build Telegram
         run: cmake --build build_linux --target Telegram --parallel "$(nproc)"
