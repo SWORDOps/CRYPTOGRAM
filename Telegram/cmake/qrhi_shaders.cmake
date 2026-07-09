@@ -11,13 +11,15 @@ if (QT_VERSION_MAJOR LESS 6)
     return()
 endif()
 
-find_program(QSB_EXECUTABLE qsb
+find_program(QSB_EXECUTABLE NAMES qsb qsb6
     HINTS
         "${QT_DIR}/../../../libexec"
         "${QT_DIR}/../../../bin"
         "${QT_DIR}/../../qt6/libexec"
         "${QT_DIR}/../../qt6/bin"
         "${QT_DIR}/../../../opt/qtshadertools/bin"
+        "/usr/lib/qt6/libexec"
+        "/usr/lib/x86_64-linux-gnu/qt6/libexec"
     PATHS ENV PATH)
 
 if (NOT QSB_EXECUTABLE)
