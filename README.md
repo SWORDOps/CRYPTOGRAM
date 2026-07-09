@@ -398,6 +398,12 @@ CRYPTOGRAM/
 
 CRYPTOGRAM is released under the **GNU AGPL v3.0** with the project-specific OpenSSL exception noted in `LICENSE`.
 
+## Known Bugs
+
+- **Cloud Password (2FA) Rejection**: Users may currently experience a `PASSWORD_HASH_INVALID` (Cloud PSS Error) during the two-factor authentication phase, even with the correct password. This is due to an upstream restriction in Telegram's anti-spam SRP hash verification when using custom API Keys.
+  - **Workaround**: Disable your Cloud Password via the official Telegram mobile app before logging into CRYPTOGRAM.
+  - **Planned Fix/Compensation**: We are actively developing native **YubiKey Authentication (FIDO2/U2F/WebAuthn)** as a robust, hardware-backed compensatory security feature to entirely replace the reliance on Telegram's Cloud Password.
+
 ## Support CRYPTOGRAM
 
 CRYPTOGRAM is free and open source — no ads, no tracking, no premium tier, no data harvesting, no BS. Months of engineering went into this. How you support it is entirely up to you:
