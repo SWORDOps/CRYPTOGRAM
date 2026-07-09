@@ -575,7 +575,7 @@ mac:
     CFLAGS="$MIN_VER $UNGUARDED -arch x86_64" CPPFLAGS="$MIN_VER $UNGUARDED -arch x86_64" LDFLAGS="$MIN_VER" ./configure --enable-static --disable-shared --host=x86_64 --prefix=$USED_PREFIX
     make $MAKE_THREADS_CNT
     mkdir out.x86_64
-    mv .libs/libminizip.a out.x86_64
+    cp .libs/libminizip.a out.x86_64/
     make install
     lipo -create out.arm64/libminizip.a out.x86_64/libminizip.a -output $USED_PREFIX/lib/libminizip.a
 """)
