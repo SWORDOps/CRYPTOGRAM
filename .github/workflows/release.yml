@@ -318,7 +318,7 @@ jobs:
           token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
       - name: Install dependencies
         run: |
-          brew install cmake ninja yasm pkg-config
+          brew install cmake ninja yasm pkg-config autoconf automake libtool
           python3 -m pip install --upgrade pip --break-system-packages
       - name: Run prepare.py to build dependencies
         run: |
