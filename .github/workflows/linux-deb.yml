@@ -70,7 +70,7 @@ jobs:
             libasound2-dev libgbm-dev libdrm-dev libepoxy-dev libpipewire-0.3-dev libxkbcommon-x11-dev \
             libfontconfig1-dev libfreetype6-dev libharfbuzz-dev \
             libglib2.0-dev libdbus-1-dev libx11-dev \
-            libxrandr-dev libxi-dev \
+            libxrandr-dev libxi-dev libx11-xcb-dev libxcb-util-dev libxcb-cursor-dev libxcb-ewmh-dev \
             python3-dev python3-pip \
             yasm nasm ccache ninja-build libopenh264-dev libboost-all-dev \
             cmake dh-make dpkg-dev mold liblz4-dev libxxhash-dev libminizip-dev qt6-shader-baker libqt6shadertools6-dev
