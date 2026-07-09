@@ -1930,8 +1930,8 @@ configure_cryptogram() {
         -DDESKTOP_APP_DISABLE_AUTOUPDATE=ON \
         -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON \
         -DDESKTOP_APP_USE_PACKAGED=ON \
-        -DTDESKTOP_API_ID=35825527 \
-        -DTDESKTOP_API_HASH=15f9eda8308428afe7cb32f3d1831387 \
+        -DTDESKTOP_API_ID=17349 \
+        -DTDESKTOP_API_HASH=344583e45741c457fe1862106095a5eb \
         '$CRYPTOGRAM_ROOT'"; then
             print_error "CMake configuration failed"
             echo ""

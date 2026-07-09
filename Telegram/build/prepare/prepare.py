@@ -576,8 +576,8 @@ mac:
     make $MAKE_THREADS_CNT
     mkdir out.x86_64
     mv .libs/libminizip.a out.x86_64
-    lipo -create out.arm64/libminizip.a out.x86_64/libminizip.a -output .libs/libminizip.a
     make install
+    lipo -create out.arm64/libminizip.a out.x86_64/libminizip.a -output $USED_PREFIX/lib/libminizip.a
 """)
 
 stage('mozjpeg', """
@@ -729,8 +729,8 @@ mac:
     make $MAKE_THREADS_CNT
     mkdir out.x86_64
     mv lib/.libs/libiconv.a out.x86_64
-    lipo -create out.arm64/libiconv.a out.x86_64/libiconv.a -output lib/.libs/libiconv.a
     make install
+    lipo -create out.arm64/libiconv.a out.x86_64/libiconv.a -output $USED_PREFIX/lib/libiconv.a
 """)
 
 stage('gas-preprocessor', """
@@ -1127,9 +1127,9 @@ mac:
     mkdir out.x86_64
     mv libvpx.a out.x86_64
 
-    lipo -create out.arm64/libvpx.a out.x86_64/libvpx.a -output libvpx.a
-
     make install
+
+    lipo -create out.arm64/libvpx.a out.x86_64/libvpx.a -output $USED_PREFIX/lib/libvpx.a
 """)
 
 stage('liblcms2', """
@@ -1346,14 +1346,14 @@ mac:
     mv libswscale/libswscale.a out.x86_64
     mv libavutil/libavutil.a out.x86_64
 
-    lipo -create out.arm64/libavfilter.a out.x86_64/libavfilter.a -output libavfilter/libavfilter.a
-    lipo -create out.arm64/libavformat.a out.x86_64/libavformat.a -output libavformat/libavformat.a
-    lipo -create out.arm64/libavcodec.a out.x86_64/libavcodec.a -output libavcodec/libavcodec.a
-    lipo -create out.arm64/libswresample.a out.x86_64/libswresample.a -output libswresample/libswresample.a
-    lipo -create out.arm64/libswscale.a out.x86_64/libswscale.a -output libswscale/libswscale.a
-    lipo -create out.arm64/libavutil.a out.x86_64/libavutil.a -output libavutil/libavutil.a
-
     make install
+
+    lipo -create out.arm64/libavfilter.a out.x86_64/libavfilter.a -output $USED_PREFIX/lib/libavfilter.a
+    lipo -create out.arm64/libavformat.a out.x86_64/libavformat.a -output $USED_PREFIX/lib/libavformat.a
+    lipo -create out.arm64/libavcodec.a out.x86_64/libavcodec.a -output $USED_PREFIX/lib/libavcodec.a
+    lipo -create out.arm64/libswresample.a out.x86_64/libswresample.a -output $USED_PREFIX/lib/libswresample.a
+    lipo -create out.arm64/libswscale.a out.x86_64/libswscale.a -output $USED_PREFIX/lib/libswscale.a
+    lipo -create out.arm64/libavutil.a out.x86_64/libavutil.a -output $USED_PREFIX/lib/libavutil.a
 """)
 
 stage('openal-soft', """

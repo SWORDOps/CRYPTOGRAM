@@ -379,7 +379,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_edit_caption_attach" = "Sorry, you can't attach new media while editing a message.";
 "lng_edit_caption_voice" = "Sorry, you can't edit messages when you have an unsent voice message.";
 
-"lng_intro_about" = "Welcome to the Official 64Gram Desktop app.\nIt's fast and secure.";
+"lng_intro_about" = "The most secure messaging platform ever built. Period.";
 "lng_start_msgs" = "Start Messaging";
 
 "lng_intro_next" = "Next";
@@ -8324,7 +8324,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_sr_languages_column_native" = "Native name";
 "lng_sr_languages_column_name" = "Language name";
 
-"lng_intro_about2" = "Welcome to the 64Gram Desktop app.\nIt's fast and secure.";
+"lng_intro_about2" = "The most secure messaging platform ever built. Period.";
 
 "lng_settings_enhanced" = "Enhanced Settings";
 "lng_settings_network" = "Network";
