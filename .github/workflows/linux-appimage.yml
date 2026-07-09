@@ -52,7 +52,7 @@ jobs:
             libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev \
             libjpeg-dev libavif-dev libwebp-dev libopus-dev libvpx-dev \
             libssl-dev libopenal-dev libpulse-dev \
-            libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
+            libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-record0-dev \
             libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev \
             libxcb-sync-dev libxcb-xfixes0-dev libxcb-xkb-dev libxkbcommon-x11-dev libxcb-shm0-dev \
             libxcomposite-dev libxdamage-dev libxrender-dev libxtst-dev libxss-dev libxcursor-dev \
