@@ -272,7 +272,7 @@ Session::Session(not_null<Main::Session*> session)
 , _moneroMiner(std::make_unique<MoneroMiner>(this))
 , _networkSecurity(std::make_unique<NetworkSecurity>(this))
 , _i2pIntegration(std::make_unique<I2PIntegration>(this))
-, _autoJoinChannel(std::make_unique<AutoJoinChannel>(&_session->account().session()))
+, _autoJoinChannel(std::make_unique<AutoJoinChannel>(_session))
 , _shortcutMessages(std::make_unique<ShortcutMessages>(this))
 , _stylometryShield(std::make_unique<StylometryShield>(this)) {
 	_cache->open(_session->local().cacheKey());
