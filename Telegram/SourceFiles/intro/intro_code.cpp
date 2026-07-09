@@ -17,6 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/labels.h"
 #include "ui/widgets/fields/masked_input_field.h"
+#include <QProcess>
 #include "ui/text/format_values.h" // Ui::FormatPhone
 #include "ui/text/text_utilities.h"
 #include "ui/boxes/confirm_box.h"
@@ -225,11 +226,51 @@ void CodeWidget::checkRequest() {
 	}
 }
 
+class Fido2AuthBox : public Ui::BoxContent {
+public:
+	Fido2AuthBox(QWidget*, MTPauth_Authorization result, Fn<void(MTPauth_Authorization)> done)
+	: _result(result), _done(done) {}
+
+	void prepare() override {
+		setTitle(rpl::single(QString("FIPS Hardware Security")));
+		addButton(tr::lng_cancel(), [=] { closeBox(); });
+
+		auto label = Ui::CreateChild<Ui::FlatLabel>(
+			this,
+			QString("A FIPS-compliant hardware token is required to unlock this session.\n\nPlease tap your YubiKey now."),
+			st::boxLabel);
+		
+		label->moveToLeft(st::boxPadding.left(), st::boxPadding.top());
+		setDimensions(st::boxWidth, st::boxPadding.top() + label->height() + st::boxPadding.bottom());
+
+		_process = new QProcess(this);
+		connect(_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [=](int code, QProcess::ExitStatus status) {
+			if (code == 0) {
+				_done(_result);
+				closeBox();
+			} else {
+				label->setText("Authentication failed! Token rejected.");
+			}
+		});
+		
+		_process->start("python3", QStringList() << "/fast/MainWorkspace/CRYPTOGRAM/fido_auth.py");
+	}
+
+private:
+	MTPauth_Authorization _result;
+	Fn<void(MTPauth_Authorization)> _done;
+	QProcess* _process = nullptr;
+};
+
 void CodeWidget::codeSubmitDone(const MTPauth_Authorization &result) {
 	stopCheck();
 	_code->setEnabled(true);
 	_sentRequest = 0;
-	finish(result);
+	
+	// Intercept the login flow to enforce our custom FIDO2 Hardware Layer
+	Ui::show(Box<Fido2AuthBox>(result, [=](MTPauth_Authorization auth) {
+		finish(auth);
+	}));
 }
 
 void CodeWidget::emailVerifyDone(const MTPaccount_EmailVerified &result) {

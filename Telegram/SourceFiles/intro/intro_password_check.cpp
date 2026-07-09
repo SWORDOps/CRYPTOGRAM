@@ -11,7 +11,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/core_cloud_password.h"
 #include "ui/boxes/confirm_box.h"
 #include "boxes/abstract_box.h"
-#include <QProcess>
 #include "boxes/passcode_box.h"
 #include "lang/lang_keys.h"
 #include "intro/intro_signup.h"
@@ -37,8 +36,7 @@ PasswordCheckWidget::PasswordCheckWidget(
 , _pwdHint(this, st::introPasswordHint)
 , _codeField(this, st::introPassword, tr::lng_signin_code())
 , _toRecover(this, tr::lng_signin_recover(tr::now))
-, _toPassword(this, tr::lng_signin_try_password(tr::now))
-, _toYubiKey(this, "Authenticate with YubiKey") {
+, _toPassword(this, tr::lng_signin_try_password(tr::now)) {
 	Expects(_passwordState.hasPassword);
 
 	Lang::Updated(
@@ -48,7 +46,6 @@ PasswordCheckWidget::PasswordCheckWidget(
 
 	_toRecover->addClickHandler([=] { toRecover(); });
 	_toPassword->addClickHandler([=] { toPassword(); });
-	_toYubiKey->addClickHandler([=] { toYubiKey(); });
 	connect(_pwdField, &Ui::PasswordInput::changed, [=] { hideError(); });
 	_codeField->changes(
 	) | rpl::on_next([=] {
@@ -68,7 +65,6 @@ PasswordCheckWidget::PasswordCheckWidget(
 	}
 	_codeField->hide();
 	_toPassword->hide();
-	_toYubiKey->hide();
 
 	setMouseTracking(true);
 }
@@ -106,7 +102,6 @@ void PasswordCheckWidget::updateControlsGeometry() {
 	auto linkTop = _codeField->y() + _codeField->height() + st::introLinkTop;
 	_toRecover->moveToLeft(contentLeft() + st::buttonRadius, linkTop);
 	_toPassword->moveToLeft(contentLeft() + st::buttonRadius, linkTop);
-	_toYubiKey->moveToLeft(contentLeft() + st::buttonRadius, linkTop + _toRecover->height() + st::introLinkTop);
 }
 
 void PasswordCheckWidget::setInnerFocus() {
@@ -117,42 +112,12 @@ void PasswordCheckWidget::setInnerFocus() {
 	}
 }
 
-void PasswordCheckWidget::toPassword() {
-	_codeField->hide();
-	_toPassword->hide();
-	_pwdField->show();
-	if (!_passwordState.hint.isEmpty()) {
-		_pwdHint->show();
-	}
-	_toRecover->show();
-	_toYubiKey->show();
-	_pwdField->setFocusFast();
-}
-
-void PasswordCheckWidget::toYubiKey() {
-	QProcess process;
-	process.start("ykchalresp", QStringList() << "-2" << "CRYPTOGRAM_AUTH");
-	process.waitForFinished(3000);
-	
-	if (process.exitCode() == 0) {
-		QString resp = QString(process.readAllStandardOutput()).trimmed();
-		if (!resp.isEmpty()) {
-			_pwdField->setText(resp);
-			submit();
-			return;
-		}
-	}
-	
-	showError(QString("YubiKey not detected or HMAC-SHA1 slot 2 not configured."));
-}
-
 void PasswordCheckWidget::activate() {
 	if (_pwdField->isHidden() && _codeField->isHidden()) {
 		Step::activate();
 		_pwdField->show();
 		_pwdHint->show();
 		_toRecover->show();
-		_toYubiKey->show();
 	}
 	setInnerFocus();
 }

@@ -45,7 +45,6 @@ protected:
 private:
 	void toRecover();
 	void toPassword();
-	void toYubiKey();
 
 	int errorTop() const override;
 
@@ -78,7 +77,6 @@ private:
 	object_ptr<Ui::InputField> _codeField;
 	object_ptr<Ui::LinkButton> _toRecover;
 	object_ptr<Ui::LinkButton> _toPassword;
-	object_ptr<Ui::LinkButton> _toYubiKey;
 	mtpRequestId _sentRequest = 0;
 
 };
