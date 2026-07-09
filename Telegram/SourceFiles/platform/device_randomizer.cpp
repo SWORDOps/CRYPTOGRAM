@@ -292,11 +292,6 @@ QString DeviceModelPretty() {
 
 // Replacement for Platform::SystemVersionPretty
 QString SystemVersionPretty() {
-    // If already using randomized value, return it
-    if (!DeviceRandomizer::Instance().currentSystemVersion().isEmpty()) {
-        return DeviceRandomizer::Instance().currentSystemVersion();
-    }
-    
     // Use our enhanced entropy source
     const auto& entropy = EntropySource::instance().sessionEntropy();
     
