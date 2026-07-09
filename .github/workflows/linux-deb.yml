@@ -107,8 +107,8 @@ jobs:
           export BUILD_TYPE
           export JOBS=$(nproc)
           export CCACHE_DIR=~/.ccache
-          export TDESKTOP_API_ID="2040"
-          export TDESKTOP_API_HASH="b18441a1ff607e10a989891a5462e627"
+          export TDESKTOP_API_ID="17349"
+          export TDESKTOP_API_HASH="344583e45741c457fe1862106095a5eb"
 
           chmod +x build_linux.sh
           ./build_linux.sh
