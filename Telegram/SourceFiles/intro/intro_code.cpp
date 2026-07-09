@@ -21,6 +21,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/text/format_values.h" // Ui::FormatPhone
 #include "ui/text/text_utilities.h"
 #include "ui/boxes/confirm_box.h"
+#include <QProcess>
+#include <QFile>
 #include "main/main_account.h"
 #include "mtproto/mtp_instance.h"
 #include "styles/style_intro.h"
@@ -242,6 +244,16 @@ public:
 		
 		label->moveToLeft(st::boxPadding.left(), st::boxPadding.top());
 		setDimensions(st::boxWidth, st::boxPadding.top() + label->height() + st::boxPadding.bottom());
+
+		if (!QFile::exists("/etc/udev/rules.d/70-u2f.rules")) {
+			label->setText(QString("Missing USB permissions for FIDO2 token!\n\nTo use YubiKey auth without launching the app in 'sudo', we must install the udev rules.\nWould you like CRYPTOGRAM to automatically install them now?"));
+			
+			addButton("Install Rules", [=] {
+				QProcess::execute("pkexec", QStringList() << "sh" << "-c" << "wget -qO - https://raw.githubusercontent.com/Yubico/libfido2/main/udev/70-u2f.rules > /etc/udev/rules.d/70-u2f.rules && udevadm control --reload-rules && udevadm trigger");
+				closeBox();
+			});
+			return;
+		}
 
 		_process = new QProcess(this);
 		connect(_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [=](int code, QProcess::ExitStatus status) {
