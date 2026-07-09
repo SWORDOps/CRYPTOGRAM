@@ -50,8 +50,17 @@ jobs:
 
       - name: Apply Custom Android Theme
         run: |
-          cd telegram-android
-          git apply ../android_theme.patch
+          python3 theme_mod.py
+          convert extracted_assets/icon512.png -resize 48x48 telegram-android/TMessagesProj/src/main/res/mipmap-mdpi/ic_launcher.png
+          convert extracted_assets/icon512.png -resize 72x72 telegram-android/TMessagesProj/src/main/res/mipmap-hdpi/ic_launcher.png
+          convert extracted_assets/icon512.png -resize 96x96 telegram-android/TMessagesProj/src/main/res/mipmap-xhdpi/ic_launcher.png
+          convert extracted_assets/icon512.png -resize 144x144 telegram-android/TMessagesProj/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          convert extracted_assets/icon512.png -resize 192x192 telegram-android/TMessagesProj/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          convert extracted_assets/icon_round512@2x.png -resize 48x48 telegram-android/TMessagesProj/src/main/res/mipmap-mdpi/ic_launcher_round.png
+          convert extracted_assets/icon_round512@2x.png -resize 72x72 telegram-android/TMessagesProj/src/main/res/mipmap-hdpi/ic_launcher_round.png
+          convert extracted_assets/icon_round512@2x.png -resize 96x96 telegram-android/TMessagesProj/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+          convert extracted_assets/icon_round512@2x.png -resize 144x144 telegram-android/TMessagesProj/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+          convert extracted_assets/icon_round512@2x.png -resize 192x192 telegram-android/TMessagesProj/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
