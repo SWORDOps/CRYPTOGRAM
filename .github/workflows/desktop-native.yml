@@ -42,7 +42,7 @@ jobs:
       - name: Install dependencies
         run: |
           brew update
-          brew install cmake ninja pkg-config qt@6 openssl@3 protobuf boost lz4 xxhash minizip
+          brew install cmake ninja pkg-config qt@6 openssl@3 protobuf boost lz4 xxhash minizip ada-url
 
       - name: Configure
         run: |
@@ -122,6 +122,7 @@ jobs:
             mingw-w64-ucrt-x86_64-lz4
             mingw-w64-ucrt-x86_64-xxhash
             mingw-w64-ucrt-x86_64-qt6-shadertools
+            mingw-w64-ucrt-x86_64-ada-url
 
       - name: Configure
         run: |
