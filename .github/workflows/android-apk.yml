@@ -46,7 +46,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN }}
+          token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Apply Custom Android Theme
+        run: |
+          cd telegram-android
+          git apply ../android_theme.patch
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
