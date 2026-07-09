@@ -140,6 +140,8 @@ public:
     // Wire-up helpers for the message pipeline
     [[nodiscard]] QString wrapEncryptedText(const bytes::vector &ciphertext, const MessageMetadata &metadata);
     [[nodiscard]] std::optional<std::pair<bytes::vector, MessageMetadata>> unwrapEncryptedText(const QString &text);
+    
+    [[nodiscard]] bool verifyCacMutualAuth(const bytes::vector &challengeNonce, const bytes::vector &signature, const QString &userDN);
     [[nodiscard]] TextWithEntities processIncomingMessage(not_null<PeerData*> peer, const TextWithEntities &text);
     [[nodiscard]] TextWithEntities processOutgoingMessage(not_null<PeerData*> peer, const TextWithEntities &text);
     [[nodiscard]] TextWithTags processOutgoingMessage(not_null<PeerData*> peer, const TextWithTags &text);
