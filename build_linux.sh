@@ -215,6 +215,17 @@ else
         cd "$BUILD_DIR"
     fi
 
+    if ! pkg-config --exists rnnoise; then
+        echo "Building rnnoise from source..."
+        git clone https://github.com/xiph/rnnoise.git /tmp/rnnoise
+        cd /tmp/rnnoise
+        ./autogen.sh
+        ./configure --disable-shared --enable-static
+        make
+        sudo make install
+        cd "$BUILD_DIR"
+    fi
+
     if ! cmake "${CMAKE_ARGS[@]}" "$CRYPTOGRAM_ROOT"; then
         fail "CMake configuration failed"
     fi

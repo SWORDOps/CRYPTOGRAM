@@ -50,7 +50,7 @@ jobs:
             qt6-image-formats-plugins qt6-l10n-tools qt6-declarative-dev \
             libqt6core5compat6-dev qt6-svg-dev qt6-wayland-dev qtwayland5 \
             libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev \
-            libjpeg-dev librnnoise-dev libavif-dev libwebp-dev libopus-dev libvpx-dev \
+            libjpeg-dev libavif-dev libwebp-dev libopus-dev libvpx-dev \
             libssl-dev libopenal-dev libpulse-dev \
             libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
             libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev \

@@ -181,7 +181,7 @@ jobs:
             qt6-image-formats-plugins qt6-l10n-tools qt6-declarative-dev \
             qt6-multimedia-dev qt6-charts-dev qt6-svg-dev qt6-wayland-dev qtwayland5 \
             libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev \
-            libjpeg-dev librnnoise-dev libavif-dev libwebp-dev libopus-dev libvpx-dev \
+            libjpeg-dev libavif-dev libwebp-dev libopus-dev libvpx-dev \
             libssl-dev libopenal-dev libpulse-dev \
             libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
             libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev \
@@ -198,6 +198,15 @@ jobs:
           cd /tmp/ada
           mkdir build && cd build
           cmake -DADA_TESTING=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON ..
+          sudo make install
+
+      - name: Build rnnoise
+        run: |
+          git clone https://github.com/xiph/rnnoise.git /tmp/rnnoise
+          cd /tmp/rnnoise
+          ./autogen.sh
+          ./configure --disable-shared --enable-static
+          make
           sudo make install
 
       - name: Configure
