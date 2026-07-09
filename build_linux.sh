@@ -205,6 +205,16 @@ else
         CMAKE_ARGS+=("-DTDESKTOP_API_ID=${TDESKTOP_API_ID}" "-DTDESKTOP_API_HASH=${TDESKTOP_API_HASH}")
     fi
     
+    if [ ! -f "/usr/local/lib/libada.a" ]; then
+        echo "Building ada-url from source..."
+        git clone https://github.com/ada-url/ada.git /tmp/ada
+        cd /tmp/ada
+        mkdir build && cd build
+        cmake -DADA_TESTING=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON ..
+        sudo make install
+        cd "$BUILD_DIR"
+    fi
+
     if ! cmake "${CMAKE_ARGS[@]}" "$CRYPTOGRAM_ROOT"; then
         fail "CMake configuration failed"
     fi
