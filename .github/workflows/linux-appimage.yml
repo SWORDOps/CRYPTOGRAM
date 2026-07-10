@@ -73,6 +73,14 @@ jobs:
           restore-keys: |
             ccache-appimage-
 
+      - name: Install Qt 6.6.2
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.6.2'
+          host: 'linux'
+          target: 'desktop'
+          modules: 'qt5compat qtdeclarative qtmultimedia qtshadertools qtsvg qtwayland qtimageformats qt3d'
+
       - name: Build Binary
         run: |
           chmod +x build_linux.sh
