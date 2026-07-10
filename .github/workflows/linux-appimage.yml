@@ -79,7 +79,7 @@ jobs:
           version: '6.6.2'
           host: 'linux'
           target: 'desktop'
-          modules: 'qt5compat qtdeclarative qtmultimedia qtshadertools qtsvg qtwayland qtimageformats qt3d'
+          modules: 'qt5compat qtmultimedia qtshadertools qtimageformats qt3d'
 
       - name: Build Binary
         run: |
