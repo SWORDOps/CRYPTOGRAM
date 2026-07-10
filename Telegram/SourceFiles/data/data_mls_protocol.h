@@ -89,18 +89,31 @@ struct MLSKeyPackage {
 	uint16 version = kMLSProtocolVersion;
 	MLSCiphersuite ciphersuite = MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519;
 
-	bytes::vector initKey;           // HPKE init key (public)
+	bytes::vector initKey;             // HPKE init key (public)
 	bytes::vector credentialPublicKey; // Signature public key
-	bytes::vector credential;        // Identity credential
-	bytes::vector signature;         // Self-signature
+	bytes::vector credential;          // Identity credential
+	bytes::vector signature;           // Self-signature
+
+	// === CAC Mutual-Gating Credential ===
+	// Both fields must be present and valid for the package to be accepted
+	// into any CAC-gated MLS group. The DN is never transmitted; it is
+	// extracted locally from cacCertChainDer after chain validation.
+	bytes::vector cacCertChainDer;     // Full DER-encoded X.509 cert chain
+	bytes::vector cacSignature;        // HW signature over (initKey || credentialPublicKey)
 
 	QDateTime creationTime;
 	QDateTime expirationTime;
 
-	bool isValid() const {
+	[[nodiscard]] bool isValid() const {
 		return !initKey.empty() &&
 		       !credentialPublicKey.empty() &&
 		       QDateTime::currentDateTime() < expirationTime;
+	}
+
+	// True only if the CAC credential fields are populated.
+	// This does NOT verify cryptographic validity; call verifyKeyPackage() for that.
+	[[nodiscard]] bool hasCacCredential() const {
+		return !cacCertChainDer.empty() && !cacSignature.empty();
 	}
 };
 
@@ -268,6 +281,13 @@ public:
 	// Key package management
 	MLSKeyPackage generateKeyPackage(MLSCiphersuite ciphersuite);
 	bool verifyKeyPackage(const MLSKeyPackage &keyPackage);
+
+	// CAC credential validation for a key package.
+	// Validates the DER chain against NATO/Military trust store and
+	// verifies the hardware signature. Extracts the DN locally.
+	[[nodiscard]] bool verifyCacKeyPackage(
+		const MLSKeyPackage &keyPackage,
+		QString &outUserDN) const;
 
 	// Welcome processing
 	MLSGroupId processWelcome(const MLSWelcome &welcome);

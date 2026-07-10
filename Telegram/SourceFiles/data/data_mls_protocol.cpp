@@ -808,29 +808,161 @@ MLSKeyPackage MLSProtocol::generateKeyPackage(MLSCiphersuite ciphersuite) {
 	package.creationTime = QDateTime::currentDateTime();
 	package.expirationTime = package.creationTime.addDays(90);
 
-	// Sign the package
+	// Sign the package with our own credential key
 	bytes::vector dataToSign = publicKey;
 	dataToSign.insert(dataToSign.end(), credPublicKey.begin(), credPublicKey.end());
 	package.signature = sign(dataToSign, credPrivateKey);
 
-	_ownKeyPackages.append(package);
+	// === CAC Mutual-Gating: embed hardware credential ===
+	// Sign (initKey || credentialPublicKey) with the hardware CAC private key
+	// and embed the full DER cert chain so receivers can validate without
+	// contacting any external server. The DN is NEVER included; receivers
+	// extract it locally from the cert chain after cryptographic verification.
+	auto cac = CACFactory::create();
+	if (cac && cac->isCardPresent()) {
+		auto info = cac->getCardInfo();
+		if (info && info->isValid) {
+			const QByteArray payload(
+				reinterpret_cast<const char*>(dataToSign.data()),
+				dataToSign.size());
+			auto sigResult = cac->signData(bytes::make_span(payload));
+			if (sigResult) {
+				package.cacSignature    = sigResult->signature;
+				package.cacCertChainDer = info->certChainDer;
+				LOG(("MLS: Embedded CAC credential into KeyPackage"));
+			} else {
+				LOG(("MLS: CAC signing failed — KeyPackage will be rejected by CAC-gated groups"));
+			}
+		}
+	} else {
+		LOG(("MLS: No CAC card present — KeyPackage will be rejected by CAC-gated groups"));
+	}
 
+	_ownKeyPackages.append(package);
 	return package;
 }
 
 bool MLSProtocol::verifyKeyPackage(const MLSKeyPackage &keyPackage) {
-	// Verify expiration
+	// 1. Check expiration
 	if (!keyPackage.isValid()) {
+		LOG(("MLS [CAC-Gate]: Rejected KeyPackage — expired"));
 		return false;
 	}
 
-	// Verify signature
+	// 2. Verify self-signature (initKey || credentialPublicKey)
 	bytes::vector dataToVerify = keyPackage.initKey;
 	dataToVerify.insert(dataToVerify.end(),
 		keyPackage.credentialPublicKey.begin(),
 		keyPackage.credentialPublicKey.end());
+	if (!verify(dataToVerify, keyPackage.signature, keyPackage.credentialPublicKey)) {
+		LOG(("MLS [CAC-Gate]: Rejected KeyPackage — invalid self-signature"));
+		return false;
+	}
 
-	return verify(dataToVerify, keyPackage.signature, keyPackage.credentialPublicKey);
+	// 3. Enforce CAC credential — no card, no entry
+	if (!keyPackage.hasCacCredential()) {
+		LOG(("MLS [CAC-Gate]: Rejected KeyPackage — no CAC credential present"));
+		return false;
+	}
+
+	QString extractedDN;
+	if (!verifyCacKeyPackage(keyPackage, extractedDN)) {
+		LOG(("MLS [CAC-Gate]: Rejected KeyPackage — CAC credential failed NATO chain validation"));
+		return false;
+	}
+
+	LOG(("MLS [CAC-Gate]: Accepted KeyPackage for DN=%1").arg(extractedDN));
+	return true;
+}
+
+bool MLSProtocol::verifyCacKeyPackage(
+		const MLSKeyPackage &keyPackage,
+		QString &outUserDN) const {
+
+	if (keyPackage.cacCertChainDer.empty() || keyPackage.cacSignature.empty()) {
+		return false;
+	}
+
+	// --- Load NATO/Military trust store ---
+	const QString natoKeysDir = qApp->applicationDirPath() + u"/keys/nato"_q;
+	X509_STORE *store = X509_STORE_new();
+	if (!store) return false;
+
+	bool loadedAny = false;
+	for (const QString &file : QDir(natoKeysDir).entryList({u"*.pem"_q, u"*.crt"_q, u"*.cer"_q})) {
+		QByteArray path = (natoKeysDir + u"/"_q + file).toLocal8Bit();
+		FILE *fp = fopen(path.constData(), "rb");
+		if (!fp) continue;
+		X509 *cert = PEM_read_X509(fp, nullptr, nullptr, nullptr);
+		if (!cert) { rewind(fp); cert = d2i_X509_fp(fp, nullptr); }
+		fclose(fp);
+		if (cert) { X509_STORE_add_cert(store, cert); X509_free(cert); loadedAny = true; }
+	}
+
+	if (!loadedAny) {
+		X509_STORE_free(store);
+		LOG(("MLS [CAC-Gate]: No NATO root certs found in %1").arg(natoKeysDir));
+		return false;
+	}
+
+	// --- Parse the DER leaf cert ---
+	const unsigned char *p = reinterpret_cast<const unsigned char*>(keyPackage.cacCertChainDer.data());
+	X509 *leaf = d2i_X509(nullptr, &p, static_cast<long>(keyPackage.cacCertChainDer.size()));
+	if (!leaf) {
+		X509_STORE_free(store);
+		return false;
+	}
+
+	// --- Validate chain against NATO store ---
+	X509_STORE_CTX *ctx = X509_STORE_CTX_new();
+	bool chainOk = false;
+	if (ctx) {
+		if (X509_STORE_CTX_init(ctx, store, leaf, nullptr) == 1) {
+			chainOk = (X509_verify_cert(ctx) == 1);
+			if (!chainOk) {
+				LOG(("MLS [CAC-Gate]: Chain validation failed: %1")
+					.arg(X509_verify_cert_error_string(X509_STORE_CTX_get_error(ctx))));
+			}
+		}
+		X509_STORE_CTX_free(ctx);
+	}
+	if (!chainOk) { X509_free(leaf); X509_STORE_free(store); return false; }
+
+	// --- Verify hardware signature over (initKey || credentialPublicKey) ---
+	bytes::vector payload = keyPackage.initKey;
+	payload.insert(payload.end(),
+		keyPackage.credentialPublicKey.begin(),
+		keyPackage.credentialPublicKey.end());
+
+	EVP_PKEY *pubKey = X509_get_pubkey(leaf);
+	bool sigOk = false;
+	if (pubKey) {
+		EVP_MD_CTX *md = EVP_MD_CTX_new();
+		if (md) {
+			if (EVP_DigestVerifyInit(md, nullptr, EVP_sha256(), nullptr, pubKey) == 1 &&
+			    EVP_DigestVerifyUpdate(md, payload.data(), payload.size()) == 1 &&
+			    EVP_DigestVerifyFinal(md,
+			        reinterpret_cast<const unsigned char*>(keyPackage.cacSignature.data()),
+			        keyPackage.cacSignature.size()) == 1) {
+				sigOk = true;
+			}
+			EVP_MD_CTX_free(md);
+		}
+		EVP_PKEY_free(pubKey);
+	}
+	if (!sigOk) {
+		LOG(("MLS [CAC-Gate]: Hardware signature verification failed"));
+		X509_free(leaf); X509_STORE_free(store); return false;
+	}
+
+	// --- Extract DN locally — never transmitted ---
+	char dnBuf[512] = {};
+	X509_NAME_oneline(X509_get_subject_name(leaf), dnBuf, sizeof(dnBuf));
+	outUserDN = QString::fromUtf8(dnBuf);
+
+	X509_free(leaf);
+	X509_STORE_free(store);
+	return true;
 }
 
 MLSGroupId MLSProtocol::processWelcome(const MLSWelcome &welcome) {
@@ -887,12 +1019,32 @@ bool MLSProtocol::processProposal(const MLSGroupId &groupId, const MLSProposal &
 	switch (proposal.type) {
 	case MLSProposalType::Add:
 		if (proposal.addKeyPackage.has_value()) {
-			// Add new member to tree
+			const auto &kp = proposal.addKeyPackage.value();
+
+			// === CAC-Gate: verify the joiner's military credential ===
+			// A joiner without a valid hardware CAC card CANNOT enter.
+			// Their DN is extracted locally from the cert chain; it is
+			// never transmitted. This check is enforced on every member
+			// independently — a modded client that skips it only harms itself.
+			QString joinDN;
+			if (!verifyKeyPackage(kp)) {
+				LOG(("MLS [CAC-Gate]: BLOCKED Add proposal from sender %1 — "
+				     "invalid or missing military/government CAC credential")
+					.arg(proposal.sender.bare()));
+				return false;  // Hard reject — proposal is dropped
+			}
+
+			// Credential verified — register as a CAC user
+			if (verifyCacKeyPackage(kp, joinDN)) {
+				CACUserRegistry::registerCACUser(proposal.sender.bare(), joinDN);
+				LOG(("MLS [CAC-Gate]: Admitted verified member DN=%1").arg(joinDN));
+			}
+
 			auto leafIdx = state.memberCount();
 			MLSGroupMember member;
 			member.userId = proposal.sender;
 			member.leafIndex = leafIdx;
-			member.keyPackage = proposal.addKeyPackage.value();
+			member.keyPackage = kp;
 			member.addedAt = QDateTime::currentDateTime();
 			member.isActive = true;
 
