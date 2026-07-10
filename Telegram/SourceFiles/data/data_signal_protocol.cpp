@@ -2553,7 +2553,7 @@ QString SignalProtocol::wrapEncryptedText(const bytes::vector &ciphertext, const
     const QChar kInvis[4] = { QChar(0x200B), QChar(0x200C), QChar(0x200D), QChar(0x2060) };
     const QString kMarker = QString() + QChar(0xFEFF) + QChar(0x200B) + QChar(0x200C) + QChar(0xFEFF);
 
-    QString result = u"\U0001F512 Encrypted Message"_q + kMarker;
+    QString result = kMarker;
     for (char c : data) {
         uint8 byte = static_cast<uint8>(c);
         result += kInvis[(byte >> 6) & 3];
