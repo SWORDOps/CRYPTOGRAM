@@ -4283,13 +4283,25 @@ void ApiWrap::sendMessage(
 			const auto ciphertext = groupEncryption->encryptGroupMessage(
 				peer, textWithTags.text);
 			if (!ciphertext.empty()) {
-				// Encode ciphertext as ZW payload so stock clients see blank text
-				const auto *ptr = reinterpret_cast<const char*>(ciphertext.data());
-				const QByteArray rawBytes(ptr, ciphertext.size());
-				const auto zwText = Data::SignalProtocolTransport::bytesToZeroWidth(rawBytes);
-				mlsCiphertextLength = zwText.size();
-				textWithTags.text = zwText;
-				textWithTags.tags = TextWithTags::Tags();
+				// Encode ciphertext as base64url payload inside hidden MTProto Entities
+				const QByteArray rawBytes(reinterpret_cast<const char*>(ciphertext.data()), ciphertext.size());
+				const QString b64 = QString::fromLatin1(rawBytes.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+				
+				// Multi-Entity Chunking: Avoid Telegram's 4096 character limit
+				// by splitting the payload across multiple invisible URL entities attached to spaces
+				const int chunkSize = 4000;
+				QString chunkedText;
+				auto entities = EntitiesInText();
+				
+				for (int i = 0; i < b64.size(); i += chunkSize) {
+					QString chunk = b64.mid(i, chunkSize);
+					chunkedText += u" "_q;
+					entities.push_back({EntityType::TextUrl, i / chunkSize, 1, u"tg://cryptogram?part="_q + QString::number(i / chunkSize) + u"&data="_q + chunk});
+				}
+				
+				mlsCiphertextLength = rawBytes.size();
+				textWithTags.text = chunkedText;
+				textWithTags.tags = TextUtilities::ConvertEntitiesToTextTags(entities);
 			}
 		}
 	}
