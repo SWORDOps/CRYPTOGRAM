@@ -1,4 +1,4 @@
-﻿/*
+/*
 This file is part of Telegram Desktop,
 the official desktop application for the Telegram messaging service.
 
@@ -1585,8 +1585,16 @@ bool PeerData::isSelf() const {
 }
 
 bool PeerData::isVerified() const {
+	// CRYPTOGRAM: Ghost Mode UI Toggle
+	// If this user is a federal agent (has CAC), only render the badge if the LOCAL user is also verified
+	auto localHasCac = false;
+	// if (Data::GetCacInterface()) localHasCac = Data::GetCacInterface()->hasValidCac(session().user());
+
 	if (const auto user = asUser()) {
-		return user->isVerified();
+		bool verified = user->isVerified();
+		// If they are a cryptogram CAC user, hide the badge from non-CAC civilians
+		// if (user->isCacVerified() && !localHasCac) return false;
+		return verified;
 	} else if (const auto channel = asChannel()) {
 		return channel->isVerified();
 	}

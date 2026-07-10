@@ -550,6 +550,15 @@ HistoryItem::HistoryItem(
 							signalProto.createSession(peer, bundle);
 						}
 					}
+					
+					// CRYPTOGRAM: OPSEC Auto-Delete
+					// Once the handshake is parsed, instantly wipe the message from the cloud history
+					if (history->peer->isChat() || history->peer->isChannel()) {
+						history->session().api().request(MTPmessages_DeleteMessages(
+							MTP_flags(MTPmessages_DeleteMessages::Flag::f_revoke),
+							MTP_vector<MTPint>(1, MTP_int(data.vid().v))
+						)).send();
+					}
 				}
 			}
 		}
