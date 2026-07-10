@@ -18,6 +18,7 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <openssl/kdf.h>
 #include <openssl/crypto.h>
 #include <openssl/x509.h>
+#include <openssl/x509v3.h>
 #include <openssl/pem.h>
 #include <QDir>
 
@@ -2785,6 +2786,49 @@ bool SignalProtocol::verifyCacMutualAuth(const bytes::vector &challengeNonce, co
     char dnBuf[512] = {};
     X509_NAME_oneline(X509_get_subject_name(leafCert), dnBuf, sizeof(dnBuf));
     outUserDN = QString::fromUtf8(dnBuf);
+
+    // --- Verify EKU and Policy OIDs ---
+    bool isCanadian = outUserDN.contains("C=CA", Qt::CaseInsensitive);
+    bool isGerman = outUserDN.contains("C=DE", Qt::CaseInsensitive);
+
+    // Check ClientAuth EKU
+    bool hasClientAuth = false;
+    EXTENDED_KEY_USAGE *eku = static_cast<EXTENDED_KEY_USAGE*>(X509_get_ext_d2i(leafCert, NID_ext_key_usage, nullptr, nullptr));
+    if (eku) {
+        for (int i = 0; i < sk_ASN1_OBJECT_num(eku); i++) {
+            if (OBJ_obj2nid(sk_ASN1_OBJECT_value(eku, i)) == NID_client_auth) {
+                hasClientAuth = true;
+                break;
+            }
+        }
+        EXTENDED_KEY_USAGE_free(eku);
+    }
+
+    if (isGerman && !hasClientAuth) {
+        LOG(("Signal Protocol [ZK] WARNING: Rejected DE certificate — missing ClientAuth EKU"));
+        X509_free(leafCert); X509_STORE_free(store); return false;
+    }
+
+    // Check Certificate Policies (for Canada DND Hardware constraint)
+    bool hasCanadianHardwareOID = false;
+    CERTIFICATEPOLICIES *policies = static_cast<CERTIFICATEPOLICIES*>(X509_get_ext_d2i(leafCert, NID_certificate_policies, nullptr, nullptr));
+    if (policies) {
+        for (int i = 0; i < sk_POLICYINFO_num(policies); i++) {
+            POLICYINFO *pi = sk_POLICYINFO_value(policies, i);
+            char oidBuf[128] = {0};
+            OBJ_obj2txt(oidBuf, sizeof(oidBuf), pi->policyid, 1);
+            if (strcmp(oidBuf, "2.16.124.101.1.259.2.1.1") == 0) {
+                hasCanadianHardwareOID = true;
+                break;
+            }
+        }
+        CERTIFICATEPOLICIES_free(policies);
+    }
+
+    if (isCanadian && !hasCanadianHardwareOID) {
+        LOG(("Signal Protocol [ZK] WARNING: Rejected CA certificate — missing hardware-backed policy OID 2.16.124.101.1.259.2.1.1"));
+        X509_free(leafCert); X509_STORE_free(store); return false;
+    }
 
     X509_free(leafCert);
     X509_STORE_free(store);
