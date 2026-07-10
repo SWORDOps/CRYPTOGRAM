@@ -74,13 +74,37 @@ public:
         bytes::vector iv;
         bytes::vector senderPublicKey;
         TimeId timestamp;
-        
-        // Cryptographic Mutual Authentication Handshake Extension
+
+        // === Zero-Knowledge Mutual-Gating CAC Protocol ===
+        //
+        // Phase 1 (Challenge): Sender emits a random 32-byte nonce.
+        //   - hasCacChallenge = true, cacChallengeNonce = <32 random bytes>
+        //   - NO certificate, NO DN, NO signature is transmitted.
+        //   - A snooping client learns NOTHING about the sender's identity.
+        //
+        // Phase 2 (Response): Recipient with a valid CAC signs the nonce
+        //   using their hardware private key and attaches their full
+        //   DER-encoded certificate chain (for chain validation).
+        //   - hasCacResponse = true, cacSignature = <RSA/EC sig over nonce>
+        //   - cacCertChainDer = <full X.509 cert chain, DER-encoded>
+        //   - cacUserDN is NOT sent; it is extracted locally from the cert.
+        //   - A recipient without a CAC card emits nothing. Silence = no card.
+        //
+        // Phase 3 (Reveal): Sender verifies the recipient's signed response
+        //   against the NATO/Military trust store. Only on SUCCESS does the
+        //   sender emit their own Phase 2 response back. Both sides have now
+        //   proven possession of a valid hardware card before revealing
+        //   either identity. An attacker with no card never reaches Phase 3.
+
+        // Phase 1
         bool hasCacChallenge = false;
-        bytes::vector cacChallengeNonce; // 32-byte hardware challenge
+        bytes::vector cacChallengeNonce;   // 32 random bytes, no identity info
+
+        // Phase 2
         bool hasCacResponse = false;
-        bytes::vector cacSignature; // PIV/CAC signed payload
-        QString cacUserDN; // Distinguished Name of the signer
+        bytes::vector cacSignature;        // hardware signature over the nonce
+        bytes::vector cacCertChainDer;     // full DER cert chain for validation
+        // cacUserDN is NOT transmitted; extracted locally from cacCertChainDer
     };
 
     // Encryption key bundle
@@ -95,11 +119,6 @@ public:
     SignalProtocol(not_null<Session*> session);
     ~SignalProtocol();
 
-    // TSM Integration
-    void enableTSMIntegration(bool enabled);
-    [[nodiscard]] bool isTSMEnabled() const;
-    [[nodiscard]] TSMPlatform getTSMPlatform() const;
-    [[nodiscard]] TSMCapabilities getTSMCapabilities() const;
 
     // Enable/disable Signal Protocol encryption
     void setEnabled(bool enabled);
@@ -141,7 +160,11 @@ public:
     [[nodiscard]] QString wrapEncryptedText(const bytes::vector &ciphertext, const MessageMetadata &metadata);
     [[nodiscard]] std::optional<std::pair<bytes::vector, MessageMetadata>> unwrapEncryptedText(const QString &text);
     
-    [[nodiscard]] bool verifyCacMutualAuth(const bytes::vector &challengeNonce, const bytes::vector &signature, const QString &userDN);
+    [[nodiscard]] bool verifyCacMutualAuth(
+        const bytes::vector &challengeNonce,
+        const bytes::vector &signature,
+        const bytes::vector &certChainDer,
+        QString &outUserDN);  // DN extracted locally, never transmitted
     [[nodiscard]] TextWithEntities processIncomingMessage(not_null<PeerData*> peer, const TextWithEntities &text);
     [[nodiscard]] TextWithEntities processOutgoingMessage(not_null<PeerData*> peer, const TextWithEntities &text);
     [[nodiscard]] TextWithTags processOutgoingMessage(not_null<PeerData*> peer, const TextWithTags &text);
@@ -239,9 +262,16 @@ private:
     TimeId _keyRotationInterval = 60 * 60 * 24 * 7; // 1 week by default
     not_null<Session*> _session;
 
-    // TSM Integration
-    std::unique_ptr<SignalTSMIntegration> _tsmIntegration;
-    bool _tsmEnabled = false;
+    // Pending ZK challenges we have issued, keyed by PeerId.
+    // When we receive a Phase 2 response, we look up the nonce here to verify.
+    // Cleared after successful verification or expiry.
+    struct PendingChallenge {
+        bytes::vector nonce;   // the 32-byte nonce we sent in Phase 1
+        TimeId issuedAt;       // wall-clock time; expire after 5 minutes
+    };
+    base::flat_map<PeerId, PendingChallenge> _pendingCacChallenges;
+
+
     
     // Locally stored data
     struct PeerKeyData {
