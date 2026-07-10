@@ -1,6 +1,7 @@
 project(UnitTests)
 
 find_package(Catch2 REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 add_executable(test_cryptogram_features
     test_cryptogram_features.cpp

@@ -603,3 +603,42 @@ TEST_CASE("E2E: MLS group context has valid ciphersuite", "[mls][e2e]") {
 	auto state = protocol.getGroupState(groupId);
 	REQUIRE(state->ciphersuite == Ciphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
 }
+
+TEST_CASE("E2E BRUTAL: MLS Extreme Payload & Null-Byte Injection", "[mls][e2e][brutal]") {
+	MLSProtocolSim protocol;
+	const std::vector<UserId> members = {1, 2, 3};
+	const auto groupId = protocol.createGroup(
+		members, Ciphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
+
+	// 1. Zero-byte message
+	Bytes zeroPayload = {};
+	auto zeroEnc = protocol.encryptMessage(groupId, zeroPayload);
+	REQUIRE(!zeroEnc.empty());
+	auto zeroDec = protocol.decryptMessage(groupId, zeroEnc);
+	REQUIRE(zeroDec.has_value());
+	REQUIRE(zeroDec.value().empty());
+
+	// 2. High-Volume Member Addition (Simulate 50 group additions sequentially)
+	for (uint32_t i = 100; i < 150; ++i) {
+		REQUIRE(protocol.addMember(groupId, i));
+	}
+	auto state = protocol.getGroupState(groupId);
+	REQUIRE(state->members.size() == 53); // 3 original + 50 new
+
+	// 3. Huge Payload Stress Test (5 MB)
+	Bytes hugePayload(5 * 1024 * 1024, 0x42);
+	auto hugeEnc = protocol.encryptMessage(groupId, hugePayload);
+	REQUIRE(!hugeEnc.empty());
+	
+	// Member 140 decrypts
+	auto hugeDec = protocol.decryptMessage(groupId, hugeEnc);
+	REQUIRE(hugeDec.has_value());
+	REQUIRE(hugeDec.value() == hugePayload);
+
+	// 4. Bad Ciphertext Injection
+	Bytes tamperedEnc = hugeEnc;
+	tamperedEnc[tamperedEnc.size() - 5] ^= 0xFF; // Flip bits in MAC/Ciphertext
+	auto tamperedDec = protocol.decryptMessage(groupId, tamperedEnc);
+	REQUIRE(!tamperedDec.has_value()); // MUST FAIL
+}
+
