@@ -941,12 +941,29 @@ bool MLSProtocol::verifyCacKeyPackage(
 	if (pubKey) {
 		EVP_MD_CTX *md = EVP_MD_CTX_new();
 		if (md) {
-			if (EVP_DigestVerifyInit(md, nullptr, EVP_sha256(), nullptr, pubKey) == 1 &&
+			// CNSA 2.0 / Legacy Fallback chain
+			// 1. Try nullptr (for inherent algorithms like ML-DSA-87, Ed25519)
+			if (EVP_DigestVerifyInit(md, nullptr, nullptr, nullptr, pubKey) == 1 &&
 			    EVP_DigestVerifyUpdate(md, payload.data(), payload.size()) == 1 &&
-			    EVP_DigestVerifyFinal(md,
-			        reinterpret_cast<const unsigned char*>(keyPackage.cacSignature.data()),
-			        keyPackage.cacSignature.size()) == 1) {
+			    EVP_DigestVerifyFinal(md, reinterpret_cast<const unsigned char*>(keyPackage.cacSignature.data()), keyPackage.cacSignature.size()) == 1) {
 				sigOk = true;
+			} else {
+				EVP_MD_CTX_reset(md);
+				// 2. Try SHA-384 (CNSA 2.0 standard for RSA/ECDSA)
+				if (EVP_DigestVerifyInit(md, nullptr, EVP_sha384(), nullptr, pubKey) == 1 &&
+				    EVP_DigestVerifyUpdate(md, payload.data(), payload.size()) == 1 &&
+				    EVP_DigestVerifyFinal(md, reinterpret_cast<const unsigned char*>(keyPackage.cacSignature.data()), keyPackage.cacSignature.size()) == 1) {
+					sigOk = true;
+				} else {
+					EVP_MD_CTX_reset(md);
+					// 3. Try SHA-256 (Legacy CAC hardware)
+					if (EVP_DigestVerifyInit(md, nullptr, EVP_sha256(), nullptr, pubKey) == 1 &&
+					    EVP_DigestVerifyUpdate(md, payload.data(), payload.size()) == 1 &&
+					    EVP_DigestVerifyFinal(md, reinterpret_cast<const unsigned char*>(keyPackage.cacSignature.data()), keyPackage.cacSignature.size()) == 1) {
+						sigOk = true;
+						LOG(("MLS [CAC-Gate]: Accepted legacy SHA-256 signature (Not CNSA 2.0 Compliant)"));
+					}
+				}
 			}
 			EVP_MD_CTX_free(md);
 		}

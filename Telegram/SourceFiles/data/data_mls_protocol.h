@@ -39,12 +39,9 @@ constexpr uint16 kMLSProtocolVersion = 1;  // MLS 1.0 (RFC 9420)
 enum class MLSCiphersuite : uint16 {
 	// Recommended ciphersuite for most use cases
 	MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519 = 0x0001,
-
-	// High security ciphersuite
-	MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519 = 0x0003,
-
-	// Maximum security (available, but not the default runtime path)
-	MLS_256_DHKEMX448_CHACHA20POLY1305_SHA512_Ed448 = 0x0007,
+	MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519 = 0x0002,
+	MLS_256_DHKEMX448_CHACHA20POLY1305_SHA512_Ed448 = 0x0003,
+	MLS_256_ML_KEM_1024_AES256GCM_SHA384_ML_DSA_87 = 0x0004, // CNSA 2.0 Compliant Suite
 };
 
 // MLS Node Index (TreeKEM tree position)
@@ -87,7 +84,7 @@ enum class MLSProposalType : uint8 {
 // Contains member's public keys and identity
 struct MLSKeyPackage {
 	uint16 version = kMLSProtocolVersion;
-	MLSCiphersuite ciphersuite = MLSCiphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519;
+	MLSCiphersuite ciphersuite = MLSCiphersuite::MLS_256_ML_KEM_1024_AES256GCM_SHA384_ML_DSA_87;
 
 	bytes::vector initKey;             // HPKE init key (public)
 	bytes::vector credentialPublicKey; // Signature public key

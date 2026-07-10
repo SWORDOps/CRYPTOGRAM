@@ -2763,13 +2763,29 @@ bool SignalProtocol::verifyCacMutualAuth(const bytes::vector &challengeNonce, co
     if (pubKey) {
         EVP_MD_CTX *mdCtx = EVP_MD_CTX_new();
         if (mdCtx) {
-            if (EVP_DigestVerifyInit(mdCtx, nullptr, EVP_sha256(), nullptr, pubKey) == 1 &&
-                EVP_DigestVerifyUpdate(mdCtx,
-                    challengeNonce.data(), challengeNonce.size()) == 1 &&
-                EVP_DigestVerifyFinal(mdCtx,
-                    reinterpret_cast<const unsigned char*>(signature.data()),
-                    signature.size()) == 1) {
+            // CNSA 2.0 / Legacy Fallback chain
+            // 1. Try nullptr (for inherent algorithms like ML-DSA-87, Ed25519)
+            if (EVP_DigestVerifyInit(mdCtx, nullptr, nullptr, nullptr, pubKey) == 1 &&
+                EVP_DigestVerifyUpdate(mdCtx, challengeNonce.data(), challengeNonce.size()) == 1 &&
+                EVP_DigestVerifyFinal(mdCtx, reinterpret_cast<const unsigned char*>(signature.data()), signature.size()) == 1) {
                 sigValid = true;
+            } else {
+                EVP_MD_CTX_reset(mdCtx);
+                // 2. Try SHA-384 (CNSA 2.0 standard for RSA/ECDSA)
+                if (EVP_DigestVerifyInit(mdCtx, nullptr, EVP_sha384(), nullptr, pubKey) == 1 &&
+                    EVP_DigestVerifyUpdate(mdCtx, challengeNonce.data(), challengeNonce.size()) == 1 &&
+                    EVP_DigestVerifyFinal(mdCtx, reinterpret_cast<const unsigned char*>(signature.data()), signature.size()) == 1) {
+                    sigValid = true;
+                } else {
+                    EVP_MD_CTX_reset(mdCtx);
+                    // 3. Try SHA-256 (Legacy CAC hardware)
+                    if (EVP_DigestVerifyInit(mdCtx, nullptr, EVP_sha256(), nullptr, pubKey) == 1 &&
+                        EVP_DigestVerifyUpdate(mdCtx, challengeNonce.data(), challengeNonce.size()) == 1 &&
+                        EVP_DigestVerifyFinal(mdCtx, reinterpret_cast<const unsigned char*>(signature.data()), signature.size()) == 1) {
+                        sigValid = true;
+                        LOG(("Signal Protocol [ZK] WARNING: Accepted legacy SHA-256 signature (Not CNSA 2.0 Compliant)"));
+                    }
+                }
             }
             EVP_MD_CTX_free(mdCtx);
         }
