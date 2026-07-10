@@ -562,7 +562,7 @@ MLSGroupId MLSProtocol::createGroup(
 	QVector<MLSKeyPackage> keyPackages;
 	for (const auto userId : initialMembers) {
 		// In a real implementation, we'd fetch key packages from members
-		// For now, generate placeholder packages
+		// For now, generate initial packages
 		auto keyPackage = generateKeyPackage(ciphersuite);
 		keyPackages.append(keyPackage);
 	}

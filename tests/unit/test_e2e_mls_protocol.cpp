@@ -642,3 +642,156 @@ TEST_CASE("E2E BRUTAL: MLS Extreme Payload & Null-Byte Injection", "[mls][e2e][b
 	REQUIRE(!tamperedDec.has_value()); // MUST FAIL
 }
 
+TEST_CASE("E2E HIVE: 6k room, feds, bad actors, rapid flow", "[mls][e2e][hive]") {
+	MLSProtocolSim protocol;
+	
+	// Create a massive room with 6000 initial users (mixed Telegram / Cryptogram users)
+	std::vector<UserId> members;
+	members.reserve(6000);
+	for (UserId i = 1; i <= 6000; i++) {
+		members.push_back(i);
+	}
+	
+	const auto groupId = protocol.createGroup(
+		members, Ciphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
+	
+	REQUIRE(protocol.hasGroup(groupId));
+	
+	auto state = protocol.getGroupState(groupId);
+	REQUIRE(state->members.size() == 6000);
+	
+	// 100 feds joining the room dynamically
+	for(UserId fedId = 10001; fedId <= 10100; fedId++) {
+		REQUIRE(protocol.addMember(groupId, fedId));
+	}
+	
+	// Rapid flow of encrypted messages
+	for (int i = 0; i < 50; i++) {
+		Bytes msg = {'C', 'L', 'E', 'A', 'R', static_cast<unsigned char>(i % 256)};
+		auto enc = protocol.encryptMessage(groupId, msg);
+		auto dec = protocol.decryptMessage(groupId, enc);
+		REQUIRE(dec.has_value());
+		REQUIRE(dec.value() == msg);
+	}
+	
+	// Feds rapidly leaving the room (extracting)
+	for(UserId fedId = 10001; fedId <= 10050; fedId++) {
+		REQUIRE(protocol.removeMember(groupId, fedId));
+	}
+	
+	// 5 Bad actors trying to inject malformed encrypted data
+	for (int i = 0; i < 5; i++) {
+		// Injection 1: Complete garbage payload
+		Bytes badMsg(256, 0x99); // Random noise
+		auto dec = protocol.decryptMessage(groupId, badMsg);
+		REQUIRE_FALSE(dec.has_value()); // Must fail gracefully
+		
+		// Injection 2: Intercepted valid ciphertext with corrupted MAC / Payload
+		Bytes validMsg = {'S', 'E', 'C', 'R', 'E', 'T'};
+		auto validEnc = protocol.encryptMessage(groupId, validMsg);
+		validEnc[validEnc.size() / 2] ^= 0x42; // Bitflip in the middle
+		auto corruptedDec = protocol.decryptMessage(groupId, validEnc);
+		REQUIRE_FALSE(corruptedDec.has_value()); // Must fail authentication
+		
+		// Injection 3: Too short (under 28 bytes)
+		Bytes shortMsg = {'S', 'H', 'O', 'R', 'T'};
+		auto shortDec = protocol.decryptMessage(groupId, shortMsg);
+		REQUIRE_FALSE(shortDec.has_value()); // Must fail length check
+	}
+	
+	// More rapid encrypted traffic to ensure the epoch state is still healthy
+	// after all the join/leave and bad actor injections
+	for (int i = 0; i < 50; i++) {
+		Bytes msg = {'M', 'O', 'R', 'E', 'M', 'S', 'G', static_cast<unsigned char>(i % 256)};
+		auto enc = protocol.encryptMessage(groupId, msg);
+		auto dec = protocol.decryptMessage(groupId, enc);
+		REQUIRE(dec.has_value());
+		REQUIRE(dec.value() == msg);
+	}
+	
+	// Final state check
+	state = protocol.getGroupState(groupId);
+	// 6000 initial + 100 feds joined - 50 feds left = 6050
+	REQUIRE(state->members.size() == 6050);
+}
+
+#include <chrono>
+#include <random>
+#include <iostream>
+
+TEST_CASE("E2E ONSLAUGHT: Dynamic randomized chaos", "[.][mls][e2e][onslaught]") {
+    // Note: The [.] tag hides it from default test runs. It must be run explicitly.
+    MLSProtocolSim protocol;
+    
+    // Create base 6k room
+    std::vector<UserId> members;
+    members.reserve(6000);
+    for (UserId i = 1; i <= 6000; i++) {
+        members.push_back(i);
+    }
+    const auto groupId = protocol.createGroup(
+        members, Ciphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519);
+    REQUIRE(protocol.hasGroup(groupId));
+    
+    std::mt19937 rng(1337);
+    std::uniform_int_distribution<int> actionDist(0, 100);
+    std::uniform_int_distribution<UserId> idDist(10000, 20000);
+    
+    auto startTime = std::chrono::steady_clock::now();
+    // Run for 300 seconds (5 minutes)
+    auto duration = std::chrono::seconds(300);
+    
+    // If we want a quick CI check, check an env var. Otherwise 5 mins.
+    if (const char* env_p = std::getenv("ONSLAUGHT_SECONDS")) {
+        duration = std::chrono::seconds(std::stoi(env_p));
+    }
+
+    uint64_t operations = 0;
+    uint64_t successful_decrypts = 0;
+    uint64_t rejected_injections = 0;
+    
+    std::cout << "\n=======================================================\n";
+    std::cout << "Starting 5-MINUTE ONSLAUGHT test for " << duration.count() << " seconds..." << std::endl;
+    std::cout << "Hammering the MLS simulator with randomized dynamic methods..." << std::endl;
+    std::cout << "=======================================================\n" << std::endl;
+    
+    while (std::chrono::steady_clock::now() - startTime < duration) {
+        int action = actionDist(rng);
+        
+        if (action < 10) { 
+            // 10% chance: Random user joins
+            protocol.addMember(groupId, idDist(rng));
+        } else if (action < 20) {
+            // 10% chance: Random user leaves
+            protocol.removeMember(groupId, idDist(rng));
+        } else if (action < 80) {
+            // 60% chance: Rapid valid message flow
+            Bytes msg = {'V', 'A', 'L', 'I', 'D', static_cast<unsigned char>(operations % 256)};
+            auto enc = protocol.encryptMessage(groupId, msg);
+            auto dec = protocol.decryptMessage(groupId, enc);
+            REQUIRE(dec.has_value());
+            REQUIRE(dec.value() == msg);
+            successful_decrypts++;
+        } else {
+            // 20% chance: Bad actor injection (corrupt a valid message)
+            Bytes msg = {'S', 'E', 'C', 'R', 'E', 'T'};
+            auto enc = protocol.encryptMessage(groupId, msg);
+            enc[enc.size() / 2] ^= 0xFF; // flip bits
+            auto dec = protocol.decryptMessage(groupId, enc);
+            REQUIRE_FALSE(dec.has_value());
+            rejected_injections++;
+        }
+        operations++;
+    }
+    
+    std::cout << "\n=======================================================\n";
+    std::cout << "ONSLAUGHT COMPLETE!" << std::endl;
+    std::cout << "Total Operations: " << operations << std::endl;
+    std::cout << "Successful Decrypts: " << successful_decrypts << std::endl;
+    std::cout << "Defeated Injections: " << rejected_injections << std::endl;
+    
+    auto state = protocol.getGroupState(groupId);
+    REQUIRE(state.has_value());
+    std::cout << "Final Room Size: " << state->members.size() << std::endl;
+    std::cout << "=======================================================\n" << std::endl;
+}
