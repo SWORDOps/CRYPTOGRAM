@@ -1917,6 +1917,12 @@ configure_cryptogram() {
         sed -i 's/new Fn(handler)/new auto(handler)/g' "$xcb_util_cpp"
     fi
 
+    # Patch lib_webview for Qt 6 QByteArray conversion issue
+    local webview_cpp="$CRYPTOGRAM_ROOT/Telegram/lib_webview/webview/platform/linux/webview_linux_webkitgtk.cpp"
+    if [ -f "$webview_cpp" ]; then
+        sed -i 's/const auto mime = QByteArray(stream->mime());/const auto mime = QByteArray::fromStdString(stream->mime());/g' "$webview_cpp"
+    fi
+
     # Set PKG_CONFIG_PATH to help find installed libraries
     export PKG_CONFIG_PATH="${INSTALL_PREFIX}/lib/pkgconfig:${INSTALL_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
     print_debug "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
