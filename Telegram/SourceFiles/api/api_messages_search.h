@@ -23,6 +23,7 @@ namespace Api {
 enum class SearchFilter {
 	NoFilter,
 	Pinned,
+	Files,
 };
 
 struct FoundMessages {

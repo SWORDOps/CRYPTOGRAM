@@ -145,9 +145,37 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "boxes/abstract_box.h"
 #include "data/business/data_shortcut_messages.h"
+#include "api/api_messages_search.h"
+#include "data/data_document.h"
+#include "data/data_session.h"
+#include "history/history.h"
+#include "history/history_item.h"
 
 namespace Window {
 namespace {
+
+void PeerMenuDownloadAllFiles(
+		not_null<Window::Navigation*> navigation,
+		not_null<PeerData*> peer) {
+	auto search = new Api::MessagesSearch(peer->owner().history(peer->id));
+	search->messagesFounds() | rpl::start_with_next([=](const Api::FoundMessages &found) {
+		if (found.messages.empty()) {
+			delete search;
+			return;
+		}
+		for (const auto msgId : found.messages) {
+			if (const auto item = peer->owner().message(peer->id, msgId)) {
+				if (const auto media = item->media()) {
+					if (const auto document = media->document()) {
+						document->save(item->fullId(), QString(), LoadFromCloudOrLocal, true);
+					}
+				}
+			}
+		}
+		search->searchMore();
+	}, search->lifetime());
+	search->searchMessages({ .filter = Api::SearchFilter::Files });
+}
 
 constexpr auto kTopicsSearchMinCount = 1;
 
@@ -335,6 +363,7 @@ private:
 	void addDirectMessages();
 	void addToggleTopicClosed();
 	void addExportChat();
+	void addDownloadAllFiles();
 	void addTranslate();
 	void addReport();
 	void addNewContact();
@@ -986,6 +1015,13 @@ void Filler::addDirectMessages() {
 			monoforum,
 			Window::SectionShow::Way::Forward);
 	}, &st::menuIconChatDiscuss);
+}
+
+void Filler::addDownloadAllFiles() {
+	addAction(
+		"Download all files",
+		[=] { PeerMenuDownloadAllFiles(_navigation, _peer); },
+		&st::menuIconExport);
 }
 
 void Filler::addExportChat() {
@@ -1887,6 +1923,7 @@ void Filler::fillHistoryActions() {
 	addToggleNoForwards();
 	addDirectMessages();
 	addExportChat();
+	addDownloadAllFiles();
 	addTranslate();
 	addReport();
 	addClearHistory();
@@ -1913,6 +1950,7 @@ void Filler::fillProfileActions() {
 	addViewDiscussion();
 	addDirectMessages();
 	addExportChat();
+	addDownloadAllFiles();
 	addToggleNoForwards();
 	addToggleFolder();
 	addBlockUser();

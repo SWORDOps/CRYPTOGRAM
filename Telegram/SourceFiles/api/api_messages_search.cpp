@@ -61,6 +61,7 @@ constexpr auto kSearchPerPage = 50;
 	switch (request.filter) {
 	case SearchFilter::NoFilter: break;
 	case SearchFilter::Pinned: result += u"\npinned"_q; break;
+	case SearchFilter::Files: result += u"\nfiles"_q; break;
 	}
 	return result;
 }
@@ -69,6 +70,8 @@ constexpr auto kSearchPerPage = 50;
 	switch (filter) {
 	case SearchFilter::Pinned:
 		return MTP_inputMessagesFilterPinned();
+	case SearchFilter::Files:
+		return MTP_inputMessagesFilterDocument();
 	case SearchFilter::NoFilter:
 		return MTP_inputMessagesFilterEmpty();
 	}
