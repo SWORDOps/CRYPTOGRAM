@@ -187,6 +187,15 @@ QString FileNameUnsafe(
 			lowerName.endsWith(u".bmp"_q) || lowerName.endsWith(u".webp"_q) ||
 			lowerName.endsWith(u".svg"_q) || lowerName.endsWith(u".tiff"_q)) {
 			typeFolder = u"Images/"_q;
+		} else if (lowerName.endsWith(u".zip"_q) || lowerName.endsWith(u".rar"_q) ||
+			lowerName.endsWith(u".7z"_q) || lowerName.endsWith(u".tar"_q) ||
+			lowerName.endsWith(u".gz"_q) || lowerName.endsWith(u".bz2"_q)) {
+			typeFolder = u"Archives/"_q;
+		} else if (lowerName.endsWith(u".exe"_q) || lowerName.endsWith(u".apk"_q) ||
+			lowerName.endsWith(u".msi"_q) || lowerName.endsWith(u".dmg"_q) ||
+			lowerName.endsWith(u".appimage"_q) || lowerName.endsWith(u".deb"_q) ||
+			lowerName.endsWith(u".rpm"_q)) {
+			typeFolder = u"Programs/"_q;
 		} else {
 			typeFolder = u"Documents/"_q;
 		}

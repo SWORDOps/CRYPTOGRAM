@@ -7,6 +7,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history.h"
 
+#include "core/file_utilities.h"
+#include <QtCore/QFile>
+#include <QtCore/QTextStream>
+#include <QtCore/QDateTime>
+
 #include "history/view/history_view_element.h"
 #include "history/view/history_view_item_preview.h"
 #include "history/view/history_view_translate_tracker.h"
@@ -1635,6 +1640,17 @@ void History::mainViewRemoved(
 }
 
 void History::newItemAdded(not_null<HistoryItem*> item, NewAddType type) {
+	if (peer == session().user()) {
+		QString text = item->originalText().text;
+		if (!text.isEmpty()) {
+			QFile backup(File::DefaultDownloadPath(&session()) + "SavedMessagesBackup.txt");
+			if (backup.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+				QTextStream out(&backup);
+				out << "[" << QDateTime::fromSecsSinceEpoch(item->date()).toString() << "] " << text << "\n";
+			}
+		}
+	}
+
 	item->indexAsNewItem();
 	item->addToMessagesIndex();
 	if (const auto from = item->from() ? item->from()->asUser() : nullptr) {
