@@ -24,6 +24,14 @@ jobs:
           submodules: recursive
           token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
 
+      - name: Free Disk Space (macOS)
+        run: |
+          sudo rm -rf /Applications/Xcode_13*.app
+          sudo rm -rf /Applications/Xcode_14*.app
+          sudo rm -rf /Library/Developer/CommandLineTools
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+
       - name: Install dependencies
         run: |
           brew install cmake ninja yasm pkg-config autoconf automake libtool meson nasm
@@ -65,6 +73,20 @@ jobs:
         with:
           submodules: recursive
           token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Free Disk Space (Windows)
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 1024
+          swap-size-mb: 1024
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Setup Visual Studio Command Prompt
         uses: ilammy/msvc-dev-cmd@v1

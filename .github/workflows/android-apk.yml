@@ -46,6 +46,18 @@ jobs:
           submodules: recursive
           token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
 
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+
       - name: Apply Custom Android Theme
         run: |
           sudo apt-get update && sudo apt-get install -y imagemagick
