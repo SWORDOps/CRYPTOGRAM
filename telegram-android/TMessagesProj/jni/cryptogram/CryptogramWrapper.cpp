@@ -3,7 +3,6 @@
  * Bridges native CRYPTOGRAM functionality to Android Java/Kotlin.
  */
 
-#include "cryptogram/data/data_signal_protocol.h"
 #include "cryptogram/data/data_mls_protocol.h"
 #include "cryptogram/data/data_enhanced_privacy.h"
 #include "desktop_shims.h"

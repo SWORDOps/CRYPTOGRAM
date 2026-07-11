@@ -43,6 +43,8 @@ jobs:
           python3 Telegram/build/prepare/prepare.py
 
       - name: Configure CMake
+        env:
+          QT: '6'
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -75,13 +77,14 @@ jobs:
           token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Free Disk Space (Windows)
-        uses: easimon/maximize-build-space@master
-        with:
-          root-reserve-mb: 1024
-          swap-size-mb: 1024
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
+        shell: powershell
+        run: |
+          # Remove large pre-installed tools to free disk space
+          Remove-Item -Recurse -Force "C:\Program Files\dotnet" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\Program Files\Android" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\Haskell Platform" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\Go" -ErrorAction SilentlyContinue
+          Get-PSDrive C | Select-Object Used,Free
 
       - name: Set up Python
         uses: actions/setup-python@v5

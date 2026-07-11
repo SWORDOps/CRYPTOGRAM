@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 */
 #include "data/data_mls_protocol.h"
+#include "data/data_cac_interface.h"
 
 #include "base/openssl_help.h"
 #include "logs.h"
