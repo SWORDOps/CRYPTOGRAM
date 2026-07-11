@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/platform/linux/base_linux_library.h"
 
 #include <gio/gio.h>
+#include <QtGui/QGuiApplication>
 
 namespace Platform {
 namespace {
@@ -92,7 +93,7 @@ void ResolveCurrentExactLocation(Fn<void(Core::GeoLocation)> callback) {
 				.accuracy = Core::GeoLocationAccuracy::Exact,
 			});
 		}),
-		new Fn(callback));
+		new Fn<void(Core::GeoLocation)>(std::move(callback)));
 }
 
 void ResolveLocationAddress(
