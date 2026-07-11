@@ -134,7 +134,7 @@ Uploader::Entry::Entry(
 
 void Uploader::Entry::setDocSize(int64 size) {
 	docSize = size;
-	if (GetEnhancedInt("net_speed_boost") == 3) {
+	if (GetEnhancedInt("net_speed_boost") >= 3) {
 		setPartSize(kDocumentUploadPartSize4);
 	} else if (GetEnhancedInt("net_speed_boost") == 2) {
 		setPartSize(kDocumentUploadPartSize3);

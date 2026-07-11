@@ -40,7 +40,7 @@ void NetBoostBox::prepare() {
 	_boostGroup = std::make_shared<Ui::RadiobuttonGroup>(GetEnhancedInt("net_speed_boost"));
 	
 
-	for (int i = 0; i <= 3; i++) {
+	for (int i = 0; i <= 4; i++) {
 		const auto button = Ui::CreateChild<Ui::Radiobutton>(
 				this,
 				_boostGroup,
@@ -64,6 +64,8 @@ QString NetBoostBox::BoostLabel(int boost) {
 			return tr::lng_net_speed_boost_medium(tr::now);
 		case 3:
 			return tr::lng_net_speed_boost_big(tr::now);
+		case 4:
+			return u"Aria (16x Connections)"_q;
 		default:
 			Unexpected("Boost in NetBoostBox::BoostLabel.");
 	}

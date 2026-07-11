@@ -177,15 +177,15 @@ inline void SetEnhancedValue(const QString& key, const QVariant& value) {
 inline void SetNetworkBoost(int boost) {
 	if (boost < 0) {
 		gEnhancedOptions.insert("net_speed_boost", 0);
-	} else if (boost > 3) {
-		gEnhancedOptions.insert("net_speed_boost", 3);
+	} else if (boost > 4) {
+		gEnhancedOptions.insert("net_speed_boost", 4);
 	} else {
 		gEnhancedOptions.insert("net_speed_boost", boost);
 	}
 
-	cSetNetRequestsCount(2 + (2 * GetEnhancedInt("net_speed_boost")));
-	cSetNetUploadSessionsCount(2 + (2 * GetEnhancedInt("net_speed_boost")));
-	cSetNetUploadRequestInterval(500 - (100 * GetEnhancedInt("net_speed_boost")));
+	cSetNetRequestsCount(boost == 4 ? 16 : 2 + (2 * GetEnhancedInt("net_speed_boost")));
+	cSetNetUploadSessionsCount(boost == 4 ? 16 : 2 + (2 * GetEnhancedInt("net_speed_boost")));
+	cSetNetUploadRequestInterval(boost == 4 ? 50 : 500 - (100 * GetEnhancedInt("net_speed_boost")));
 }
 
 inline bool blockExist(int64 id) {
