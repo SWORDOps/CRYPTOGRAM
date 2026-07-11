@@ -72,7 +72,7 @@ jobs:
             libxrandr-dev libxi-dev libx11-xcb-dev libxcb-util-dev libxcb-cursor-dev libxcb-ewmh-dev \
             python3-dev python3-pip python3-setuptools gperf \
             yasm nasm ccache ninja-build libopenh264-dev libboost-all-dev \
-            cmake dh-make dpkg-dev mold liblz4-dev libxxhash-dev libminizip-dev qt6-shader-baker libqt6shadertools6-dev
+            cmake dh-make dpkg-dev mold liblz4-dev libxxhash-dev libpcsclite-dev libminizip-dev qt6-shader-baker libqt6shadertools6-dev
 
       - name: Install Python dependencies
         run: |

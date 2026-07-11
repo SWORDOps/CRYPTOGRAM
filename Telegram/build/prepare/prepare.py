@@ -1089,6 +1089,7 @@ win:
 depends:patches/build_libvpx_win.sh
     %THIRDPARTY_DIR%\\msys64\\usr\\bin\\sed.exe -i "s/-j.NUMBER_OF_PROCESSORS/-j1/g" ../patches/build_libvpx_win.sh
     %THIRDPARTY_DIR%\\msys64\\usr\\bin\\sed.exe -i "s/-j8/-j1/g" ../patches/build_libvpx_win.sh
+    %THIRDPARTY_DIR%\\msys64\\usr\\bin\\sed.exe -i "s/ -m / /g" build/make/gen_msvs_sln.sh
     bash --login ../patches/build_libvpx_win.sh
 mac:
     find ../patches/libvpx -type f -print0 | sort -z | xargs -0 git apply
