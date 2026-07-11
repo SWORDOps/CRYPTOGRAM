@@ -90,10 +90,6 @@ PRIVATE
     v2/SignalingEncryption.h
     v2/SignalingSctpConnection.cpp
     v2/SignalingSctpConnection.h
-    v2/SignalingKcpConnection.cpp
-    v2/SignalingKcpConnection.h
-    v2/ikcp.cpp
-    v2/ikcp.h
 
     # Desktop capturer
     desktop_capturer/DesktopCaptureSource.h
@@ -223,8 +219,6 @@ PUBLIC
     TGCALLS_USE_STD_OPTIONAL
 PRIVATE
     WEBRTC_APP_TDESKTOP
-    WEBRTC_POSIX
-    WEBRTC_LINUX
     RTC_ENABLE_H265
     RTC_ENABLE_VP9
 )
@@ -281,12 +275,4 @@ PUBLIC
     ${tgcalls_dir}
 PRIVATE
     ${tgcalls_loc}
-)
-
-# Include WebRTC headers for tgcalls compilation
-target_include_directories(lib_tgcalls SYSTEM
-PRIVATE
-    ${submodules_loc}/tg_owt/src
-    ${submodules_loc}/tg_owt/src/third_party/abseil-cpp
-    ${submodules_loc}/tg_owt/src/third_party/libyuv/include
 )
