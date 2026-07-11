@@ -454,8 +454,6 @@ if customRunCommand:
 
 stage('patches', """
     git clone https://github.com/desktop-app/patches.git
-    cd patches
-    git checkout 3d675589b35f950cb0731c3c18d9e3f32c590131
 mac:
     git clone https://github.com/desktop-app/qt6_highsierra_patches.git qt6_highsierra
     cd qt6_highsierra
@@ -729,8 +727,8 @@ mac:
     make $MAKE_THREADS_CNT
     mkdir out.x86_64
     mv lib/.libs/libiconv.a out.x86_64
+    lipo -create out.arm64/libiconv.a out.x86_64/libiconv.a -output lib/.libs/libiconv.a
     make install
-    lipo -create out.arm64/libiconv.a out.x86_64/libiconv.a -output $USED_PREFIX/lib/libiconv.a
 """)
 
 stage('gas-preprocessor', """

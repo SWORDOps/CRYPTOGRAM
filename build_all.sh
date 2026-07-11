@@ -1911,6 +1911,12 @@ configure_cryptogram() {
     ensure_desktop_cmake_helpers
     ensure_telegram_version_file
 
+    # Patch lib_base CTAD issue for GCC 13+ / Clang 18+ on Ubuntu 24.04
+    local xcb_util_cpp="$CRYPTOGRAM_ROOT/Telegram/lib_base/base/platform/linux/base_linux_xcb_utilities.cpp"
+    if [ -f "$xcb_util_cpp" ]; then
+        sed -i 's/new Fn(handler)/new auto(handler)/g' "$xcb_util_cpp"
+    fi
+
     # Set PKG_CONFIG_PATH to help find installed libraries
     export PKG_CONFIG_PATH="${INSTALL_PREFIX}/lib/pkgconfig:${INSTALL_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
     print_debug "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
