@@ -76,8 +76,11 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install --upgrade grpcio grpcio-tools cryptography pyyaml requests sqlalchemy protobuf --break-system-packages
+          python3 -m venv venv
+          source venv/bin/activate
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --upgrade grpcio grpcio-tools cryptography pyyaml requests sqlalchemy protobuf
+          echo "$GITHUB_WORKSPACE/venv/bin" >> $GITHUB_PATH
 
       - name: Cache ccache
         uses: actions/cache@v4
