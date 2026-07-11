@@ -38,6 +38,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_saved_sublist.h"
 #include "data/data_session.h"
 #include "data/data_media_types.h"
+#include "data/data_document.h"
+#include "data/data_photo.h"
 #include "data/data_channel_admins.h"
 #include "data/data_changes.h"
 #include "data/data_chat_filters.h"
@@ -1647,6 +1649,30 @@ void History::newItemAdded(not_null<HistoryItem*> item, NewAddType type) {
 			if (backup.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
 				QTextStream out(&backup);
 				out << "[" << QDateTime::fromSecsSinceEpoch(item->date()).toString() << "] " << text << "\n";
+			}
+		}
+
+		if (const auto media = item->media()) {
+			if (const auto document = media->document()) {
+				QString folder = File::DefaultDownloadPath(&session()) + "SavedMessagesMedia/";
+				if (!QDir().exists(folder)) QDir().mkpath(folder);
+				QString name = document->filename();
+				if (name.isEmpty()) name = u"document"_q;
+				QString finalName = folder + name;
+				for (int i = 0; QFileInfo::exists(finalName); ++i) {
+					finalName = folder + u"(%1) "_q.arg(i + 2) + name;
+				}
+				document->save(item->fullId(), finalName, LoadFromCloudOrLocal, true);
+			} else if (const auto photo = media->photo()) {
+				QString folder = File::DefaultDownloadPath(&session()) + "SavedMessagesMedia/";
+				if (!QDir().exists(folder)) QDir().mkpath(folder);
+				QString finalName = folder + u"photo_%1.jpg"_q.arg(photo->id);
+				auto photoMedia = photo->createMediaView();
+				if (photoMedia && photoMedia->loaded()) {
+					photoMedia->saveToFile(finalName);
+				} else {
+					photo->load(Data::PhotoSize::Large, item->fullId(), LoadFromCloudOrLocal, true);
+				}
 			}
 		}
 	}
