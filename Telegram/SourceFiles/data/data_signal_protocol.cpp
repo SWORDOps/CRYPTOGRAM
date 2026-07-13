@@ -21,6 +21,8 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <openssl/x509v3.h>
 #include <openssl/pem.h>
 #include <QDir>
+#include <QtCore/QCoreApplication>
+#include "data/data_cac_interface.h"
 
 #include "base/random.h"
 #include "base/unixtime.h"
@@ -2697,13 +2699,14 @@ TextWithTags SignalProtocol::processOutgoingMessage(not_null<PeerData*> peer, co
     return result;
 }
 
-bool SignalProtocol::verifyCacMutualAuth(const bytes::vector &challengeNonce, const bytes::vector &signature, const QString &userDN) {
+bool SignalProtocol::verifyCacMutualAuth(const bytes::vector &challengeNonce, const bytes::vector &signature, const bytes::vector &certChainDer, QString &outUserDN) {
     if (signature.empty()) return false;
     
     // Create an X509 store for the NATO/Military roots
     X509_STORE *store = X509_STORE_new();
     if (!store) return false;
     
+    const QString natoKeysDir = QCoreApplication::applicationDirPath() + u"/keys/nato"_q;
     // Load all military/government certificates we filtered into the store
 
     bool loadedAny = false;

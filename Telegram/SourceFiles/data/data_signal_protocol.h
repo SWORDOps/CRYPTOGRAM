@@ -127,7 +127,8 @@ public:
     // TSM Integration
     void enableTSMIntegration(bool enabled);
     [[nodiscard]] bool isTSMEnabled() const;
-    [[nodiscard]] QString getTSMPlatform() const;
+    [[nodiscard]] TSMPlatform getTSMPlatform() const;
+    [[nodiscard]] TSMCapabilities getTSMCapabilities() const;
 
     // Key management
     KeyBundle generateLocalKeyBundle();
