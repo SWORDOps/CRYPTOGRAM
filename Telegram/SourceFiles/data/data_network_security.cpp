@@ -960,7 +960,11 @@ bool NetworkSecurity::isHardwareFeatureAvailable(const QString &feature) const {
 #endif
     } else if (feature == "RDRAND") {
 #if defined(__x86_64__) || defined(__i386__)
+#if defined(__GNUC__) && !defined(__clang__)
         return __builtin_cpu_supports("rdrnd") > 0;
+#else
+        return false;
+#endif
 #else
         return false;
 #endif
