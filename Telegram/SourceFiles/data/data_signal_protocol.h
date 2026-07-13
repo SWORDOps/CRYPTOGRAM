@@ -124,6 +124,11 @@ public:
     void setEnabled(bool enabled);
     [[nodiscard]] bool isEnabled() const;
 
+    // TSM Integration
+    void enableTSMIntegration(bool enabled);
+    [[nodiscard]] bool isTSMEnabled() const;
+    [[nodiscard]] QString getTSMPlatform() const;
+
     // Key management
     KeyBundle generateLocalKeyBundle();
     void registerRemoteKeyBundle(not_null<PeerData*> peer, const KeyBundle &bundle);
@@ -259,6 +264,8 @@ private:
     
     // Current state
     bool _enabled = false;
+    bool _tsmEnabled = false;
+    std::unique_ptr<SignalTSMIntegration> _tsmIntegration;
     TimeId _keyRotationInterval = 60 * 60 * 24 * 7; // 1 week by default
     not_null<Session*> _session;
 
