@@ -37,6 +37,7 @@ struct CACCardInfo {
     QString holderName;
     QString holderDN;             // Distinguished Name from certificate
     QString issuerDN;             // Issuer Distinguished Name
+    bytes::vector certChainDer;   // Full DER-encoded X.509 cert chain
     QDateTime certificateExpiry;
     bool isValid = false;
     bool isHardwareBacked = true;

@@ -1093,13 +1093,13 @@ bool MLSProtocol::processProposal(const MLSGroupId &groupId, const MLSProposal &
 			if (!verifyKeyPackage(kp)) {
 				LOG(("MLS [CAC-Gate]: BLOCKED Add proposal from sender %1 — "
 				     "invalid or missing military/government CAC credential")
-					.arg(proposal.sender.bare()));
+					.arg(proposal.sender.bare));
 				return false;  // Hard reject — proposal is dropped
 			}
 
 			// Credential verified — register as a CAC user
 			if (verifyCacKeyPackage(kp, joinDN)) {
-				CACUserRegistry::registerCACUser(proposal.sender.bare(), joinDN);
+				CACUserRegistry::registerCACUser(proposal.sender.bare, joinDN);
 				LOG(("MLS [CAC-Gate]: Admitted verified member DN=%1").arg(joinDN));
 			}
 
