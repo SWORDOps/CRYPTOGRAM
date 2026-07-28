@@ -318,6 +318,29 @@ patch_desktop_cmake_helpers() {
     fi
 }
 
+patch_desktop_source_helpers() {
+    local screen_reader_cpp="${CRYPTOGRAM_ROOT}/Telegram/lib_base/base/platform/linux/base_screen_reader_state_linux.cpp"
+
+    if [ ! -f "$screen_reader_cpp" ]; then
+        print_warning "Cannot patch Linux screen reader helper; file missing: $screen_reader_cpp"
+        log "WARN" "Missing lib_base screen reader source"
+        return 0
+    fi
+
+    if grep -q 'std::getenv(kAlwaysOnEnvironmentVariable) != nullptr' "$screen_reader_cpp"; then
+        print_info "Linux screen reader helper already avoids Qt environment private header"
+        log "PATCH" "lib_base screen reader helper already patched"
+        return 0
+    fi
+
+    if grep -q '#include <QtCore/qtenvironmentvariables.h>' "$screen_reader_cpp"; then
+        print_progress "Patching Linux screen reader helper for Qt environment header compatibility..."
+        sed -i 's|#include <QtCore/qtenvironmentvariables.h>|#include <cstdlib>|' "$screen_reader_cpp"
+        sed -i 's|return qEnvironmentVariableIsSet(kAlwaysOnEnvironmentVariable);|return std::getenv(kAlwaysOnEnvironmentVariable) != nullptr;|' "$screen_reader_cpp"
+        log "PATCH" "Replaced qEnvironmentVariableIsSet include/use in lib_base screen reader helper"
+    fi
+}
+
 ensure_system_dependencies() {
     print_progress "Ensuring system libraries and Qt dependencies are present..."
     if [ -r /etc/os-release ]; then
@@ -1547,6 +1570,7 @@ check_submodules() {
 
     ensure_desktop_cmake_helpers
     patch_desktop_cmake_helpers
+    patch_desktop_source_helpers
     ensure_desktop_component_submodules
 
     BUILD_STATE["submodules_initialized"]=1
@@ -1939,6 +1963,8 @@ configure_cryptogram() {
     if [ -f "$xcb_util_cpp" ]; then
         sed -i 's/new Fn(handler)/new auto(handler)/g' "$xcb_util_cpp"
     fi
+
+    patch_desktop_source_helpers
 
     # Patch lib_webview for Qt 6 QByteArray conversion issue
     local webview_cpp="$CRYPTOGRAM_ROOT/Telegram/lib_webview/webview/platform/linux/webview_linux_webkitgtk.cpp"
