@@ -24,6 +24,15 @@ on:
       - 'LEGAL'
       - 'LICENSE'
   workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: false
+        default: 'Release'
+        type: choice
+        options:
+          - Debug
+          - Release
 
 permissions:
   contents: write
@@ -77,7 +86,15 @@ jobs:
             yasm nasm ccache ninja-build fuse libopenh264-dev libboost-all-dev \
             cmake dh-make dpkg-dev mold liblz4-dev libxxhash-dev libpcsclite-dev libminizip-dev qt6-shader-baker libqt6shadertools6-dev clang llvm
 
-      - name: Configure ccache
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv venv
+          source venv/bin/activate
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --upgrade grpcio grpcio-tools cryptography pyyaml requests sqlalchemy protobuf
+          echo "$GITHUB_WORKSPACE/venv/bin" >> $GITHUB_PATH
+
+      - name: Cache ccache
         uses: actions/cache@v4
         with:
           path: ~/.ccache
@@ -85,63 +102,33 @@ jobs:
           restore-keys: |
             ccache-appimage-
 
-      - name: Install Qt 6.6.2
-        uses: jurplel/install-qt-action@v3
-        with:
-          version: '6.6.2'
-          host: 'linux'
-          target: 'desktop'
-          modules: 'qt5compat qtmultimedia qtshadertools qtimageformats qt3d'
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=2G
+          ccache --set-config=compression=true
+          ccache -z
 
       - name: Build Binary
         run: |
+          BUILD_TYPE="${{ github.event.inputs.build_type || 'Release' }}"
+          export BUILD_TYPE
+          export JOBS=$(nproc)
+          export CCACHE_DIR=~/.ccache
+          export TDESKTOP_API_ID="17349"
+          export TDESKTOP_API_HASH="344583e45741c457fe1862106095a5eb"
+
           chmod +x build_linux.sh
-          # Build via the same script used for .deb but we'll intercept the binary
           ./build_linux.sh
-        env:
-          BUILD_TYPE: Release
+
+          ccache -s
 
       - name: Package AppImage
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
-          # Exclude the troublesome standard library which often breaks portability
-          EXTRA_QT_PLUGINS: wayland
         run: |
-          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
-          
-          # Find the built binary
-          if [ -f "build_release/bin/Telegram" ]; then
-            cp build_release/bin/Telegram AppDir/usr/bin/cryptogram
-          elif [ -f "build_release/Telegram" ]; then
-            cp build_release/Telegram AppDir/usr/bin/cryptogram
-          else
-            echo "::error::Could not find Telegram binary!"
-            exit 1
-          fi
-          
-          # Create Desktop file
-          cat <<EOF > AppDir/usr/share/applications/cryptogram.desktop
-          [Desktop Entry]
-          Type=Application
-          Name=CRYPTOGRAM
-          Exec=cryptogram
-          Icon=cryptogram
-          Categories=Network;InstantMessaging;
-          EOF
-          
-          # Grab our custom icon
-          cp Telegram/Resources/art/icon256.png AppDir/usr/share/icons/hicolor/256x256/apps/cryptogram.png
-          
-          # Download linuxdeploy tools
-          wget -c "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
-          wget -c "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
-          chmod +x linuxdeploy*.AppImage
-          
-          # Run linuxdeploy to bundle libraries
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir --plugin qt --output appimage
-          
-          # Rename output file
-          mv CRYPTOGRAM*.AppImage CRYPTOGRAM-Linux-x86_64.AppImage
+          chmod +x build_appimage.sh
+          ./build_appimage.sh
+          ls -lh CRYPTOGRAM-Linux-x86_64.AppImage
 
       - name: Upload AppImage Artifact
         uses: actions/upload-artifact@v4

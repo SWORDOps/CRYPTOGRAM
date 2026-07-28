@@ -296,6 +296,28 @@ ensure_desktop_cmake_helpers() {
     fail "Desktop CMake helper submodule is missing or incomplete"
 }
 
+patch_desktop_cmake_helpers() {
+    local kimageformats_cmake="${CRYPTOGRAM_ROOT}/cmake/external/qt/qt_static_plugins/kimageformats/CMakeLists.txt"
+
+    if [ ! -f "$kimageformats_cmake" ]; then
+        print_warning "Cannot patch Qt imageformats helper; file missing: $kimageformats_cmake"
+        log "WARN" "Missing kimageformats helper CMake file"
+        return 0
+    fi
+
+    if grep -q 'libjxl libjxl_threads libjxl_cms' "$kimageformats_cmake"; then
+        print_info "Qt imageformats helper already includes libjxl_cms"
+        log "PATCH" "kimageformats helper already patched"
+        return 0
+    fi
+
+    if grep -q 'libjxl libjxl_threads)' "$kimageformats_cmake"; then
+        print_progress "Patching Qt imageformats helper to link libjxl_cms..."
+        sed -i 's/libjxl libjxl_threads)/libjxl libjxl_threads libjxl_cms)/' "$kimageformats_cmake"
+        log "PATCH" "Added libjxl_cms to kimageformats helper"
+    fi
+}
+
 ensure_system_dependencies() {
     print_progress "Ensuring system libraries and Qt dependencies are present..."
     if [ -r /etc/os-release ]; then
@@ -1265,7 +1287,7 @@ check_system() {
     # Disk Space with critical checks
     print_progress "Checking disk space..."
     local available_space
-    available_space=$(df "$HOME" 2>/dev/null | awk 'NR==2 {print $4}' || echo 0)
+    available_space=$(df "$CRYPTOGRAM_ROOT" 2>/dev/null | awk 'NR==2 {print $4}' || echo 0)
     local available_gb=$((available_space / 1048576))
     print_info "Available disk: ${available_gb}GB"
     log "SYSTEM" "Available disk space: ${available_gb}GB"
@@ -1524,6 +1546,7 @@ check_submodules() {
     ) || print_warning "Submodule initialization had issues, continuing anyway"
 
     ensure_desktop_cmake_helpers
+    patch_desktop_cmake_helpers
     ensure_desktop_component_submodules
 
     BUILD_STATE["submodules_initialized"]=1

@@ -39,15 +39,16 @@ jobs:
 
       - name: Run prepare.py to build dependencies
         run: |
-          export QT=6
-          python3 Telegram/build/prepare/prepare.py
+          export QT=6.11.1
+          python3 Telegram/build/prepare/prepare.py qt6
 
       - name: Configure CMake
         env:
-          QT: '6'
+          QT: '6.11.1'
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/Libraries/local/Qt-6.11.1;$GITHUB_WORKSPACE/Libraries/local" \
             -DDESKTOP_APP_USE_PACKAGED=OFF \
             -DTG_OWT_PACKAGED_BUILD=OFF \
             -DTDESKTOP_API_ID=17349 \
@@ -97,14 +98,17 @@ jobs:
       - name: Run prepare.py to build dependencies
         shell: cmd
         run: |
-          set QT=6
+          set QT=6.11.1
           set Platform=x64
-          python Telegram/build/prepare/prepare.py
+          if exist Libraries\win64\libvpx rmdir /Q /S Libraries\win64\libvpx
+          if exist Libraries\win64\cache_keys\libvpx del /F /Q Libraries\win64\cache_keys\libvpx
+          python Telegram/build/prepare/prepare.py qt6
 
       - name: Configure CMake
         shell: cmd
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDESKTOP_APP_USE_PACKAGED=OFF -DTG_OWT_PACKAGED_BUILD=OFF -DTDESKTOP_API_ID=17349 -DTDESKTOP_API_HASH=344583e45741c457fe1862106095a5eb
+          set QT=6.11.1
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\Libraries\win64\Qt-6.11.1;%GITHUB_WORKSPACE%\Libraries\win64\local" -DDESKTOP_APP_USE_PACKAGED=OFF -DTG_OWT_PACKAGED_BUILD=OFF -DTDESKTOP_API_ID=17349 -DTDESKTOP_API_HASH=344583e45741c457fe1862106095a5eb
 
       - name: Build Telegram
         shell: cmd

@@ -1089,6 +1089,7 @@ win:
 depends:patches/build_libvpx_win.sh
     %THIRDPARTY_DIR%\\msys64\\usr\\bin\\sed.exe -i "s/-j.NUMBER_OF_PROCESSORS/-j1/g" ../patches/build_libvpx_win.sh
     %THIRDPARTY_DIR%\\msys64\\usr\\bin\\sed.exe -i "s/-j8/-j1/g" ../patches/build_libvpx_win.sh
+    python -c "from pathlib import Path; p=Path('../patches/build_libvpx_win.sh'); slash=chr(92); old='--enable-static-msvcrt '+slash+chr(10); flags=['--disable-mmx','--disable-sse','--disable-sse2','--disable-sse3','--disable-ssse3','--disable-sse4_1','--disable-avx','--disable-avx2','--enable-static-msvcrt']; new=''.join(f+' '+slash+chr(10) for f in flags); p.write_text(p.read_text().replace(old, new))"
     %THIRDPARTY_DIR%\\msys64\\usr\\bin\\sed.exe -i "s/ -m / /g" build/make/gen_msvs_sln.sh
     bash --login ../patches/build_libvpx_win.sh
 mac:
