@@ -933,6 +933,17 @@ win:
     copy out\\release-static\\$X8664\\lib\\libwebp.lib out\\release-static\\$X8664\\lib\\webp.lib
     copy out\\release-static\\$X8664\\lib\\libwebpdemux.lib out\\release-static\\$X8664\\lib\\webpdemux.lib
     copy out\\release-static\\$X8664\\lib\\libwebpmux.lib out\\release-static\\$X8664\\lib\\webpmux.lib
+    if "%X8664%"=="x64" (
+        set "WEBP_ALIAS_ARCH=x86"
+    ) else if "%X8664%"=="x86" (
+        set "WEBP_ALIAS_ARCH=x64"
+    ) else (
+        set "WEBP_ALIAS_ARCH=%X8664%"
+    )
+    if not exist out\\release-static\\%WEBP_ALIAS_ARCH%\\lib mkdir out\\release-static\\%WEBP_ALIAS_ARCH%\\lib
+    copy out\\release-static\\$X8664\\lib\\libwebp.lib out\\release-static\\%WEBP_ALIAS_ARCH%\\lib\\webp.lib
+    copy out\\release-static\\$X8664\\lib\\libwebpdemux.lib out\\release-static\\%WEBP_ALIAS_ARCH%\\lib\\webpdemux.lib
+    copy out\\release-static\\$X8664\\lib\\libwebpmux.lib out\\release-static\\%WEBP_ALIAS_ARCH%\\lib\\webpmux.lib
 mac:
     buildOneArch() {
         arch=$1
