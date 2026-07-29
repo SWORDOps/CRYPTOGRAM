@@ -1598,9 +1598,9 @@ configure_compiler() {
     local tried_cc=()
     local cc_candidates=()
     if [ "$require_clang" -eq 1 ]; then
-        cc_candidates=(clang gcc-13 gcc-12 gcc-11 gcc)
+        cc_candidates=(clang clang-18 clang-17 clang-16 clang-15 clang-14 gcc-13 gcc-12 gcc-11 gcc)
     else
-        cc_candidates=(gcc-13 gcc-12 gcc-11 gcc clang)
+        cc_candidates=(gcc-13 gcc-12 gcc-11 gcc clang clang-18 clang-17 clang-16 clang-15 clang-14)
     fi
     for cc in "${cc_candidates[@]}"; do
         tried_cc+=("$cc")
@@ -1616,9 +1616,9 @@ configure_compiler() {
     local tried_cxx=()
     local cxx_candidates=()
     if [ "$require_clang" -eq 1 ]; then
-        cxx_candidates=(clang++ g++-13 g++-12 g++-11 g++)
+        cxx_candidates=(clang++ clang++-18 clang++-17 clang++-16 clang++-15 clang++-14 g++-13 g++-12 g++-11 g++)
     else
-        cxx_candidates=(g++-13 g++-12 g++-11 g++ clang++)
+        cxx_candidates=(g++-13 g++-12 g++-11 g++ clang++ clang++-18 clang++-17 clang++-16 clang++-15 clang++-14)
     fi
     for cxx in "${cxx_candidates[@]}"; do
         tried_cxx+=("$cxx")
