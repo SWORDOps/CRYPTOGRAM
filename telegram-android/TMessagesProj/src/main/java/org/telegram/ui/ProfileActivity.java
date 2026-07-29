@@ -16826,7 +16826,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
         }
 
-        private void openCryptogramSettings() { new org.telegram.ui.CryptogramSettingsActivity(); }
+        private void openCryptogramSettings() {}
     }
     public int opsecSectionRow = -1;
 }
