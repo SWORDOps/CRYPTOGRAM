@@ -574,7 +574,7 @@ ensure_openal_from_source() {
     fi
 
     print_progress "Installing OpenAL..."
-    if ! run_cmd_verbose "cmake --install ."; then
+    if ! run_cmd_verbose "sudo cmake --install ."; then
         fail "Installing OpenAL failed"
     fi
 
@@ -617,7 +617,7 @@ ensure_lz4_from_source() {
     fi
 
     print_progress "Installing LZ4..."
-    if ! run_cmd_verbose "make install PREFIX='$INSTALL_PREFIX'"; then
+    if ! run_cmd_verbose "sudo make install PREFIX='$INSTALL_PREFIX'"; then
         fail "Installing LZ4 failed"
     fi
 
@@ -660,7 +660,7 @@ ensure_xxhash_from_source() {
     fi
 
     print_progress "Installing xxHash..."
-    if ! run_cmd_verbose "make install PREFIX='$INSTALL_PREFIX'"; then
+    if ! run_cmd_verbose "sudo make install PREFIX='$INSTALL_PREFIX'"; then
         fail "Installing xxHash failed"
     fi
 
@@ -709,7 +709,7 @@ ensure_minizip_from_source() {
     fi
 
     print_progress "Installing minizip..."
-    if ! run_cmd_verbose "cmake --install ."; then
+    if ! run_cmd_verbose "sudo cmake --install ."; then
         fail "Installing minizip failed"
     fi
 
@@ -758,7 +758,7 @@ ensure_rlottie_from_source() {
     fi
 
     print_progress "Installing rlottie..."
-    if ! run_cmd_verbose "cmake --install ."; then
+    if ! run_cmd_verbose "sudo cmake --install ."; then
         fail "Installing rlottie failed"
     fi
 
@@ -819,7 +819,7 @@ ensure_rnnoise_from_source() {
     fi
 
     print_progress "Installing RNNoise..."
-    if ! run_cmd_verbose "make install"; then
+    if ! run_cmd_verbose "sudo make install"; then
         fail "Installing RNNoise failed"
     fi
 
@@ -865,7 +865,7 @@ ensure_tde2e_from_tdlib() {
     if ! run_cmd_verbose "cmake --build . --config Release --parallel $PARALLEL_JOBS"; then
         fail "Building tdlib tde2e failed"
     fi
-    if ! run_cmd_verbose "cmake --install ."; then
+    if ! run_cmd_verbose "sudo cmake --install ."; then
         fail "Installing tdlib tde2e failed"
     fi
     cd / || true
@@ -1787,7 +1787,7 @@ build_ada() {
     print_progress "Installing Ada..."
     log "BUILD" "Installing Ada to $INSTALL_PREFIX"
 
-    if ! run_cmd_verbose "cmake --install . --prefix '$INSTALL_PREFIX'"; then
+    if ! run_cmd_verbose "sudo cmake --install . --prefix '$INSTALL_PREFIX'"; then
         print_error "Ada installation failed"
         fail "Ada installation failed"
     fi
@@ -1905,7 +1905,7 @@ build_protobuf() {
     save_state
 
     print_progress "Installing Protobuf..."
-    if ! run_cmd_verbose "cmake --install . --prefix '$INSTALL_PREFIX'"; then
+    if ! run_cmd_verbose "sudo cmake --install . --prefix '$INSTALL_PREFIX'"; then
         log "WARN" "Protobuf installation command returned non-zero"
     fi
 
