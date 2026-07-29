@@ -30,12 +30,19 @@ jobs:
           sudo rm -rf /Applications/Xcode_14*.app
           sudo rm -rf /Library/Developer/CommandLineTools
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf /Library/Developer/CoreSimulator/Caches
+          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
+          rm -rf ~/Library/Developer/Xcode/DerivedData
+          rm -rf ~/Library/Caches/Homebrew
+          rm -rf /opt/homebrew/share/man /opt/homebrew/share/doc /opt/homebrew/share/info
+          df -h /
 
 
       - name: Install dependencies
         run: |
           brew install cmake ninja yasm pkg-config autoconf automake libtool meson nasm
           python3 -m pip install --upgrade pip --break-system-packages
+          brew cleanup -s || true
 
       - name: Run prepare.py to build dependencies
         run: |
@@ -57,7 +64,7 @@ jobs:
         
       - name: Build Telegram
         run: |
-          cmake --build build --config Release --parallel 4
+          cmake --build build --config Release --parallel 2
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
