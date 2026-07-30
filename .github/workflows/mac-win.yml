@@ -26,12 +26,14 @@ jobs:
 
       - name: Free Disk Space (macOS)
         run: |
-          sudo rm -rf /Applications/Xcode_13*.app
-          sudo rm -rf /Applications/Xcode_14*.app
+          sudo rm -rf /Applications/Xcode*.app
           sudo rm -rf /Library/Developer/CommandLineTools
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           sudo rm -rf /Library/Developer/CoreSimulator/Caches
           sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/hostedtoolcache
           rm -rf ~/Library/Developer/Xcode/DerivedData
           rm -rf ~/Library/Caches/Homebrew
           rm -rf /opt/homebrew/share/man /opt/homebrew/share/doc /opt/homebrew/share/info
@@ -92,8 +94,13 @@ jobs:
           Remove-Item -Recurse -Force "C:\Program Files\dotnet" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "C:\Program Files\Android" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "C:\Haskell Platform" -ErrorAction SilentlyContinue
-          Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\Go" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\hostedtoolcache" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\mysql" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\mingw64" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\Strawberry" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\ProgramData\Package Cache" -ErrorAction SilentlyContinue
           Get-PSDrive C | Select-Object Used,Free
+
 
       - name: Set up Python
         uses: actions/setup-python@v5
