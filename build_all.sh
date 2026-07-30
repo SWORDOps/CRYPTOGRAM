@@ -505,7 +505,7 @@ ensure_tg_owt_from_source() {
     fi
 
     print_progress "Installing tg_owt package metadata into $tg_install_prefix..."
-    if ! run_cmd_verbose "ninja install"; then
+    if ! run_cmd_verbose "sudo ninja install"; then
         fail "Installing tg_owt failed"
     fi
 
