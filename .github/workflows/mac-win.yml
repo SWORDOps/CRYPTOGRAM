@@ -26,10 +26,8 @@ jobs:
 
       - name: Free Disk Space (macOS)
         run: |
-          # Delete Xcode (~30GB) to free space for Qt build, but KEEP CommandLineTools
-          # (brew and prepare.py need them). Switch to CommandLineTools after removing Xcode.
-          sudo rm -rf /Applications/Xcode*.app
-          sudo xcode-select --switch /Library/Developer/CommandLineTools || true
+          # Keep Xcode for now — breakpad build needs xcodebuild.
+          # Xcode will be deleted after breakpad is built to free space for Qt.
           sudo rm -rf /Library/Developer/CoreSimulator/Caches
           sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
           sudo rm -rf /usr/local/lib/android
@@ -47,7 +45,18 @@ jobs:
           python3 -m pip install --upgrade --break-system-packages --ignore-installed pip
           brew cleanup -s || true
 
-      - name: Run prepare.py to build dependencies
+      - name: Build breakpad (requires Xcode)
+        run: |
+          export QT=6.11.1
+          python3 Telegram/build/prepare/prepare.py breakpad qt6
+
+      - name: Free disk space — delete Xcode after breakpad build
+        run: |
+          sudo rm -rf /Applications/Xcode*.app
+          sudo xcode-select --switch /Library/Developer/CommandLineTools || true
+          df -h /
+
+      - name: Run prepare.py to build remaining dependencies
         run: |
           export QT=6.11.1
           python3 Telegram/build/prepare/prepare.py qt6
