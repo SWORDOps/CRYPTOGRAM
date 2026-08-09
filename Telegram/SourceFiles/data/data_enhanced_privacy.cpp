@@ -49,11 +49,20 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
-// NOTE: TagLib (audio metadata library) source is present under
-// ThirdParty/taglib but is not currently linked into the Telegram build
-// target, so audio metadata spoofing is not available. Image (JPEG/EXIF)
-// metadata spoofing works via Qt's QImageWriter. See SpoofMediaMetadata()
-// for the audio no-op fallback.
+// NOTE: TagLib (audio metadata library) is linked into the Telegram build
+// target when HAVE_TAGLIB is defined. Audio metadata spoofing/stripping/
+// disarming uses TagLib's format-specific file handlers. Image (JPEG/EXIF)
+// metadata spoofing works via Qt's QImageWriter.
+
+#ifdef HAVE_TAGLIB
+#include <taglib/tag.h>
+#include <taglib/fileref.h>
+#include <taglib/mpeg/mpegfile.h>
+#include <taglib/flac/flacfile.h>
+#include <taglib/riff/wav/wavfile.h>
+#include <taglib/ogg/vorbis/vorbisfile.h>
+#include <taglib/mp4/mp4file.h>
+#endif
 
 namespace Data {
 
@@ -836,20 +845,99 @@ void EnhancedPrivacy::SpoofMediaMetadata(QImage &image, QByteArray &bytes, const
     }
     // Audio file formats (MP3, WAV, FLAC, etc.)
     else if (IsAudioFormat(format, bytes)) {
-        // TODO: Audio metadata spoofing requires TagLib, which is present
-        // under ThirdParty/taglib but not currently linked into the Telegram
-        // build target. Until TagLib is wired into the build (linked and
-        // include directories added), audio metadata is left unchanged.
-        //
-        // When TagLib is integrated, this branch should:
-        //   - Write the audio data to a temporary file
-        //   - Open it with the appropriate TagLib file handler (MPEG::File,
-        //     FLAC::File, MP4::File, Ogg::Vorbis::File, RIFF::WAV::File)
-        //   - Spoof the tag fields (artist, title, album, comment) with the
-        //     generated device model / iOS version / location values above
-        //   - Read back the modified file into `bytes`
-        //
-        // For now this is a no-op: the audio data is returned unchanged.
+#ifdef HAVE_TAGLIB
+        // Write audio data to a temporary file for TagLib processing
+        QTemporaryFile tempFile;
+        tempFile.setAutoRemove(true);
+        if (!tempFile.open()) return;
+        tempFile.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        tempFile.close();
+
+        const auto fileName = tempFile.fileName().toStdString();
+        const auto titleStr = TagLib::String(("Recording from " + deviceModel).toStdString());
+        const auto artistStr = TagLib::String("SpyGram User");
+        const auto albumStr = TagLib::String("CRYPTOGRAM");
+        const auto commentStr = TagLib::String(
+            QString("iOS %1, Location: %2,%3").arg(iosVersion).arg(latitude).arg(longitude).toStdString());
+
+        bool modified = false;
+        const QString fmtLower = format.toLower();
+
+        if (fmtLower == "mp3" || fmtLower == "mp2" || fmtLower == "mp1") {
+            TagLib::MPEG::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(titleStr);
+                tag->setArtist(artistStr);
+                tag->setAlbum(albumStr);
+                tag->setComment(commentStr);
+                tag->setYear(currentTime.date().year());
+                file.save();
+                modified = true;
+            }
+        } else if (fmtLower == "flac") {
+            TagLib::FLAC::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(titleStr);
+                tag->setArtist(artistStr);
+                tag->setAlbum(albumStr);
+                tag->setComment(commentStr);
+                tag->setYear(currentTime.date().year());
+                file.save();
+                modified = true;
+            }
+        } else if (fmtLower == "wav") {
+            TagLib::RIFF::WAV::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(titleStr);
+                tag->setArtist(artistStr);
+                tag->setAlbum(albumStr);
+                tag->setComment(commentStr);
+                tag->setYear(currentTime.date().year());
+                file.save();
+                modified = true;
+            }
+        } else if (fmtLower == "ogg" || fmtLower == "oga") {
+            TagLib::Ogg::Vorbis::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(titleStr);
+                tag->setArtist(artistStr);
+                tag->setAlbum(albumStr);
+                tag->setComment(commentStr);
+                tag->setYear(currentTime.date().year());
+                file.save();
+                modified = true;
+            }
+        } else if (fmtLower == "m4a" || fmtLower == "aac" || fmtLower == "mp4") {
+            TagLib::MP4::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(titleStr);
+                tag->setArtist(artistStr);
+                tag->setAlbum(albumStr);
+                tag->setComment(commentStr);
+                tag->setYear(currentTime.date().year());
+                file.save();
+                modified = true;
+            }
+        }
+
+        if (modified) {
+            // Read back the modified file
+            QFile readFile(tempFile.fileName());
+            if (readFile.open(QIODevice::ReadOnly)) {
+                auto data = readFile.readAll();
+                bytes.resize(data.size());
+                std::memcpy(bytes.data(), data.constData(), data.size());
+                readFile.close();
+            }
+        }
+#else
+        // TagLib not available — audio metadata is left unchanged
+#endif // HAVE_TAGLIB
     }
     // RAR and similar archive formats
     else if (IsArchiveFormat(format, bytes)) {
@@ -1081,10 +1169,95 @@ void EnhancedPrivacy::StripAllMetadata(QByteArray &bytes, const QString &format)
         }
     } 
     else if (IsAudioFormat(formatLower, bytes)) {
-        // TODO: Audio metadata stripping requires TagLib, which is present
-        // under ThirdParty/taglib but not currently linked into the Telegram
-        // build target. Until TagLib is wired into the build, audio metadata
-        // cannot be stripped and the data is left unchanged.
+#ifdef HAVE_TAGLIB
+        QTemporaryFile tempFile;
+        tempFile.setAutoRemove(true);
+        if (!tempFile.open()) return;
+        tempFile.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        tempFile.close();
+
+        const auto fileName = tempFile.fileName().toStdString();
+        bool modified = false;
+
+        if (formatLower == "mp3" || formatLower == "mp2" || formatLower == "mp1") {
+            TagLib::MPEG::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                modified = true;
+            }
+        } else if (formatLower == "flac") {
+            TagLib::FLAC::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                modified = true;
+            }
+        } else if (formatLower == "wav") {
+            TagLib::RIFF::WAV::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                modified = true;
+            }
+        } else if (formatLower == "ogg" || formatLower == "oga") {
+            TagLib::Ogg::Vorbis::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                modified = true;
+            }
+        } else if (formatLower == "m4a" || formatLower == "aac" || formatLower == "mp4") {
+            TagLib::MP4::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                modified = true;
+            }
+        }
+
+        if (modified) {
+            QFile readFile(tempFile.fileName());
+            if (readFile.open(QIODevice::ReadOnly)) {
+                auto data = readFile.readAll();
+                bytes.resize(data.size());
+                std::memcpy(bytes.data(), data.constData(), data.size());
+                readFile.close();
+            }
+        }
+#else
+        // TagLib not available — audio metadata cannot be stripped
+#endif // HAVE_TAGLIB
     }
     else if (IsVideoFormat(formatLower, bytes)) {
         // Video metadata stripping logic - basic implementation
@@ -1215,10 +1388,88 @@ QByteArray EnhancedPrivacy::DisarmAndReconstruct(const QByteArray &bytes, const 
         }
     }
     else if (IsAudioFormat(formatLower, bytes)) {
-        // TODO: Audio disarm/reconstruct requires TagLib, which is present
-        // under ThirdParty/taglib but not currently linked into the Telegram
-        // build target. Until TagLib is wired into the build, audio data
-        // cannot be disarmed and is returned unchanged.
+#ifdef HAVE_TAGLIB
+        // Disarm audio: strip all metadata and re-encode with empty tags
+        QTemporaryFile tempFile;
+        tempFile.setAutoRemove(true);
+        if (!tempFile.open()) return result;
+        tempFile.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        tempFile.close();
+
+        const auto fileName = tempFile.fileName().toStdString();
+        bool disarmed = false;
+
+        if (formatLower == "mp3" || formatLower == "mp2" || formatLower == "mp1") {
+            TagLib::MPEG::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                file.strip(TagLib::MPEG::File::AllTags);
+                file.save();
+                disarmed = true;
+            }
+        } else if (formatLower == "flac") {
+            TagLib::FLAC::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                disarmed = true;
+            }
+        } else if (formatLower == "wav") {
+            TagLib::RIFF::WAV::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                disarmed = true;
+            }
+        } else if (formatLower == "ogg" || formatLower == "oga") {
+            TagLib::Ogg::Vorbis::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                disarmed = true;
+            }
+        } else if (formatLower == "m4a" || formatLower == "aac" || formatLower == "mp4") {
+            TagLib::MP4::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                disarmed = true;
+            }
+        }
+
+        if (disarmed) {
+            QFile readFile(tempFile.fileName());
+            if (readFile.open(QIODevice::ReadOnly)) {
+                result = readFile.readAll();
+                readFile.close();
+            }
+        }
+#else
+        // TagLib not available — audio data cannot be disarmed
+#endif // HAVE_TAGLIB
     }
     else if (IsVideoFormat(formatLower, bytes)) {
         // For video: this would require a specialized library

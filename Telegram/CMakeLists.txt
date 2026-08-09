@@ -102,7 +102,10 @@ PRIVATE
     desktop-app::external_openal
     desktop-app::external_xxhash
     Qt6::Multimedia
+    tag
 )
+
+target_compile_definitions(Telegram PRIVATE HAVE_TAGLIB)
 
 if (NOT DESKTOP_APP_DISABLE_SWIFT6)
     telegram_add_apple_swift_runtime(Telegram)
