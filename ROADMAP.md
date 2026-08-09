@@ -151,7 +151,7 @@ Last updated: 2026-08-09
 
 ---
 
-## P3 — Build System Issues
+## P3 — Build System Issues — ✅ DONE
 
 ### BUILD-1: build_all.sh silently skips failed dependencies
 **File:** `build_all.sh` (lines 444-856, 11 instances)
@@ -185,7 +185,7 @@ Last updated: 2026-08-09
 
 ---
 
-## P4 — Testing Gaps
+## P4 — Testing Gaps — ✅ TEST-1/3 DONE
 
 ### TEST-1: Unit tests exist but are never run
 **Files:** `tests/unit/` (9 test files, 9 Catch2 targets)
