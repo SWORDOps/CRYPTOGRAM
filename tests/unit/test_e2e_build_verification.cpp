@@ -118,23 +118,16 @@ TEST_CASE("E2E: Android JNI cryptogram source files exist", "[build][e2e][androi
 	const std::string base = "telegram-android/TMessagesProj/jni/cryptogram/";
 
 	REQUIRE(fileExists(base + "CryptogramWrapper.cpp"));
-	REQUIRE(fileExists(base + "qt_shims.h"));
-	REQUIRE(fileExists(base + "desktop_shims.h"));
-	REQUIRE(fileExists(base + "data/data_signal_protocol.cpp"));
-	REQUIRE(fileExists(base + "data/data_signal_protocol.h"));
-	REQUIRE(fileExists(base + "data/data_mls_protocol.cpp"));
-	REQUIRE(fileExists(base + "data/data_mls_protocol.h"));
-	REQUIRE(fileExists(base + "data/data_group_encryption.cpp"));
-	REQUIRE(fileExists(base + "data/data_group_encryption.h"));
+	// qt_shims.h, desktop_shims.h, and data/ subdirectory were removed as dead code (AND-6).
 }
 
-TEST_CASE("E2E: Android Kotlin cryptogram source files exist", "[build][e2e][android]") {
+TEST_CASE("E2E: Android Java cryptogram source files exist", "[build][e2e][android]") {
 	const std::string base = "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/";
 
-	REQUIRE(fileExists(base + "CryptogramNative.kt"));
-	REQUIRE(fileExists(base + "DoubleRatchet.kt"));
-	REQUIRE(fileExists(base + "MLSProtocol.kt"));
-	REQUIRE(fileExists(base + "EnhancedPrivacy.kt"));
+	REQUIRE(fileExists(base + "CryptogramNative.java"));
+	REQUIRE(fileExists(base + "DoubleRatchet.java"));
+	REQUIRE(fileExists(base + "MLSProtocol.java"));
+	REQUIRE(fileExists(base + "EnhancedPrivacy.java"));
 	REQUIRE(fileExists(base + "CryptogramMessageHelper.java"));
 }
 
@@ -173,7 +166,7 @@ TEST_CASE("E2E: Linux deb workflow has correct structure", "[build][e2e][ci]") {
 	REQUIRE_FALSE(content.empty());
 
 	REQUIRE(containsPattern(content, "build_linux.sh"));
-	REQUIRE(containsPattern(content, "dpkg-deb"));
+	REQUIRE(containsPattern(content, "build_deb.sh"));
 	REQUIRE(containsPattern(content, "upload-artifact"));
 	REQUIRE(containsPattern(content, "softprops/action-gh-release"));
 }
