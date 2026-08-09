@@ -693,8 +693,6 @@ target_compile_definitions(cryptogram PUBLIC
 
 target_include_directories(cryptogram PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/cryptogram
-        ${CMAKE_CURRENT_SOURCE_DIR}/cryptogram/core
-        ${CMAKE_CURRENT_SOURCE_DIR}/cryptogram/base
         ${CMAKE_HOME_DIRECTORY}/boringssl/include
 )
 

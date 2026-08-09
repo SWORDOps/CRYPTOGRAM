@@ -80,8 +80,7 @@ void CovertChannel::registerCovertPeer(not_null<PeerData*> peer) {
     _covertPeers.insert(peer->id);
 
     // Also register as CRYPTOGRAM user (red name feature)
-    // TODO: AutoDetectCryptogramUser(peer) - not implemented
-    // AutoDetectCryptogramUser(peer);
+    AutoDetectCryptogramUser(peer);
 }
 
 bool CovertChannel::peerSupportsCovertChannel(not_null<PeerData*> peer) const {

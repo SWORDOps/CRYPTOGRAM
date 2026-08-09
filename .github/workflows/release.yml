@@ -121,7 +121,6 @@ jobs:
             echo "No signing secrets — building unsigned release"
             ./gradlew :TMessagesProj_App:assembleAfatRelease --stacktrace --no-daemon
           fi
-        continue-on-error: true
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
           ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
