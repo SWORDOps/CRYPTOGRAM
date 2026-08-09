@@ -99,7 +99,7 @@
 	url = https://github.com/openmls/openmls
 [submodule "Telegram/ThirdParty/libsignal"]
 	path = Telegram/ThirdParty/libsignal
-	url = https://github.com/signalapp/libsignal-protocol-c
+	url = https://github.com/SWORDOps/libsignal-protocol-c
 [submodule "Telegram/ThirdParty/cld3"]
 	path = Telegram/ThirdParty/cld3
 	url = https://github.com/google/cld3.git
