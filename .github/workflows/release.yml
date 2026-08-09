@@ -349,7 +349,7 @@ jobs:
       - name: Install dependencies
         run: |
           brew install cmake ninja yasm pkg-config autoconf automake libtool meson nasm
-          python3 -m pip install --upgrade pip --break-system-packages
+          python3 -m pip install --upgrade --break-system-packages --ignore-installed pip
           brew cleanup -s || true
       - name: Run prepare.py to build dependencies
         run: |
