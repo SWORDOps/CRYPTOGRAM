@@ -1128,15 +1128,27 @@ QString EnhancedPrivacy::GetTimeBasedKeySalt() {
 
 // General Key Configuration
 void EnhancedPrivacy::SetKeyHistorySize(int size) {
-    // Stub
+    _keyHistorySize = size;
+    // Trim history if new size is smaller than current history
+    while (_keyHistory.size() > _keyHistorySize) {
+        _keyHistory.removeFirst();
+    }
 }
 
 int EnhancedPrivacy::GetKeyHistorySize() {
-    return 0; // Stub
+    return _keyHistorySize;
 }
 
 void EnhancedPrivacy::ClearKeyHistory() {
-    // Stub
+    _keyHistory.clear();
+}
+
+QStringList EnhancedPrivacy::GetKeyHistory() {
+    return _keyHistory;
+}
+
+bool EnhancedPrivacy::IsKeyInHistory(const QString &fingerprint) {
+    return _keyHistory.contains(fingerprint);
 }
 
 // Enhanced Metadata Protection methods
@@ -1706,6 +1718,24 @@ void EnhancedPrivacy::RotateSignalKeys() {
     if (!account.sessionExists()) return;
     try {
         Data::SignalProtocol protocol(&account.session().data());
+        // Store a fingerprint of the current key bundle in history before rotating
+        const auto &bundle = protocol.cachedKeyBundle();
+        if (!bundle.identityKey.empty()) {
+            QByteArray keyData;
+            keyData.append(QByteArray::fromRawData(
+                reinterpret_cast<const char*>(bundle.identityKey.data()),
+                bundle.identityKey.size()));
+            keyData.append(QByteArray::fromRawData(
+                reinterpret_cast<const char*>(bundle.signedPreKey.data()),
+                bundle.signedPreKey.size()));
+            const auto fingerprint = QString::fromUtf8(
+                QCryptographicHash::hash(keyData, QCryptographicHash::Sha256).toHex());
+            _keyHistory.append(fingerprint);
+            // Trim to configured history size
+            while (_keyHistory.size() > _keyHistorySize) {
+                _keyHistory.removeFirst();
+            }
+        }
         protocol.performScheduledKeyRotations();
     } catch (const std::exception &e) {
         LOG(("Signal Protocol Error: Failed to rotate keys: %1").arg(e.what()));

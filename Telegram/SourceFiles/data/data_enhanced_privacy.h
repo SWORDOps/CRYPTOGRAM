@@ -119,6 +119,8 @@ public:
     static void SetKeyHistorySize(int size);
     static int GetKeyHistorySize();
     static void ClearKeyHistory();
+    static QStringList GetKeyHistory();
+    static bool IsKeyInHistory(const QString &fingerprint);
 
     // Metadata injection settings
     static void SetMetadataInjectionEnabled(bool enabled);

@@ -783,6 +783,7 @@ PRIVATE
     data/data_quantum_signal_impl.cpp
     data/data_quantum_storage.cpp
     data/data_quantumguard.cpp
+    data/data_quantum_crypto_services.cpp
     data/data_nsa_security.cpp
     data/data_quantum_storage.h
     data/data_replies_list.cpp
