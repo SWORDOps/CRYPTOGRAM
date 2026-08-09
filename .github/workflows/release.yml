@@ -26,13 +26,25 @@ jobs:
   android:
     name: Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 240
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN }}
+          token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
       - name: Apply Custom Android Theme
         run: |
@@ -63,11 +75,16 @@ jobs:
         run: |
           sdkmanager --install "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
-          echo "ANDROID_NDK=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
 
       - name: Install CMake for Android
         run: |
           sdkmanager --install "cmake;3.22.1"
+
+      - name: Install OS dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ninja-build yasm nasm
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -84,16 +101,17 @@ jobs:
       - name: Build Debug APK
         run: |
           cd telegram-android
-          ./gradlew assembleAfatDebug --stacktrace --no-daemon
+          ./gradlew :TMessagesProj_App:assembleAfatDebug --stacktrace --no-daemon
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
 
       - name: Build Release APK
         run: |
           cd telegram-android
           if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
             echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/cryptogram.keystore
-            ./gradlew assembleAfatRelease \
+            ./gradlew :TMessagesProj_App:assembleAfatRelease \
               -Pandroid.injected.signing.store.file=/tmp/cryptogram.keystore \
               -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
               -Pandroid.injected.signing.key.alias=${{ secrets.KEYSTORE_ALIAS }} \
@@ -101,11 +119,12 @@ jobs:
               --stacktrace --no-daemon
           else
             echo "No signing secrets — building unsigned release"
-            ./gradlew assembleAfatRelease --stacktrace --no-daemon
+            ./gradlew :TMessagesProj_App:assembleAfatRelease --stacktrace --no-daemon
           fi
         continue-on-error: true
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
 
       - name: Collect APKs
         id: collect-apk
@@ -316,10 +335,22 @@ jobs:
         with:
           submodules: recursive
           token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Free Disk Space (macOS)
+        run: |
+          # NOTE: Do NOT remove Xcode or CommandLineTools — brew and prepare.py need them.
+          sudo rm -rf /Library/Developer/CoreSimulator/Caches
+          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          rm -rf ~/Library/Developer/Xcode/DerivedData
+          rm -rf ~/Library/Caches/Homebrew
+          df -h /
+
       - name: Install dependencies
         run: |
-          brew install cmake ninja yasm pkg-config autoconf automake libtool
+          brew install cmake ninja yasm pkg-config autoconf automake libtool meson nasm
           python3 -m pip install --upgrade pip --break-system-packages
+          brew cleanup -s || true
       - name: Run prepare.py to build dependencies
         run: |
           export QT=6.11.1
@@ -332,6 +363,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/Libraries/local/Qt-6.11.1;$GITHUB_WORKSPACE/Libraries/local" \
             -DDESKTOP_APP_USE_PACKAGED=OFF \
+            -DDESKTOP_APP_DISABLE_SWIFT6=ON \
             -DTG_OWT_PACKAGED_BUILD=OFF \
             -DTDESKTOP_API_ID=17349 \
             -DTDESKTOP_API_HASH=344583e45741c457fe1862106095a5eb
@@ -371,6 +403,24 @@ jobs:
         with:
           submodules: recursive
           token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Free Disk Space (Windows)
+        shell: powershell
+        run: |
+          Remove-Item -Recurse -Force "C:\Program Files\dotnet" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\Program Files\Android" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\Haskell Platform" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\hostedtoolcache" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\mysql" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\mingw64" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\Strawberry" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\ProgramData\Package Cache" -ErrorAction SilentlyContinue
+          Get-PSDrive C | Select-Object Used,Free
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Setup Visual Studio Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
       - name: Run prepare.py to build dependencies

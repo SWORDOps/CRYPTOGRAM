@@ -26,9 +26,8 @@ jobs:
 
       - name: Free Disk Space (macOS)
         run: |
-          sudo rm -rf /Applications/Xcode*.app
-          sudo rm -rf /Library/Developer/CommandLineTools
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          # NOTE: Do NOT remove Xcode or CommandLineTools — brew and prepare.py need them.
+          # Only remove simulators, caches, and unused platform toolchains.
           sudo rm -rf /Library/Developer/CoreSimulator/Caches
           sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
           sudo rm -rf /usr/local/lib/android
