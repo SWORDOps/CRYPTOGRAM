@@ -57,7 +57,7 @@ Last updated: 2026-08-09
 
 ---
 
-## P1 — Android: Encryption Not Wired In (App Ships Non-Functional)
+## P1 — Android: Encryption Not Wired In (App Ships Non-Functional) — ✅ DONE
 
 ### AND-1: Outgoing message encryption is an empty stub
 **File:** `telegram-android/.../SendMessagesHelper.java:11893`
@@ -94,7 +94,7 @@ Last updated: 2026-08-09
 
 ---
 
-## P2 — Desktop: Incoming Decryption Not Wired In
+## P2 — Desktop: Incoming Decryption Not Wired In — ✅ DESK-1/2/3/4 DONE
 
 ### DESK-1: SignalProtocol::processIncomingMessage() is never called
 **File:** `Telegram/SourceFiles/data/data_signal_protocol.cpp:2857`

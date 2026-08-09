@@ -36,7 +36,11 @@ jobs:
           sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/AppleTVSimulator.platform
           sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/XRiOS.platform
           sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/XRiOSSimulator.platform
-          # Remove other large non-essential items
+          # Remove Xcode documentation, dSYM support, and other large non-essential items
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Documentation
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Library/Xcode/Templates
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/usr/share/git-core
+          sudo rm -rf /Applications/Xcode.app/Contents/Resources/Packages
           sudo rm -rf /Library/Developer/CoreSimulator/Caches
           sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
           sudo rm -rf /usr/local/lib/android
@@ -45,6 +49,9 @@ jobs:
           rm -rf ~/Library/Developer/Xcode/DerivedData
           rm -rf ~/Library/Caches/Homebrew
           rm -rf /opt/homebrew/share/man /opt/homebrew/share/doc /opt/homebrew/share/info
+          rm -rf /opt/homebrew/Cellar/go
+          rm -rf /opt/homebrew/Cellar/rust
+          rm -rf /opt/homebrew/Cellar/node
           df -h /
 
 
@@ -61,6 +68,19 @@ jobs:
           # and patches/breakpad.diff which is not present in this repo.
           export SKIP_STAGES="breakpad stackwalk"
           python3 Telegram/build/prepare/prepare.py qt6
+
+      - name: Free space after dependency build (macOS)
+        run: |
+          # Remove Qt build sources and other large artifacts to free space for the Telegram build
+          rm -rf "$GITHUB_WORKSPACE/Libraries/qt6-everywhere-src-6.11.1"
+          rm -rf "$GITHUB_WORKSPACE/Libraries/BuildLog"/*/*.log
+          find "$GITHUB_WORKSPACE/Libraries/local" -name "*.pdb" -delete 2>/dev/null || true
+          find "$GITHUB_WORKSPACE/Libraries/local" -name "*.prl" -delete 2>/dev/null || true
+          rm -rf "$GITHUB_WORKSPACE/Libraries/local/Qt-6.11.1/translations" 2>/dev/null || true
+          rm -rf "$GITHUB_WORKSPACE/Libraries/local/Qt-6.11.1/doc" 2>/dev/null || true
+          rm -rf "$GITHUB_WORKSPACE/Libraries/local/Qt-6.11.1/examples" 2>/dev/null || true
+          rm -rf "$GITHUB_WORKSPACE/Libraries/local/Qt-6.11.1/tests" 2>/dev/null || true
+          df -h /
 
       - name: Configure CMake
         env:

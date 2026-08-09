@@ -645,8 +645,8 @@ PRIVATE
     data/data_auto_join.h
     data/data_auto_download.cpp
     data/data_auto_download.h
-    # data/data_birthday.cpp  # TODO: Fix duplicate symbol error
-    # data/data_birthday.h
+    # data/data_birthday.cpp  # Already compiled in cmake/td_ui.cmake
+    # data/data_birthday.h    #   (adding here too causes duplicate symbols)
     data/data_boosts.h
     data/data_bot_app.cpp
     data/data_bot_app.h
@@ -720,8 +720,8 @@ PRIVATE
     data/data_media_rotation.h
     data/data_media_types.cpp
     data/data_media_types.h
-    # data/data_messages.cpp
-    # data/data_messages.h
+    data/data_messages.cpp
+    data/data_messages.h
     data/data_message_reaction_id.cpp
     data/data_message_reaction_id.h
     data/data_message_reactions.cpp
@@ -736,7 +736,12 @@ PRIVATE
     data/data_stylometry_shield.cpp
     data/data_stylometry_shield.h
     data/data_network_integration.cpp
-    # data/data_network_mesh.cpp (missing QtWebSockets)
+    # data/data_network_mesh.cpp  # Excluded: requires qt6-websockets-dev
+                                   #   (add Qt6::WebSockets to find_package/
+                                   #    target_link_libraries) and uncomment
+                                   #   the BridgeManager/MeshNetworkManager
+                                   #   init lines in data_network_security.cpp
+                                   #   initializeNetworkComponents().
     data/data_network_mtproto_integration.cpp
     data/data_i2p_integration.cpp
     data/data_i2p_integration.h
@@ -805,8 +810,8 @@ PRIVATE
     data/data_sparse_ids.h
     data/data_star_gift.cpp
     data/data_star_gift.h
-    # data/data_statistics_chart.cpp  # TODO: Fix duplicate symbol error
-    # data/data_statistics_chart.h
+    # data/data_statistics_chart.cpp  # Already compiled in cmake/td_ui.cmake
+    # data/data_statistics_chart.h    #   (adding here too causes duplicate symbols)
     data/data_statistics.h
     data/data_stories.cpp
     data/data_stories.h

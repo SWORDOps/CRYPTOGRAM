@@ -150,6 +150,14 @@ FORCE_REBUILD="${FORCE:-0}"
 RESUME_BUILD="${RESUME:-0}"
 PARALLEL_JOBS="${JOBS:-$NUM_CORES}"
 
+# Strict mode: when enabled, dependency build failures abort the build
+# instead of being silently skipped. Default is off (0) to preserve
+# backwards-compatible behaviour where non-critical deps are skipped.
+STRICT_MODE="${STRICT_MODE:-0}"
+
+# Track dependencies that were skipped so we can report them at the end.
+SKIPPED_DEPS=()
+
 # Validate PARALLEL_JOBS is a number
 if ! [[ "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [ "$PARALLEL_JOBS" -lt 1 ]; then
     echo "WARNING: Invalid PARALLEL_JOBS value '$PARALLEL_JOBS', using $NUM_CORES"
@@ -443,6 +451,11 @@ ensure_tg_owt_from_source() {
     if [ -d "$tg_src" ] && [ ! -f "$tg_src/CMakeLists.txt" ]; then
         print_warning "tg_owt directory exists but is empty or not initialized, skipping tg_owt build"
         log "WARN" "tg_owt not initialized, skipping"
+        SKIPPED_DEPS+=("tg_owt")
+        if [[ "${STRICT_MODE}" == "1" ]]; then
+            log "ERROR" "Strict mode: aborting due to failed dependency"
+            return 1
+        fi
         return 0
     fi
 
@@ -452,6 +465,11 @@ ensure_tg_owt_from_source() {
         run_cmd "rm -rf '$tg_src'"
         if ! run_cmd_verbose "git clone --depth 1 https://github.com/desktop-app/tg_owt.git '$tg_src'"; then
             print_warning "Failed to clone tg_owt, skipping WebRTC support"
+            SKIPPED_DEPS+=("tg_owt")
+            if [[ "${STRICT_MODE}" == "1" ]]; then
+                log "ERROR" "Strict mode: aborting due to failed dependency"
+                return 1
+            fi
             return 0
         fi
     fi
@@ -557,6 +575,11 @@ ensure_openal_from_source() {
 
     if ! run_cmd_verbose "git clone --depth 1 https://github.com/kcat/openal-soft.git '$openal_src'"; then
         print_warning "Failed to clone OpenAL, skipping OpenAL support"
+        SKIPPED_DEPS+=("OpenAL")
+        if [[ "${STRICT_MODE}" == "1" ]]; then
+            log "ERROR" "Strict mode: aborting due to failed dependency"
+            return 1
+        fi
         return 0
     fi
 
@@ -606,6 +629,11 @@ ensure_lz4_from_source() {
 
     if ! run_cmd_verbose "git clone --depth 1 https://github.com/lz4/lz4.git '$lz4_src'"; then
         print_warning "Failed to clone LZ4, skipping LZ4 support"
+        SKIPPED_DEPS+=("LZ4")
+        if [[ "${STRICT_MODE}" == "1" ]]; then
+            log "ERROR" "Strict mode: aborting due to failed dependency"
+            return 1
+        fi
         return 0
     fi
 
@@ -649,6 +677,11 @@ ensure_xxhash_from_source() {
 
     if ! run_cmd_verbose "git clone --depth 1 https://github.com/Cyan4973/xxHash.git '$xxhash_src'"; then
         print_warning "Failed to clone xxHash, skipping xxHash support"
+        SKIPPED_DEPS+=("xxHash")
+        if [[ "${STRICT_MODE}" == "1" ]]; then
+            log "ERROR" "Strict mode: aborting due to failed dependency"
+            return 1
+        fi
         return 0
     fi
 
@@ -692,6 +725,11 @@ ensure_minizip_from_source() {
 
     if ! run_cmd_verbose "git clone --depth 1 https://github.com/zlib-ng/minizip-ng.git '$minizip_src'"; then
         print_warning "Failed to clone minizip, skipping minizip support"
+        SKIPPED_DEPS+=("minizip")
+        if [[ "${STRICT_MODE}" == "1" ]]; then
+            log "ERROR" "Strict mode: aborting due to failed dependency"
+            return 1
+        fi
         return 0
     fi
 
@@ -741,6 +779,11 @@ ensure_rlottie_from_source() {
 
     if ! run_cmd_verbose "git clone --depth 1 https://github.com/Samsung/rlottie.git '$rlottie_src'"; then
         print_warning "Failed to clone rlottie, skipping rlottie support"
+        SKIPPED_DEPS+=("rlottie")
+        if [[ "${STRICT_MODE}" == "1" ]]; then
+            log "ERROR" "Strict mode: aborting due to failed dependency"
+            return 1
+        fi
         return 0
     fi
 
@@ -792,6 +835,11 @@ ensure_rnnoise_from_source() {
         print_warning "Failed to clone RNNoise, attempting GitHub mirror..."
         if ! run_cmd_verbose "git clone --depth 1 https://github.com/xiph/rnnoise.git '$rnnoise_src'"; then
             print_warning "Failed to clone RNNoise from GitHub, skipping RNNoise support"
+            SKIPPED_DEPS+=("RNNoise")
+            if [[ "${STRICT_MODE}" == "1" ]]; then
+                log "ERROR" "Strict mode: aborting due to failed dependency"
+                return 1
+            fi
             return 0
         fi
     fi
@@ -838,6 +886,11 @@ ensure_tde2e_from_tdlib() {
     if ! command -v gperf >/dev/null 2>&1; then
         print_warning "gperf is required for tde2e but not found, skipping tde2e build"
         log "WARN" "gperf not found, skipping tde2e"
+        SKIPPED_DEPS+=("tde2e")
+        if [[ "${STRICT_MODE}" == "1" ]]; then
+            log "ERROR" "Strict mode: aborting due to failed dependency"
+            return 1
+        fi
         return 0
     fi
     local td_src="${CRYPTOGRAM_ROOT}/Telegram/td"
@@ -845,6 +898,11 @@ ensure_tde2e_from_tdlib() {
     if [ -d "$td_src" ] && [ ! -f "$td_src/CMakeLists.txt" ]; then
         print_warning "tdlib directory exists but is empty or not initialized, skipping tde2e build"
         log "WARN" "tdlib not initialized, skipping"
+        SKIPPED_DEPS+=("tde2e")
+        if [[ "${STRICT_MODE}" == "1" ]]; then
+            log "ERROR" "Strict mode: aborting due to failed dependency"
+            return 1
+        fi
         return 0
     fi
     if [ ! -d "$td_src" ]; then
@@ -853,18 +911,65 @@ ensure_tde2e_from_tdlib() {
         run_cmd "rm -rf '$td_src'"
         if ! run_cmd_verbose "git clone --depth 1 https://github.com/tdlib/td.git '$td_src'"; then
             print_warning "Failed to clone tdlib, skipping tde2e"
+            SKIPPED_DEPS+=("tde2e")
+            if [[ "${STRICT_MODE}" == "1" ]]; then
+                log "ERROR" "Strict mode: aborting due to failed dependency"
+                return 1
+            fi
             return 0
         fi
     fi
     local td_build="$td_src/build"
     mkdir -p "$td_build"
     cd "$td_build" || fail "Cannot enter tde2e build dir"
-    if ! run_cmd_verbose "cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX='$INSTALL_PREFIX' -DTD_E2E_ONLY=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON"; then
+
+    # ──────────────────────────────────────────────────────────────────────
+    # CPU instruction detection for tde2e
+    # The tde2e build can fail with "Illegal instruction (core dumped)" on
+    # certain GitHub runner CPUs that lack AVX/AVX2 support. Always pin to
+    # baseline x86-64 and disable AVX/AVX2 if the CPU does not advertise them.
+    # ──────────────────────────────────────────────────────────────────────
+    local TDE2E_CMAKE_FLAGS=""
+    local tde2e_c_flags="-march=x86-64"
+    local tde2e_cxx_flags="-march=x86-64"
+    if ! grep -q "avx" /proc/cpuinfo 2>/dev/null; then
+        tde2e_c_flags="$tde2e_c_flags -mno-avx -mno-avx2"
+        tde2e_cxx_flags="$tde2e_cxx_flags -mno-avx -mno-avx2"
+        log "INFO" "CPU does not support AVX, adding -mno-avx -mno-avx2 for tde2e"
+    fi
+    TDE2E_CMAKE_FLAGS="-DCMAKE_C_FLAGS='${tde2e_c_flags}' -DCMAKE_CXX_FLAGS='${tde2e_cxx_flags}'"
+
+    print_progress "Configuring tdlib tde2e with CPU-safe flags..."
+    if ! run_cmd_verbose "cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX='$INSTALL_PREFIX' -DTD_E2E_ONLY=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON ${TDE2E_CMAKE_FLAGS}"; then
         fail "Configuring tdlib tde2e failed"
     fi
-    if ! run_cmd_verbose "cmake --build . --config Release --parallel $PARALLEL_JOBS"; then
-        fail "Building tdlib tde2e failed"
+
+    print_progress "Building tdlib tde2e..."
+    local tde2e_build_log
+    tde2e_build_log="$(mktemp "${LOG_DIR}/tde2e_build_${BUILD_ID}.XXXXXX" 2>/dev/null || mktemp)"
+    if run_cmd_verbose_to_file "$tde2e_build_log" "cmake --build . --config Release --parallel $PARALLEL_JOBS"; then
+        rm -f "$tde2e_build_log" 2>/dev/null || true
+    else
+        # Check if the failure was due to an illegal instruction error and retry
+        if grep -qi "Illegal instruction" "$tde2e_build_log" 2>/dev/null; then
+            print_warning "tde2e build failed with 'Illegal instruction', retrying with conservative CPU flags..."
+            log "WARN" "tde2e build hit Illegal instruction; retrying with -march=x86-64 -mno-avx -mno-avx2"
+            rm -f "$tde2e_build_log" 2>/dev/null || true
+            # Clean and reconfigure with the most conservative flags
+            rm -rf CMakeCache.txt CMakeFiles/
+            local retry_flags="-DCMAKE_C_FLAGS='-march=x86-64 -mno-avx -mno-avx2' -DCMAKE_CXX_FLAGS='-march=x86-64 -mno-avx -mno-avx2'"
+            if ! run_cmd_verbose "cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX='$INSTALL_PREFIX' -DTD_E2E_ONLY=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON ${retry_flags}"; then
+                fail "Configuring tdlib tde2e failed on retry"
+            fi
+            if ! run_cmd_verbose "cmake --build . --config Release --parallel $PARALLEL_JOBS"; then
+                fail "Building tdlib tde2e failed even after retry with conservative CPU flags"
+            fi
+        else
+            rm -f "$tde2e_build_log" 2>/dev/null || true
+            fail "Building tdlib tde2e failed"
+        fi
     fi
+
     if ! run_cmd_verbose "sudo cmake --install ."; then
         fail "Installing tdlib tde2e failed"
     fi
@@ -1097,6 +1202,46 @@ run_cmd_verbose() {
 
     # Use tee to show output and save to log
     if eval "$cmd" 2>&1 | tee -a "$LOG_FILE"; then
+        local exit_code=${PIPESTATUS[0]}
+        local elapsed
+        elapsed=$(($(date +%s) - cmd_start))
+        if [ "$exit_code" -eq 0 ]; then
+            log "CMD" "Completed in ${elapsed}s: $cmd"
+            return 0
+        else
+            log "ERROR" "Command failed (exit $exit_code) after ${elapsed}s: $cmd"
+            return "$exit_code"
+        fi
+    else
+        local exit_code=$?
+        local elapsed
+        elapsed=$(($(date +%s) - cmd_start))
+        log "ERROR" "Command failed (exit $exit_code) after ${elapsed}s: $cmd"
+        return "$exit_code"
+    fi
+}
+
+# Variant of run_cmd_verbose that captures output to a temp file (passed as
+# $1) while still streaming it to the terminal and the main log.  Useful when
+# the caller needs to inspect the output (e.g. for "Illegal instruction").
+# Usage: run_cmd_verbose_to_file <output_file> <command...>
+run_cmd_verbose_to_file() {
+    local out_file="$1"
+    shift
+    local cmd="$*"
+    local cmd_start
+    cmd_start="$(date +%s)"
+
+    print_debug "Executing (verbose+capture): $cmd"
+    log "CMD" "Running (verbose+capture): $cmd"
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+        print_info "[DRY RUN] Would execute: $cmd"
+        return 0
+    fi
+
+    # Stream to terminal + log, and also save a copy to out_file
+    if eval "$cmd" 2>&1 | tee -a "$LOG_FILE" | tee "$out_file"; then
         local exit_code=${PIPESTATUS[0]}
         local elapsed
         elapsed=$(($(date +%s) - cmd_start))
@@ -2214,6 +2359,9 @@ main() {
             --quiet|-q)
                 VERBOSE_MODE=0
                 ;;
+            --strict)
+                STRICT_MODE=1
+                ;;
             *)
                 print_error "Unknown option: $1"
                 show_help
@@ -2239,6 +2387,7 @@ main() {
     [ "$DRY_RUN" -eq 1 ] && echo "  Mode: DRY RUN"
     [ "$RESUME_BUILD" -eq 1 ] && echo "  Mode: RESUME"
     [ "$FORCE_REBUILD" -eq 1 ] && echo "  Mode: FORCE REBUILD"
+    [ "$STRICT_MODE" -eq 1 ] && echo "  Mode: STRICT (abort on dependency failure)"
     echo ""
 
     # Try to load previous state
@@ -2297,6 +2446,24 @@ main() {
         fi
     fi
 
+    # Report any dependencies that were skipped during the build
+    if [ "${#SKIPPED_DEPS[@]}" -gt 0 ]; then
+        echo ""
+        print_warning "The following dependencies were skipped during the build:"
+        local dep
+        for dep in "${SKIPPED_DEPS[@]}"; do
+            echo "  - $dep"
+        done
+        echo ""
+        if [ "$STRICT_MODE" -eq 0 ]; then
+            echo "The build continued without them, but the resulting binary may"
+            echo "be missing functionality (e.g. video calls, E2E encryption, audio)."
+            echo "Re-run with --strict to abort on dependency failures, or install"
+            echo "the missing dependencies manually."
+        fi
+        log "WARN" "Skipped dependencies: ${SKIPPED_DEPS[*]}"
+    fi
+
     log "INFO" "Build completed successfully"
     exit 0
 }
@@ -2320,6 +2487,8 @@ OPTIONS:
     --dry-run           Preview without executing
     --verbose           Enable verbose output
     -q, --quiet         Quiet mode
+    --strict            Abort build if a dependency fails to build
+                        (default: skip non-critical deps and continue)
 
 ENVIRONMENT:
     CRYPTOGRAM_ROOT     Source directory (default: directory containing this script: $SCRIPT_DIR)
