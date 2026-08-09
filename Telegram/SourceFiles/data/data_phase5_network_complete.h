@@ -231,7 +231,7 @@ public:
      */
     QString getHardwareCompatibilityReport() const;
 
-signals:
+Q_SIGNALS
     // Initialization and status
     void networkSecurityReady(NetworkSecurityTier tier, const QStringList &features);
     void securityTierChanged(NetworkSecurityTier oldTier, NetworkSecurityTier newTier);

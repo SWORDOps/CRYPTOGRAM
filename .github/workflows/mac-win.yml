@@ -67,7 +67,8 @@ jobs:
           # Skip breakpad and stackwalk stages — they require xcodebuild (full Xcode)
           # and patches/breakpad.diff which is not present in this repo.
           export SKIP_STAGES="breakpad stackwalk"
-          python3 Telegram/build/prepare/prepare.py qt6
+          # Build Qt release-only to save disk space (skip debug Qt libs)
+          python3 Telegram/build/prepare/prepare.py qt6 release-only
 
       - name: Free space after dependency build (macOS)
         run: |

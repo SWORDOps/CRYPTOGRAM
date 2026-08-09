@@ -61,6 +61,7 @@ optionsList = [
     'qt6',
     'skip-release',
     'build-stackwalk',
+    'release-only',
 ]
 options = []
 runCommand = []
@@ -251,6 +252,8 @@ def filterByPlatform(commands):
             if 'release' in scopes:
                 if 'skip-release' in options:
                     inscope = False
+                elif 'only' in scopes and 'release-only' in options:
+                    inscope = True
                 elif len(scopes) == 1:
                     continue
             skip = inscope if m.group(1) == '!' else not inscope
@@ -1617,6 +1620,8 @@ mac:
     CONFIGURATIONS=-debug
 release:
     CONFIGURATIONS=-debug-and-release
+release-only:
+    CONFIGURATIONS=-release
 mac:
     ./configure -prefix "$USED_PREFIX/Qt-$QT" \
         $CONFIGURATIONS \
