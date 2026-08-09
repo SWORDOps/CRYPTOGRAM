@@ -1,3 +1,6 @@
+# Forked submodules:
+# - cmake: SWORDOps/cmake_helpers (fork for zlib lib name fix in qt/package.cmake)
+# - Telegram/ThirdParty/libsignal: SWORDOps/libsignal-protocol-c (fork for MSVC C compile fix)
 [submodule "Telegram/ThirdParty/GSL"]
 	path = Telegram/ThirdParty/GSL
 	url = https://github.com/Microsoft/GSL.git

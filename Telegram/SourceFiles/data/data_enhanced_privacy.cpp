@@ -49,20 +49,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
-// TagLib includes for audio metadata
-// #include <taglib/fileref.h>
-// #include <taglib/tag.h>
-// #include <taglib/mpegfile.h>
-// #include <taglib/id3v2tag.h>
-// #include <taglib/id3v2frame.h>
-// #include <taglib/id3v2header.h>
-// #include <taglib/textidentificationframe.h>
-// #include <taglib/flacfile.h>
-// #include <taglib/mp4file.h>
-// #include <taglib/oggfile.h>
-// #include <taglib/vorbisfile.h>
-// #include <taglib/wavfile.h>
-// #include <taglib/tpropertymap.h>
+// NOTE: TagLib (audio metadata library) source is present under
+// ThirdParty/taglib but is not currently linked into the Telegram build
+// target, so audio metadata spoofing is not available. Image (JPEG/EXIF)
+// metadata spoofing works via Qt's QImageWriter. See SpoofMediaMetadata()
+// for the audio no-op fallback.
 
 namespace Data {
 
@@ -845,27 +836,20 @@ void EnhancedPrivacy::SpoofMediaMetadata(QImage &image, QByteArray &bytes, const
     }
     // Audio file formats (MP3, WAV, FLAC, etc.)
     else if (IsAudioFormat(format, bytes)) {
-        // Create a temporary file to work with TagLib
-        QTemporaryFile tempFile;
-        if (tempFile.open()) {
-            // Write the current audio data to the temp file
-            tempFile.write(bytes);
-            tempFile.flush();
-            
-            // Get the file path as a C string for TagLib
-            const QByteArray filePath = QFile::encodeName(tempFile.fileName());
-            
-            // Create the appropriate TagLib file handler based on format
-//             TagLib::File* file = nullptr;
-            
-            const QString formatLower = format.toLower();
-            
-            // Read back the modified file (currently a no-op as TagLib is disabled)
-            tempFile.seek(0);
-            bytes = tempFile.readAll();
-        }
-        
-        tempFile.close();
+        // TODO: Audio metadata spoofing requires TagLib, which is present
+        // under ThirdParty/taglib but not currently linked into the Telegram
+        // build target. Until TagLib is wired into the build (linked and
+        // include directories added), audio metadata is left unchanged.
+        //
+        // When TagLib is integrated, this branch should:
+        //   - Write the audio data to a temporary file
+        //   - Open it with the appropriate TagLib file handler (MPEG::File,
+        //     FLAC::File, MP4::File, Ogg::Vorbis::File, RIFF::WAV::File)
+        //   - Spoof the tag fields (artist, title, album, comment) with the
+        //     generated device model / iOS version / location values above
+        //   - Read back the modified file into `bytes`
+        //
+        // For now this is a no-op: the audio data is returned unchanged.
     }
     // RAR and similar archive formats
     else if (IsArchiveFormat(format, bytes)) {
@@ -1097,22 +1081,10 @@ void EnhancedPrivacy::StripAllMetadata(QByteArray &bytes, const QString &format)
         }
     } 
     else if (IsAudioFormat(formatLower, bytes)) {
-        // For audio files, use a temporary file for TagLib processing
-        QTemporaryFile tempFile;
-        if (tempFile.open()) {
-            // Write current data to the temp file
-            tempFile.write(bytes);
-            tempFile.flush();
-            
-            // Get the file path as a C string for TagLib
-            const QString formatLower = format.toLower();
-            
-            // TagLib is currently unavailable - read back original bytes
-            tempFile.seek(0);
-            bytes = tempFile.readAll();
-            
-            tempFile.close();
-        }
+        // TODO: Audio metadata stripping requires TagLib, which is present
+        // under ThirdParty/taglib but not currently linked into the Telegram
+        // build target. Until TagLib is wired into the build, audio metadata
+        // cannot be stripped and the data is left unchanged.
     }
     else if (IsVideoFormat(formatLower, bytes)) {
         // Video metadata stripping logic - basic implementation
@@ -1243,24 +1215,10 @@ QByteArray EnhancedPrivacy::DisarmAndReconstruct(const QByteArray &bytes, const 
         }
     }
     else if (IsAudioFormat(formatLower, bytes)) {
-        // For audio: decode to raw PCM and re-encode
-        QTemporaryFile tempInFile;
-        
-        if (tempInFile.open()) {
-            // Write the original data to the temp file
-            tempInFile.write(bytes);
-            tempInFile.flush();
-            
-            // Use TagLib to extract just the audio data, discarding metadata
-            const QByteArray inPath = QFile::encodeName(tempInFile.fileName());
-            
-            // Read back original bytes (TagLib unavailable)
-            if (tempInFile.open()) {
-                result = tempInFile.readAll();
-            }
-            
-            tempInFile.close();
-        }
+        // TODO: Audio disarm/reconstruct requires TagLib, which is present
+        // under ThirdParty/taglib but not currently linked into the Telegram
+        // build target. Until TagLib is wired into the build, audio data
+        // cannot be disarmed and is returned unchanged.
     }
     else if (IsVideoFormat(formatLower, bytes)) {
         // For video: this would require a specialized library
