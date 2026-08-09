@@ -119,8 +119,8 @@ TEST_CASE("E2E: Message decryption hook in MessageObject", "[android][e2e][integ
 	REQUIRE(containsPattern(content, "decryptIncomingMessage"));
 }
 
-TEST_CASE("E2E: Settings entry point in ProfileActivity", "[android][e2e][integration]") {
-	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java");
+TEST_CASE("E2E: Settings entry point in SettingsActivity", "[android][e2e][integration]") {
+	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java");
 	REQUIRE_FALSE(content.empty());
 	REQUIRE(containsPattern(content, "CryptogramSettingsActivity"));
 }
