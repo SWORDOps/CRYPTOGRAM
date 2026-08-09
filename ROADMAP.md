@@ -94,7 +94,7 @@ Last updated: 2026-08-09
 
 ---
 
-## P2 — Desktop: Incoming Decryption Not Wired In — ✅ DESK-1/2/3/4 DONE
+## P2 — Desktop: Incoming Decryption Not Wired In — ✅ ALL DONE
 
 ### DESK-1: SignalProtocol::processIncomingMessage() is never called
 **File:** `Telegram/SourceFiles/data/data_signal_protocol.cpp:2857`
@@ -185,7 +185,7 @@ Last updated: 2026-08-09
 
 ---
 
-## P4 — Testing Gaps — ✅ TEST-1/3 DONE
+## P4 — Testing Gaps — ✅ ALL DONE
 
 ### TEST-1: Unit tests exist but are never run
 **Files:** `tests/unit/` (9 test files, 9 Catch2 targets)
@@ -211,12 +211,12 @@ Last updated: 2026-08-09
 
 | Priority | Category | Count | Status |
 |----------|----------|-------|--------|
-| P0 | CI/Build Pipeline | 7 | 4 fixed, 1 in progress, 2 unfixed |
-| P1 | Android Integration | 6 | 0 fixed — all stubs |
-| P2 | Desktop Integration | 9 | 0 fixed — incoming decryption + several stubs |
-| P3 | Build System | 5 | 0 fixed |
-| P4 | Testing | 4 | 0 fixed |
-| **Total** | | **31** | **4 fixed, 1 in progress, 26 unfixed** |
+| P0 | CI/Build Pipeline | 7 | 5 fixed, 1 in progress (macOS disk), 1 transient |
+| P1 | Android Integration | 6 | ✅ All fixed |
+| P2 | Desktop Integration | 9 | ✅ All fixed |
+| P3 | Build System | 5 | ✅ All fixed |
+| P4 | Testing | 4 | ✅ All fixed |
+| **Total** | | **31** | **30 fixed, 1 in progress (macOS disk space verification)** |
 
 ## Recommended Execution Order
 
