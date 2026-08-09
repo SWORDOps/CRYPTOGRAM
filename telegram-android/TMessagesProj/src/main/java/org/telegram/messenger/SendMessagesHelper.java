@@ -54,6 +54,7 @@ import androidx.core.view.inputmethod.InputContentInfoCompat;
 import org.json.JSONObject;
 import org.telegram.messenger.audioinfo.AudioInfo;
 import org.telegram.messenger.cryptogram.CryptogramMessageHelper;
+import org.telegram.messenger.cryptogram.DpiEvasionHelper;
 import org.telegram.messenger.cryptogram.StylometryShield;
 import org.telegram.messenger.support.SparseLongArray;
 import org.telegram.messenger.utils.tlutils.AmountUtils;
@@ -4113,6 +4114,9 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 StylometryShield shield = StylometryShield.getInstance();
                 shield.setEnabled(true);
                 message = shield.anonymize(message);
+            }
+            if (SharedConfig.cryptogramDpiEvasion) {
+                message = DpiEvasionHelper.getInstance().applyPadding(message);
             }
             message = CryptogramMessageHelper.encryptOutgoingMessage(currentAccount, message, peer);
         }

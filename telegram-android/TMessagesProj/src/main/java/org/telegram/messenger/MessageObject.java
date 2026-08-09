@@ -53,6 +53,7 @@ import androidx.core.graphics.ColorUtils;
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.messenger.cryptogram.CryptogramMessageHelper;
+import org.telegram.messenger.cryptogram.DpiEvasionHelper;
 import org.telegram.messenger.ringtone.RingtoneDataStore;
 import org.telegram.messenger.utils.tlutils.AmountUtils;
 import org.telegram.messenger.utils.tlutils.TlUtils;
@@ -6008,6 +6009,9 @@ public class MessageObject {
                     long peerId = getDialogId();
                     long fromId = messageOwner.from_id instanceof TLRPC.TL_peerUser ? messageOwner.from_id.user_id : 0;
                     sourceText = CryptogramMessageHelper.decryptIncomingMessage(currentAccount, sourceText, peerId, fromId);
+                }
+                if (sourceText != null && SharedConfig.cryptogramDpiEvasion) {
+                    sourceText = DpiEvasionHelper.getInstance().stripPadding(sourceText);
                 }
                 if (sourceText != null) {
                     try {
@@ -13462,6 +13466,9 @@ public class MessageObject {
         long fromId = messageOwner.from_id instanceof TLRPC.TL_peerUser ? messageOwner.from_id.user_id : 0;
         String decrypted = CryptogramMessageHelper.decryptIncomingMessage(currentAccount, messageOwner.message, peerId, fromId);
         if (decrypted != null) {
+            if (SharedConfig.cryptogramDpiEvasion) {
+                decrypted = DpiEvasionHelper.getInstance().stripPadding(decrypted);
+            }
             messageText = decrypted;
         }
     }
