@@ -84,6 +84,13 @@ public:
     static TextWithEntities EncryptMessage(const TextWithEntities &original, const QString &passphrase);
     static TextWithEntities DecryptMessage(const TextWithEntities &encrypted);
     static bool IsEncrypted(const TextWithEntities &text);
+
+    // Low-level AES-256-GCM string encryption/decryption.
+    // EncryptString returns a base64 string of (IV || ciphertext || tag).
+    // DecryptString accepts that base64 string and returns the plaintext
+    // (or an empty string on failure).
+    static QString EncryptString(const QString &text, const QString &key);
+    static QString DecryptString(const QString &base64Text, const QString &key);
     
     // Configuration methods
     static void SetEncryptionEnabled(bool enabled);

@@ -46,6 +46,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QFileInfo>
 #include <QPainter>
 
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+
 // TagLib includes for audio metadata
 // #include <taglib/fileref.h>
 // #include <taglib/tag.h>
@@ -247,10 +250,6 @@ bool IsVideoFormat(const QString &format, const QByteArray &bytes) {
 
 } // anonymous namespace
 
-// Forward declarations for encryption helpers
-static QString EncryptString(const QString &text, const QString &key);
-static QString DecryptString(const QString &base64Text, const QString &key);
-
 // Client-side encryption wrapper for messages
 TextWithEntities EnhancedPrivacy::EncryptMessage(const TextWithEntities &original, const QString &passphrase) {
     if (!IsEncryptionEnabled() || passphrase.isEmpty()) {
@@ -282,7 +281,7 @@ TextWithEntities EnhancedPrivacy::EncryptMessage(const TextWithEntities &origina
     QString jsonData = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
 
     // Encrypt the JSON data
-    QString encryptedBase64 = EncryptString(jsonData, passphrase);
+    QString encryptedBase64 = EnhancedPrivacy::EncryptString(jsonData, passphrase);
 
     // Encode the base64 ciphertext as invisible Unicode characters
     // This makes the message appear completely blank to non-CRYPTOGRAM users
@@ -317,7 +316,7 @@ TextWithEntities EnhancedPrivacy::DecryptMessage(const TextWithEntities &encrypt
         return encrypted; // No passphrase set
     }
 
-    QString decrypted = DecryptString(encryptedBase64, passphrase);
+    QString decrypted = EnhancedPrivacy::DecryptString(encryptedBase64, passphrase);
     if (decrypted.isEmpty()) {
         return encrypted; // Decryption failed
     }
@@ -361,74 +360,153 @@ static bool IsMutuallyEncrypted(const TextWithEntities &text) {
     return EnhancedPrivacy::IsEncryptionEnabled() && EnhancedPrivacy::IsEncrypted(text);
 }
 
-static QString EncryptString(const QString &text, const QString &key) {
-    // Generate a key from the passphrase using SHA-384 (CNSA 2.0 compliant)
+QString EnhancedPrivacy::EncryptString(const QString &text, const QString &key) {
+    // Generate a key from the passphrase using SHA-256 (first 256 bits for AES-256)
     QByteArray keyData = QCryptographicHash::hash(
         key.toUtf8(),
         QCryptographicHash::Sha256
-    ).left(32); // Use first 256 bits for AES-256 key
-    
-    // Generate a random IV
-    QByteArray iv(16, 0);
-    for (int i = 0; i < iv.size(); ++i) {
-        iv[i] = static_cast<char>(base::RandomValue<uchar>());
-    }
-    
-    // Prepare data for encryption
-    QByteArray data = text.toUtf8();
-    
-    // Ensure data length is a multiple of 16 (AES block size)
-    int padding = 16 - (data.size() % 16);
-    data.append(QByteArray(padding, static_cast<char>(padding)));
-    
-    // Encrypt the data using AES-256-CBC
-    QByteArray encrypted(data.size(), 0);
-    
-    
+    ).left(32);
 
-    // memcpy
-    // memcpy
-    
-    // // openssl encrypt
-    
-    // Combine IV and encrypted data and convert to Base64
-    QByteArray result = iv + encrypted;
+    // Generate a random 12-byte IV (standard for AES-256-GCM)
+    constexpr int kIvSize = 12;
+    QByteArray iv(kIvSize, 0);
+    if (RAND_bytes(reinterpret_cast<unsigned char*>(iv.data()), kIvSize) != 1) {
+        for (int i = 0; i < kIvSize; ++i) {
+            iv[i] = static_cast<char>(base::RandomValue<uchar>());
+        }
+    }
+
+    // Prepare data for encryption (GCM is a stream cipher, no padding needed)
+    QByteArray data = text.toUtf8();
+
+    // Encrypt the data using AES-256-GCM
+    QByteArray ciphertext(data.size(), 0);
+    unsigned char tag[16] = {0};
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        return QString();
+    }
+
+    int len = 0;
+    int ciphertextLen = 0;
+    bool ok = true;
+
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
+        ok = false;
+    }
+    if (ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, kIvSize, nullptr) != 1) {
+        ok = false;
+    }
+    if (ok && EVP_EncryptInit_ex(ctx, nullptr, nullptr,
+            reinterpret_cast<const unsigned char*>(keyData.constData()),
+            reinterpret_cast<const unsigned char*>(iv.constData())) != 1) {
+        ok = false;
+    }
+    if (ok && EVP_EncryptUpdate(ctx,
+            reinterpret_cast<unsigned char*>(ciphertext.data()),
+            &len,
+            reinterpret_cast<const unsigned char*>(data.constData()),
+            data.size()) != 1) {
+        ok = false;
+    }
+    ciphertextLen = len;
+
+    if (ok && EVP_EncryptFinal_ex(ctx,
+            reinterpret_cast<unsigned char*>(ciphertext.data()) + ciphertextLen,
+            &len) != 1) {
+        ok = false;
+    }
+    ciphertextLen += len;
+
+    if (ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag) != 1) {
+        ok = false;
+    }
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    if (!ok) {
+        return QString();
+    }
+
+    ciphertext.resize(ciphertextLen);
+
+    // Combine IV, ciphertext and tag, then convert to Base64
+    QByteArray result = iv + ciphertext + QByteArray(reinterpret_cast<const char*>(tag), 16);
     return QString::fromLatin1(result.toBase64());
 }
 
-static QString DecryptString(const QString &text, const QString &key) {
-    // Generate key from passphrase using SHA-384 (CNSA 2.0 compliant)
+QString EnhancedPrivacy::DecryptString(const QString &text, const QString &key) {
+    // Generate key from passphrase using SHA-256 (first 256 bits for AES-256)
     QByteArray keyData = QCryptographicHash::hash(
         key.toUtf8(),
         QCryptographicHash::Sha256
-    ).left(32); // Use first 256 bits for AES-256 key
-    
-    // Decode Base64
-    QByteArray encryptedData = QByteArray::fromBase64(text.toLatin1());
-    if (encryptedData.size() <= 16) {
-        return QString(); // Too short: IV(16) + at least 1 block(16)
-    }
-    
-    // Extract IV and encrypted data
-    QByteArray iv = encryptedData.left(16);
-    QByteArray data = encryptedData.mid(16);
-    
-    // Decrypt
-    QByteArray decrypted(data.size(), 0);
-    
-    
+    ).left(32);
 
-    // memcpy
-    // memcpy
-    
-    // // openssl decrypt
-    
-    // Remove padding
-    int paddingSize = static_cast<int>(decrypted[decrypted.size() - 1]);
-    if (paddingSize > 0 && paddingSize <= 16) {
-        decrypted.chop(paddingSize);
+    // Decode Base64
+    constexpr int kIvSize = 12;
+    constexpr int kTagSize = 16;
+    QByteArray encryptedData = QByteArray::fromBase64(text.toLatin1());
+    if (encryptedData.size() <= kIvSize + kTagSize) {
+        return QString(); // Too short: IV(12) + tag(16) + at least 1 byte
     }
-    
+
+    // Extract IV, ciphertext and tag
+    QByteArray iv = encryptedData.left(kIvSize);
+    QByteArray tag = encryptedData.right(kTagSize);
+    QByteArray data = encryptedData.mid(kIvSize, encryptedData.size() - kIvSize - kTagSize);
+
+    // Decrypt using AES-256-GCM
+    QByteArray decrypted(data.size(), 0);
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        return QString();
+    }
+
+    int len = 0;
+    int plaintextLen = 0;
+    bool ok = true;
+
+    if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
+        ok = false;
+    }
+    if (ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, kIvSize, nullptr) != 1) {
+        ok = false;
+    }
+    if (ok && EVP_DecryptInit_ex(ctx, nullptr, nullptr,
+            reinterpret_cast<const unsigned char*>(keyData.constData()),
+            reinterpret_cast<const unsigned char*>(iv.constData())) != 1) {
+        ok = false;
+    }
+    if (ok && EVP_DecryptUpdate(ctx,
+            reinterpret_cast<unsigned char*>(decrypted.data()),
+            &len,
+            reinterpret_cast<const unsigned char*>(data.constData()),
+            data.size()) != 1) {
+        ok = false;
+    }
+    plaintextLen = len;
+
+    if (ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, kTagSize,
+            const_cast<char*>(tag.constData())) != 1) {
+        ok = false;
+    }
+
+    if (ok && EVP_DecryptFinal_ex(ctx,
+            reinterpret_cast<unsigned char*>(decrypted.data()) + plaintextLen,
+            &len) != 1) {
+        ok = false; // Authentication failed
+    }
+    plaintextLen += len;
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    if (!ok) {
+        return QString();
+    }
+
+    decrypted.resize(plaintextLen);
     return QString::fromUtf8(decrypted);
 }
 

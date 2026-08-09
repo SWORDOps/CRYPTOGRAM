@@ -70,6 +70,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_web_page.h"
 #include "data/data_signal_protocol.h"
 #include "data/data_signal_transport.h"
+#include "data/data_group_encryption.h"
 #include "chat_helpers/stickers_gift_box_pack.h"
 #include "payments/payments_checkout_process.h" // CheckoutProcess::Start.
 #include "payments/payments_non_panel_process.h" // ProcessNonPanelPaymentFormFactory.
@@ -122,6 +123,70 @@ template <typename T>
 	}
 	text.entities.insert(i, { EntityType::Spoiler, codeStart, codeLength });
 	return text;
+}
+
+[[nodiscard]] TextWithEntities DecryptMLSGroupMessage(
+		TextWithEntities textWithEntities,
+		not_null<PeerData*> peer) {
+	const auto groupEncryption = Data::GetGroupEncryption();
+	if (!groupEncryption || !groupEncryption->isEncrypted(peer)) {
+		return textWithEntities;
+	}
+
+	const auto prefix = u"tg://cryptogram?part="_q;
+	QMap<int, QString> parts;
+	auto hasCryptogram = false;
+	for (const auto &entity : textWithEntities.entities) {
+		if (entity.type() != EntityType::CustomUrl) {
+			continue;
+		}
+		const auto &url = entity.data();
+		if (!url.startsWith(prefix)) {
+			continue;
+		}
+		hasCryptogram = true;
+		const auto rest = url.mid(prefix.size());
+		const auto ampPos = rest.indexOf('&');
+		if (ampPos < 0) {
+			continue;
+		}
+		bool ok = false;
+		const auto partIndex = rest.left(ampPos).toInt(&ok);
+		const auto dataPart = rest.mid(ampPos + 1);
+		const auto dataPrefix = u"data="_q;
+		if (!ok || !dataPart.startsWith(dataPrefix)) {
+			continue;
+		}
+		parts.insert(partIndex, dataPart.mid(dataPrefix.size()));
+	}
+
+	if (!hasCryptogram || parts.isEmpty()) {
+		return textWithEntities;
+	}
+
+	auto b64 = QString();
+	for (auto it = parts.constBegin(); it != parts.constEnd(); ++it) {
+		b64 += it.value();
+	}
+
+	const auto rawBytes = QByteArray::fromBase64(
+		b64.toLatin1(),
+		QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
+	if (rawBytes.isEmpty()) {
+		return textWithEntities;
+	}
+
+	const bytes::vector ciphertext(
+		reinterpret_cast<const bytes::type*>(rawBytes.constData()),
+		reinterpret_cast<const bytes::type*>(
+			rawBytes.constData() + rawBytes.size()));
+
+	auto decrypted = groupEncryption->decryptGroupMessage(peer, ciphertext);
+	if (!decrypted.has_value()) {
+		return textWithEntities;
+	}
+
+	return TextWithEntities{ *decrypted, EntitiesInText() };
 }
 
 [[nodiscard]] bool HasNotEmojiAndSpaces(const QString &text) {
@@ -620,6 +685,21 @@ HistoryItem::HistoryItem(
 								data.ventities().value_or_empty())
 				};
 			}
+
+			{
+				Data::SignalProtocol signalProto(&history->session().data());
+				if (auto e2e = &signalProto) {
+					if (e2e->isEnabled()) {
+						textWithEntities = e2e->processIncomingMessage(
+							history->peer,
+							textWithEntities);
+					}
+				}
+			}
+
+			textWithEntities = DecryptMLSGroupMessage(
+				std::move(textWithEntities),
+				history->peer);
 
 			setText(_media ? textWithEntities : EnsureNonEmpty(textWithEntities));
 		}
@@ -2379,6 +2459,9 @@ void HistoryItem::applyEdition(HistoryMessageEdition &&edition) {
 	} else {
 		clearRichPage();
 	}
+	edition.textWithEntities = DecryptMLSGroupMessage(
+		std::move(edition.textWithEntities),
+		history()->peer);
 	auto updatedText = edition.richPage
 		? Iv::FlattenRichPageSummary(edition.richPage)
 		: (mediaCheck == MediaCheckResult::Unsupported)
