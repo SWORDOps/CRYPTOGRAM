@@ -337,7 +337,10 @@ jobs:
           token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
       - name: Free Disk Space (macOS)
         run: |
-          # NOTE: Do NOT remove Xcode or CommandLineTools — brew and prepare.py need them.
+          # Delete Xcode (~30GB) to free space for Qt build, but KEEP CommandLineTools
+          # (brew and prepare.py need them). Switch to CommandLineTools after removing Xcode.
+          sudo rm -rf /Applications/Xcode*.app
+          sudo xcode-select --switch /Library/Developer/CommandLineTools || true
           sudo rm -rf /Library/Developer/CoreSimulator/Caches
           sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
           sudo rm -rf /usr/local/lib/android
