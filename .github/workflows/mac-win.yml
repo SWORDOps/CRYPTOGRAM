@@ -26,8 +26,10 @@ jobs:
 
       - name: Free Disk Space (macOS)
         run: |
-          # Keep Xcode for now — breakpad build needs xcodebuild.
-          # Xcode will be deleted after breakpad is built to free space for Qt.
+          # Delete Xcode (~41GB) to free space for Qt build, but KEEP CommandLineTools.
+          # breakpad stage is skipped via SKIP_STAGES (it requires xcodebuild + missing patch).
+          sudo rm -rf /Applications/Xcode*.app
+          sudo xcode-select --switch /Library/Developer/CommandLineTools || true
           sudo rm -rf /Library/Developer/CoreSimulator/Caches
           sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
           sudo rm -rf /usr/local/lib/android
@@ -45,20 +47,12 @@ jobs:
           python3 -m pip install --upgrade --break-system-packages --ignore-installed pip
           brew cleanup -s || true
 
-      - name: Build breakpad (requires Xcode)
+      - name: Run prepare.py to build dependencies
         run: |
           export QT=6.11.1
-          python3 Telegram/build/prepare/prepare.py breakpad qt6
-
-      - name: Free disk space — delete Xcode after breakpad build
-        run: |
-          sudo rm -rf /Applications/Xcode*.app
-          sudo xcode-select --switch /Library/Developer/CommandLineTools || true
-          df -h /
-
-      - name: Run prepare.py to build remaining dependencies
-        run: |
-          export QT=6.11.1
+          # Skip breakpad and stackwalk stages — they require xcodebuild (full Xcode)
+          # and patches/breakpad.diff which is not present in this repo.
+          export SKIP_STAGES="breakpad stackwalk"
           python3 Telegram/build/prepare/prepare.py qt6
 
       - name: Configure CMake

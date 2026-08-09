@@ -383,6 +383,10 @@ def runStages():
     for stage in stages:
         if len(onlyStages) > 0 and not stage['name'] in onlyStages:
             continue
+        skipStages = os.environ.get('SKIP_STAGES', '').split()
+        if stage['name'] in skipStages:
+            print('SKIPPED (SKIP_STAGES)')
+            continue
         index = index + 1
         version = ('#' + str(stage['version'])) if (stage['version'] != '0') else ''
         prefix = '[' + str(index) + '/' + str(count) + '](' + stage['location'] + '/' + stage['name'] + version + ')'
