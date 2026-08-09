@@ -26,10 +26,17 @@ jobs:
 
       - name: Free Disk Space (macOS)
         run: |
-          # Delete Xcode (~41GB) to free space for Qt build, but KEEP CommandLineTools.
-          # breakpad stage is skipped via SKIP_STAGES (it requires xcodebuild + missing patch).
-          sudo rm -rf /Applications/Xcode*.app
-          sudo xcode-select --switch /Library/Developer/CommandLineTools || true
+          # Keep Xcode (Qt's CMake requires xcodebuild -version) but remove iOS/watchOS/tvOS
+          # platform support (~20-30GB) to free space for the Qt build.
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/WatchOS.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/WatchSimulator.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/AppleTVOS.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/AppleTVSimulator.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/XRiOS.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/XRiOSSimulator.platform
+          # Remove other large non-essential items
           sudo rm -rf /Library/Developer/CoreSimulator/Caches
           sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
           sudo rm -rf /usr/local/lib/android
