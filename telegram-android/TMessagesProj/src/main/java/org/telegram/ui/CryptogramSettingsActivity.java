@@ -35,12 +35,26 @@ public class CryptogramSettingsActivity extends BaseFragment {
     private ListAdapter listAdapter;
     private RecyclerListView listView;
 
+    // Encryption section
     private int headerRow;
     private int doubleRatchetRow;
     private int doubleRatchetInfoRow;
     private int mlsRow;
     private int mlsInfoRow;
     private int shadowRow;
+
+    // Privacy section
+    private int privacyHeaderRow;
+    private int hideOnlineRow;
+    private int hideTypingRow;
+    private int hideReadReceiptsRow;
+    private int stylometryRow;
+    private int antiForensicsRow;
+    private int dpiEvasionRow;
+    private int curatedStickersRow;
+    private int privacyShadowRow;
+
+    // Native section
     private int nativeSectionRow;
     private int nativeStatusRow;
     private int nativeVersionRow;
@@ -48,6 +62,7 @@ public class CryptogramSettingsActivity extends BaseFragment {
     private int mlsTestRow;
     private int selfTestButtonRow;
     private int selfTestInfoRow;
+
     private int rowCount;
 
     private Boolean doubleRatchetTestResult;
@@ -64,6 +79,7 @@ public class CryptogramSettingsActivity extends BaseFragment {
     private void updateRows() {
         rowCount = 0;
 
+        // Encryption section
         headerRow = rowCount++;
         doubleRatchetRow = rowCount++;
         doubleRatchetInfoRow = rowCount++;
@@ -71,6 +87,18 @@ public class CryptogramSettingsActivity extends BaseFragment {
         mlsInfoRow = rowCount++;
         shadowRow = rowCount++;
 
+        // Privacy section
+        privacyHeaderRow = rowCount++;
+        hideOnlineRow = rowCount++;
+        hideTypingRow = rowCount++;
+        hideReadReceiptsRow = rowCount++;
+        stylometryRow = rowCount++;
+        antiForensicsRow = rowCount++;
+        dpiEvasionRow = rowCount++;
+        curatedStickersRow = rowCount++;
+        privacyShadowRow = rowCount++;
+
+        // Native section
         nativeSectionRow = rowCount++;
         nativeStatusRow = rowCount++;
         nativeVersionRow = rowCount++;
@@ -132,6 +160,41 @@ public class CryptogramSettingsActivity extends BaseFragment {
                 if (view instanceof TextCheckCell) {
                     ((TextCheckCell) view).setChecked(SharedConfig.cryptogramMLS);
                 }
+            } else if (position == hideOnlineRow) {
+                SharedConfig.toggleCryptogramHideOnlineStatus();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(SharedConfig.cryptogramHideOnlineStatus);
+                }
+            } else if (position == hideTypingRow) {
+                SharedConfig.toggleCryptogramHideTypingIndicator();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(SharedConfig.cryptogramHideTypingIndicator);
+                }
+            } else if (position == hideReadReceiptsRow) {
+                SharedConfig.toggleCryptogramHideReadReceipts();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(SharedConfig.cryptogramHideReadReceipts);
+                }
+            } else if (position == stylometryRow) {
+                SharedConfig.toggleCryptogramStylometryShield();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(SharedConfig.cryptogramStylometryShield);
+                }
+            } else if (position == antiForensicsRow) {
+                SharedConfig.toggleCryptogramAntiForensics();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(SharedConfig.cryptogramAntiForensics);
+                }
+            } else if (position == dpiEvasionRow) {
+                SharedConfig.toggleCryptogramDpiEvasion();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(SharedConfig.cryptogramDpiEvasion);
+                }
+            } else if (position == curatedStickersRow) {
+                SharedConfig.toggleCryptogramCuratedStickers();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(SharedConfig.cryptogramCuratedStickers);
+                }
             } else if (position == selfTestButtonRow) {
                 runSelfTest();
             }
@@ -183,7 +246,11 @@ public class CryptogramSettingsActivity extends BaseFragment {
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int position = holder.getAdapterPosition();
-            return position == doubleRatchetRow || position == mlsRow || position == selfTestButtonRow;
+            return position == doubleRatchetRow || position == mlsRow ||
+                   position == hideOnlineRow || position == hideTypingRow ||
+                   position == hideReadReceiptsRow || position == stylometryRow ||
+                   position == antiForensicsRow || position == dpiEvasionRow ||
+                   position == curatedStickersRow || position == selfTestButtonRow;
         }
 
         @Override
@@ -270,6 +337,8 @@ public class CryptogramSettingsActivity extends BaseFragment {
                     HeaderCell headerCell = (HeaderCell) holder.itemView;
                     if (position == headerRow) {
                         headerCell.setText(getString(R.string.CryptogramSettings));
+                    } else if (position == privacyHeaderRow) {
+                        headerCell.setText("Privacy & Security");
                     } else if (position == nativeSectionRow) {
                         headerCell.setText(getString(R.string.CryptogramNativeStatus));
                     }
@@ -281,6 +350,20 @@ public class CryptogramSettingsActivity extends BaseFragment {
                         textCheckCell.setTextAndCheck(getString(R.string.CryptogramDoubleRatchet), SharedConfig.cryptogramDoubleRatchet, true);
                     } else if (position == mlsRow) {
                         textCheckCell.setTextAndCheck(getString(R.string.CryptogramMLS), SharedConfig.cryptogramMLS, false);
+                    } else if (position == hideOnlineRow) {
+                        textCheckCell.setTextAndCheck("Hide Online Status", SharedConfig.cryptogramHideOnlineStatus, true);
+                    } else if (position == hideTypingRow) {
+                        textCheckCell.setTextAndCheck("Hide Typing Indicator", SharedConfig.cryptogramHideTypingIndicator, true);
+                    } else if (position == hideReadReceiptsRow) {
+                        textCheckCell.setTextAndCheck("Hide Read Receipts", SharedConfig.cryptogramHideReadReceipts, true);
+                    } else if (position == stylometryRow) {
+                        textCheckCell.setTextAndCheck("Stylometry Shield", SharedConfig.cryptogramStylometryShield, true);
+                    } else if (position == antiForensicsRow) {
+                        textCheckCell.setTextAndCheck("Anti-Forensics", SharedConfig.cryptogramAntiForensics, true);
+                    } else if (position == dpiEvasionRow) {
+                        textCheckCell.setTextAndCheck("DPI Evasion", SharedConfig.cryptogramDpiEvasion, true);
+                    } else if (position == curatedStickersRow) {
+                        textCheckCell.setTextAndCheck("Curated Stickers Only", SharedConfig.cryptogramCuratedStickers, false);
                     }
                     break;
                 }
@@ -300,11 +383,15 @@ public class CryptogramSettingsActivity extends BaseFragment {
                 return 0;
             } else if (position == doubleRatchetInfoRow || position == mlsInfoRow || position == selfTestInfoRow) {
                 return 1;
-            } else if (position == headerRow || position == nativeSectionRow) {
+            } else if (position == headerRow || position == privacyHeaderRow || position == nativeSectionRow) {
                 return 2;
-            } else if (position == doubleRatchetRow || position == mlsRow) {
+            } else if (position == doubleRatchetRow || position == mlsRow ||
+                       position == hideOnlineRow || position == hideTypingRow ||
+                       position == hideReadReceiptsRow || position == stylometryRow ||
+                       position == antiForensicsRow || position == dpiEvasionRow ||
+                       position == curatedStickersRow) {
                 return 3;
-            } else if (position == shadowRow) {
+            } else if (position == shadowRow || position == privacyShadowRow) {
                 return 4;
             } else if (position == selfTestButtonRow) {
                 return 5;
