@@ -130,13 +130,26 @@ jobs:
         id: collect-apk
         run: |
           mkdir -p artifacts/android
-          find telegram-android/TMessagesProj*/build/outputs/apk -name "*.apk" -type f -exec cp {} artifacts/android/ \; || true
-          ls -lh artifacts/android/ || true
-
-          DEBUG_APK=$(find artifacts/android -name "*debug*.apk" | head -1)
-          RELEASE_APK=$(find artifacts/android -name "*release*.apk" | head -1)
-          echo "debug_apk=$DEBUG_APK" >> $GITHUB_OUTPUT
-          echo "release_apk=$RELEASE_APK" >> $GITHUB_OUTPUT
+          # The build.gradle hardcodes outputFileName = "app.apk", so we need to
+          # detect the build type from the output path and rename accordingly.
+          APK_SRC=$(find telegram-android/TMessagesProj*/build/outputs/apk -name "*.apk" -type f | head -1)
+          if [ -z "$APK_SRC" ]; then
+            echo "No APK found!"
+            exit 1
+          fi
+          echo "Found APK at: $APK_SRC"
+          if echo "$APK_SRC" | grep -q "debug"; then
+            cp "$APK_SRC" artifacts/android/cryptogram-debug.apk
+            echo "debug_apk=artifacts/android/cryptogram-debug.apk" >> $GITHUB_OUTPUT
+          elif echo "$APK_SRC" | grep -q "release"; then
+            cp "$APK_SRC" artifacts/android/cryptogram-release.apk
+            echo "release_apk=artifacts/android/cryptogram-release.apk" >> $GITHUB_OUTPUT
+          else
+            # Fallback: treat as release (the default build type in CI)
+            cp "$APK_SRC" artifacts/android/cryptogram-release.apk
+            echo "release_apk=artifacts/android/cryptogram-release.apk" >> $GITHUB_OUTPUT
+          fi
+          ls -lh artifacts/android/
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4

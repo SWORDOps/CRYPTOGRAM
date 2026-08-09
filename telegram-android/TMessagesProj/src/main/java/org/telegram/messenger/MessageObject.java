@@ -52,6 +52,7 @@ import androidx.core.graphics.ColorUtils;
 
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.browser.Browser;
+import org.telegram.messenger.cryptogram.CryptogramMessageHelper;
 import org.telegram.messenger.ringtone.RingtoneDataStore;
 import org.telegram.messenger.utils.tlutils.AmountUtils;
 import org.telegram.messenger.utils.tlutils.TlUtils;
@@ -6002,18 +6003,24 @@ public class MessageObject {
                     }
                 }
             } else {
-                if (messageOwner.message != null) {
+                String sourceText = messageOwner.message;
+                if (CryptogramMessageHelper.isEncryptedMessage(sourceText)) {
+                    long peerId = getDialogId();
+                    long fromId = messageOwner.from_id instanceof TLRPC.TL_peerUser ? messageOwner.from_id.user_id : 0;
+                    sourceText = CryptogramMessageHelper.decryptIncomingMessage(currentAccount, sourceText, peerId, fromId);
+                }
+                if (sourceText != null) {
                     try {
-                        if (messageOwner.message.length() > 200) {
-                            messageText = AndroidUtilities.BAD_CHARS_MESSAGE_LONG_PATTERN.matcher(messageOwner.message).replaceAll("\u200C");
+                        if (sourceText.length() > 200) {
+                            messageText = AndroidUtilities.BAD_CHARS_MESSAGE_LONG_PATTERN.matcher(sourceText).replaceAll("\u200C");
                         } else {
-                            messageText = AndroidUtilities.BAD_CHARS_MESSAGE_PATTERN.matcher(messageOwner.message).replaceAll("\u200C");
+                            messageText = AndroidUtilities.BAD_CHARS_MESSAGE_PATTERN.matcher(sourceText).replaceAll("\u200C");
                         }
                     } catch (Throwable e) {
-                        messageText = messageOwner.message;
+                        messageText = sourceText;
                     }
                 } else {
-                    messageText = messageOwner.message;
+                    messageText = sourceText;
                 }
             }
         }
@@ -13444,5 +13451,18 @@ public class MessageObject {
         }
         return total;
     }
-    public void decryptIncomingMessage() {}
+    public void decryptIncomingMessage() {
+        if (messageOwner == null || messageOwner.message == null) {
+            return;
+        }
+        if (!CryptogramMessageHelper.isEncryptedMessage(messageOwner.message)) {
+            return;
+        }
+        long peerId = getDialogId();
+        long fromId = messageOwner.from_id instanceof TLRPC.TL_peerUser ? messageOwner.from_id.user_id : 0;
+        String decrypted = CryptogramMessageHelper.decryptIncomingMessage(currentAccount, messageOwner.message, peerId, fromId);
+        if (decrypted != null) {
+            messageText = decrypted;
+        }
+    }
 }

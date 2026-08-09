@@ -16826,7 +16826,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
         }
 
-        private void openCryptogramSettings() {}
+        private void openCryptogramSettings() {
+            presentFragment(new CryptogramSettingsActivity());
+        }
     }
     public int opsecSectionRow = -1;
 }
