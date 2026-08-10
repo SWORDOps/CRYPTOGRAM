@@ -112,6 +112,20 @@ target_compile_definitions(Telegram PRIVATE HAVE_TAGLIB)
 target_include_directories(Telegram PRIVATE
     ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib
     ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/toolkit
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/mpeg
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/mpeg/id3v2
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/mpeg/id3v2/frames
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/mpeg/id3v1
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/flac
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/ogg
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/ogg/vorbis
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/ogg/flac
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/riff
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/riff/wav
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/mp4
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/asf
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/ape
 )
 
 if (NOT DESKTOP_APP_DISABLE_SWIFT6)
