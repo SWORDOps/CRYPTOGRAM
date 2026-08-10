@@ -6005,13 +6005,17 @@ public class MessageObject {
                 }
             } else {
                 String sourceText = messageOwner.message;
-                if (CryptogramMessageHelper.isEncryptedMessage(sourceText)) {
+                boolean wasEncrypted = CryptogramMessageHelper.isEncryptedMessage(sourceText);
+                if (wasEncrypted) {
                     long peerId = getDialogId();
                     long fromId = messageOwner.from_id instanceof TLRPC.TL_peerUser ? messageOwner.from_id.user_id : 0;
                     sourceText = CryptogramMessageHelper.decryptIncomingMessage(currentAccount, sourceText, peerId, fromId);
                 }
                 if (sourceText != null && SharedConfig.cryptogramDpiEvasion) {
                     sourceText = DpiEvasionHelper.getInstance().stripPadding(sourceText);
+                }
+                if (sourceText == null && wasEncrypted && SharedConfig.cryptogramUtd) {
+                    sourceText = "[CRYPTOGRAM] Unable to decrypt — key may have been rotated";
                 }
                 if (sourceText != null) {
                     try {
@@ -13470,6 +13474,9 @@ public class MessageObject {
                 decrypted = DpiEvasionHelper.getInstance().stripPadding(decrypted);
             }
             messageText = decrypted;
+        } else if (SharedConfig.cryptogramUtd) {
+            // CRYPTOGRAM UTD: Decryption failed — show placeholder instead of raw ciphertext
+            messageText = "[CRYPTOGRAM] Unable to decrypt — key may have been rotated";
         }
     }
 }
