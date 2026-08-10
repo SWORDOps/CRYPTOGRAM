@@ -23,17 +23,17 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 // Include the real TagLib headers using proper include paths
 #include <taglib/fileref.h>
 #include <taglib/tag.h>
-#include <taglib/mpegfile.h>
-#include <taglib/id3v2tag.h>
-#include <taglib/id3v2frame.h>
-#include <taglib/id3v2header.h>
-#include <taglib/textidentificationframe.h>
-#include <taglib/flacfile.h>
-#include <taglib/mp4file.h>
-#include <taglib/oggfile.h>
-#include <taglib/vorbisfile.h>
-#include <taglib/wavfile.h>
-#include <taglib/tpropertymap.h>
+#include <taglib/mpeg/mpegfile.h>
+#include <taglib/mpeg/id3v2/id3v2tag.h>
+#include <taglib/mpeg/id3v2/id3v2frame.h>
+#include <taglib/mpeg/id3v2/id3v2header.h>
+#include <taglib/mpeg/id3v2/frames/textidentificationframe.h>
+#include <taglib/flac/flacfile.h>
+#include <taglib/mp4/mp4file.h>
+#include <taglib/ogg/oggfile.h>
+#include <taglib/ogg/vorbis/vorbisfile.h>
+#include <taglib/riff/wav/wavfile.h>
+#include <taglib/toolkit/tpropertymap.h>
 #else
 // Define stub TagLib classes when TagLib is not available
 namespace TagLib {

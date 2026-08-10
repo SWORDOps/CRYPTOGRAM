@@ -110,6 +110,7 @@ target_compile_definitions(Telegram PRIVATE HAVE_TAGLIB)
 # TagLib include directories (added here because the tag target's
 # INTERFACE_INCLUDE_DIRECTORIES can't contain source tree paths)
 target_include_directories(Telegram PRIVATE
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib
     ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib
 )
 
