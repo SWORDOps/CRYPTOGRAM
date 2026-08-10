@@ -233,7 +233,7 @@ def filterByPlatform(commands):
     version = '0'
     skip = False
     for command in commands:
-        m = re.match(r'(!?)([a-z0-9_]+):', command)
+        m = re.match(r'(!?)([a-z0-9_-]+):', command)
         if m and m.group(2) != 'depends' and m.group(2) != 'version':
             scopes = m.group(2).split('_')
             inscope = 'common' in scopes
@@ -249,10 +249,10 @@ def filterByPlatform(commands):
                 inscope = True
             # if linux and 'linux' in scopes:
             #     inscope = True
-            if 'release' in scopes:
+            if 'release' in scopes or 'release-only' in scopes:
                 if 'skip-release' in options:
                     inscope = False
-                elif 'only' in scopes and 'release-only' in options:
+                elif 'release-only' in scopes and 'release-only' in options:
                     inscope = True
                 elif len(scopes) == 1:
                     continue
