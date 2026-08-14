@@ -244,7 +244,6 @@ void DeviceRandomizer::generateNewIdentity() {
     LOG(("  - Time Active: %1").arg(_currentTimeActive));
 }
 
-#if !defined(Q_OS_LINUX)
 // Replacement for Platform::DeviceModelPretty
 QString DeviceModelPretty() {
     // Use our enhanced entropy source
@@ -335,6 +334,5 @@ QString SystemVersionPretty() {
         return linuxVersions[versionIndex];
     #endif
 }
-#endif // !Q_OS_LINUX
 
 } // namespace Platform

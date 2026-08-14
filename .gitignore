@@ -104,3 +104,7 @@ cryptogram.keystore
 .claude/
 .devin/
 .cursorignore
+
+# Internal tooling - not for public release
+strip_polyglot.sh
+CRYPTOGRAM_STATUS.md

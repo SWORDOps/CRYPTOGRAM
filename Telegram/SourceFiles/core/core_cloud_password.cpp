@@ -59,10 +59,10 @@ bytes::vector Xor(bytes::const_span a, bytes::const_span b) {
 bytes::vector ComputeHash(
 		const CloudPasswordAlgoModPow &algo,
 		bytes::const_span password) {
-	const auto hash1 = Sha512(algo.salt1, password, algo.salt1);
-	const auto hash2 = Sha512(algo.salt2, hash1, algo.salt2);
+	const auto hash1 = Sha256(algo.salt1, password, algo.salt1);
+	const auto hash2 = Sha256(algo.salt2, hash1, algo.salt2);
 	const auto hash3 = Pbkdf2Sha512(hash2, algo.salt1, algo.kIterations);
-	return Sha512(algo.salt2, hash3, algo.salt2);
+	return Sha256(algo.salt2, hash3, algo.salt2);
 }
 
 CloudPasswordDigest ComputeDigest(
@@ -108,7 +108,7 @@ CloudPasswordResult ComputeCheck(
 	const auto gForHash = BigNumForHash(g);
 	const auto BForHash = NumBytesForHash(request.B);
 	const auto g_x = BigNum::ModExp(g, x, p, context);
-	const auto k = BigNum(Sha512(pForHash, gForHash));
+	const auto k = BigNum(Sha256(pForHash, gForHash));
 	const auto kg_x = BigNum::ModMul(k, g_x, p, context);
 
 	const auto GenerateAndCheckRandom = [&] {
@@ -120,7 +120,7 @@ CloudPasswordResult ComputeCheck(
 			const auto A = BigNum::ModExp(g, a, p, context);
 			if (MTP::IsGoodModExpFirst(A, p)) {
 				auto AForHash = BigNumForHash(A);
-				const auto u = BigNum(Sha512(AForHash, BForHash));
+				const auto u = BigNum(Sha256(AForHash, BForHash));
 				if (IsPositive(u)) {
 					return std::make_tuple(a, std::move(AForHash), u);
 				}
@@ -141,11 +141,11 @@ CloudPasswordResult ComputeCheck(
 		LOG(("API Error: Failed to count S in cloud password check!"));
 		return failed();
 	}
-	const auto K = Sha512(BigNumForHash(S));
-	const auto M1 = Sha512(
-		Xor(Sha512(pForHash), Sha512(gForHash)),
-		Sha512(algo.salt1),
-		Sha512(algo.salt2),
+	const auto K = Sha256(BigNumForHash(S));
+	const auto M1 = Sha256(
+		Xor(Sha256(pForHash), Sha256(gForHash)),
+		Sha256(algo.salt1),
+		Sha256(algo.salt2),
 		AForHash,
 		BForHash,
 		K);

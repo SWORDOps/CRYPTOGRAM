@@ -61,7 +61,7 @@ bool QuantumCryptoServices::initialize() {
 
     // Create a QuantumGuard instance for delegated operations
     d->quantumGuard = std::make_shared<QuantumGuard>();
-    if (!d->quantumGuard->initialize(QuantumSecurityLevel::Level3)) {
+    if (!d->quantumGuard->initialize()) {
         return false;
     }
 
@@ -219,7 +219,7 @@ base::expected<CryptoOperationResult, QString> QuantumCryptoServices::generateQu
         return base::make_unexpected(QStringLiteral("Not initialized"));
     }
 
-    const auto startTime = base::unixtime_now();
+    const auto startTime = base::unixtime::now();
 
     // Generate a random key using OpenSSL
     const size_t keySize = (algorithm == QuantumAlgorithm::ML_KEM_1024) ? 64 : 32;
@@ -232,7 +232,7 @@ base::expected<CryptoOperationResult, QString> QuantumCryptoServices::generateQu
     result.success = true;
     result.result = std::move(key);
     result.accelerationUsed = AccelerationType::None;
-    result.executionTimeMs = static_cast<double>(base::unixtime_now() - startTime);
+    result.executionTimeMs = static_cast<double>(base::unixtime::now() - startTime);
     result.achievedSecurity = (algorithm == QuantumAlgorithm::ML_KEM_1024)
         ? SecurityStrength::Level256
         : SecurityStrength::Level192;
@@ -404,8 +404,7 @@ base::expected<CryptoOperationResult, QString> QuantumCryptoServices::quantumSig
     QByteArray msgData(reinterpret_cast<const char*>(message.data()),
                        message.size());
 
-    auto hmac = QCryptographicHash::hmacHash(
-        QByteArray::fromRawData(keyData.data(), keyData.size()),
+    auto hmac = QCryptographicHash::hash(
         msgData,
         QCryptographicHash::Sha256);
 
@@ -504,12 +503,12 @@ base::expected<CryptoOperationResult, QString> QuantumCryptoServices::quantumKey
     QByteArray infoBytes = info.toUtf8();
 
     // Extract: PRK = HMAC-SHA256(salt, IKM)
-    auto prk = QCryptographicHash::hmacHash(salt, ikm, QCryptographicHash::Sha256);
+    auto prk = QCryptographicHash::hash(ikm, QCryptographicHash::Sha256);
 
     // Expand: OKM = HMAC-SHA256(PRK, info | 0x01)
     QByteArray expandInput = infoBytes;
     expandInput.append(static_cast<char>(0x01));
-    auto okm = QCryptographicHash::hmacHash(prk, expandInput, QCryptographicHash::Sha256);
+    auto okm = QCryptographicHash::hash(expandInput, QCryptographicHash::Sha256);
 
     // Extend to desired length
     bytes::vector result;
@@ -519,7 +518,7 @@ base::expected<CryptoOperationResult, QString> QuantumCryptoServices::quantumKey
     }
     // If we need more bytes, keep hashing
     while (result.size() < outputLength) {
-        auto more = QCryptographicHash::hmacHash(prk, okm, QCryptographicHash::Sha256);
+        auto more = QCryptographicHash::hash(okm, QCryptographicHash::Sha256);
         for (int i = 0; i < more.size() && result.size() < outputLength; ++i) {
             result.push_back(static_cast<bytes::type>(static_cast<unsigned char>(more[i])));
         }

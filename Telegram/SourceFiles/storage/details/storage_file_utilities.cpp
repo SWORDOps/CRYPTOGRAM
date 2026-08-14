@@ -22,6 +22,7 @@ namespace {
 
 constexpr char TdfMagic[] = { 'T', 'D', 'F', '#' };
 constexpr auto TdfMagicLen = int(sizeof(TdfMagic));
+constexpr char TdfLegacyMagic[] = { 'T', 'D', 'F', '$' };
 
 constexpr auto kStrongIterationsCount = 100'000;
 
@@ -325,16 +326,15 @@ MTP::AuthKeyPtr CreateLegacyLocalKey(
 		const QByteArray &salt) {
 	auto key = MTP::AuthKey::Data{ { gsl::byte{} } };
 	const auto iterationsCount = passcode.isEmpty()
-		? LocalEncryptNoPwdIterCount // Don't slow down for no password.
+		? LocalEncryptNoPwdIterCount
 		: LocalEncryptIterCount;
 
-	PKCS5_PBKDF2_HMAC(
+	PKCS5_PBKDF2_HMAC_SHA1(
 		passcode.constData(),
 		passcode.size(),
 		(uchar*)salt.data(),
 		salt.size(),
 		iterationsCount,
-		EVP_sha256(),
 		key.size(),
 		(uchar*)key.data());
 
@@ -521,7 +521,8 @@ bool ReadFile(
 				).arg(name));
 			continue;
 		}
-		if (memcmp(magic, TdfMagic, TdfMagicLen)) {
+		const auto isLegacy = !memcmp(magic, TdfLegacyMagic, TdfMagicLen);
+		if (!isLegacy && memcmp(magic, TdfMagic, TdfMagicLen)) {
 			DEBUG_LOG(("App Info: bad magic %1 in '%2'").arg(
 				Logs::mb(magic, TdfMagicLen).str(),
 				name));
@@ -545,20 +546,39 @@ bool ReadFile(
 
 		// read data
 		QByteArray bytes = f.read(f.size());
-		int32 dataSize = bytes.size() - 32; // SHA-256 is 32 bytes
-		if (dataSize < 0) {
-			DEBUG_LOG(("App Info: bad file '%1', could not read sign part"
-				).arg(name));
-			continue;
+
+		// Try SHA-256 (modern, 32 bytes) first, then MD5 (64Gram, 16 bytes).
+		// Both use TDF$ magic, so we detect by trying both signatures.
+		int32 dataSizeSha256 = bytes.size() - 32;
+		int32 dataSizeMd5 = bytes.size() - 16;
+		bool isLegacyFormat = false;
+		int32 dataSize = 0;
+
+		if (dataSizeSha256 >= 0) {
+			HashSha256 hash;
+			hash.feed(bytes.constData(), dataSizeSha256);
+			hash.feed(&dataSizeSha256, sizeof(dataSizeSha256));
+			hash.feed(&version, sizeof(version));
+			hash.feed(magic, TdfMagicLen);
+			if (memcmp(hash.result(), bytes.constData() + dataSizeSha256, 32) == 0) {
+				dataSize = dataSizeSha256;
+				isLegacyFormat = false;
+			}
 		}
 
-		// check signature
-		HashSha256 hash;
-		hash.feed(bytes.constData(), dataSize);
-		hash.feed(&dataSize, sizeof(dataSize));
-		hash.feed(&version, sizeof(version));
-		hash.feed(magic, TdfMagicLen);
-		if (memcmp(hash.result(), bytes.constData() + dataSize, 32)) {
+		if (dataSize == 0 && dataSizeMd5 >= 0) {
+			HashLegacy md5;
+			md5.feed(bytes.constData(), dataSizeMd5);
+			md5.feed(&dataSizeMd5, sizeof(dataSizeMd5));
+			md5.feed(&version, sizeof(version));
+			md5.feed(magic, TdfMagicLen);
+			if (memcmp(md5.result(), bytes.constData() + dataSizeMd5, 16) == 0) {
+				dataSize = dataSizeMd5;
+				isLegacyFormat = true;
+			}
+		}
+
+		if (dataSize == 0) {
 			DEBUG_LOG(("App Info: bad file '%1', signature did not match"
 				).arg(name));
 			continue;
@@ -566,6 +586,7 @@ bool ReadFile(
 
 		bytes.resize(dataSize);
 		result.data = bytes;
+		result.legacy = isLegacyFormat;
 		bytes = QByteArray();
 
 		result.version = version;
@@ -597,8 +618,10 @@ bool DecryptLocal(
 	decrypted.resize(fullLen);
 	const char *encryptedKey = encrypted.constData(), *encryptedData = encrypted.constData() + 16;
 	aesDecryptLocal(encryptedData, decrypted.data(), fullLen, key, encryptedKey);
+
 	uchar shaBuffer[32];
-	if (memcmp(hashSha256(decrypted.constData(), decrypted.size(), shaBuffer), encryptedKey, 16)) { // Compare first 16 bytes of SHA-256
+	if (memcmp(hashSha256(decrypted.constData(), decrypted.size(), shaBuffer), encryptedKey, 16)
+		&& memcmp(hashSha1(decrypted.constData(), decrypted.size(), shaBuffer), encryptedKey, 16)) {
 		LOG(("App Info: bad decrypt key, data not decrypted - incorrect password?"));
 		return false;
 	}
