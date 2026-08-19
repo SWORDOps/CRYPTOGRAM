@@ -110,12 +110,20 @@ namespace {
         const char *envKey = std::getenv("NEBIUS_API_KEY");
         if (!envKey) envKey = std::getenv("CRYPTOGRAM_AI_API_KEY");
         if (!envKey) envKey = std::getenv("OPENAI_API_KEY");
+        
         if (envKey) {
             config.apiKey = QString::fromUtf8(envKey);
+        } else {
+            // Default to local llama.cpp server for offline GGUF inference
+            config.apiKey = "local-llama-cpp";
         }
+        
         const char *envEndpoint = std::getenv("NEBIUS_API_ENDPOINT");
         if (envEndpoint) {
             config.endpoint = QString::fromUtf8(envEndpoint);
+        } else {
+            // Default endpoint for local llama-server
+            config.endpoint = "http://127.0.0.1:8080/v1/chat/completions";
         }
         return config;
     }
@@ -344,9 +352,9 @@ void UniversalThreatDetector::initialize() {
         optimizeForCPU();
 
         // 1 Model per person based on their PC profile:
-        // Tier 1 (~2GB VRAM / NPU): Llama-3.2-3B (High precision, script deobfuscation)
-        // Tier 2 (~1GB VRAM / Dedicated GPU): Llama-3.2-1B (Balanced social eng & phishing)
-        // Tier 3 (~500MB VRAM / AVX2 CPU): Qwen-2.5-0.5B (Ultra-fast chat triage)
+        // Tier 1 (~2GB VRAM / NPU): Qwen2.5-3B (High precision, script deobfuscation)
+        // Tier 2 (~1GB VRAM / Dedicated GPU): Qwen2.5-1.5B (Balanced social eng & phishing)
+        // Tier 3 (~500MB VRAM / AVX2 CPU): Qwen2.5-0.5B (Ultra-fast chat triage)
         // Tier 4 (0MB VRAM / Legacy CPU): Pattern & Shannon Entropy Heuristics
         if (_aiEngine->npuAvailable || (_aiEngine->gpuAvailable && _aiEngine->vramMB >= 2048)) {
             _currentTier = AIProcessingTier::Tier1_NPU_Accelerated;
@@ -730,8 +738,8 @@ void UniversalThreatDetector::resetStatistics() {
 ThreatAnalysis UniversalThreatDetector::analyzeWithNPU(const QString &content, const QString &context) {
     _aiEngine->npuInferences++;
 
-    // Tier 1 (~2.0 GB VRAM equivalent): High-precision Meta Llama 3.2 3B Instruct
-    if (auto aiResult = queryAIModel(QStringLiteral("meta-llama/Llama-3.2-3B-Instruct"),
+    // Tier 1 (~2.0 GB VRAM equivalent): High-precision Qwen2.5 3B Instruct
+    if (auto aiResult = queryAIModel(QStringLiteral("Qwen/Qwen2.5-3B-Instruct"),
                                     content, context,
                                     AIProcessingTier::Tier1_NPU_Accelerated,
                                     NPU_TIMEOUT_MS * 4)) {
@@ -744,7 +752,7 @@ ThreatAnalysis UniversalThreatDetector::analyzeWithNPU(const QString &content, c
     analysis.severity = ThreatSeverity::Info;
     analysis.confidence = AnalysisConfidence::High;
     analysis.description = "NPU/Local Tier 1 analysis completed (fallback)";
-    analysis.modelVersion = "Tier1-Llama-3.2-3B-LocalFallback";
+    analysis.modelVersion = "Tier1-Qwen2.5-3B-LocalFallback";
 
     QStringList patterns;
     if (detectSuspiciousPatterns(content, patterns)) {
@@ -760,8 +768,8 @@ ThreatAnalysis UniversalThreatDetector::analyzeWithNPU(const QString &content, c
 ThreatAnalysis UniversalThreatDetector::analyzeWithGPU(const QString &content, const QString &context) {
     _aiEngine->gpuInferences++;
 
-    // Tier 2 (~1.0 GB VRAM equivalent): Balanced Meta Llama 3.2 1B Instruct
-    if (auto aiResult = queryAIModel(QStringLiteral("meta-llama/Llama-3.2-1B-Instruct"),
+    // Tier 2 (~1.0 GB VRAM equivalent): Balanced Qwen2.5 1.5B Instruct
+    if (auto aiResult = queryAIModel(QStringLiteral("Qwen/Qwen2.5-1.5B-Instruct"),
                                     content, context,
                                     AIProcessingTier::Tier2_GPU_Accelerated,
                                     GPU_TIMEOUT_MS * 3)) {
@@ -774,7 +782,7 @@ ThreatAnalysis UniversalThreatDetector::analyzeWithGPU(const QString &content, c
     analysis.severity = ThreatSeverity::Info;
     analysis.confidence = AnalysisConfidence::Medium;
     analysis.description = "GPU Tier 2 analysis completed (fallback)";
-    analysis.modelVersion = "Tier2-Llama-3.2-1B-LocalFallback";
+    analysis.modelVersion = "Tier2-Qwen2.5-1.5B-LocalFallback";
 
     QStringList patterns;
     QStringList signatures;
