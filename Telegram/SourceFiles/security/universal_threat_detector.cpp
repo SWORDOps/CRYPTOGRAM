@@ -254,6 +254,9 @@ struct UniversalThreatDetector::AIEngine {
     bool npuAvailable = false;
     bool gpuAvailable = false;
     bool openvinoLoaded = false;
+    int vramMB = 0;
+    int systemRamMB = 0;
+    QString detectedGpuName;
 
     // Model information
     QString currentModelPath;
@@ -335,18 +338,24 @@ void UniversalThreatDetector::initialize() {
             _lastDatabaseUpdate = QDateTime::currentDateTime();
         }
 
-        // Detect available AI processing tiers
+        // Auto-profile PC hardware to select 1 tailored model for this user
         detectNPUCapability();
         detectGPUCapability();
         optimizeForCPU();
 
-        // Set initial processing tier based on hardware
-        if (_aiEngine->npuAvailable) {
+        // 1 Model per person based on their PC profile:
+        // Tier 1 (~2GB VRAM / NPU): Llama-3.2-3B (High precision, script deobfuscation)
+        // Tier 2 (~1GB VRAM / Dedicated GPU): Llama-3.2-1B (Balanced social eng & phishing)
+        // Tier 3 (~500MB VRAM / AVX2 CPU): Qwen-2.5-0.5B (Ultra-fast chat triage)
+        // Tier 4 (0MB VRAM / Legacy CPU): Pattern & Shannon Entropy Heuristics
+        if (_aiEngine->npuAvailable || (_aiEngine->gpuAvailable && _aiEngine->vramMB >= 2048)) {
             _currentTier = AIProcessingTier::Tier1_NPU_Accelerated;
-        } else if (_aiEngine->gpuAvailable) {
+        } else if (_aiEngine->gpuAvailable && _aiEngine->vramMB >= 1024) {
             _currentTier = AIProcessingTier::Tier2_GPU_Accelerated;
-        } else {
+        } else if (_aiEngine->avx2Enabled) {
             _currentTier = AIProcessingTier::Tier3_CPU_Optimized;
+        } else {
+            _currentTier = AIProcessingTier::Tier4_Pattern_Only;
         }
 
         // Start analysis thread
@@ -973,15 +982,32 @@ bool UniversalThreatDetector::detectGPUCapability() {
     process.waitForFinished(3000);
 
     QString output = process.readAllStandardOutput();
-    if (output.contains("VGA", Qt::CaseInsensitive) ||
-        output.contains("3D", Qt::CaseInsensitive) ||
-        output.contains("Display", Qt::CaseInsensitive)) {
+    if (output.contains("NVIDIA", Qt::CaseInsensitive) ||
+        output.contains("AMD", Qt::CaseInsensitive) ||
+        output.contains("Radeon", Qt::CaseInsensitive) ||
+        (output.contains("Intel", Qt::CaseInsensitive) && output.contains("Arc", Qt::CaseInsensitive))) {
         _aiEngine->gpuAvailable = true;
-        qDebug() << "GPU detected and available";
+        // Dedicated gaming / compute GPUs typically have >= 2GB VRAM
+        if (output.contains("GTX", Qt::CaseInsensitive) ||
+            output.contains("RTX", Qt::CaseInsensitive) ||
+            output.contains("Radeon", Qt::CaseInsensitive)) {
+            _aiEngine->vramMB = 2048;
+        } else {
+            _aiEngine->vramMB = 1024;
+        }
+        qDebug() << "Dedicated GPU detected with estimated VRAM:" << _aiEngine->vramMB << "MB";
+        return true;
+    } else if (output.contains("VGA", Qt::CaseInsensitive) ||
+               output.contains("3D", Qt::CaseInsensitive) ||
+               output.contains("Display", Qt::CaseInsensitive)) {
+        _aiEngine->gpuAvailable = true;
+        _aiEngine->vramMB = 512;
+        qDebug() << "Integrated/Generic GPU detected with estimated VRAM:" << _aiEngine->vramMB << "MB";
         return true;
     }
 
     _aiEngine->gpuAvailable = false;
+    _aiEngine->vramMB = 0;
     return false;
 }
 
