@@ -16,6 +16,10 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include <openssl/param_build.h>
 
 #include <QtCore/QDebug>
+#include <QtCore/QFile>
+#include <QtCore/QFileInfo>
+#include <QtCore/QDir>
+#include <QtCore/QDataStream>
 #include <gsl/gsl>
 
 #include "base/random.h"
@@ -162,6 +166,169 @@ bool QuantumGuard::enableHardwareAcceleration(bool enabled) {
 bool QuantumGuard::setProtected(bool enabled) {
     _protectedMode = enabled;
     return _protectedMode;
+}
+
+bool QuantumGuard::saveKeys(const QString &filePath, const QByteArray &password) const {
+    if (filePath.isEmpty()) {
+        return false;
+    }
+
+    QByteArray unencryptedData;
+    {
+        QDataStream stream(&unencryptedData, QIODevice::WriteOnly);
+        stream.setVersion(QDataStream::Qt_6_0);
+        quint32 count = static_cast<quint32>(_keyStore.size());
+        stream << count;
+
+        for (const auto &[keyIdStr, pkey] : _keyStore) {
+            if (!pkey) continue;
+            unsigned char *der = nullptr;
+            int derLen = i2d_PrivateKey(pkey, &der);
+            if (derLen <= 0 || !der) {
+                if (der) OPENSSL_free(der);
+                continue;
+            }
+            QByteArray derBytes(reinterpret_cast<const char*>(der), derLen);
+            OPENSSL_free(der);
+
+            stream << QString::fromStdString(keyIdStr) << derBytes;
+        }
+    }
+
+    // Derive encryption key using PBKDF2-SHA256
+    unsigned char salt[16];
+    if (RAND_bytes(salt, sizeof(salt)) != 1) {
+        return false;
+    }
+
+    unsigned char key[32];
+    if (PKCS5_PBKDF2_HMAC(password.constData(), password.size(),
+                          salt, sizeof(salt),
+                          100000, EVP_sha256(),
+                          sizeof(key), key) != 1) {
+        return false;
+    }
+
+    unsigned char iv[12];
+    if (RAND_bytes(iv, sizeof(iv)) != 1) {
+        return false;
+    }
+
+    bytes::vector ciphertext, authTag;
+    bytes::vector keyVec(key, key + sizeof(key));
+    bytes::vector ivVec(iv, iv + sizeof(iv));
+    bytes::const_span plainSpan(reinterpret_cast<const bytes::type*>(unencryptedData.constData()), unencryptedData.size());
+
+    if (!aesGcmEncrypt(bytes::make_span(keyVec), bytes::make_span(ivVec), plainSpan, ciphertext, authTag)) {
+        return false;
+    }
+
+    // Format: [Magic: "QGKS" (4 bytes)][Version: 1 (4 bytes)][Salt (16 bytes)][IV (12 bytes)][Tag (16 bytes)][Ciphertext]
+    QByteArray filePayload;
+    {
+        QDataStream out(&filePayload, QIODevice::WriteOnly);
+        out.writeRawData("QGKS", 4);
+        out << static_cast<quint32>(1); // Version
+        out.writeRawData(reinterpret_cast<const char*>(salt), sizeof(salt));
+        out.writeRawData(reinterpret_cast<const char*>(iv), sizeof(iv));
+        out.writeRawData(reinterpret_cast<const char*>(authTag.data()), authTag.size());
+        out.writeRawData(reinterpret_cast<const char*>(ciphertext.data()), ciphertext.size());
+    }
+
+    QFileInfo fileInfo(filePath);
+    QDir dir = fileInfo.dir();
+    if (!dir.exists()) {
+        dir.mkpath(".");
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        return false;
+    }
+    if (file.write(filePayload) != filePayload.size()) {
+        file.close();
+        return false;
+    }
+    file.close();
+    return true;
+}
+
+bool QuantumGuard::loadKeys(const QString &filePath, const QByteArray &password) {
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+    QByteArray filePayload = file.readAll();
+    file.close();
+
+    if (filePayload.size() < 4 + 4 + 16 + 12 + 16) {
+        return false;
+    }
+
+    const char *dataPtr = filePayload.constData();
+    if (std::memcmp(dataPtr, "QGKS", 4) != 0) {
+        return false;
+    }
+
+    quint32 version = 0;
+    QDataStream in(filePayload);
+    in.skipRawData(4);
+    in >> version;
+    if (version != 1) {
+        return false;
+    }
+
+    const unsigned char *salt = reinterpret_cast<const unsigned char*>(dataPtr + 8);
+    const unsigned char *iv = salt + 16;
+    const unsigned char *tag = iv + 12;
+    const unsigned char *ciphertext = tag + 16;
+    int cipherLen = filePayload.size() - (8 + 16 + 12 + 16);
+
+    unsigned char key[32];
+    if (PKCS5_PBKDF2_HMAC(password.constData(), password.size(),
+                          salt, 16,
+                          100000, EVP_sha256(),
+                          sizeof(key), key) != 1) {
+        return false;
+    }
+
+    bytes::vector keyVec(key, key + sizeof(key));
+    bytes::vector ivVec(iv, iv + 12);
+    bytes::vector cipherVec(reinterpret_cast<const bytes::type*>(ciphertext), reinterpret_cast<const bytes::type*>(ciphertext) + cipherLen);
+    bytes::vector tagVec(reinterpret_cast<const bytes::type*>(tag), reinterpret_cast<const bytes::type*>(tag) + 16);
+    bytes::vector plaintext;
+
+    if (!aesGcmDecrypt(bytes::make_span(keyVec), bytes::make_span(ivVec), bytes::make_span(cipherVec), bytes::make_span(tagVec), plaintext)) {
+        return false;
+    }
+
+    QByteArray unencryptedData(reinterpret_cast<const char*>(plaintext.data()), static_cast<int>(plaintext.size()));
+    QDataStream stream(unencryptedData);
+    stream.setVersion(QDataStream::Qt_6_0);
+
+    quint32 count = 0;
+    stream >> count;
+
+    std::map<std::string, EVP_PKEY*> loadedKeys;
+    for (quint32 i = 0; i < count; ++i) {
+        if (stream.atEnd()) break;
+        QString keyId;
+        QByteArray derBytes;
+        stream >> keyId >> derBytes;
+
+        const unsigned char *p = reinterpret_cast<const unsigned char*>(derBytes.constData());
+        EVP_PKEY *pkey = d2i_AutoPrivateKey(nullptr, &p, derBytes.size());
+        if (pkey) {
+            loadedKeys[keyId.toStdString()] = pkey;
+        }
+    }
+
+    // Replace current keystore
+    for (auto &[id, pkey] : _keyStore) {
+        if (pkey) EVP_PKEY_free(pkey);
+    }
+    _keyStore = std::move(loadedKeys);
+    return true;
 }
 
 // Map our QuantumAlgorithm enum to the OpenSSL 3.5 algorithm name string.

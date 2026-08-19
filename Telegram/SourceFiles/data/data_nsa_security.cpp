@@ -13,6 +13,10 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 
 #include <QtCore/QDebug>
 #include <QtCore/QByteArray>
+#include <QtCore/QFile>
+#include <QtCore/QFileInfo>
+#include <QtCore/QDir>
+#include <QtCore/QDataStream>
 
 namespace Data {
 namespace {
@@ -113,14 +117,109 @@ void NSASecurity::initialize(NSAClassificationLevel level) {
     _initialized = true;
     _classification = level;
 
-    // Generate a random 256-bit session key for AES-256-GCM operations.
-    _sessionKey.resize(32);
-    if (RAND_bytes(
-            reinterpret_cast<unsigned char *>(_sessionKey.data()),
-            32) != 1) {
-        _sessionKey.clear();
-        _initialized = false;
+    // Generate a random 256-bit session key for AES-256-GCM operations if not already set.
+    if (_sessionKey.size() < 32) {
+        _sessionKey.resize(32);
+        if (RAND_bytes(
+                reinterpret_cast<unsigned char *>(_sessionKey.data()),
+                32) != 1) {
+            _sessionKey.clear();
+            _initialized = false;
+        }
     }
+}
+
+QByteArray NSASecurity::sessionKey() const {
+    return _sessionKey;
+}
+
+void NSASecurity::setSessionKey(const QByteArray &key) {
+    _sessionKey = key;
+}
+
+bool NSASecurity::saveSessionKey(const QString &filePath, const QByteArray &password) const {
+    if (filePath.isEmpty() || _sessionKey.size() < 32) {
+        return false;
+    }
+
+    // Derive wrapping key using PBKDF2-SHA256
+    unsigned char salt[16];
+    if (RAND_bytes(salt, sizeof(salt)) != 1) return false;
+
+    unsigned char wrapKey[32];
+    if (PKCS5_PBKDF2_HMAC(password.constData(), password.size(),
+                          salt, sizeof(salt),
+                          100000, EVP_sha256(),
+                          sizeof(wrapKey), wrapKey) != 1) {
+        return false;
+    }
+
+    QByteArray wrapKeyBytes(reinterpret_cast<const char*>(wrapKey), sizeof(wrapKey));
+    QByteArray encrypted = aes256GcmEncrypt(_sessionKey, wrapKeyBytes);
+    if (encrypted.isEmpty()) return false;
+
+    // Format: [Magic: "NSAK" (4 bytes)][Version: 1 (4 bytes)][Salt: 16 bytes][Encrypted payload]
+    QByteArray filePayload;
+    {
+        QDataStream out(&filePayload, QIODevice::WriteOnly);
+        out.writeRawData("NSAK", 4);
+        out << static_cast<quint32>(1);
+        out.writeRawData(reinterpret_cast<const char*>(salt), sizeof(salt));
+        out.writeRawData(encrypted.constData(), encrypted.size());
+    }
+
+    QFileInfo fileInfo(filePath);
+    QDir dir = fileInfo.dir();
+    if (!dir.exists()) {
+        dir.mkpath(".");
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly)) return false;
+    if (file.write(filePayload) != filePayload.size()) {
+        file.close();
+        return false;
+    }
+    file.close();
+    return true;
+}
+
+bool NSASecurity::loadSessionKey(const QString &filePath, const QByteArray &password) {
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) return false;
+    QByteArray filePayload = file.readAll();
+    file.close();
+
+    if (filePayload.size() < 4 + 4 + 16 + 12 + 16) return false;
+
+    const char *dataPtr = filePayload.constData();
+    if (std::memcmp(dataPtr, "NSAK", 4) != 0) return false;
+
+    quint32 version = 0;
+    QDataStream in(filePayload);
+    in.skipRawData(4);
+    in >> version;
+    if (version != 1) return false;
+
+    const unsigned char *salt = reinterpret_cast<const unsigned char*>(dataPtr + 8);
+    const char *encryptedPtr = dataPtr + 24;
+    int encryptedLen = filePayload.size() - 24;
+
+    unsigned char wrapKey[32];
+    if (PKCS5_PBKDF2_HMAC(password.constData(), password.size(),
+                          salt, 16,
+                          100000, EVP_sha256(),
+                          sizeof(wrapKey), wrapKey) != 1) {
+        return false;
+    }
+
+    QByteArray wrapKeyBytes(reinterpret_cast<const char*>(wrapKey), sizeof(wrapKey));
+    QByteArray encryptedPayload(encryptedPtr, encryptedLen);
+    QByteArray decrypted = aes256GcmDecrypt(encryptedPayload, wrapKeyBytes);
+    if (decrypted.size() != 32) return false;
+
+    _sessionKey = decrypted;
+    return true;
 }
 
 bool NSASecurity::isInitialized() const {

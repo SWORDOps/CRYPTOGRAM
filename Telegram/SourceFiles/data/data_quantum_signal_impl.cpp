@@ -187,45 +187,107 @@ namespace {
 			&& !bundle.quantumIdentityKey.isEmpty();
 	}
 
-	bytes::vector xorTransform(
-		const bytes::const_span &input,
-		const bytes::const_span &key) {
-		bytes::vector result(input.size());
-		if (key.empty()) {
-			return result;
-		}
-		for (size_t i = 0; i < input.size(); ++i) {
-			result[i] = input[i] ^ key[i % key.size()];
-		}
-		return result;
+	// AES-256-GCM helpers used by hybridEncrypt/Decrypt and quantumEncrypt/Decrypt.
+	// Output layout: [12-byte IV || ciphertext || 16-byte GCM tag]
+	bytes::vector aesGcmEncryptMsg(
+			const bytes::const_span &plaintext,
+			const bytes::const_span &key32) {
+		if (key32.size() < 32) return {};
+
+		unsigned char iv[12];
+		RAND_bytes(iv, 12);
+
+		EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+		if (!ctx) return {};
+
+		bytes::vector out;
+		bool ok = false;
+		do {
+			if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr,
+					reinterpret_cast<const unsigned char *>(key32.data()), iv) != 1) break;
+			out.resize(12 + plaintext.size() + 16);
+			memcpy(out.data(), iv, 12);
+			int outLen = 0;
+			if (EVP_EncryptUpdate(ctx,
+					reinterpret_cast<unsigned char *>(out.data()) + 12, &outLen,
+					reinterpret_cast<const unsigned char *>(plaintext.data()),
+					static_cast<int>(plaintext.size())) != 1) break;
+			int finalLen = 0;
+			if (EVP_EncryptFinal_ex(ctx,
+					reinterpret_cast<unsigned char *>(out.data()) + 12 + outLen,
+					&finalLen) != 1) break;
+			if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16,
+					reinterpret_cast<unsigned char *>(out.data()) + 12 + outLen + finalLen) != 1) break;
+			out.resize(12 + outLen + finalLen + 16);
+			ok = true;
+		} while (false);
+		EVP_CIPHER_CTX_free(ctx);
+		return ok ? out : bytes::vector{};
+	}
+
+	bytes::vector aesGcmDecryptMsg(
+			const bytes::const_span &data,
+			const bytes::const_span &key32) {
+		if (key32.size() < 32 || data.size() < 12 + 16) return {};
+
+		const unsigned char *iv = reinterpret_cast<const unsigned char *>(data.data());
+		const int ciphertextLen = static_cast<int>(data.size()) - 12 - 16;
+		if (ciphertextLen < 0) return {};
+		const unsigned char *ciphertext = iv + 12;
+		const unsigned char *tag = ciphertext + ciphertextLen;
+
+		EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+		if (!ctx) return {};
+
+		bytes::vector plaintext;
+		bool ok = false;
+		do {
+			if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr,
+					reinterpret_cast<const unsigned char *>(key32.data()), iv) != 1) break;
+			plaintext.resize(ciphertextLen);
+			int outLen = 0;
+			if (EVP_DecryptUpdate(ctx,
+					reinterpret_cast<unsigned char *>(plaintext.data()), &outLen,
+					ciphertext, ciphertextLen) != 1) break;
+			if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16,
+					const_cast<unsigned char *>(tag)) != 1) break;
+			int finalLen = 0;
+			if (EVP_DecryptFinal_ex(ctx,
+					reinterpret_cast<unsigned char *>(plaintext.data()) + outLen,
+					&finalLen) != 1) break;
+			plaintext.resize(outLen + finalLen);
+			ok = true;
+		} while (false);
+		EVP_CIPHER_CTX_free(ctx);
+		return ok ? plaintext : bytes::vector{};
 	}
 
 	bytes::vector hybridEncrypt(
-		const bytes::const_span &plaintext,
-		const bytes::const_span &messageKey,
-		const bytes::vector &) {
-		return xorTransform(plaintext, messageKey);
+			const bytes::const_span &plaintext,
+			const bytes::const_span &messageKey,
+			const bytes::vector &) {
+		return aesGcmEncryptMsg(plaintext, messageKey);
 	}
 
 	bytes::vector hybridDecrypt(
-		const bytes::const_span &ciphertext,
-		const bytes::const_span &messageKey,
-		const bytes::vector &) {
-		return xorTransform(ciphertext, messageKey);
+			const bytes::const_span &ciphertext,
+			const bytes::const_span &messageKey,
+			const bytes::vector &) {
+		return aesGcmDecryptMsg(ciphertext, messageKey);
 	}
 
 	bytes::vector quantumEncrypt(
-		const bytes::const_span &plaintext,
-		const bytes::const_span &messageKey,
-		const bytes::vector &) {
-		return xorTransform(plaintext, messageKey);
+			const bytes::const_span &plaintext,
+			const bytes::const_span &messageKey,
+			const bytes::vector &) {
+		return aesGcmEncryptMsg(plaintext, messageKey);
 	}
 
 	bytes::vector quantumDecrypt(
-		const bytes::const_span &ciphertext,
-		const bytes::const_span &messageKey,
-		const bytes::vector &) {
-		return xorTransform(ciphertext, messageKey);
+			const bytes::const_span &ciphertext,
+			const bytes::const_span &messageKey,
+			const bytes::vector &) {
+		return aesGcmDecryptMsg(ciphertext, messageKey);
 	}
 
 	void applyNSASecurityPolicies(QuantumMessageMetadata &metadata) {

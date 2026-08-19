@@ -232,8 +232,8 @@ Comprehensive security validation and auditing.
 ## 📚 Documentation
 
 For detailed information about advanced security features:
-- **[FIVE_FEATURES_PORT.md](FIVE_FEATURES_PORT.md)** - Complete guide to 5 advanced security features
-- **[DOUBLE_RATCHET_PORT.md](DOUBLE_RATCHET_PORT.md)** - Double Ratchet implementation details
+- **[FIVE_FEATURES_PORT.md](../implementation/FIVE_FEATURES_PORT.md)** - Complete guide to 5 advanced security features
+- **[DOUBLE_RATCHET_PORT.md](../implementation/DOUBLE_RATCHET_PORT.md)** - Double Ratchet implementation details
 - **[AVAILABLE_SPYGRAM_FEATURES.md](AVAILABLE_SPYGRAM_FEATURES.md)** - Catalog of available features
 
 ---

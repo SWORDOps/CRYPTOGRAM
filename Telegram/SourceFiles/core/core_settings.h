@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "core/core_settings_proxy.h"
+#include "data/data_quantum_types.h"
 #include "media/media_common.h"
 #include "dialogs/ui/dialogs_quick_action.h"
 #include "window/themes/window_themes_embedded.h"
@@ -184,8 +185,29 @@ public:
 	void setLocationNoiseRadius(int value) { _locationNoiseRadius = value; }
 	[[nodiscard]] bool timezoneAnonymizationEnabled() const { return _timezoneAnonymizationEnabled; }
 	void setTimezoneAnonymizationEnabled(bool value) { _timezoneAnonymizationEnabled = value; }
-	[[nodiscard]] int quantumSecurityLevel() const { return _quantumSecurityLevel; }
-	void setQuantumSecurityLevel(int value) { _quantumSecurityLevel = value; }
+	[[nodiscard]] int quantumSecurityLevel() const {
+		return static_cast<int>(_quantumSecurityLevel);
+	}
+	void setQuantumSecurityLevel(int value) {
+		// Accept legacy magic values (128=L1, 256=L3, 384=L5) and typed enum ints
+		if (value == 128) {
+			_quantumSecurityLevel = Data::QuantumSecurityLevel::Level1;
+		} else if (value == 256) {
+			_quantumSecurityLevel = Data::QuantumSecurityLevel::Level3;
+		} else if (value == 384 || value == 5) {
+			_quantumSecurityLevel = Data::QuantumSecurityLevel::Level5;
+		} else if (value >= 1 && value <= 5) {
+			_quantumSecurityLevel = static_cast<Data::QuantumSecurityLevel>(value);
+		} else {
+			_quantumSecurityLevel = Data::QuantumSecurityLevel::Level3;
+		}
+	}
+	[[nodiscard]] Data::QuantumSecurityLevel quantumSecurityLevelEnum() const {
+		return _quantumSecurityLevel;
+	}
+	void setQuantumSecurityLevelEnum(Data::QuantumSecurityLevel level) {
+		_quantumSecurityLevel = level;
+	}
 	[[nodiscard]] bool mediaMetadataSpoofingEnabled() const { return _mediaMetadataSpoofingEnabled; }
 	void setMediaMetadataSpoofingEnabled(bool value) { _mediaMetadataSpoofingEnabled = value; }
 	[[nodiscard]] bool trafficPaddingEnabled() const { return _trafficPaddingEnabled; }
@@ -1254,7 +1276,7 @@ private:
 	bool _locationRandomizationEnabled = false;
 	int _locationNoiseRadius = 5;
 	bool _timezoneAnonymizationEnabled = false;
-	int _quantumSecurityLevel = 0;
+	Data::QuantumSecurityLevel _quantumSecurityLevel = Data::QuantumSecurityLevel::Level3;
 	bool _mediaMetadataSpoofingEnabled = false;
 	bool _trafficPaddingEnabled = false;
 	bool _keyboardSwitchingEnabled = false;

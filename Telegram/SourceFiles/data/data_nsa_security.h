@@ -56,6 +56,12 @@ public:
     // Get current security level
     int getSecurityLevel() const;
 
+    // Session key management & persistence
+    QByteArray sessionKey() const;
+    void setSessionKey(const QByteArray &key);
+    bool saveSessionKey(const QString &filePath, const QByteArray &password) const;
+    bool loadSessionKey(const QString &filePath, const QByteArray &password);
+
 private:
     bool _secured = false;
     bool _initialized = false;

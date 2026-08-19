@@ -54,6 +54,16 @@ public:
     bool enableHardwareAcceleration(bool enabled);
     bool setProtected(bool enabled);
 
+    // Persist all keypairs to an AES-256-GCM encrypted file.
+    // password is used to derive the wrapping key via PBKDF2-SHA256.
+    // Returns true on success.
+    bool saveKeys(const QString &filePath, const QByteArray &password) const;
+
+    // Load keypairs from a file saved by saveKeys().
+    // Clears the current key store before loading.
+    // Returns true on success.
+    bool loadKeys(const QString &filePath, const QByteArray &password);
+
     // Generate a real ML-KEM or ML-DSA keypair via OpenSSL 3.5 EVP.
     // Returns the public key; private key is stored internally keyed by keyId.
     base::expected<QuantumKeyResult, QString> generateQuantumKey(
