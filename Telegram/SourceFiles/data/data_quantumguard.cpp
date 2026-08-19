@@ -215,11 +215,11 @@ bool QuantumGuard::saveKeys(const QString &filePath, const QByteArray &password)
     }
 
     bytes::vector ciphertext, authTag;
-    bytes::vector keyVec(key, key + sizeof(key));
-    bytes::vector ivVec(iv, iv + sizeof(iv));
-    bytes::const_span plainSpan(reinterpret_cast<const bytes::type*>(unencryptedData.constData()), unencryptedData.size());
+    const auto keySpan = bytes::make_span(reinterpret_cast<const bytes::type*>(key), sizeof(key));
+    const auto ivSpan = bytes::make_span(reinterpret_cast<const bytes::type*>(iv), sizeof(iv));
+    const auto plainSpan = bytes::make_span(reinterpret_cast<const bytes::type*>(unencryptedData.constData()), unencryptedData.size());
 
-    if (!aesGcmEncrypt(bytes::make_span(keyVec), bytes::make_span(ivVec), plainSpan, ciphertext, authTag)) {
+    if (!aesGcmEncrypt(keySpan, ivSpan, plainSpan, ciphertext, authTag)) {
         return false;
     }
 
@@ -292,13 +292,13 @@ bool QuantumGuard::loadKeys(const QString &filePath, const QByteArray &password)
         return false;
     }
 
-    bytes::vector keyVec(key, key + sizeof(key));
-    bytes::vector ivVec(iv, iv + 12);
-    bytes::vector cipherVec(reinterpret_cast<const bytes::type*>(ciphertext), reinterpret_cast<const bytes::type*>(ciphertext) + cipherLen);
-    bytes::vector tagVec(reinterpret_cast<const bytes::type*>(tag), reinterpret_cast<const bytes::type*>(tag) + 16);
+    const auto keySpan = bytes::make_span(reinterpret_cast<const bytes::type*>(key), sizeof(key));
+    const auto ivSpan = bytes::make_span(reinterpret_cast<const bytes::type*>(iv), 12);
+    const auto cipherSpan = bytes::make_span(reinterpret_cast<const bytes::type*>(ciphertext), cipherLen);
+    const auto tagSpan = bytes::make_span(reinterpret_cast<const bytes::type*>(tag), 16);
     bytes::vector plaintext;
 
-    if (!aesGcmDecrypt(bytes::make_span(keyVec), bytes::make_span(ivVec), bytes::make_span(cipherVec), bytes::make_span(tagVec), plaintext)) {
+    if (!aesGcmDecrypt(keySpan, ivSpan, cipherSpan, tagSpan, plaintext)) {
         return false;
     }
 
