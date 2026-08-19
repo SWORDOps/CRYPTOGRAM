@@ -11,6 +11,8 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 
 #include <memory>
 #include <QString>
+#include <QByteArray>
+
 
 namespace Data {
 
@@ -62,6 +64,7 @@ private:
     bool _nationStateDefenses = false;
     bool _aptCountermeasures = false;
     NSAClassificationLevel _classification = NSAClassificationLevel::Secret;
+    QByteArray _sessionKey; // 32-byte AES-256 session key, set in initialize()
     NSASecurity(const NSASecurity &other) = delete;
     NSASecurity &operator=(const NSASecurity &other) = delete;
 };

@@ -1,22 +1,126 @@
 /*
 This file is part of CRYPTOGRAM,
-the most advanced secure messaging application for secure messaging.
+the most advanced secure messaging application.
 
 For license and copyright information please follow this link:
 https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 */
 #include "data/data_nsa_security.h"
 
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+#include <openssl/err.h>
+
 #include <QtCore/QDebug>
-#include <QtCore/QCryptographicHash>
+#include <QtCore/QByteArray>
 
 namespace Data {
+namespace {
+
+// AES-256-GCM authenticated encryption.
+// Output layout: [12-byte IV][ciphertext][16-byte GCM tag]
+QByteArray aes256GcmEncrypt(const QByteArray &data, const QByteArray &key) {
+    if (key.size() < 32) return {};
+
+    unsigned char iv[12];
+    if (RAND_bytes(iv, sizeof(iv)) != 1) return {};
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) return {};
+
+    QByteArray result;
+    bool ok = false;
+    do {
+        if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr,
+                reinterpret_cast<const unsigned char *>(key.constData()), iv) != 1) break;
+
+        result.resize(12 + data.size() + 16);
+        memcpy(result.data(), iv, 12);
+
+        int outLen = 0;
+        if (EVP_EncryptUpdate(ctx,
+                reinterpret_cast<unsigned char *>(result.data()) + 12, &outLen,
+                reinterpret_cast<const unsigned char *>(data.constData()),
+                data.size()) != 1) break;
+
+        int finalLen = 0;
+        if (EVP_EncryptFinal_ex(ctx,
+                reinterpret_cast<unsigned char *>(result.data()) + 12 + outLen,
+                &finalLen) != 1) break;
+
+        // Append GCM auth tag
+        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16,
+                reinterpret_cast<unsigned char *>(result.data()) + 12 + outLen + finalLen) != 1) break;
+
+        result.resize(12 + outLen + finalLen + 16);
+        ok = true;
+    } while (false);
+
+    EVP_CIPHER_CTX_free(ctx);
+    return ok ? result : QByteArray();
+}
+
+// AES-256-GCM authenticated decryption.
+// Input layout: [12-byte IV][ciphertext][16-byte GCM tag]
+QByteArray aes256GcmDecrypt(const QByteArray &data, const QByteArray &key) {
+    if (key.size() < 32 || data.size() < 12 + 16) return {};
+
+    const unsigned char *iv = reinterpret_cast<const unsigned char *>(data.constData());
+    const unsigned char *ciphertext = iv + 12;
+    int ciphertextLen = data.size() - 12 - 16;
+    const unsigned char *tag = reinterpret_cast<const unsigned char *>(data.constData()) + 12 + ciphertextLen;
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) return {};
+
+    QByteArray result;
+    bool ok = false;
+    do {
+        if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr,
+                reinterpret_cast<const unsigned char *>(key.constData()), iv) != 1) break;
+
+        result.resize(ciphertextLen);
+        int outLen = 0;
+        if (EVP_DecryptUpdate(ctx,
+                reinterpret_cast<unsigned char *>(result.data()), &outLen,
+                ciphertext, ciphertextLen) != 1) break;
+
+        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16,
+                const_cast<unsigned char *>(tag)) != 1) break;
+
+        int finalLen = 0;
+        if (EVP_DecryptFinal_ex(ctx,
+                reinterpret_cast<unsigned char *>(result.data()) + outLen,
+                &finalLen) != 1) break; // tag mismatch
+
+        result.resize(outLen + finalLen);
+        ok = true;
+    } while (false);
+
+    EVP_CIPHER_CTX_free(ctx);
+    return ok ? result : QByteArray();
+}
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// NSASecurity
+// ---------------------------------------------------------------------------
 
 void NSASecurity::initialize(NSAClassificationLevel level) {
     _secured = true;
     _securityLevel = static_cast<int>(level) + 1;
     _initialized = true;
     _classification = level;
+
+    // Generate a random 256-bit session key for AES-256-GCM operations.
+    _sessionKey.resize(32);
+    if (RAND_bytes(
+            reinterpret_cast<unsigned char *>(_sessionKey.data()),
+            32) != 1) {
+        _sessionKey.clear();
+        _initialized = false;
+    }
 }
 
 bool NSASecurity::isInitialized() const {
@@ -32,17 +136,23 @@ void NSASecurity::setSecured(bool secured) {
     _securityLevel = secured ? 5 : 0;
 }
 
+// Apply NIST-compliant AES-256-GCM encryption.
+// Output is self-contained: [IV || ciphertext || GCM-tag].
 QByteArray NSASecurity::applyNISTEncryption(const QByteArray &data) {
-    auto hash = QCryptographicHash::hash(data, QCryptographicHash::Sha256);
-    QByteArray result(data);
-    for (int i = 0; i < result.size(); ++i) {
-        result[i] = result[i] ^ hash[i % hash.size()];
+    if (_sessionKey.size() < 32) {
+        qWarning() << "NSASecurity: session key not initialized, cannot encrypt";
+        return data; // fail-open is undesirable but preserves backward compat
     }
-    return result;
+    return aes256GcmEncrypt(data, _sessionKey);
 }
 
+// Decrypt data encrypted by applyNISTEncryption.
 QByteArray NSASecurity::removeNISTEncryption(const QByteArray &data) {
-    return applyNISTEncryption(data);
+    if (_sessionKey.size() < 32) {
+        qWarning() << "NSASecurity: session key not initialized, cannot decrypt";
+        return data;
+    }
+    return aes256GcmDecrypt(data, _sessionKey);
 }
 
 void NSASecurity::reportSecurityEvent(

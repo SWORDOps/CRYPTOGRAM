@@ -163,6 +163,15 @@ private:
     // Cleanup timer
     base::Timer _cleanupTimer;
     void cleanup();
+
+    // Cryptographic session state
+    // _sessionKey: 32-byte random key generated at construction.
+    // _packetSigningKey: 32-byte HMAC key derived from _sessionKey via HKDF-SHA256
+    //   label "CovertChannel-PacketMAC". Used for HMAC authentication of every packet.
+    bytes::vector _sessionKey;
+    bytes::vector _packetSigningKey;
+
+    void derivePacketSigningKey();
 };
 
 } // namespace Data

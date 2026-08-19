@@ -38,6 +38,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtCore/QMessageAuthenticationCode>
 #include <QtCore/QRandomGenerator>
 #include <vector>
+#include <cmath>
+
 #include <QtCore/QStandardPaths>
 #include <QtCore/QTemporaryFile>
 #include <QtCore/QTextStream>
@@ -1390,36 +1392,58 @@ rpl::producer<int> VoiceSecurityManager::testRecordingLevel() const {
 }
 
 QByteArray VoiceSecurityManager::applyFilters(const QByteArray &data, int strength) {
-    // Create a safe copy of the data
-    QByteArray result = data;
-    
-    // Simulate audio filters (NOT REAL PROCESSING)
-    if (strength > 0 && !data.isEmpty()) {
-        // This is a simplified placeholder for real audio filtering
-        // In a real implementation, this would apply bandpass/EQ filters
-        
-        // Simulate simple lowpass filter by averaging samples
-        const int windowSize = qBound(2, strength, 10);
-        std::vector<unsigned char> buffer(windowSize, 0);
-        
-        for (int i = windowSize; i < data.size(); i++) {
-            // Shift buffer
-            for (int j = 0; j < windowSize - 1; j++) {
-                buffer[j] = buffer[j + 1];
-            }
-            buffer[windowSize - 1] = static_cast<unsigned char>(data[i]);
-            
-            // Calculate average
-            unsigned int sum = 0;
-            for (int j = 0; j < windowSize; j++) {
-                sum += buffer[j];
-            }
-            
-            // Apply filtered value
-            result[i] = static_cast<char>(sum / windowSize);
-        }
+    if (strength <= 0 || data.isEmpty()) {
+        return data;
     }
-    
+
+    // Windowed-sinc FIR lowpass filter.
+    // Cutoff frequency (normalized 0..1, where 1 = Nyquist): lower strength = lower cutoff.
+    // strength 1  → cutoff ~0.45 (very mild, removes only near-Nyquist noise)
+    // strength 10 → cutoff ~0.10 (strong lowpass, heavy anonymization)
+    const double cutoff = 0.50 - (static_cast<double>(qBound(1, strength, 10)) * 0.04);
+
+    // FIR kernel length: odd number for symmetry. Longer = sharper roll-off.
+    const int M = 31; // 31-tap filter
+    const int halfM = M / 2;
+
+    // Compute windowed-sinc kernel coefficients (Hann window)
+    std::vector<double> kernel(M);
+    double kernelSum = 0.0;
+    for (int i = 0; i < M; ++i) {
+        const int n = i - halfM;
+        // Sinc function
+        double sinc = (n == 0)
+            ? 2.0 * cutoff
+            : std::sin(2.0 * M_PI * cutoff * n) / (M_PI * n);
+        // Hann window
+        double hann = 0.5 * (1.0 - std::cos(2.0 * M_PI * i / (M - 1)));
+        kernel[i] = sinc * hann;
+        kernelSum += kernel[i];
+    }
+    // Normalize so DC gain = 1
+    if (kernelSum > 0.0) {
+        for (auto &c : kernel) c /= kernelSum;
+    }
+
+    // Treat the byte buffer as 8-bit signed PCM samples.
+    // Convolve with the FIR kernel using linear (zero-padded) boundary handling.
+    QByteArray result(data.size(), '\0');
+    const int N = data.size();
+    for (int i = 0; i < N; ++i) {
+        double acc = 0.0;
+        for (int k = 0; k < M; ++k) {
+            const int j = i - (k - halfM);
+            if (j >= 0 && j < N) {
+                acc += kernel[k] * static_cast<double>(static_cast<signed char>(data[j]));
+            }
+        }
+        // Clamp back to signed byte range
+        result[i] = static_cast<char>(
+            static_cast<int>(std::round(acc)) < -128 ? -128 :
+            static_cast<int>(std::round(acc)) >  127 ?  127 :
+            static_cast<int>(std::round(acc)));
+    }
+
     return result;
 }
 

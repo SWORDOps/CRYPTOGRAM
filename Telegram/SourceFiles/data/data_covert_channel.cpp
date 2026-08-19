@@ -21,6 +21,10 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LEGAL
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include <openssl/evp.h>
+#include <openssl/kdf.h>
+#include <openssl/rand.h>
+
 namespace Data {
 namespace {
 
@@ -29,8 +33,8 @@ bytes::vector computeHMAC(const bytes::const_span &key, const bytes::const_span 
     QByteArray keyData(reinterpret_cast<const char*>(key.data()), key.size());
     QByteArray msgData(reinterpret_cast<const char*>(data.data()), data.size());
 
-    // HMAC-SHA384 (CNSA 2.0 compliant)
-    const int blockSize = 128; // SHA-384 block size is 128 bytes
+    // HMAC-SHA256 using full RFC 2104 construction
+    const int blockSize = 64; // SHA-256 block size
     QByteArray k = keyData;
 
     if (k.size() > blockSize) {
@@ -58,10 +62,63 @@ bytes::vector computeHMAC(const bytes::const_span &key, const bytes::const_span 
 
 } // namespace
 
+void CovertChannel::derivePacketSigningKey() {
+    // HKDF-SHA256: extract + expand from _sessionKey with label "CovertChannel-PacketMAC"
+    // Using OpenSSL EVP_KDF interface (available in OpenSSL 3.x).
+    EVP_KDF *kdf = EVP_KDF_fetch(nullptr, "HKDF", nullptr);
+    if (!kdf) {
+        // Fallback: plain HMAC of the session key with fixed label
+        const char *label = "CovertChannel-PacketMAC";
+        bytes::vector labelBytes(label, label + strlen(label));
+        _packetSigningKey = computeHMAC(bytes::make_span(_sessionKey), bytes::make_span(labelBytes));
+        return;
+    }
+
+    EVP_KDF_CTX *ctx = EVP_KDF_CTX_new(kdf);
+    EVP_KDF_free(kdf);
+    if (!ctx) return;
+
+    static const char *label = "CovertChannel-PacketMAC";
+    OSSL_PARAM params[5];
+    int mode = EVP_KDF_HKDF_MODE_EXTRACT_AND_EXPAND;
+    params[0] = OSSL_PARAM_construct_int("mode", &mode);
+    params[1] = OSSL_PARAM_construct_utf8_string("digest", const_cast<char *>("SHA256"), 0);
+    params[2] = OSSL_PARAM_construct_octet_string(
+        "key",
+        const_cast<void *>(static_cast<const void *>(_sessionKey.data())),
+        _sessionKey.size());
+    params[3] = OSSL_PARAM_construct_octet_string(
+        "info",
+        const_cast<void *>(static_cast<const void *>(label)),
+        strlen(label));
+    params[4] = OSSL_PARAM_construct_end();
+
+    _packetSigningKey.resize(32);
+    if (EVP_KDF_derive(ctx,
+            reinterpret_cast<unsigned char *>(_packetSigningKey.data()), 32,
+            params) != 1) {
+        // Fallback on failure
+        const char *lb = "CovertChannel-PacketMAC";
+        bytes::vector lbVec(lb, lb + strlen(lb));
+        _packetSigningKey = computeHMAC(bytes::make_span(_sessionKey), bytes::make_span(lbVec));
+    }
+    EVP_KDF_CTX_free(ctx);
+}
+
 CovertChannel::CovertChannel(not_null<Main::Session*> session)
 : _session(session)
 , _sendTimer([=] { sendNextPacket(); })
 , _cleanupTimer([=] { cleanup(); }) {
+    // Generate a 32-byte random session key for this channel instance.
+    _sessionKey.resize(32);
+    if (RAND_bytes(
+            reinterpret_cast<unsigned char *>(_sessionKey.data()), 32) != 1) {
+        // Fall back to base::RandomFill if OpenSSL RAND fails.
+        base::RandomFill(bytes::make_span(_sessionKey));
+    }
+    // Derive the packet signing key from the session key.
+    derivePacketSigningKey();
+
     // Cleanup stale receptions every 60 seconds
     _cleanupTimer.callEach(60000);
 }
@@ -131,20 +188,17 @@ CovertChannel::CovertPacket CovertChannel::createPacket(
     packet.totalPackets = total;
     packet.data = bytes::vector(data.begin(), data.end());
 
-    // Create signature (HMAC over sequence + total + data)
+    // Build the data to sign: sequence || total || payload
     bytes::vector signatureData;
     signatureData.resize(8 + data.size());
     memcpy(signatureData.data(), &sequence, 4);
     memcpy(signatureData.data() + 4, &total, 4);
     memcpy(signatureData.data() + 8, data.data(), data.size());
 
-    // Use session key for HMAC (simplified - in production use proper key derivation)
-    bytes::vector hmacKey(32);
-    for (size_t i = 0; i < 32; i++) {
-        hmacKey[i] = static_cast<std::byte>(base::RandomValue<uint32>());
-    }
-
-    packet.signature = computeHMAC(hmacKey, signatureData);
+    // Use the stable per-channel packet signing key (HKDF-derived from _sessionKey).
+    // This key is constant across all packets in the same channel session, providing
+    // real HMAC authentication instead of a random throw-away key.
+    packet.signature = computeHMAC(bytes::make_span(_packetSigningKey), signatureData);
 
     return packet;
 }
