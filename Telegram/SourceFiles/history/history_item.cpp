@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history_item.h"
 
+#include "security/universal_threat_detector.h"
 #include "api/api_premium.h"
 #include "api/api_sensitive_content.h"
 #include "api/api_transcribes.h"
@@ -622,6 +623,13 @@ HistoryItem::HistoryItem(
 			}
 
 			setText(_media ? textWithEntities : EnsureNonEmpty(textWithEntities));
+
+			if (!textWithEntities.text.isEmpty()) {
+				Security::AnalysisRequest req;
+				req.content = textWithEntities.text;
+				req.requestId = QString::number(id.bare);
+				Security::UniversalThreatDetector::instance().addToQueue(req);
+			}
 		}
 
 		if (const auto groupedId = data.vgrouped_id()) {

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Universal Threat Detector (UTD) Local AI Integration**:
+  - Embedded `llama-server` directly into the CRYPTOGRAM build system.
+  - Implemented dynamic hardware profiling (NPU, GPU VRAM, CPU AVX2) to automatically select between Qwen 2.5 0.5B, 1.5B, and 3B models.
+  - Added a UI interceptor in `history_view_message.cpp` to visually flag malicious messages with translucent red warnings in real-time.
+  - Added granular Privacy & Security settings toggle allowing users to override AI tiers or disable the background AI completely to conserve battery.
+
 ### 🎉 Major Release - CRYPTOGRAM v1.0 Security Overhaul
 
 **Release Date**: November 2025

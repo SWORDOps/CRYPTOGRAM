@@ -138,7 +138,7 @@ class UniversalThreatDetector : public QObject {
     Q_OBJECT
 
 public:
-    explicit UniversalThreatDetector(QObject *parent = nullptr);
+    static UniversalThreatDetector& instance();
     ~UniversalThreatDetector();
 
     // Initialization and configuration
@@ -161,6 +161,7 @@ public:
 
     // Asynchronous analysis
     QString requestAnalysis(const AnalysisRequest &request);
+    void addToQueue(const AnalysisRequest &request);
     void cancelAnalysis(const QString &requestId);
     QStringList getPendingAnalyses() const;
     int getQueueSize() const;
@@ -243,6 +244,8 @@ private Q_SLOTS:
     void processAnalysisQueue();
 
 private:
+    explicit UniversalThreatDetector(QObject *parent = nullptr);
+
     // AI processing implementations
     ThreatAnalysis analyzeWithNPU(const QString &content, const QString &context);
     ThreatAnalysis analyzeWithGPU(const QString &content, const QString &context);
@@ -291,8 +294,6 @@ private:
     void monitorResourceUsage();
     void optimizePerformance();
 
-    // Queue management
-    void addToQueue(const AnalysisRequest &request);
     AnalysisRequest getNextRequest();
     void clearQueue();
     void prioritizeRequest(const QString &requestId);

@@ -443,6 +443,27 @@ struct BadgePillGeometry {
 	};
 }
 
+#include "security/universal_threat_detector.h"
+#include <QSet>
+#include <QMutex>
+#include <QMutexLocker>
+
+static QSet<QString> FlaggedThreatMessages;
+static QMutex FlaggedThreatMessagesMutex;
+
+static void EnsureThreatDetectorConnection() {
+	static bool initialized = false;
+	if (!initialized) {
+		initialized = true;
+		QObject::connect(&Security::UniversalThreatDetector::instance(),
+			&Security::UniversalThreatDetector::threatDetected,
+			[](const Security::ThreatAnalysis &analysis) {
+				QMutexLocker lock(&FlaggedThreatMessagesMutex);
+				FlaggedThreatMessages.insert(analysis.contentId);
+			});
+	}
+}
+
 } // namespace
 
 const char kOptionUnlimitedMessageWidth[]
@@ -2859,6 +2880,18 @@ void Message::paintText(
 	if (!hasVisibleText()) {
 		return;
 	}
+
+	EnsureThreatDetectorConnection();
+	bool isThreat = false;
+	{
+		QMutexLocker lock(&FlaggedThreatMessagesMutex);
+		isThreat = FlaggedThreatMessages.contains(QString::number(data()->id.bare)) ||
+		           FlaggedThreatMessages.contains(QString::number(data()->fullId().msg.bare));
+	}
+	if (isThreat) {
+		p.fillRect(trect, QColor(255, 0, 0, 100));
+	}
+
 	const auto stm = context.messageStyle();
 	p.setPen(stm->historyTextFg);
 	p.setFont(st::msgFont);

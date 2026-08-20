@@ -282,6 +282,8 @@ struct UniversalThreatDetector::AIEngine {
     bool avx512Enabled = false;
     bool simdOptimized = false;
 
+    std::unique_ptr<QProcess> serverProcess;
+
     AIEngine() {
         detectHardwareCapabilities();
     }
@@ -298,6 +300,11 @@ struct UniversalThreatDetector::AIEngine {
                  << "SIMD:" << simdOptimized;
     }
 };
+
+UniversalThreatDetector& UniversalThreatDetector::instance() {
+    static UniversalThreatDetector inst;
+    return inst;
+}
 
 UniversalThreatDetector::UniversalThreatDetector(QObject *parent)
     : QObject(parent)
@@ -367,6 +374,14 @@ void UniversalThreatDetector::initialize() {
         }
 
         // Start analysis thread
+        if (_currentTier == AIProcessingTier::Tier1_NPU_Accelerated) {
+            loadModel("Tier1");
+        } else if (_currentTier == AIProcessingTier::Tier2_GPU_Accelerated) {
+            loadModel("Tier2");
+        } else if (_currentTier == AIProcessingTier::Tier3_CPU_Optimized) {
+            loadModel("Tier3");
+        }
+
         _analysisThread->start();
 
         _initialized = true;
@@ -394,6 +409,12 @@ void UniversalThreatDetector::setEnabled(bool enabled) {
     }
 
     _enabled = enabled;
+    if (!_enabled) {
+        unloadCurrentModel();
+    } else {
+        setProcessingTier(_currentTier); // reload current tier
+    }
+    saveConfiguration();
 
     if (_enabled) {
         qDebug() << "Threat detector enabled";
@@ -421,6 +442,18 @@ void UniversalThreatDetector::setProcessingTier(AIProcessingTier tier) {
 
     AIProcessingTier oldTier = _currentTier;
     _currentTier = tier;
+
+    if (_currentTier == AIProcessingTier::Tier1_NPU_Accelerated) {
+        loadModel("Tier1");
+    } else if (_currentTier == AIProcessingTier::Tier2_GPU_Accelerated) {
+        loadModel("Tier2");
+    } else if (_currentTier == AIProcessingTier::Tier3_CPU_Optimized) {
+        loadModel("Tier3");
+    } else {
+        unloadCurrentModel();
+    }
+    
+    saveConfiguration();
 
     qDebug() << "Processing tier changed from" << static_cast<int>(oldTier)
              << "to" << static_cast<int>(tier);
@@ -618,6 +651,10 @@ QString UniversalThreatDetector::requestAnalysis(const AnalysisRequest &request)
 
     qDebug() << "Analysis request queued:" << requestId;
     return requestId;
+}
+
+void UniversalThreatDetector::addToQueue(const AnalysisRequest &request) {
+    requestAnalysis(request);
 }
 
 void UniversalThreatDetector::cancelAnalysis(const QString &requestId) {
@@ -1145,11 +1182,27 @@ bool UniversalThreatDetector::loadThreatDatabase() {
     return true;
 }
 
+void UniversalThreatDetector::saveConfiguration() {
+    QString configPath = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    QString configFile = configPath + "/threat_detector.ini";
+    QSettings settings(configFile, QSettings::IniFormat);
+    settings.setValue("enabled", _enabled);
+    settings.setValue("processing_tier", static_cast<int>(_currentTier));
+    settings.sync();
+}
+
 void UniversalThreatDetector::loadConfiguration() {
     QString configPath = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
     QString configFile = configPath + "/threat_detector.ini";
 
     QSettings settings(configFile, QSettings::IniFormat);
+    
+    if (settings.contains("enabled")) {
+        _enabled = settings.value("enabled").toBool();
+    }
+    if (settings.contains("processing_tier")) {
+        _currentTier = static_cast<AIProcessingTier>(settings.value("processing_tier").toInt());
+    }
 
     _analysisTimeoutMs = settings.value("analysis_timeout_ms", 10000).toInt();
     _maxConcurrentAnalyses = settings.value("max_concurrent", 4).toInt();
@@ -1172,7 +1225,90 @@ void UniversalThreatDetector::loadConfiguration() {
              << "Whitelist items:" << _whitelist.size();
 }
 
+bool UniversalThreatDetector::loadCPUModel(const QString &modelPath) {
+    return loadModel(modelPath);
+}
+
+bool UniversalThreatDetector::loadGPUModel(const QString &modelPath) {
+    return loadModel(modelPath);
+}
+
+bool UniversalThreatDetector::loadNPUModel(const QString &modelPath) {
+    return loadModel(modelPath);
+}
+
+bool UniversalThreatDetector::loadModel(const QString &modelName) {
+    unloadCurrentModel();
+
+    QString basePath = QCoreApplication::applicationDirPath();
+    QString binPath = basePath + "/ai/llama-server";
+    QString modelPath;
+    if (modelName == "Tier1" || modelName == "Qwen/Qwen2.5-3B-Instruct") {
+        modelPath = basePath + "/ai/models/qwen2.5-3b-utd-q4_k_m.gguf";
+    } else if (modelName == "Tier2" || modelName == "Qwen/Qwen2.5-1.5B-Instruct") {
+        modelPath = basePath + "/ai/models/qwen2.5-1.5b-utd-q8_0.gguf";
+    } else {
+        modelPath = basePath + "/ai/models/qwen2.5-0.5b-utd-q8_0.gguf";
+    }
+
+    if (!QFileInfo::exists(binPath) || !QFileInfo::exists(modelPath)) {
+        qWarning() << "Missing llama-server binary or GGUF model file: " << modelPath;
+        return false;
+    }
+
+    _aiEngine->serverProcess = std::make_unique<QProcess>();
+    
+    QStringList args;
+    args << "-m" << modelPath;
+    args << "--port" << "8080";
+    args << "--host" << "127.0.0.1";
+    args << "-t" << "4";
+    args << "-c" << "2048";
+    args << "-np" << "1";
+
+    _aiEngine->serverProcess->start(binPath, args);
+    if (!_aiEngine->serverProcess->waitForStarted(5000)) {
+        qCritical() << "Failed to start llama-server process!";
+        _aiEngine->serverProcess.reset();
+        return false;
+    }
+    
+    _modelLoaded = true;
+    _aiEngine->currentModelPath = modelPath;
+    Q_EMIT modelLoaded(modelName);
+    qDebug() << "Started llama-server on port 8080 with model:" << modelPath;
+    return true;
+}
+
+void UniversalThreatDetector::unloadCurrentModel() {
+    if (_aiEngine && _aiEngine->serverProcess) {
+        if (_aiEngine->serverProcess->state() != QProcess::NotRunning) {
+            _aiEngine->serverProcess->terminate();
+            if (!_aiEngine->serverProcess->waitForFinished(3000)) {
+                _aiEngine->serverProcess->kill();
+            }
+        }
+        _aiEngine->serverProcess.reset();
+    }
+    _modelLoaded = false;
+    if (_aiEngine) _aiEngine->currentModelPath.clear();
+}
+
+bool UniversalThreatDetector::validateModel(const QString &modelPath) {
+    return QFileInfo::exists(modelPath);
+}
+
+void UniversalThreatDetector::unloadModel() {
+    unloadCurrentModel();
+}
+
+bool UniversalThreatDetector::isModelLoaded() const {
+    return _modelLoaded && _aiEngine && _aiEngine->serverProcess && 
+           _aiEngine->serverProcess->state() == QProcess::Running;
+}
+
 void UniversalThreatDetector::cleanupResources() {
+    unloadCurrentModel();
     if (_analysisThread && _analysisThread->isRunning()) {
         _analysisThread->quit();
         _analysisThread->wait(5000);

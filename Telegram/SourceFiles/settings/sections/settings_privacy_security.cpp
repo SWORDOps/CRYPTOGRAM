@@ -52,6 +52,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "settings/sections/settings_passkeys.h"
 #include "settings/sections/settings_premium.h"
 #include "settings/settings_privacy_controllers.h"
+#include "security/universal_threat_detector.h"
+#include "ui/widgets/checkbox.h"
+
 #include "settings/sections/settings_websites.h"
 #include "storage/storage_domain.h"
 #include "ui/boxes/confirm_box.h"
@@ -534,6 +537,75 @@ void SetupArchiveAndMute(
 namespace {
 
 using namespace Builder;
+
+void BuildThreatDetectorSection(SectionBuilder &builder) {
+	builder.addSkip(st::settingsPrivacySkip);
+	builder.addSubsectionTitle({
+		.id = u"security/ai_threat_detector"_q,
+		.title = rpl::single(QString("Local AI Threat Detector")),
+		.keywords = { u"ai"_q, u"threat"_q, u"detector"_q, u"local"_q },
+	});
+
+	const auto toggle = builder.addButton({
+		.id = u"security/ai_toggle"_q,
+		.title = rpl::single(QString("Enable Local AI Threat Detector")),
+		.st = &st::settingsButtonNoIcon,
+		.toggled = rpl::single(
+			rpl::empty
+		) | rpl::then(
+			rpl::never<bool>() // Just taking the initial state
+		) | rpl::map([=] {
+			return Security::UniversalThreatDetector::instance().isEnabled();
+		}),
+		.keywords = { u"ai"_q, u"enable"_q },
+	});
+
+	if (toggle) {
+		toggle->toggledChanges(
+		) | rpl::on_next([=](bool enabled) {
+			Security::UniversalThreatDetector::instance().setEnabled(enabled);
+		}, toggle->lifetime());
+	}
+	
+	builder.addSkip();
+	builder.addDividerText(rpl::single(QString("Automatically scans incoming messages for phishing, malware, and social engineering using a local AI model (Qwen 2.5). Disable this if you want to save battery life.")));
+	
+	builder.addSkip(st::settingsPrivacySkip);
+	builder.addSubsectionTitle({
+		.id = u"security/ai_tier"_q,
+		.title = rpl::single(QString("AI Processing Tier")),
+	});
+
+    using Tier = Security::AIProcessingTier;
+	const auto group = std::make_shared<Ui::RadioenumGroup<Tier>>(
+		Security::UniversalThreatDetector::instance().getCurrentProcessingTier()
+	);
+
+	group->setChangedCallback([=](Tier value) {
+		Security::UniversalThreatDetector::instance().setProcessingTier(value);
+	});
+
+	const auto addRadio = [&](Tier value, const QString &text) {
+		builder.add([=](const WidgetContext &ctx) {
+			auto radio = object_ptr<Ui::Radioenum<Tier>>(
+				ctx.parent,
+				group,
+				value,
+				text,
+				st::settingsSendType
+			);
+			return radio;
+		});
+	};
+
+	addRadio(Tier::Tier1_NPU_Accelerated, "Tier 1: NPU Accelerated (~2GB VRAM)");
+	addRadio(Tier::Tier2_GPU_Accelerated, "Tier 2: GPU Accelerated (~1GB VRAM)");
+	addRadio(Tier::Tier3_CPU_Optimized,   "Tier 3: CPU Optimized (~500MB RAM)");
+	addRadio(Tier::Tier4_Pattern_Only,    "Tier 4: Pattern Only (0MB VRAM)");
+    
+	builder.addSkip();
+	builder.addDividerText(rpl::single(QString("Manually override the AI processing tier. Tier 4 uses only deterministic patterns (no AI model). Lower tiers save battery and free up GPU/RAM resources.")));
+}
 
 void BuildSecuritySection(
 		SectionBuilder &builder,
@@ -1162,7 +1234,8 @@ void BuildPrivacySecuritySectionContent(SectionBuilder &builder) {
 		return rpl::duplicate(updateOnTick);
 	};
 
-	BuildSecuritySection(builder, trigger());
+		BuildSecuritySection(builder, trigger());
+	BuildThreatDetectorSection(builder);
 	BuildPrivacySection(builder);
 	BuildArchiveAndMuteSection(builder);
 	BuildBotsAndWebsitesSection(builder);

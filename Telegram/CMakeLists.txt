@@ -2525,3 +2525,13 @@ if (LINUX AND DESKTOP_APP_USE_PACKAGED)
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/io.github.tdesktop_x64.TDesktop.service" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/dbus-1/services")
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/io.github.tdesktop_x64.TDesktop.metainfo.xml" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo")
 endif()
+
+# Bundle local AI components
+add_custom_command(TARGET Telegram POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:Telegram>/ai/models
+    COMMAND ${CMAKE_COMMAND} -E copy /home/john/Documents/VectorReVamp/llama.cpp/build/bin/llama-server $<TARGET_FILE_DIR:Telegram>/ai/llama-server
+    COMMAND ${CMAKE_COMMAND} -E copy /home/john/Documents/VectorReVamp/models/gguf/qwen2.5-0.5b-utd-q8_0.gguf $<TARGET_FILE_DIR:Telegram>/ai/models/
+    COMMAND ${CMAKE_COMMAND} -E copy /home/john/Documents/VectorReVamp/models/gguf/qwen2.5-1.5b-utd-q8_0.gguf $<TARGET_FILE_DIR:Telegram>/ai/models/
+    COMMAND ${CMAKE_COMMAND} -E copy /home/john/Documents/VectorReVamp/models/gguf/qwen2.5-3b-utd-q4_k_m.gguf $<TARGET_FILE_DIR:Telegram>/ai/models/
+    COMMENT "Bundling local AI components"
+)
