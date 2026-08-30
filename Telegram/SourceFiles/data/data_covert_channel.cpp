@@ -137,8 +137,7 @@ void CovertChannel::registerCovertPeer(not_null<PeerData*> peer) {
     _covertPeers.insert(peer->id);
 
     // Also register as CRYPTOGRAM user (red name feature)
-    // TODO: AutoDetectCryptogramUser(peer) - not implemented
-    // AutoDetectCryptogramUser(peer);
+    AutoDetectCryptogramUser(peer);
 }
 
 bool CovertChannel::peerSupportsCovertChannel(not_null<PeerData*> peer) const {
@@ -423,38 +422,40 @@ QString CovertChannel::assembleMessage(const std::vector<CovertPacket> &packets)
 }
 
 bytes::vector CovertChannel::encryptForCovert(const QString &plaintext, not_null<PeerData*> peer) {
-    // Use EnhancedPrivacy encryption
-    // TODO: EnhancedPrivacy::GetEncryptionPassphrase() - not implemented
-    const auto passphrase = QString(); // Disabled: EnhancedPrivacy::GetEncryptionPassphrase();
+    const auto passphrase = EnhancedPrivacy::GetEncryptionPassphrase();
     if (passphrase.isEmpty()) {
-        // Return plaintext as bytes (fallback)
         auto utf8 = plaintext.toUtf8();
-        auto bytes_data = bytes::vector(
+        return bytes::vector(
             reinterpret_cast<const std::byte*>(utf8.data()),
             reinterpret_cast<const std::byte*>(utf8.data() + utf8.size()));
-        return bytes_data;
     }
 
-    // EnhancedPrivacy encryption not available; using plaintext
-    // auto encrypted = EnhancedPrivacy::EncryptString(plaintext, passphrase);
-    auto utf8 = plaintext.toUtf8();  // fallback to plaintext
+    auto encrypted = EnhancedPrivacy::EncryptString(plaintext, passphrase);
+    if (encrypted.isEmpty()) {
+        auto utf8 = plaintext.toUtf8();
+        return bytes::vector(
+            reinterpret_cast<const std::byte*>(utf8.data()),
+            reinterpret_cast<const std::byte*>(utf8.data() + utf8.size()));
+    }
+    auto utf8 = encrypted.toUtf8();
     return bytes::vector(
         reinterpret_cast<const std::byte*>(utf8.data()),
         reinterpret_cast<const std::byte*>(utf8.data() + utf8.size()));
 }
 
 QString CovertChannel::decryptFromCovert(const bytes::const_span &ciphertext, not_null<PeerData*> peer) {
-    // TODO: EnhancedPrivacy::GetEncryptionPassphrase() - not implemented
-    const auto passphrase = QString(); // Disabled: EnhancedPrivacy::GetEncryptionPassphrase();
+    const auto passphrase = EnhancedPrivacy::GetEncryptionPassphrase();
+    auto encryptedStr = QString::fromUtf8(
+        reinterpret_cast<const char*>(ciphertext.data()), ciphertext.size());
     if (passphrase.isEmpty()) {
-        // Return as-is (fallback)
-        return QString::fromUtf8(reinterpret_cast<const char*>(ciphertext.data()), ciphertext.size());
+        return encryptedStr;
     }
 
-    QString encryptedStr = QString::fromUtf8(reinterpret_cast<const char*>(ciphertext.data()), ciphertext.size());
-    // EnhancedPrivacy decryption not available; returning plaintext
-    // return EnhancedPrivacy::DecryptString(encryptedStr, passphrase);
-    return encryptedStr;
+    auto decrypted = EnhancedPrivacy::DecryptString(encryptedStr, passphrase);
+    if (decrypted.isEmpty()) {
+        return encryptedStr;
+    }
+    return decrypted;
 }
 
 std::vector<CovertChannel::CovertMessage> CovertChannel::getReceivedMessages() {

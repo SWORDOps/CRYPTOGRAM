@@ -61,6 +61,7 @@ optionsList = [
     'qt6',
     'skip-release',
     'build-stackwalk',
+    'release-only',
 ]
 options = []
 runCommand = []
@@ -232,7 +233,7 @@ def filterByPlatform(commands):
     version = '0'
     skip = False
     for command in commands:
-        m = re.match(r'(!?)([a-z0-9_]+):', command)
+        m = re.match(r'(!?)([a-z0-9_-]+):', command)
         if m and m.group(2) != 'depends' and m.group(2) != 'version':
             scopes = m.group(2).split('_')
             inscope = 'common' in scopes
@@ -248,9 +249,11 @@ def filterByPlatform(commands):
                 inscope = True
             # if linux and 'linux' in scopes:
             #     inscope = True
-            if 'release' in scopes:
+            if 'release' in scopes or 'release-only' in scopes:
                 if 'skip-release' in options:
                     inscope = False
+                elif 'release-only' in scopes and 'release-only' in options:
+                    inscope = True
                 elif len(scopes) == 1:
                     continue
             skip = inscope if m.group(1) == '!' else not inscope
@@ -382,6 +385,10 @@ def runStages():
     index = 0
     for stage in stages:
         if len(onlyStages) > 0 and not stage['name'] in onlyStages:
+            continue
+        skipStages = os.environ.get('SKIP_STAGES', '').split()
+        if stage['name'] in skipStages:
+            print('SKIPPED (SKIP_STAGES)')
             continue
         index = index + 1
         version = ('#' + str(stage['version'])) if (stage['version'] != '0') else ''
@@ -933,6 +940,17 @@ win:
     copy out\\release-static\\$X8664\\lib\\libwebp.lib out\\release-static\\$X8664\\lib\\webp.lib
     copy out\\release-static\\$X8664\\lib\\libwebpdemux.lib out\\release-static\\$X8664\\lib\\webpdemux.lib
     copy out\\release-static\\$X8664\\lib\\libwebpmux.lib out\\release-static\\$X8664\\lib\\webpmux.lib
+    if "%X8664%"=="x64" (
+        set "WEBP_ALIAS_ARCH=x86"
+    ) else if "%X8664%"=="x86" (
+        set "WEBP_ALIAS_ARCH=x64"
+    ) else (
+        set "WEBP_ALIAS_ARCH=%X8664%"
+    )
+    if not exist out\\release-static\\%WEBP_ALIAS_ARCH%\\lib mkdir out\\release-static\\%WEBP_ALIAS_ARCH%\\lib
+    copy out\\release-static\\$X8664\\lib\\libwebp.lib out\\release-static\\%WEBP_ALIAS_ARCH%\\lib\\webp.lib
+    copy out\\release-static\\$X8664\\lib\\libwebpdemux.lib out\\release-static\\%WEBP_ALIAS_ARCH%\\lib\\webpdemux.lib
+    copy out\\release-static\\$X8664\\lib\\libwebpmux.lib out\\release-static\\%WEBP_ALIAS_ARCH%\\lib\\webpmux.lib
 mac:
     buildOneArch() {
         arch=$1
@@ -1089,6 +1107,7 @@ win:
 depends:patches/build_libvpx_win.sh
     %THIRDPARTY_DIR%\\msys64\\usr\\bin\\sed.exe -i "s/-j.NUMBER_OF_PROCESSORS/-j1/g" ../patches/build_libvpx_win.sh
     %THIRDPARTY_DIR%\\msys64\\usr\\bin\\sed.exe -i "s/-j8/-j1/g" ../patches/build_libvpx_win.sh
+    python -c "from pathlib import Path; p=Path('../patches/build_libvpx_win.sh'); slash=chr(92); old='--enable-static-msvcrt '+slash+chr(10); flags=['--disable-mmx','--disable-sse','--disable-sse2','--disable-sse3','--disable-ssse3','--disable-sse4_1','--disable-avx','--disable-avx2','--enable-static-msvcrt']; new=''.join(f+' '+slash+chr(10) for f in flags); p.write_text(p.read_text().replace(old, new))"
     %THIRDPARTY_DIR%\\msys64\\usr\\bin\\sed.exe -i "s/ -m / /g" build/make/gen_msvs_sln.sh
     bash --login ../patches/build_libvpx_win.sh
 mac:
@@ -1589,7 +1608,7 @@ else: # qt > '6'
     stage('qt_' + qt, """
     git clone -b """ + branch + """ https://github.com/qt/qt5.git qt_$QT
     cd qt_$QT
-    git submodule update --init --recursive --progress qtbase qtimageformats qtshadertools qtsvg
+    git submodule update --init --recursive --progress qtbase qtimageformats qtmultimedia qtshadertools qtsvg
 depends:patches/qtbase_""" + qt + """/*.patch
 mac:
     if [ -d "../patches/qt6_highsierra" ]; then
@@ -1601,6 +1620,8 @@ mac:
     CONFIGURATIONS=-debug
 release:
     CONFIGURATIONS=-debug-and-release
+release-only:
+    CONFIGURATIONS=-release
 mac:
     ./configure -prefix "$USED_PREFIX/Qt-$QT" \
         $CONFIGURATIONS \

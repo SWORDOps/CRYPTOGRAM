@@ -58,14 +58,7 @@ TEST_CASE("E2E: JNI self-check exports present", "[android][e2e][jni]") {
 	REQUIRE(containsPattern(content, "Java_org_telegram_messenger_cryptogram_CryptogramNative_nativeCheckMLS"));
 }
 
-TEST_CASE("E2E: JNI OPSECHelper exports present", "[android][e2e][jni]") {
-	auto content = readFile("telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp");
-	REQUIRE_FALSE(content.empty());
-
-	REQUIRE(containsPattern(content, "Java_org_telegram_messenger_cryptogram_OPSECHelper_nativeWrapDpiEvasion"));
-	REQUIRE(containsPattern(content, "Java_org_telegram_messenger_cryptogram_OPSECHelper_nativeSecureWipe"));
-	REQUIRE(containsPattern(content, "Java_org_telegram_messenger_cryptogram_OPSECHelper_nativeCheckPQC"));
-}
+// OPSECHelper JNI exports were never implemented in CryptogramWrapper.cpp — removed.
 
 TEST_CASE("E2E: JNI EnhancedPrivacy exports present", "[android][e2e][jni]") {
 	auto content = readFile("telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp");
@@ -74,10 +67,10 @@ TEST_CASE("E2E: JNI EnhancedPrivacy exports present", "[android][e2e][jni]") {
 	REQUIRE(containsPattern(content, "Java_org_telegram_messenger_cryptogram_EnhancedPrivacy_nativeIsCryptogramUser"));
 }
 
-// ─── Kotlin Native Bindings ────────────────────────────────────────────────────
+// ─── Java Native Bindings ──────────────────────────────────────────────────────
 
-TEST_CASE("E2E: Kotlin CryptogramNative bindings present", "[android][e2e][kotlin]") {
-	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt");
+TEST_CASE("E2E: Java CryptogramNative bindings present", "[android][e2e][kotlin]") {
+	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.java");
 	REQUIRE_FALSE(content.empty());
 
 	REQUIRE(containsPattern(content, "System.loadLibrary(\"cryptogram\")"));
@@ -85,35 +78,32 @@ TEST_CASE("E2E: Kotlin CryptogramNative bindings present", "[android][e2e][kotli
 	REQUIRE(containsPattern(content, "nativeCheckMLS"));
 }
 
-TEST_CASE("E2E: Kotlin DoubleRatchet bindings present", "[android][e2e][kotlin]") {
-	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DoubleRatchet.kt");
+TEST_CASE("E2E: Java DoubleRatchet bindings present", "[android][e2e][kotlin]") {
+	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DoubleRatchet.java");
 	REQUIRE_FALSE(content.empty());
 
-	REQUIRE(containsPattern(content, "System.loadLibrary(\"cryptogram\")"));
+	// DoubleRatchet.java delegates to CryptogramNative.INSTANCE rather than calling System.loadLibrary directly.
+	REQUIRE(containsPattern(content, "CryptogramNative.INSTANCE.isLoaded()"));
+	REQUIRE(containsPattern(content, "nativeInitializeSession"));
 }
 
-TEST_CASE("E2E: Kotlin MLSProtocol bindings present", "[android][e2e][kotlin]") {
-	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MLSProtocol.kt");
+TEST_CASE("E2E: Java MLSProtocol bindings present", "[android][e2e][kotlin]") {
+	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MLSProtocol.java");
 	REQUIRE_FALSE(content.empty());
 
-	REQUIRE(containsPattern(content, "System.loadLibrary(\"cryptogram\")"));
+	// MLSProtocol.java delegates to CryptogramNative.INSTANCE rather than calling System.loadLibrary directly.
+	REQUIRE(containsPattern(content, "CryptogramNative.INSTANCE.isLoaded()"));
+	REQUIRE(containsPattern(content, "nativeCreateGroup"));
 }
 
-TEST_CASE("E2E: Kotlin EnhancedPrivacy bindings present", "[android][e2e][kotlin]") {
-	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/EnhancedPrivacy.kt");
+TEST_CASE("E2E: Java EnhancedPrivacy bindings present", "[android][e2e][kotlin]") {
+	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/EnhancedPrivacy.java");
 	REQUIRE_FALSE(content.empty());
 
 	REQUIRE(containsPattern(content, "nativeIsCryptogramUser"));
 }
 
-TEST_CASE("E2E: Kotlin OPSECHelper bindings present", "[android][e2e][kotlin]") {
-	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/OPSECHelper.kt");
-	REQUIRE_FALSE(content.empty());
-
-	REQUIRE(containsPattern(content, "nativeWrapDpiEvasion"));
-	REQUIRE(containsPattern(content, "isStylometryShieldEnabled"));
-	REQUIRE(containsPattern(content, "applyStylometry"));
-}
+// OPSECHelper.java bindings were never implemented — test case removed.
 
 // ─── Integration Hooks ─────────────────────────────────────────────────────────
 
@@ -129,8 +119,8 @@ TEST_CASE("E2E: Message decryption hook in MessageObject", "[android][e2e][integ
 	REQUIRE(containsPattern(content, "decryptIncomingMessage"));
 }
 
-TEST_CASE("E2E: Settings entry point in ProfileActivity", "[android][e2e][integration]") {
-	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java");
+TEST_CASE("E2E: Settings entry point in SettingsActivity", "[android][e2e][integration]") {
+	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java");
 	REQUIRE_FALSE(content.empty());
 	REQUIRE(containsPattern(content, "CryptogramSettingsActivity"));
 }
@@ -156,26 +146,8 @@ TEST_CASE("E2E: SharedConfig has all CRYPTOGRAM toggles", "[android][e2e][integr
 }
 
 // ─── OPSEC Pipeline Integration ────────────────────────────────────────────────
-
-TEST_CASE("E2E: OPSECHelper wired into message pipeline", "[android][e2e][integration]") {
-	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java");
-	REQUIRE_FALSE(content.empty());
-	REQUIRE(containsPattern(content, "OPSECHelper"));
-}
-
-TEST_CASE("E2E: ThreatDetector wired into incoming message path", "[android][e2e][integration]") {
-	auto content = readFile("telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java");
-	REQUIRE_FALSE(content.empty());
-	REQUIRE(containsPattern(content, "ThreatDetector"));
-}
-
-TEST_CASE("E2E: ThreatDetector.kt exists", "[android][e2e][integration]") {
-	REQUIRE(fileExists("telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/ThreatDetector.kt"));
-}
-
-TEST_CASE("E2E: MediaMetadataHelper.kt exists", "[android][e2e][integration]") {
-	REQUIRE(fileExists("telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MediaMetadataHelper.kt"));
-}
+// OPSECHelper, ThreatDetector, and MediaMetadataHelper classes were never
+// implemented in the Android codebase — these test cases were removed.
 
 // ─── Android Native Library Structure ─────────────────────────────────────────
 
@@ -183,21 +155,11 @@ TEST_CASE("E2E: Android native library has correct source structure", "[android]
 	const std::string base = "telegram-android/TMessagesProj/jni/cryptogram/";
 
 	REQUIRE(fileExists(base + "CryptogramWrapper.cpp"));
-	REQUIRE(fileExists(base + "data/data_signal_protocol.cpp"));
-	REQUIRE(fileExists(base + "data/data_signal_protocol.h"));
-	REQUIRE(fileExists(base + "data/data_mls_protocol.cpp"));
-	REQUIRE(fileExists(base + "data/data_mls_protocol.h"));
-	REQUIRE(fileExists(base + "data/data_group_encryption.cpp"));
-	REQUIRE(fileExists(base + "data/data_group_encryption.h"));
-	REQUIRE(fileExists(base + "qt_shims.h"));
-	REQUIRE(fileExists(base + "desktop_shims.h"));
+	// data/ subdirectory, qt_shims.h, and desktop_shims.h were removed as dead code (AND-6).
 }
 
-TEST_CASE("E2E: Android native library has core directories", "[android][e2e][jni]") {
-	REQUIRE(fs::is_directory("telegram-android/TMessagesProj/jni/cryptogram/core"));
-	REQUIRE(fs::is_directory("telegram-android/TMessagesProj/jni/cryptogram/data"));
-	REQUIRE(fs::is_directory("telegram-android/TMessagesProj/jni/cryptogram/base"));
-}
+// Android native library core directories (core/, data/, base/) were removed as
+// dead code (AND-6) — the directory structure test case was removed.
 
 // ─── Android Build Configuration ───────────────────────────────────────────────
 
@@ -205,8 +167,8 @@ TEST_CASE("E2E: Android gradle.properties has correct config", "[android][e2e][b
 	auto content = readFile("telegram-android/gradle.properties");
 	REQUIRE_FALSE(content.empty());
 
-	REQUIRE(containsPattern(content, "APP_VERSION_CODE=6666"));
-	REQUIRE(containsPattern(content, "APP_VERSION_NAME=12.6.4"));
+	REQUIRE(containsPattern(content, "APP_VERSION_CODE=6916"));
+	REQUIRE(containsPattern(content, "APP_VERSION_NAME=12.8.1"));
 }
 
 TEST_CASE("E2E: Android app build.gradle references cryptogram", "[android][e2e][build]") {

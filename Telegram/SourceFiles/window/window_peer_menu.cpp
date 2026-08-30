@@ -155,16 +155,17 @@ namespace Window {
 namespace {
 
 void PeerMenuDownloadAllFiles(
-		not_null<Window::Navigation*> navigation,
+		not_null<SessionController*> controller,
 		not_null<PeerData*> peer) {
-	auto search = new Api::MessagesSearch(peer->owner().history(peer->id));
-	search->messagesFounds() | rpl::start_with_next([=](const Api::FoundMessages &found) {
+	const auto search = controller->lifetime().make_state<Api::MessagesSearch>(
+		peer->owner().history(peer->id));
+	search->messagesFounds(
+	) | rpl::on_next([=](const Api::FoundMessages &found) {
 		if (found.messages.empty()) {
-			delete search;
 			return;
 		}
 		for (const auto msgId : found.messages) {
-			if (const auto item = peer->owner().message(peer->id, msgId)) {
+			if (const auto item = peer->owner().message(msgId)) {
 				if (const auto media = item->media()) {
 					if (const auto document = media->document()) {
 						document->save(item->fullId(), QString(), LoadFromCloudOrLocal, true);
@@ -173,7 +174,7 @@ void PeerMenuDownloadAllFiles(
 			}
 		}
 		search->searchMore();
-	}, search->lifetime());
+	}, controller->lifetime());
 	search->searchMessages({ .filter = Api::SearchFilter::Files });
 }
 
@@ -1018,9 +1019,9 @@ void Filler::addDirectMessages() {
 }
 
 void Filler::addDownloadAllFiles() {
-	addAction(
+	_addAction(
 		"Download all files",
-		[=] { PeerMenuDownloadAllFiles(_navigation, _peer); },
+		[=] { PeerMenuDownloadAllFiles(_controller, _peer); },
 		&st::menuIconExport);
 }
 

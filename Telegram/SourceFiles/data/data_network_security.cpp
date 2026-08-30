@@ -986,85 +986,8 @@ NetworkSecurityResult NetworkSecurity::fallbackToSoftwareImplementation(const QS
     return NetworkSecurityResult::Success;
 }
 
-#if 0
-// Factory Implementation
-std::unique_ptr<NetworkSecurity> NetworkSecurityFactory::create(not_null<Session*> session) {
-    auto networkSecurity = std::make_unique<NetworkSecurity>(session);
-    const auto defaultConfig = getDefaultConfig(networkSecurity->detectNetworkSecurityTier());
-    networkSecurity->initialize(defaultConfig);
-    return networkSecurity;
-}
-
-std::unique_ptr<NetworkSecurity> NetworkSecurityFactory::createWithConfig(
-        not_null<Session*> session,
-        const NetworkSecurityConfig &config) {
-    auto networkSecurity = std::make_unique<NetworkSecurity>(session);
-    networkSecurity->initialize(config);
-    return networkSecurity;
-}
-
-NetworkSecurityTier NetworkSecurityFactory::detectOptimalTier() {
-    // Detect optimal tier based on system capabilities
-    return NetworkSecurityTier::Tier3_Standard; // Placeholder
-}
-
-QStringList NetworkSecurityFactory::getAvailableFeatures(NetworkSecurityTier tier) {
-    QStringList features;
-
-    switch (tier) {
-    case NetworkSecurityTier::Tier0_Quantum:
-        features << "QuantumObfuscation" << "GNAAcousticSecurity" << "NPUAcceleration";
-        [[fallthrough]];
-    case NetworkSecurityTier::Tier1_Premium:
-        features << "NPUAcceleration" << "HardwareCrypto" << "TPMIntegration";
-        [[fallthrough]];
-    case NetworkSecurityTier::Tier2_Enhanced:
-        features << "GPUAcceleration" << "HardwareRNG";
-        [[fallthrough]];
-    case NetworkSecurityTier::Tier3_Standard:
-        features << "CPUOptimized" << "SoftwareCrypto";
-        [[fallthrough]];
-    case NetworkSecurityTier::Tier4_Universal:
-        features << "BasicObfuscation" << "UniversalCompatibility";
-        break;
-    }
-
-    return features;
-}
-
-NetworkSecurityConfig NetworkSecurityFactory::getDefaultConfig(NetworkSecurityTier tier) {
-    NetworkSecurityConfig config;
-    config.securityTier = tier;
-
-    // Tier-specific defaults
-    switch (tier) {
-    case NetworkSecurityTier::Tier0_Quantum:
-    case NetworkSecurityTier::Tier1_Premium:
-        config.obfuscationMethod = ObfuscationMethod::MultiLayered;
-        config.surveillanceStrategy = AntiSurveillanceStrategy::Paranoid;
-        break;
-
-    case NetworkSecurityTier::Tier2_Enhanced:
-        config.obfuscationMethod = ObfuscationMethod::CustomProtocol;
-        config.surveillanceStrategy = AntiSurveillanceStrategy::Stealth;
-        break;
-
-    case NetworkSecurityTier::Tier3_Standard:
-        config.obfuscationMethod = ObfuscationMethod::HTTPSMimicry;
-        config.surveillanceStrategy = AntiSurveillanceStrategy::Standard;
-        break;
-
-    case NetworkSecurityTier::Tier4_Universal:
-        config.obfuscationMethod = ObfuscationMethod::HTTPSMimicry;
-        config.surveillanceStrategy = AntiSurveillanceStrategy::Performance;
-        config.enableBridgeRelay = false; // Disable intensive features
-        config.enableMeshNetworking = false;
-        break;
-    }
-
-    return config;
-}
-#endif
+// NetworkSecurityFactory implementation lives in data_network_mtproto_integration.cpp
+// to avoid duplicate symbols.
 
 } // namespace Data
 

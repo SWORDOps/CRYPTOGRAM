@@ -23,17 +23,17 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 // Include the real TagLib headers using proper include paths
 #include <taglib/fileref.h>
 #include <taglib/tag.h>
-#include <taglib/mpegfile.h>
-#include <taglib/id3v2tag.h>
-#include <taglib/id3v2frame.h>
-#include <taglib/id3v2header.h>
-#include <taglib/textidentificationframe.h>
-#include <taglib/flacfile.h>
-#include <taglib/mp4file.h>
-#include <taglib/oggfile.h>
-#include <taglib/vorbisfile.h>
-#include <taglib/wavfile.h>
-#include <taglib/tpropertymap.h>
+#include <taglib/mpeg/mpegfile.h>
+#include <taglib/mpeg/id3v2/id3v2tag.h>
+#include <taglib/mpeg/id3v2/id3v2frame.h>
+#include <taglib/mpeg/id3v2/id3v2header.h>
+#include <taglib/mpeg/id3v2/frames/textidentificationframe.h>
+#include <taglib/flac/flacfile.h>
+#include <taglib/mp4/mp4file.h>
+#include <taglib/ogg/oggfile.h>
+#include <taglib/ogg/vorbis/vorbisfile.h>
+#include <taglib/riff/wav/wavfile.h>
+#include <taglib/toolkit/tpropertymap.h>
 #else
 // Define stub TagLib classes when TagLib is not available
 namespace TagLib {
@@ -84,6 +84,13 @@ public:
     static TextWithEntities EncryptMessage(const TextWithEntities &original, const QString &passphrase);
     static TextWithEntities DecryptMessage(const TextWithEntities &encrypted);
     static bool IsEncrypted(const TextWithEntities &text);
+
+    // Low-level AES-256-GCM string encryption/decryption.
+    // EncryptString returns a base64 string of (IV || ciphertext || tag).
+    // DecryptString accepts that base64 string and returns the plaintext
+    // (or an empty string on failure).
+    static QString EncryptString(const QString &text, const QString &key);
+    static QString DecryptString(const QString &base64Text, const QString &key);
     
     // Configuration methods
     static void SetEncryptionEnabled(bool enabled);
@@ -112,6 +119,8 @@ public:
     static void SetKeyHistorySize(int size);
     static int GetKeyHistorySize();
     static void ClearKeyHistory();
+    static QStringList GetKeyHistory();
+    static bool IsKeyInHistory(const QString &fingerprint);
 
     // Metadata injection settings
     static void SetMetadataInjectionEnabled(bool enabled);

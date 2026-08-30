@@ -26,36 +26,79 @@ jobs:
 
       - name: Free Disk Space (macOS)
         run: |
-          sudo rm -rf /Applications/Xcode_13*.app
-          sudo rm -rf /Applications/Xcode_14*.app
-          sudo rm -rf /Library/Developer/CommandLineTools
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          # Keep Xcode (Qt's CMake requires xcodebuild -version) but remove iOS/watchOS/tvOS
+          # platform support (~20-30GB) to free space for the Qt build.
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/WatchOS.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/WatchSimulator.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/AppleTVOS.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/AppleTVSimulator.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/XRiOS.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/XRiOSSimulator.platform
+          # Remove Xcode documentation, dSYM support, and other large non-essential items
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Documentation
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Library/Xcode/Templates
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/usr/share/git-core
+          sudo rm -rf /Applications/Xcode.app/Contents/Resources/Packages
+          sudo rm -rf /Library/Developer/CoreSimulator/Caches
+          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/hostedtoolcache
+          rm -rf ~/Library/Developer/Xcode/DerivedData
+          rm -rf ~/Library/Caches/Homebrew
+          rm -rf /opt/homebrew/share/man /opt/homebrew/share/doc /opt/homebrew/share/info
+          rm -rf /opt/homebrew/Cellar/go
+          rm -rf /opt/homebrew/Cellar/rust
+          rm -rf /opt/homebrew/Cellar/node
+          df -h /
 
 
       - name: Install dependencies
         run: |
           brew install cmake ninja yasm pkg-config autoconf automake libtool meson nasm
-          python3 -m pip install --upgrade pip --break-system-packages
+          python3 -m pip install --upgrade --break-system-packages --ignore-installed pip
+          brew cleanup -s || true
 
       - name: Run prepare.py to build dependencies
         run: |
-          export QT=6
-          python3 Telegram/build/prepare/prepare.py
+          export QT=6.11.1
+          # Skip breakpad and stackwalk stages — they require xcodebuild (full Xcode)
+          # and patches/breakpad.diff which is not present in this repo.
+          export SKIP_STAGES="breakpad stackwalk"
+          # Build Qt release-only to save disk space (skip debug Qt libs)
+          python3 Telegram/build/prepare/prepare.py qt6 release-only
+
+      - name: Free space after dependency build (macOS)
+        run: |
+          # Remove Qt build sources and other large artifacts to free space for the Telegram build
+          rm -rf "$GITHUB_WORKSPACE/Libraries/qt6-everywhere-src-6.11.1"
+          rm -rf "$GITHUB_WORKSPACE/Libraries/BuildLog"/*/*.log
+          find "$GITHUB_WORKSPACE/Libraries/local" -name "*.pdb" -delete 2>/dev/null || true
+          find "$GITHUB_WORKSPACE/Libraries/local" -name "*.prl" -delete 2>/dev/null || true
+          rm -rf "$GITHUB_WORKSPACE/Libraries/local/Qt-6.11.1/translations" 2>/dev/null || true
+          rm -rf "$GITHUB_WORKSPACE/Libraries/local/Qt-6.11.1/doc" 2>/dev/null || true
+          rm -rf "$GITHUB_WORKSPACE/Libraries/local/Qt-6.11.1/examples" 2>/dev/null || true
+          rm -rf "$GITHUB_WORKSPACE/Libraries/local/Qt-6.11.1/tests" 2>/dev/null || true
+          df -h /
 
       - name: Configure CMake
         env:
-          QT: '6'
+          QT: '6.11.1'
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/Libraries/local/Qt-6.11.1;$GITHUB_WORKSPACE/Libraries/local" \
             -DDESKTOP_APP_USE_PACKAGED=OFF \
+            -DDESKTOP_APP_DISABLE_SWIFT6=ON \
             -DTG_OWT_PACKAGED_BUILD=OFF \
             -DTDESKTOP_API_ID=17349 \
             -DTDESKTOP_API_HASH=344583e45741c457fe1862106095a5eb
         
       - name: Build Telegram
         run: |
-          cmake --build build --config Release --parallel 4
+          cmake --build build --config Release --parallel 2
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
@@ -83,8 +126,13 @@ jobs:
           Remove-Item -Recurse -Force "C:\Program Files\dotnet" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "C:\Program Files\Android" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "C:\Haskell Platform" -ErrorAction SilentlyContinue
-          Remove-Item -Recurse -Force "C:\hostedtoolcache\windows\Go" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\hostedtoolcache" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\mysql" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\mingw64" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\Strawberry" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\ProgramData\Package Cache" -ErrorAction SilentlyContinue
           Get-PSDrive C | Select-Object Used,Free
+
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -97,14 +145,17 @@ jobs:
       - name: Run prepare.py to build dependencies
         shell: cmd
         run: |
-          set QT=6
+          set QT=6.11.1
           set Platform=x64
-          python Telegram/build/prepare/prepare.py
+          if exist Libraries\win64\libvpx rmdir /Q /S Libraries\win64\libvpx
+          if exist Libraries\win64\cache_keys\libvpx del /F /Q Libraries\win64\cache_keys\libvpx
+          python Telegram/build/prepare/prepare.py qt6
 
       - name: Configure CMake
         shell: cmd
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDESKTOP_APP_USE_PACKAGED=OFF -DTG_OWT_PACKAGED_BUILD=OFF -DTDESKTOP_API_ID=17349 -DTDESKTOP_API_HASH=344583e45741c457fe1862106095a5eb
+          set QT=6.11.1
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\Libraries\win64\Qt-6.11.1;%GITHUB_WORKSPACE%\Libraries\win64\local" -DDESKTOP_APP_USE_PACKAGED=OFF -DTG_OWT_PACKAGED_BUILD=OFF -DTDESKTOP_API_ID=17349 -DTDESKTOP_API_HASH=344583e45741c457fe1862106095a5eb
 
       - name: Build Telegram
         shell: cmd

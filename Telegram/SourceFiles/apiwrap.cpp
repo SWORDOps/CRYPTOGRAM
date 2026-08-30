@@ -4296,7 +4296,11 @@ void ApiWrap::sendMessage(
 				for (int i = 0; i < b64.size(); i += chunkSize) {
 					QString chunk = b64.mid(i, chunkSize);
 					chunkedText += u" "_q;
-					entities.push_back({EntityType::TextUrl, i / chunkSize, 1, u"tg://cryptogram?part="_q + QString::number(i / chunkSize) + u"&data="_q + chunk});
+					entities.push_back(EntityInText(
+						EntityType::CustomUrl,
+						i / chunkSize,
+						1,
+						u"tg://cryptogram?part="_q + QString::number(i / chunkSize) + u"&data="_q + chunk));
 				}
 				
 				mlsCiphertextLength = rawBytes.size();

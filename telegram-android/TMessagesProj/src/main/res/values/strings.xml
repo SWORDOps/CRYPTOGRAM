@@ -3578,6 +3578,17 @@
     <string name="ResetStatisticsAlert">Do you want to reset your usage statistics?</string>
     <!--privacy settings-->
     <string name="PrivacySettings">Privacy and Security</string>
+    <!--cryptogram settings-->
+    <string name="CryptogramSettings">CRYPTOGRAM Security</string>
+    <string name="CryptogramDoubleRatchet">Double Ratchet Encryption</string>
+    <string name="CryptogramDoubleRatchetInfo">End-to-end encryption for 1-on-1 chats</string>
+    <string name="CryptogramMLS">MLS Group Encryption</string>
+    <string name="CryptogramMLSInfo">End-to-end encryption for group chats</string>
+    <string name="CryptogramNativeStatus">Native Library</string>
+    <string name="CryptogramSelfTest">Run Self-Test</string>
+    <string name="CryptogramSelfTestPass">Passed</string>
+    <string name="CryptogramSelfTestFail">Failed</string>
+    <string name="CryptogramNotLoaded">Not loaded</string>
     <string name="PrivacyTitle">Privacy</string>
     <string name="PrivacyLastSeen">Last Seen &amp; Online</string>
     <string name="PrivacyMessagesContactsAndPremium">My Contacts and Premium users</string>

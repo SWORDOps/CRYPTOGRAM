@@ -53,6 +53,9 @@ import androidx.core.view.inputmethod.InputContentInfoCompat;
 
 import org.json.JSONObject;
 import org.telegram.messenger.audioinfo.AudioInfo;
+import org.telegram.messenger.cryptogram.CryptogramMessageHelper;
+import org.telegram.messenger.cryptogram.DpiEvasionHelper;
+import org.telegram.messenger.cryptogram.StylometryShield;
 import org.telegram.messenger.support.SparseLongArray;
 import org.telegram.messenger.utils.tlutils.AmountUtils;
 import org.telegram.messenger.utils.tlutils.TlUtils;
@@ -4104,6 +4107,18 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         }
         if (message == null && caption == null && inputRichMessage == null) {
             caption = "";
+        }
+
+        if (message != null && !DialogObject.isEncryptedDialog(peer)) {
+            if (SharedConfig.cryptogramStylometryShield) {
+                StylometryShield shield = StylometryShield.getInstance();
+                shield.setEnabled(true);
+                message = shield.anonymize(message);
+            }
+            if (SharedConfig.cryptogramDpiEvasion) {
+                message = DpiEvasionHelper.getInstance().applyPadding(message);
+            }
+            message = CryptogramMessageHelper.encryptOutgoingMessage(currentAccount, message, peer);
         }
 
         long _payStars = getMessagesController().getSendPaidMessagesStars(peer);
@@ -11890,5 +11905,4 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             out.force(true);
         }}
     }
-    public void encryptOutgoingMessage() {}
 }

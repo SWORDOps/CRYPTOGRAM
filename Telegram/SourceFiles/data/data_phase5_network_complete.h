@@ -231,15 +231,23 @@ public:
      */
     QString getHardwareCompatibilityReport() const;
 
+Q_SIGNALS:
     // Initialization and status
+    void networkSecurityReady(NetworkSecurityTier tier, const QStringList &features);
+    void securityTierChanged(NetworkSecurityTier oldTier, NetworkSecurityTier newTier);
 
     // Security events
+    void threatDetected(const TrafficAnalysisResult &result);
 
     // Network status
+    void secureConnectionEstablished(const QString &connectionType);
+    void secureConnectionLost(const QString &connectionType);
 
     // Performance and monitoring
 
     // Errors and warnings
+    void networkSecurityWarning(const QString &warning);
+    void networkSecurityError(NetworkSecurityResult result, const QString &message);
 
 private:
     // Core components

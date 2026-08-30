@@ -1,3 +1,6 @@
+# Forked submodules:
+# - cmake: SWORDOps/cmake_helpers (fork for zlib lib name fix in qt/package.cmake)
+# - Telegram/ThirdParty/libsignal: SWORDOps/libsignal-protocol-c (fork for MSVC C compile fix)
 [submodule "Telegram/ThirdParty/GSL"]
 	path = Telegram/ThirdParty/GSL
 	url = https://github.com/Microsoft/GSL.git
@@ -39,7 +42,7 @@
 	url = https://github.com/TDesktop-x64/lib_storage.git
 [submodule "cmake"]
 	path = cmake
-	url = https://github.com/TDesktop-x64/cmake_helpers.git
+	url = https://github.com/SWORDOps/cmake_helpers.git
 [submodule "Telegram/ThirdParty/expected"]
 	path = Telegram/ThirdParty/expected
 	url = https://github.com/TartanLlama/expected
@@ -93,13 +96,13 @@
 	url = https://github.com/desktop-app/tg_owt.git
 [submodule "Telegram/ThirdParty/taglib"]
 	path = Telegram/ThirdParty/taglib
-	url = https://github.com/taglib/taglib
+	url = https://github.com/SWORDOps/taglib
 [submodule "Telegram/ThirdParty/openmls"]
 	path = Telegram/ThirdParty/openmls
 	url = https://github.com/openmls/openmls
 [submodule "Telegram/ThirdParty/libsignal"]
 	path = Telegram/ThirdParty/libsignal
-	url = https://github.com/signalapp/libsignal-protocol-c
+	url = https://github.com/SWORDOps/libsignal-protocol-c
 [submodule "Telegram/ThirdParty/cld3"]
 	path = Telegram/ThirdParty/cld3
 	url = https://github.com/google/cld3.git

@@ -26,13 +26,25 @@ jobs:
   android:
     name: Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 240
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN }}
+          token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
       - name: Apply Custom Android Theme
         run: |
@@ -63,11 +75,16 @@ jobs:
         run: |
           sdkmanager --install "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
-          echo "ANDROID_NDK=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
 
       - name: Install CMake for Android
         run: |
           sdkmanager --install "cmake;3.22.1"
+
+      - name: Install OS dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ninja-build yasm nasm
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -84,16 +101,17 @@ jobs:
       - name: Build Debug APK
         run: |
           cd telegram-android
-          ./gradlew assembleAfatDebug --stacktrace --no-daemon
+          ./gradlew :TMessagesProj_App:assembleAfatDebug --stacktrace --no-daemon
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
 
       - name: Build Release APK
         run: |
           cd telegram-android
           if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
             echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/cryptogram.keystore
-            ./gradlew assembleAfatRelease \
+            ./gradlew :TMessagesProj_App:assembleAfatRelease \
               -Pandroid.injected.signing.store.file=/tmp/cryptogram.keystore \
               -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
               -Pandroid.injected.signing.key.alias=${{ secrets.KEYSTORE_ALIAS }} \
@@ -101,23 +119,36 @@ jobs:
               --stacktrace --no-daemon
           else
             echo "No signing secrets — building unsigned release"
-            ./gradlew assembleAfatRelease --stacktrace --no-daemon
+            ./gradlew :TMessagesProj_App:assembleAfatRelease --stacktrace --no-daemon
           fi
-        continue-on-error: true
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
 
       - name: Collect APKs
         id: collect-apk
         run: |
           mkdir -p artifacts/android
-          find telegram-android/TMessagesProj*/build/outputs/apk -name "*.apk" -type f -exec cp {} artifacts/android/ \; || true
-          ls -lh artifacts/android/ || true
-
-          DEBUG_APK=$(find artifacts/android -name "*debug*.apk" | head -1)
-          RELEASE_APK=$(find artifacts/android -name "*release*.apk" | head -1)
-          echo "debug_apk=$DEBUG_APK" >> $GITHUB_OUTPUT
-          echo "release_apk=$RELEASE_APK" >> $GITHUB_OUTPUT
+          # The build.gradle hardcodes outputFileName = "app.apk", so we need to
+          # detect the build type from the output path and rename accordingly.
+          APK_SRC=$(find telegram-android/TMessagesProj*/build/outputs/apk -name "*.apk" -type f | head -1)
+          if [ -z "$APK_SRC" ]; then
+            echo "No APK found!"
+            exit 1
+          fi
+          echo "Found APK at: $APK_SRC"
+          if echo "$APK_SRC" | grep -q "debug"; then
+            cp "$APK_SRC" artifacts/android/cryptogram-debug.apk
+            echo "debug_apk=artifacts/android/cryptogram-debug.apk" >> $GITHUB_OUTPUT
+          elif echo "$APK_SRC" | grep -q "release"; then
+            cp "$APK_SRC" artifacts/android/cryptogram-release.apk
+            echo "release_apk=artifacts/android/cryptogram-release.apk" >> $GITHUB_OUTPUT
+          else
+            # Fallback: treat as release (the default build type in CI)
+            cp "$APK_SRC" artifacts/android/cryptogram-release.apk
+            echo "release_apk=artifacts/android/cryptogram-release.apk" >> $GITHUB_OUTPUT
+          fi
+          ls -lh artifacts/android/
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
@@ -316,19 +347,48 @@ jobs:
         with:
           submodules: recursive
           token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Free Disk Space (macOS)
+        run: |
+          # Keep Xcode (Qt's CMake requires xcodebuild -version) but remove iOS/watchOS/tvOS
+          # platform support (~20-30GB) to free space for the Qt build.
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/WatchOS.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/WatchSimulator.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/AppleTVOS.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/AppleTVSimulator.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/XRiOS.platform
+          sudo rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/XRiOSSimulator.platform
+          sudo rm -rf /Library/Developer/CoreSimulator/Caches
+          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          rm -rf ~/Library/Developer/Xcode/DerivedData
+          rm -rf ~/Library/Caches/Homebrew
+          df -h /
+
       - name: Install dependencies
         run: |
-          brew install cmake ninja yasm pkg-config autoconf automake libtool
-          python3 -m pip install --upgrade pip --break-system-packages
+          brew install cmake ninja yasm pkg-config autoconf automake libtool meson nasm
+          python3 -m pip install --upgrade --break-system-packages --ignore-installed pip
+          brew cleanup -s || true
+
       - name: Run prepare.py to build dependencies
         run: |
-          export QT=6
-          python3 Telegram/build/prepare/prepare.py
+          export QT=6.11.1
+          # Skip breakpad and stackwalk stages — they require xcodebuild (full Xcode)
+          # and patches/breakpad.diff which is not present in this repo.
+          export SKIP_STAGES="breakpad stackwalk"
+          python3 Telegram/build/prepare/prepare.py qt6
       - name: Configure CMake
+        env:
+          QT: '6.11.1'
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/Libraries/local/Qt-6.11.1;$GITHUB_WORKSPACE/Libraries/local" \
             -DDESKTOP_APP_USE_PACKAGED=OFF \
+            -DDESKTOP_APP_DISABLE_SWIFT6=ON \
             -DTG_OWT_PACKAGED_BUILD=OFF \
             -DTDESKTOP_API_ID=17349 \
             -DTDESKTOP_API_HASH=344583e45741c457fe1862106095a5eb
@@ -368,18 +428,39 @@ jobs:
         with:
           submodules: recursive
           token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Free Disk Space (Windows)
+        shell: powershell
+        run: |
+          Remove-Item -Recurse -Force "C:\Program Files\dotnet" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\Program Files\Android" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\Haskell Platform" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\hostedtoolcache" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\mysql" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\mingw64" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\Strawberry" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\ProgramData\Package Cache" -ErrorAction SilentlyContinue
+          Get-PSDrive C | Select-Object Used,Free
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Setup Visual Studio Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
       - name: Run prepare.py to build dependencies
         shell: cmd
         run: |
-          set QT=6
+          set QT=6.11.1
           set Platform=x64
-          python Telegram/build/prepare/prepare.py
+          if exist Libraries\win64\libvpx rmdir /Q /S Libraries\win64\libvpx
+          if exist Libraries\win64\cache_keys\libvpx del /F /Q Libraries\win64\cache_keys\libvpx
+          python Telegram/build/prepare/prepare.py qt6
       - name: Configure CMake
         shell: cmd
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDESKTOP_APP_USE_PACKAGED=OFF -DTG_OWT_PACKAGED_BUILD=OFF -DTDESKTOP_API_ID=17349 -DTDESKTOP_API_HASH=344583e45741c457fe1862106095a5eb
+          set QT=6.11.1
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\Libraries\win64\Qt-6.11.1;%GITHUB_WORKSPACE%\Libraries\win64\local" -DDESKTOP_APP_USE_PACKAGED=OFF -DTG_OWT_PACKAGED_BUILD=OFF -DTDESKTOP_API_ID=17349 -DTDESKTOP_API_HASH=344583e45741c457fe1862106095a5eb
       - name: Build Telegram
         shell: cmd
         run: |
