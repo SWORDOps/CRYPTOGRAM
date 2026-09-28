@@ -11,17 +11,17 @@ warn_count=0
 
 log_pass() {
     printf '[PASS] %s\n' "$1"
-    ((pass_count++))
+    pass_count=$((pass_count + 1))
 }
 
 log_fail() {
     printf '[FAIL] %s\n' "$1"
-    ((fail_count++))
+    fail_count=$((fail_count + 1))
 }
 
 log_warn() {
     printf '[WARN] %s\n' "$1"
-    ((warn_count++))
+    warn_count=$((warn_count + 1))
 }
 
 require_file() {
