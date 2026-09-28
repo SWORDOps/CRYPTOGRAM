@@ -29,6 +29,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/history_view_transcribe_button.h"
 #include "history/view/history_view_summary_header.h"
 #include "history/view/history_view_view_button.h" // ViewButton.
+#include "security/universal_threat_detector.h"
+
+#include <QMutex>
+#include <QMutexLocker>
+#include <QSet>
 #include "history/history.h"
 #include "iv/iv_instance.h"
 #include "iv/iv_rich_page.h"
@@ -442,11 +447,6 @@ struct BadgePillGeometry {
 		.height = height,
 	};
 }
-
-#include "security/universal_threat_detector.h"
-#include <QSet>
-#include <QMutex>
-#include <QMutexLocker>
 
 static QSet<QString> FlaggedThreatMessages;
 static QMutex FlaggedThreatMessagesMutex;

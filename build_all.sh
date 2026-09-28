@@ -347,6 +347,18 @@ patch_desktop_source_helpers() {
         sed -i 's|return qEnvironmentVariableIsSet(kAlwaysOnEnvironmentVariable);|return std::getenv(kAlwaysOnEnvironmentVariable) != nullptr;|' "$screen_reader_cpp"
         log "PATCH" "Replaced qEnvironmentVariableIsSet include/use in lib_base screen reader helper"
     fi
+
+    # CRYPTOGRAM overrides Platform::DeviceModelPretty/SystemVersionPretty in
+    # SourceFiles/platform/device_randomizer.cpp (spoofed device identities).
+    # Make the lib_base definitions weak so the app-level strong definitions
+    # win at link time instead of producing duplicate-symbol errors.
+    local base_info_cpp="${CRYPTOGRAM_ROOT}/Telegram/lib_base/base/platform/linux/base_info_linux.cpp"
+    if [ -f "$base_info_cpp" ] && ! grep -q '__attribute__((weak)) QString DeviceModelPretty' "$base_info_cpp"; then
+        print_progress "Patching lib_base platform info for CRYPTOGRAM device-model overrides..."
+        sed -i 's|^QString DeviceModelPretty() {|__attribute__((weak)) QString DeviceModelPretty() {|' "$base_info_cpp"
+        sed -i 's|^QString SystemVersionPretty() {|__attribute__((weak)) QString SystemVersionPretty() {|' "$base_info_cpp"
+        log "PATCH" "Weakened lib_base DeviceModelPretty/SystemVersionPretty for app override"
+    fi
 }
 
 ensure_system_dependencies() {

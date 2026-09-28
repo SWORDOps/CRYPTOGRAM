@@ -69,7 +69,8 @@ void CovertChannel::derivePacketSigningKey() {
     if (!kdf) {
         // Fallback: plain HMAC of the session key with fixed label
         const char *label = "CovertChannel-PacketMAC";
-        bytes::vector labelBytes(label, label + strlen(label));
+        const auto *labelBytesPtr = reinterpret_cast<const std::byte *>(label);
+        bytes::vector labelBytes(labelBytesPtr, labelBytesPtr + strlen(label));
         _packetSigningKey = computeHMAC(bytes::make_span(_sessionKey), bytes::make_span(labelBytes));
         return;
     }
@@ -99,7 +100,8 @@ void CovertChannel::derivePacketSigningKey() {
             params) != 1) {
         // Fallback on failure
         const char *lb = "CovertChannel-PacketMAC";
-        bytes::vector lbVec(lb, lb + strlen(lb));
+        const auto *lbPtr = reinterpret_cast<const std::byte *>(lb);
+        bytes::vector lbVec(lbPtr, lbPtr + strlen(lb));
         _packetSigningKey = computeHMAC(bytes::make_span(_sessionKey), bytes::make_span(lbVec));
     }
     EVP_KDF_CTX_free(ctx);

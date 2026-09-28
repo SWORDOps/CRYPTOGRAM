@@ -551,12 +551,8 @@ void BuildThreatDetectorSection(SectionBuilder &builder) {
 		.title = rpl::single(QString("Enable Local AI Threat Detector")),
 		.st = &st::settingsButtonNoIcon,
 		.toggled = rpl::single(
-			rpl::empty
-		) | rpl::then(
-			rpl::never<bool>() // Just taking the initial state
-		) | rpl::map([=] {
-			return Security::UniversalThreatDetector::instance().isEnabled();
-		}),
+			Security::UniversalThreatDetector::instance().isEnabled()
+		),
 		.keywords = { u"ai"_q, u"enable"_q },
 	});
 
@@ -585,23 +581,26 @@ void BuildThreatDetectorSection(SectionBuilder &builder) {
 		Security::UniversalThreatDetector::instance().setProcessingTier(value);
 	});
 
-	const auto addRadio = [&](Tier value, const QString &text) {
-		builder.add([=](const WidgetContext &ctx) {
-			auto radio = object_ptr<Ui::Radioenum<Tier>>(
-				ctx.parent,
-				group,
-				value,
-				text,
-				st::settingsSendType
-			);
-			return radio;
+	const auto addRadio = [&](Tier value, const QString &text, const QString &id) {
+		builder.addControl({
+			.factory = [=](not_null<Ui::VerticalLayout*> container)
+					-> object_ptr<Ui::RpWidget> {
+				return object_ptr<Ui::Radioenum<Tier>>(
+					container,
+					group,
+					value,
+					text,
+					st::settingsSendType);
+			},
+			.id = id,
+			.title = rpl::single(text),
 		});
 	};
 
-	addRadio(Tier::Tier1_NPU_Accelerated, "Tier 1: NPU Accelerated (~2GB VRAM)");
-	addRadio(Tier::Tier2_GPU_Accelerated, "Tier 2: GPU Accelerated (~1GB VRAM)");
-	addRadio(Tier::Tier3_CPU_Optimized,   "Tier 3: CPU Optimized (~500MB RAM)");
-	addRadio(Tier::Tier4_Pattern_Only,    "Tier 4: Pattern Only (0MB VRAM)");
+	addRadio(Tier::Tier1_NPU_Accelerated, "Tier 1: NPU Accelerated (~2GB VRAM)", u"security/ai_tier_1"_q);
+	addRadio(Tier::Tier2_GPU_Accelerated, "Tier 2: GPU Accelerated (~1GB VRAM)", u"security/ai_tier_2"_q);
+	addRadio(Tier::Tier3_CPU_Optimized,   "Tier 3: CPU Optimized (~500MB RAM)", u"security/ai_tier_3"_q);
+	addRadio(Tier::Tier4_Pattern_Only,    "Tier 4: Pattern Only (0MB VRAM)", u"security/ai_tier_4"_q);
     
 	builder.addSkip();
 	builder.addDividerText(rpl::single(QString("Manually override the AI processing tier. Tier 4 uses only deterministic patterns (no AI model). Lower tiers save battery and free up GPU/RAM resources.")));
