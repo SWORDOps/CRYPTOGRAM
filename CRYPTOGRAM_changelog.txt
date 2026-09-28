@@ -1,0 +1,10 @@
+CRYPTOGRAM Changelog
+===================
+
+Unreleased
+----------
+- Wire CRYPTOGRAM encryption into Android message pipeline (P1)
+- Wire desktop incoming message decryption (P2)
+- Fix EnhancedPrivacy AES-256-GCM encryption/decryption
+- Fix CovertChannel encryption/decryption
+- Fix CI builds for macOS, Windows, Linux, Android

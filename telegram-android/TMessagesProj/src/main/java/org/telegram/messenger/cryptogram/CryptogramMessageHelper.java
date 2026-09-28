@@ -73,7 +73,7 @@ public class CryptogramMessageHelper {
      */
     private static String encrypt1on1Message(int accountInstance, String message, long userId) {
         // Check if Double Ratchet is enabled
-        if (!SharedConfig.cryptogramDoubleRatchetEnabled) {
+        if (!SharedConfig.cryptogramDoubleRatchet) {
             return message;
         }
         // Require remote capability before transforming user-visible payload.
@@ -135,7 +135,7 @@ public class CryptogramMessageHelper {
      */
     private static String encryptGroupMessage(int accountInstance, String message, long groupId) {
         // Check if MLS is enabled
-        if (!SharedConfig.cryptogramMLSEnabled) {
+        if (!SharedConfig.cryptogramMLS) {
             return message;
         }
 
@@ -302,10 +302,10 @@ public class CryptogramMessageHelper {
 
         if (isGroup) {
             // For groups, check if MLS is enabled
-            return SharedConfig.cryptogramMLSEnabled;
+            return SharedConfig.cryptogramMLS;
         } else {
             // For 1-on-1, require both local toggle and remote capability.
-            return SharedConfig.cryptogramDoubleRatchetEnabled
+            return SharedConfig.cryptogramDoubleRatchet
                 && EnhancedPrivacy.INSTANCE.isCryptogramUser(peerId);
         }
     }

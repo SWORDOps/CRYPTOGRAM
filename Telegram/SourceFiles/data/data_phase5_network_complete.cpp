@@ -19,7 +19,15 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 namespace Data {
 
 // Phase5NetworkSecurity Implementation
-class Phase5NetworkSecurity::NetworkSecuredMTPConnection {};
+//
+// TODO: Not yet implemented. NetworkSecuredMTPConnection is an empty
+// placeholder scaffolded for future network-level MTPProto security work.
+// When implemented it should wrap an MTP connection to apply obfuscation
+// and threat analysis to outgoing/incoming MTPProto traffic directly.
+class Phase5NetworkSecurity::NetworkSecuredMTPConnection {
+	// TODO: Not yet implemented. Add secureOutgoingData() and
+	// secureIncomingData() methods plus the underlying connection state.
+};
 
 Phase5NetworkSecurity::Phase5NetworkSecurity(not_null<Session*> session)
     : QObject()
@@ -52,24 +60,23 @@ NetworkSecurityResult Phase5NetworkSecurity::initializeWithConfig(const NetworkS
         // Initialize universal security
         auto result = _universalSecurity->initializeUniversalSecurity();
         if (result != NetworkSecurityResult::Success) {
-            // // // // emit networkSecurityError(result, "Universal security initialization failed");
+            Q_EMIT networkSecurityError(result, "Universal security initialization failed");
             return result;
         }
 
         // Create main network security instance
         _networkSecurity = NetworkSecurityFactory::createWithConfig(_session, config);
         if (!_networkSecurity) {
-
+            Q_EMIT networkSecurityError(
+                NetworkSecurityResult::InitializationFailed,
+                "Failed to create network security instance");
             return NetworkSecurityResult::InitializationFailed;
         }
 
-        // Setup integration components
+        // TODO: Not yet implemented. The following setup helpers are not yet
+        // defined and remain scaffolded for future integration work.
         // _setupNetworkSecurityIntegration();
-
-        // Connect all signals
         // _connectSignals();
-
-        // Perform initial configuration
         // _performInitialConfiguration();
 
         // Update state
@@ -78,13 +85,13 @@ NetworkSecurityResult Phase5NetworkSecurity::initializeWithConfig(const NetworkS
         _initialized = true;
 
         // Emit ready signal
-        // // // // emit networkSecurityReady(_currentTier, _availableFeatures);
+        Q_EMIT networkSecurityReady(_currentTier, _availableFeatures);
 
         return NetworkSecurityResult::Success;
 
     } catch (...) {
-        // // // // emit networkSecurityError(NetworkSecurityResult::InitializationFailed,
-        //                         "Phase 5 configuration failed due to exception");
+        Q_EMIT networkSecurityError(NetworkSecurityResult::InitializationFailed,
+                                  "Phase 5 configuration failed due to exception");
         return NetworkSecurityResult::InitializationFailed;
     }
 }
@@ -107,8 +114,11 @@ bytes::vector Phase5NetworkSecurity::secureOutgoingMTPData(const bytes::const_sp
         return bytes::vector(mtpData.begin(), mtpData.end());
     }
 
+    // TODO: Not yet implemented. NetworkSecuredMTPConnection has no
+    // secureOutgoingData() method yet, so the dedicated MTP-level securing
+    // path is a pass-through. The universal obfuscation fallback below is
+    // used instead until the MTP integration is completed.
     if (_mtpIntegration) {
-        // NetworkSecuredMTPConnection is incomplete, cannot call secureOutgoingData
         // return _mtpIntegration->secureOutgoingData(mtpData);
     }
 
@@ -118,7 +128,7 @@ bytes::vector Phase5NetworkSecurity::secureOutgoingMTPData(const bytes::const_sp
         return obfuscationResult->obfuscatedData;
     }
 
-    // Ultimate fallback - return original data
+    // Ultimate fallback - return original data unchanged
     return bytes::vector(mtpData.begin(), mtpData.end());
 }
 
@@ -129,19 +139,21 @@ base::expected<bytes::vector, NetworkSecurityResult> Phase5NetworkSecurity::proc
         return bytes::vector(securedData.begin(), securedData.end());
     }
 
+    // TODO: Not yet implemented. NetworkSecuredMTPConnection has no
+    // secureIncomingData() method yet, so the dedicated MTP-level processing
+    // path is a pass-through. Traffic analysis below is still performed.
     if (_mtpIntegration) {
-        // NetworkSecuredMTPConnection is incomplete, cannot call secureIncomingData
         // return _mtpIntegration->secureIncomingData(securedData);
     }
 
     // Analyze traffic for threats
     const auto analysisResult = _networkSecurity->analyzeTraffic(securedData);
     if (analysisResult.threatDetected && analysisResult.riskLevel > 0.9f) {
-        // // // // emit threatDetected(analysisResult);
+        Q_EMIT threatDetected(analysisResult);
         return base::make_unexpected(NetworkSecurityResult::TrafficAnalysisDetected);
     }
 
-    // Return processed data
+    // Return processed data unchanged (MTP-level processing not yet implemented)
     return bytes::vector(securedData.begin(), securedData.end());
 }
 
@@ -153,7 +165,7 @@ QNetworkProxy Phase5NetworkSecurity::createSecureProxy() {
     auto proxy = _networkSecurity->createSecureProxy();
 
     if (proxy.type() != QNetworkProxy::NoProxy) {
-        // // // // emit secureConnectionEstablished("Proxy");
+        Q_EMIT secureConnectionEstablished("Proxy");
     }
 
     return proxy;
@@ -175,7 +187,7 @@ void Phase5NetworkSecurity::enableContinuousMonitoring(bool enable) {
     _networkSecurity->enableContinuousMonitoring(enable);
 
     if (enable) {
-        // // // // emit networkSecurityWarning("Continuous monitoring enabled - may impact performance");
+        Q_EMIT networkSecurityWarning("Continuous monitoring enabled - may impact performance");
     }
 }
 
@@ -193,13 +205,13 @@ NetworkSecurityResult Phase5NetworkSecurity::forceTorConnection() {
     }
 
     if (!isFeatureAvailable("TorIntegration")) {
-        // // // // emit networkSecurityWarning("Tor integration not available on current hardware tier");
+        Q_EMIT networkSecurityWarning("Tor integration not available on current hardware tier");
         return NetworkSecurityResult::TorConnectionFailed;
     }
 
     auto result = _networkSecurity->connectTor();
     if (result == NetworkSecurityResult::Success) {
-        // // // // emit secureConnectionEstablished("Tor");
+        Q_EMIT secureConnectionEstablished("Tor");
     }
 
     return result;
@@ -211,7 +223,7 @@ NetworkSecurityResult Phase5NetworkSecurity::connectVPN() {
     }
 
     if (!isFeatureAvailable("VPNIntegration")) {
-        // // // // emit networkSecurityWarning("VPN integration not available on current hardware tier");
+        Q_EMIT networkSecurityWarning("VPN integration not available on current hardware tier");
         return NetworkSecurityResult::VPNConnectionFailed;
     }
 
@@ -229,7 +241,7 @@ NetworkSecurityResult Phase5NetworkSecurity::connectVPN() {
 
     auto result = _networkSecurity->connectVPN();
     if (result == NetworkSecurityResult::Success) {
-        // // // // emit secureConnectionEstablished("VPN");
+        Q_EMIT secureConnectionEstablished("VPN");
     }
 
     return result;
@@ -241,13 +253,13 @@ NetworkSecurityResult Phase5NetworkSecurity::joinMeshNetwork() {
     }
 
     if (!isFeatureAvailable("MeshNetworking")) {
-        // // // // emit networkSecurityWarning("Mesh networking not available on current hardware tier");
+        Q_EMIT networkSecurityWarning("Mesh networking not available on current hardware tier");
         return NetworkSecurityResult::MeshNetworkFailed;
     }
 
     auto result = _networkSecurity->joinMeshNetwork();
     if (result == NetworkSecurityResult::Success) {
-        // // // // emit secureConnectionEstablished("Mesh");
+        Q_EMIT secureConnectionEstablished("Mesh");
     }
 
     return result;
@@ -263,7 +275,7 @@ NetworkSecurityResult Phase5NetworkSecurity::disconnectAdvancedFeatures() {
     _networkSecurity->disconnectTor();
     _networkSecurity->leaveMeshNetwork();
 
-    // // // // emit secureConnectionLost("All");
+    Q_EMIT secureConnectionLost("All");
     return NetworkSecurityResult::Success;
 }
 
@@ -327,7 +339,7 @@ bool Phase5NetworkSecurity::runSelfTest() {
         // Test feature availability
         for (const auto &feature : _availableFeatures) {
             if (!isFeatureAvailable(feature)) {
-                // // // // emit networkSecurityWarning(QString("Self-test warning: Feature '%1' not available").arg(feature));
+                Q_EMIT networkSecurityWarning(QString("Self-test warning: Feature '%1' not available").arg(feature));
             }
         }
 
@@ -405,7 +417,7 @@ void Phase5NetworkSecurity::optimizeForCurrentHardware() {
         // Update available features
         _availableFeatures = NetworkSecurityFactory::getAvailableFeatures(newTier);
 
-        // // // // emit securityTierChanged(oldTier, newTier);
+        Q_EMIT securityTierChanged(oldTier, newTier);
     }
 
     // Optimize universal security for current hardware

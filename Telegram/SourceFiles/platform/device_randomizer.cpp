@@ -335,4 +335,4 @@ QString SystemVersionPretty() {
     #endif
 }
 
-} // namespace Platform 
+} // namespace Platform

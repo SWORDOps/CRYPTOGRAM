@@ -97,3 +97,13 @@ target_link_libraries(test_e2e_counterintelligence
     PRIVATE
     Catch2::Catch2WithMain
 )
+
+add_executable(test_e2e_roundtrip
+    test_e2e_roundtrip.cpp
+)
+
+target_link_libraries(test_e2e_roundtrip
+    PRIVATE
+    Catch2::Catch2WithMain
+    OpenSSL::Crypto
+)

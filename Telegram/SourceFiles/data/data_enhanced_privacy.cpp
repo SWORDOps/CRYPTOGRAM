@@ -46,20 +46,23 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QFileInfo>
 #include <QPainter>
 
-// TagLib includes for audio metadata
-// #include <taglib/fileref.h>
-// #include <taglib/tag.h>
-// #include <taglib/mpegfile.h>
-// #include <taglib/id3v2tag.h>
-// #include <taglib/id3v2frame.h>
-// #include <taglib/id3v2header.h>
-// #include <taglib/textidentificationframe.h>
-// #include <taglib/flacfile.h>
-// #include <taglib/mp4file.h>
-// #include <taglib/oggfile.h>
-// #include <taglib/vorbisfile.h>
-// #include <taglib/wavfile.h>
-// #include <taglib/tpropertymap.h>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+
+// NOTE: TagLib (audio metadata library) is linked into the Telegram build
+// target when HAVE_TAGLIB is defined. Audio metadata spoofing/stripping/
+// disarming uses TagLib's format-specific file handlers. Image (JPEG/EXIF)
+// metadata spoofing works via Qt's QImageWriter.
+
+#ifdef HAVE_TAGLIB
+#include <taglib/tag.h>
+#include <taglib/fileref.h>
+#include <taglib/mpeg/mpegfile.h>
+#include <taglib/flac/flacfile.h>
+#include <taglib/riff/wav/wavfile.h>
+#include <taglib/ogg/vorbis/vorbisfile.h>
+#include <taglib/mp4/mp4file.h>
+#endif
 
 namespace Data {
 
@@ -247,10 +250,6 @@ bool IsVideoFormat(const QString &format, const QByteArray &bytes) {
 
 } // anonymous namespace
 
-// Forward declarations for encryption helpers
-static QString EncryptString(const QString &text, const QString &key);
-static QString DecryptString(const QString &base64Text, const QString &key);
-
 // Client-side encryption wrapper for messages
 TextWithEntities EnhancedPrivacy::EncryptMessage(const TextWithEntities &original, const QString &passphrase) {
     if (!IsEncryptionEnabled() || passphrase.isEmpty()) {
@@ -282,7 +281,7 @@ TextWithEntities EnhancedPrivacy::EncryptMessage(const TextWithEntities &origina
     QString jsonData = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
 
     // Encrypt the JSON data
-    QString encryptedBase64 = EncryptString(jsonData, passphrase);
+    QString encryptedBase64 = EnhancedPrivacy::EncryptString(jsonData, passphrase);
 
     // Encode the base64 ciphertext as invisible Unicode characters
     // This makes the message appear completely blank to non-CRYPTOGRAM users
@@ -317,7 +316,7 @@ TextWithEntities EnhancedPrivacy::DecryptMessage(const TextWithEntities &encrypt
         return encrypted; // No passphrase set
     }
 
-    QString decrypted = DecryptString(encryptedBase64, passphrase);
+    QString decrypted = EnhancedPrivacy::DecryptString(encryptedBase64, passphrase);
     if (decrypted.isEmpty()) {
         return encrypted; // Decryption failed
     }
@@ -361,74 +360,153 @@ static bool IsMutuallyEncrypted(const TextWithEntities &text) {
     return EnhancedPrivacy::IsEncryptionEnabled() && EnhancedPrivacy::IsEncrypted(text);
 }
 
-static QString EncryptString(const QString &text, const QString &key) {
-    // Generate a key from the passphrase using SHA-384 (CNSA 2.0 compliant)
+QString EnhancedPrivacy::EncryptString(const QString &text, const QString &key) {
+    // Generate a key from the passphrase using SHA-256 (first 256 bits for AES-256)
     QByteArray keyData = QCryptographicHash::hash(
         key.toUtf8(),
         QCryptographicHash::Sha256
-    ).left(32); // Use first 256 bits for AES-256 key
-    
-    // Generate a random IV
-    QByteArray iv(16, 0);
-    for (int i = 0; i < iv.size(); ++i) {
-        iv[i] = static_cast<char>(base::RandomValue<uchar>());
-    }
-    
-    // Prepare data for encryption
-    QByteArray data = text.toUtf8();
-    
-    // Ensure data length is a multiple of 16 (AES block size)
-    int padding = 16 - (data.size() % 16);
-    data.append(QByteArray(padding, static_cast<char>(padding)));
-    
-    // Encrypt the data using AES-256-CBC
-    QByteArray encrypted(data.size(), 0);
-    
-    
+    ).left(32);
 
-    // memcpy
-    // memcpy
-    
-    // // openssl encrypt
-    
-    // Combine IV and encrypted data and convert to Base64
-    QByteArray result = iv + encrypted;
+    // Generate a random 12-byte IV (standard for AES-256-GCM)
+    constexpr int kIvSize = 12;
+    QByteArray iv(kIvSize, 0);
+    if (RAND_bytes(reinterpret_cast<unsigned char*>(iv.data()), kIvSize) != 1) {
+        for (int i = 0; i < kIvSize; ++i) {
+            iv[i] = static_cast<char>(base::RandomValue<uchar>());
+        }
+    }
+
+    // Prepare data for encryption (GCM is a stream cipher, no padding needed)
+    QByteArray data = text.toUtf8();
+
+    // Encrypt the data using AES-256-GCM
+    QByteArray ciphertext(data.size(), 0);
+    unsigned char tag[16] = {0};
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        return QString();
+    }
+
+    int len = 0;
+    int ciphertextLen = 0;
+    bool ok = true;
+
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
+        ok = false;
+    }
+    if (ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, kIvSize, nullptr) != 1) {
+        ok = false;
+    }
+    if (ok && EVP_EncryptInit_ex(ctx, nullptr, nullptr,
+            reinterpret_cast<const unsigned char*>(keyData.constData()),
+            reinterpret_cast<const unsigned char*>(iv.constData())) != 1) {
+        ok = false;
+    }
+    if (ok && EVP_EncryptUpdate(ctx,
+            reinterpret_cast<unsigned char*>(ciphertext.data()),
+            &len,
+            reinterpret_cast<const unsigned char*>(data.constData()),
+            data.size()) != 1) {
+        ok = false;
+    }
+    ciphertextLen = len;
+
+    if (ok && EVP_EncryptFinal_ex(ctx,
+            reinterpret_cast<unsigned char*>(ciphertext.data()) + ciphertextLen,
+            &len) != 1) {
+        ok = false;
+    }
+    ciphertextLen += len;
+
+    if (ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag) != 1) {
+        ok = false;
+    }
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    if (!ok) {
+        return QString();
+    }
+
+    ciphertext.resize(ciphertextLen);
+
+    // Combine IV, ciphertext and tag, then convert to Base64
+    QByteArray result = iv + ciphertext + QByteArray(reinterpret_cast<const char*>(tag), 16);
     return QString::fromLatin1(result.toBase64());
 }
 
-static QString DecryptString(const QString &text, const QString &key) {
-    // Generate key from passphrase using SHA-384 (CNSA 2.0 compliant)
+QString EnhancedPrivacy::DecryptString(const QString &text, const QString &key) {
+    // Generate key from passphrase using SHA-256 (first 256 bits for AES-256)
     QByteArray keyData = QCryptographicHash::hash(
         key.toUtf8(),
         QCryptographicHash::Sha256
-    ).left(32); // Use first 256 bits for AES-256 key
-    
-    // Decode Base64
-    QByteArray encryptedData = QByteArray::fromBase64(text.toLatin1());
-    if (encryptedData.size() <= 16) {
-        return QString(); // Too short: IV(16) + at least 1 block(16)
-    }
-    
-    // Extract IV and encrypted data
-    QByteArray iv = encryptedData.left(16);
-    QByteArray data = encryptedData.mid(16);
-    
-    // Decrypt
-    QByteArray decrypted(data.size(), 0);
-    
-    
+    ).left(32);
 
-    // memcpy
-    // memcpy
-    
-    // // openssl decrypt
-    
-    // Remove padding
-    int paddingSize = static_cast<int>(decrypted[decrypted.size() - 1]);
-    if (paddingSize > 0 && paddingSize <= 16) {
-        decrypted.chop(paddingSize);
+    // Decode Base64
+    constexpr int kIvSize = 12;
+    constexpr int kTagSize = 16;
+    QByteArray encryptedData = QByteArray::fromBase64(text.toLatin1());
+    if (encryptedData.size() <= kIvSize + kTagSize) {
+        return QString(); // Too short: IV(12) + tag(16) + at least 1 byte
     }
-    
+
+    // Extract IV, ciphertext and tag
+    QByteArray iv = encryptedData.left(kIvSize);
+    QByteArray tag = encryptedData.right(kTagSize);
+    QByteArray data = encryptedData.mid(kIvSize, encryptedData.size() - kIvSize - kTagSize);
+
+    // Decrypt using AES-256-GCM
+    QByteArray decrypted(data.size(), 0);
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        return QString();
+    }
+
+    int len = 0;
+    int plaintextLen = 0;
+    bool ok = true;
+
+    if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
+        ok = false;
+    }
+    if (ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, kIvSize, nullptr) != 1) {
+        ok = false;
+    }
+    if (ok && EVP_DecryptInit_ex(ctx, nullptr, nullptr,
+            reinterpret_cast<const unsigned char*>(keyData.constData()),
+            reinterpret_cast<const unsigned char*>(iv.constData())) != 1) {
+        ok = false;
+    }
+    if (ok && EVP_DecryptUpdate(ctx,
+            reinterpret_cast<unsigned char*>(decrypted.data()),
+            &len,
+            reinterpret_cast<const unsigned char*>(data.constData()),
+            data.size()) != 1) {
+        ok = false;
+    }
+    plaintextLen = len;
+
+    if (ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, kTagSize,
+            const_cast<char*>(tag.constData())) != 1) {
+        ok = false;
+    }
+
+    if (ok && EVP_DecryptFinal_ex(ctx,
+            reinterpret_cast<unsigned char*>(decrypted.data()) + plaintextLen,
+            &len) != 1) {
+        ok = false; // Authentication failed
+    }
+    plaintextLen += len;
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    if (!ok) {
+        return QString();
+    }
+
+    decrypted.resize(plaintextLen);
     return QString::fromUtf8(decrypted);
 }
 
@@ -767,27 +845,99 @@ void EnhancedPrivacy::SpoofMediaMetadata(QImage &image, QByteArray &bytes, const
     }
     // Audio file formats (MP3, WAV, FLAC, etc.)
     else if (IsAudioFormat(format, bytes)) {
-        // Create a temporary file to work with TagLib
+#ifdef HAVE_TAGLIB
+        // Write audio data to a temporary file for TagLib processing
         QTemporaryFile tempFile;
-        if (tempFile.open()) {
-            // Write the current audio data to the temp file
-            tempFile.write(bytes);
-            tempFile.flush();
-            
-            // Get the file path as a C string for TagLib
-            const QByteArray filePath = QFile::encodeName(tempFile.fileName());
-            
-            // Create the appropriate TagLib file handler based on format
-//             TagLib::File* file = nullptr;
-            
-            const QString formatLower = format.toLower();
-            
-            // Read back the modified file (currently a no-op as TagLib is disabled)
-            tempFile.seek(0);
-            bytes = tempFile.readAll();
-        }
-        
+        tempFile.setAutoRemove(true);
+        if (!tempFile.open()) return;
+        tempFile.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         tempFile.close();
+
+        const auto fileName = tempFile.fileName().toStdString();
+        const auto titleStr = TagLib::String(("Recording from " + deviceModel).toStdString());
+        const auto artistStr = TagLib::String("SpyGram User");
+        const auto albumStr = TagLib::String("CRYPTOGRAM");
+        const auto commentStr = TagLib::String(
+            QString("iOS %1, Location: %2,%3").arg(iosVersion).arg(latitude).arg(longitude).toStdString());
+
+        bool modified = false;
+        const QString fmtLower = format.toLower();
+
+        if (fmtLower == "mp3" || fmtLower == "mp2" || fmtLower == "mp1") {
+            TagLib::MPEG::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(titleStr);
+                tag->setArtist(artistStr);
+                tag->setAlbum(albumStr);
+                tag->setComment(commentStr);
+                tag->setYear(currentTime.date().year());
+                file.save();
+                modified = true;
+            }
+        } else if (fmtLower == "flac") {
+            TagLib::FLAC::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(titleStr);
+                tag->setArtist(artistStr);
+                tag->setAlbum(albumStr);
+                tag->setComment(commentStr);
+                tag->setYear(currentTime.date().year());
+                file.save();
+                modified = true;
+            }
+        } else if (fmtLower == "wav") {
+            TagLib::RIFF::WAV::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(titleStr);
+                tag->setArtist(artistStr);
+                tag->setAlbum(albumStr);
+                tag->setComment(commentStr);
+                tag->setYear(currentTime.date().year());
+                file.save();
+                modified = true;
+            }
+        } else if (fmtLower == "ogg" || fmtLower == "oga") {
+            TagLib::Ogg::Vorbis::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(titleStr);
+                tag->setArtist(artistStr);
+                tag->setAlbum(albumStr);
+                tag->setComment(commentStr);
+                tag->setYear(currentTime.date().year());
+                file.save();
+                modified = true;
+            }
+        } else if (fmtLower == "m4a" || fmtLower == "aac" || fmtLower == "mp4") {
+            TagLib::MP4::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(titleStr);
+                tag->setArtist(artistStr);
+                tag->setAlbum(albumStr);
+                tag->setComment(commentStr);
+                tag->setYear(currentTime.date().year());
+                file.save();
+                modified = true;
+            }
+        }
+
+        if (modified) {
+            // Read back the modified file
+            QFile readFile(tempFile.fileName());
+            if (readFile.open(QIODevice::ReadOnly)) {
+                auto data = readFile.readAll();
+                bytes.resize(data.size());
+                std::memcpy(bytes.data(), data.constData(), data.size());
+                readFile.close();
+            }
+        }
+#else
+        // TagLib not available — audio metadata is left unchanged
+#endif // HAVE_TAGLIB
     }
     // RAR and similar archive formats
     else if (IsArchiveFormat(format, bytes)) {
@@ -978,15 +1128,27 @@ QString EnhancedPrivacy::GetTimeBasedKeySalt() {
 
 // General Key Configuration
 void EnhancedPrivacy::SetKeyHistorySize(int size) {
-    // Stub
+    _keyHistorySize = size;
+    // Trim history if new size is smaller than current history
+    while (_keyHistory.size() > _keyHistorySize) {
+        _keyHistory.removeFirst();
+    }
 }
 
 int EnhancedPrivacy::GetKeyHistorySize() {
-    return 0; // Stub
+    return _keyHistorySize;
 }
 
 void EnhancedPrivacy::ClearKeyHistory() {
-    // Stub
+    _keyHistory.clear();
+}
+
+QStringList EnhancedPrivacy::GetKeyHistory() {
+    return _keyHistory;
+}
+
+bool EnhancedPrivacy::IsKeyInHistory(const QString &fingerprint) {
+    return _keyHistory.contains(fingerprint);
 }
 
 // Enhanced Metadata Protection methods
@@ -1019,22 +1181,95 @@ void EnhancedPrivacy::StripAllMetadata(QByteArray &bytes, const QString &format)
         }
     } 
     else if (IsAudioFormat(formatLower, bytes)) {
-        // For audio files, use a temporary file for TagLib processing
+#ifdef HAVE_TAGLIB
         QTemporaryFile tempFile;
-        if (tempFile.open()) {
-            // Write current data to the temp file
-            tempFile.write(bytes);
-            tempFile.flush();
-            
-            // Get the file path as a C string for TagLib
-            const QString formatLower = format.toLower();
-            
-            // TagLib is currently unavailable - read back original bytes
-            tempFile.seek(0);
-            bytes = tempFile.readAll();
-            
-            tempFile.close();
+        tempFile.setAutoRemove(true);
+        if (!tempFile.open()) return;
+        tempFile.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        tempFile.close();
+
+        const auto fileName = tempFile.fileName().toStdString();
+        bool modified = false;
+
+        if (formatLower == "mp3" || formatLower == "mp2" || formatLower == "mp1") {
+            TagLib::MPEG::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                modified = true;
+            }
+        } else if (formatLower == "flac") {
+            TagLib::FLAC::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                modified = true;
+            }
+        } else if (formatLower == "wav") {
+            TagLib::RIFF::WAV::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                modified = true;
+            }
+        } else if (formatLower == "ogg" || formatLower == "oga") {
+            TagLib::Ogg::Vorbis::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                modified = true;
+            }
+        } else if (formatLower == "m4a" || formatLower == "aac" || formatLower == "mp4") {
+            TagLib::MP4::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                modified = true;
+            }
         }
+
+        if (modified) {
+            QFile readFile(tempFile.fileName());
+            if (readFile.open(QIODevice::ReadOnly)) {
+                auto data = readFile.readAll();
+                bytes.resize(data.size());
+                std::memcpy(bytes.data(), data.constData(), data.size());
+                readFile.close();
+            }
+        }
+#else
+        // TagLib not available — audio metadata cannot be stripped
+#endif // HAVE_TAGLIB
     }
     else if (IsVideoFormat(formatLower, bytes)) {
         // Video metadata stripping logic - basic implementation
@@ -1165,24 +1400,88 @@ QByteArray EnhancedPrivacy::DisarmAndReconstruct(const QByteArray &bytes, const 
         }
     }
     else if (IsAudioFormat(formatLower, bytes)) {
-        // For audio: decode to raw PCM and re-encode
-        QTemporaryFile tempInFile;
-        
-        if (tempInFile.open()) {
-            // Write the original data to the temp file
-            tempInFile.write(bytes);
-            tempInFile.flush();
-            
-            // Use TagLib to extract just the audio data, discarding metadata
-            const QByteArray inPath = QFile::encodeName(tempInFile.fileName());
-            
-            // Read back original bytes (TagLib unavailable)
-            if (tempInFile.open()) {
-                result = tempInFile.readAll();
+#ifdef HAVE_TAGLIB
+        // Disarm audio: strip all metadata and re-encode with empty tags
+        QTemporaryFile tempFile;
+        tempFile.setAutoRemove(true);
+        if (!tempFile.open()) return result;
+        tempFile.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        tempFile.close();
+
+        const auto fileName = tempFile.fileName().toStdString();
+        bool disarmed = false;
+
+        if (formatLower == "mp3" || formatLower == "mp2" || formatLower == "mp1") {
+            TagLib::MPEG::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                file.strip(TagLib::MPEG::File::AllTags);
+                file.save();
+                disarmed = true;
             }
-            
-            tempInFile.close();
+        } else if (formatLower == "flac") {
+            TagLib::FLAC::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                disarmed = true;
+            }
+        } else if (formatLower == "wav") {
+            TagLib::RIFF::WAV::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                disarmed = true;
+            }
+        } else if (formatLower == "ogg" || formatLower == "oga") {
+            TagLib::Ogg::Vorbis::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                disarmed = true;
+            }
+        } else if (formatLower == "m4a" || formatLower == "aac" || formatLower == "mp4") {
+            TagLib::MP4::File file(fileName.c_str(), false);
+            if (file.isValid() && file.tag()) {
+                auto tag = file.tag();
+                tag->setTitle(TagLib::String());
+                tag->setArtist(TagLib::String());
+                tag->setAlbum(TagLib::String());
+                tag->setComment(TagLib::String());
+                tag->setYear(0);
+                tag->setTrack(0);
+                file.save();
+                disarmed = true;
+            }
         }
+
+        if (disarmed) {
+            QFile readFile(tempFile.fileName());
+            if (readFile.open(QIODevice::ReadOnly)) {
+                result = readFile.readAll();
+                readFile.close();
+            }
+        }
+#else
+        // TagLib not available — audio data cannot be disarmed
+#endif // HAVE_TAGLIB
     }
     else if (IsVideoFormat(formatLower, bytes)) {
         // For video: this would require a specialized library
@@ -1419,6 +1718,24 @@ void EnhancedPrivacy::RotateSignalKeys() {
     if (!account.sessionExists()) return;
     try {
         Data::SignalProtocol protocol(&account.session().data());
+        // Store a fingerprint of the current key bundle in history before rotating
+        const auto &bundle = protocol.cachedKeyBundle();
+        if (!bundle.identityKey.empty()) {
+            QByteArray keyData;
+            keyData.append(QByteArray::fromRawData(
+                reinterpret_cast<const char*>(bundle.identityKey.data()),
+                bundle.identityKey.size()));
+            keyData.append(QByteArray::fromRawData(
+                reinterpret_cast<const char*>(bundle.signedPreKey.data()),
+                bundle.signedPreKey.size()));
+            const auto fingerprint = QString::fromUtf8(
+                QCryptographicHash::hash(keyData, QCryptographicHash::Sha256).toHex());
+            _keyHistory.append(fingerprint);
+            // Trim to configured history size
+            while (_keyHistory.size() > _keyHistorySize) {
+                _keyHistory.removeFirst();
+            }
+        }
         protocol.performScheduledKeyRotations();
     } catch (const std::exception &e) {
         LOG(("Signal Protocol Error: Failed to rotate keys: %1").arg(e.what()));

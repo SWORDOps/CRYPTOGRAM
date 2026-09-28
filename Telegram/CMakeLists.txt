@@ -102,6 +102,30 @@ PRIVATE
     desktop-app::external_openal
     desktop-app::external_xxhash
     Qt6::Multimedia
+    tag
+)
+
+target_compile_definitions(Telegram PRIVATE HAVE_TAGLIB)
+
+# TagLib include directories (added here because the tag target's
+# INTERFACE_INCLUDE_DIRECTORIES can't contain source tree paths)
+target_include_directories(Telegram PRIVATE
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/toolkit
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/mpeg
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/mpeg/id3v2
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/mpeg/id3v2/frames
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/mpeg/id3v1
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/flac
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/ogg
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/ogg/vorbis
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/ogg/flac
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/riff
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/riff/wav
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/mp4
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/asf
+    ${CMAKE_SOURCE_DIR}/Telegram/ThirdParty/taglib/taglib/ape
 )
 
 if (NOT DESKTOP_APP_DISABLE_SWIFT6)
@@ -645,8 +669,8 @@ PRIVATE
     data/data_auto_join.h
     data/data_auto_download.cpp
     data/data_auto_download.h
-    # data/data_birthday.cpp  # TODO: Fix duplicate symbol error
-    # data/data_birthday.h
+    # data/data_birthday.cpp  # Already compiled in cmake/td_ui.cmake
+    # data/data_birthday.h    #   (adding here too causes duplicate symbols)
     data/data_boosts.h
     data/data_bot_app.cpp
     data/data_bot_app.h
@@ -720,8 +744,8 @@ PRIVATE
     data/data_media_rotation.h
     data/data_media_types.cpp
     data/data_media_types.h
-    # data/data_messages.cpp
-    # data/data_messages.h
+    data/data_messages.cpp
+    data/data_messages.h
     data/data_message_reaction_id.cpp
     data/data_message_reaction_id.h
     data/data_message_reactions.cpp
@@ -736,7 +760,12 @@ PRIVATE
     data/data_stylometry_shield.cpp
     data/data_stylometry_shield.h
     data/data_network_integration.cpp
-    # data/data_network_mesh.cpp (missing QtWebSockets)
+    # data/data_network_mesh.cpp  # Excluded: requires qt6-websockets-dev
+                                   #   (add Qt6::WebSockets to find_package/
+                                   #    target_link_libraries) and uncomment
+                                   #   the BridgeManager/MeshNetworkManager
+                                   #   init lines in data_network_security.cpp
+                                   #   initializeNetworkComponents().
     data/data_network_mtproto_integration.cpp
     data/data_i2p_integration.cpp
     data/data_i2p_integration.h
@@ -775,6 +804,7 @@ PRIVATE
     data/data_quantum_signal_impl.cpp
     data/data_quantum_storage.cpp
     data/data_quantumguard.cpp
+    data/data_quantum_crypto_services.cpp
     data/data_nsa_security.cpp
     data/data_quantum_storage.h
     data/data_replies_list.cpp
@@ -805,8 +835,8 @@ PRIVATE
     data/data_sparse_ids.h
     data/data_star_gift.cpp
     data/data_star_gift.h
-    # data/data_statistics_chart.cpp  # TODO: Fix duplicate symbol error
-    # data/data_statistics_chart.h
+    # data/data_statistics_chart.cpp  # Already compiled in cmake/td_ui.cmake
+    # data/data_statistics_chart.h    #   (adding here too causes duplicate symbols)
     data/data_statistics.h
     data/data_stories.cpp
     data/data_stories.h
@@ -821,6 +851,7 @@ PRIVATE
     data/data_tsm_factory.cpp
     data/data_tsm_factory.h
     data/data_tsm_interface.cpp
+    data/data_tsm_interface.h
     data/data_todo_list.cpp
     data/data_todo_list.h
     data/data_types.cpp

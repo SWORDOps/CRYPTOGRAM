@@ -1,0 +1,150 @@
+---
+name: Unit Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  unit-tests:
+    name: Catch2 Unit Tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.PRIVATE_SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential cmake ninja-build pkg-config libssl-dev git
+
+      - name: Build and install Catch2 v3 from source
+        run: |
+          # Ubuntu 22.04 ships Catch2 v2; the project requires v3.
+          git clone --depth 1 --branch v3.5.3 https://github.com/catchorg/Catch2.git /tmp/Catch2
+          cmake -B /tmp/Catch2/build -S /tmp/Catch2 -G Ninja \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/Catch2/build --parallel "$(nproc)"
+          sudo cmake --install /tmp/Catch2/build
+
+      - name: Configure unit tests
+        run: |
+          # The root CMakeLists.txt unconditionally includes the full Telegram
+          # build system (cmake/external, Telegram/), which requires tg_owt,
+          # tde2e, Qt6, ffmpeg, and many other dependencies that are not
+          # available as system packages and take 30+ minutes to build.
+          #
+          # Six of the nine test targets are standalone — they link only against
+          # Catch2 and OpenSSL and do not include any desktop-app headers.
+          # We create a minimal CMake project that builds those targets directly,
+          # keeping the workflow fast (~5 min).
+          mkdir -p build_tests
+          cat > build_tests/CMakeLists.txt << 'CMEOF'
+          cmake_minimum_required(VERSION 3.16)
+          project(CRYPTOGRAMUnitTests CXX)
+
+          set(CMAKE_CXX_STANDARD 17)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+          find_package(Catch2 3 REQUIRED)
+          find_package(OpenSSL REQUIRED)
+
+          enable_testing()
+
+          set(REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+          # ─── Standalone E2E Test Targets (Catch2 + OpenSSL only) ─────────────
+
+          add_executable(test_e2e_crypto_primitives
+              ${REPO_ROOT}/tests/unit/test_e2e_crypto_primitives.cpp)
+          target_link_libraries(test_e2e_crypto_primitives
+              PRIVATE Catch2::Catch2WithMain OpenSSL::Crypto)
+          add_test(NAME test_e2e_crypto_primitives COMMAND test_e2e_crypto_primitives)
+
+          add_executable(test_e2e_signal_protocol
+              ${REPO_ROOT}/tests/unit/test_e2e_signal_protocol.cpp)
+          target_link_libraries(test_e2e_signal_protocol
+              PRIVATE Catch2::Catch2WithMain OpenSSL::Crypto)
+          add_test(NAME test_e2e_signal_protocol COMMAND test_e2e_signal_protocol)
+
+          add_executable(test_e2e_mls_protocol
+              ${REPO_ROOT}/tests/unit/test_e2e_mls_protocol.cpp)
+          target_link_libraries(test_e2e_mls_protocol
+              PRIVATE Catch2::Catch2WithMain OpenSSL::Crypto)
+          add_test(NAME test_e2e_mls_protocol COMMAND test_e2e_mls_protocol)
+
+          add_executable(test_e2e_roundtrip
+              ${REPO_ROOT}/tests/unit/test_e2e_roundtrip.cpp)
+          target_link_libraries(test_e2e_roundtrip
+              PRIVATE Catch2::Catch2WithMain OpenSSL::Crypto)
+          add_test(NAME test_e2e_roundtrip COMMAND test_e2e_roundtrip)
+
+          # ─── File-based Test Targets (Catch2 only, run from repo root) ───────
+
+          add_executable(test_e2e_build_verification
+              ${REPO_ROOT}/tests/unit/test_e2e_build_verification.cpp)
+          target_link_libraries(test_e2e_build_verification
+              PRIVATE Catch2::Catch2WithMain)
+          add_test(NAME test_e2e_build_verification
+              COMMAND test_e2e_build_verification
+              WORKING_DIRECTORY ${REPO_ROOT})
+
+          add_executable(test_e2e_android_jni
+              ${REPO_ROOT}/tests/unit/test_e2e_android_jni.cpp)
+          target_link_libraries(test_e2e_android_jni
+              PRIVATE Catch2::Catch2WithMain)
+          add_test(NAME test_e2e_android_jni
+              COMMAND test_e2e_android_jni
+              WORKING_DIRECTORY ${REPO_ROOT})
+
+          add_executable(test_e2e_counterintelligence
+              ${REPO_ROOT}/tests/unit/test_e2e_counterintelligence.cpp)
+          target_link_libraries(test_e2e_counterintelligence
+              PRIVATE Catch2::Catch2WithMain)
+          add_test(NAME test_e2e_counterintelligence
+              COMMAND test_e2e_counterintelligence
+              WORKING_DIRECTORY ${REPO_ROOT})
+          CMEOF
+
+          cd build_tests
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release .
+
+      - name: Build test targets
+        run: |
+          cd build_tests
+          cmake --build . --parallel "$(nproc)"
+
+      - name: Run unit tests
+        run: |
+          cd build_tests
+          ctest --output-on-failure --verbose
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: |
+            build_tests/Testing/
+            build_tests/CTestTestfile.cmake
+          retention-days: 7
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "## Unit Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

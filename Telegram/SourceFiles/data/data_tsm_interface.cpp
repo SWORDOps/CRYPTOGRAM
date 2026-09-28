@@ -412,12 +412,74 @@ std::unique_ptr<TSMInterface> createSoftwareTSM() {
 namespace Data {
 SignalTSMIntegration::~SignalTSMIntegration() {}
 SignalTSMIntegration::SignalTSMIntegration(not_null<Session*> session) : QObject(nullptr), _session(session) {}
-TSMResult SignalTSMIntegration::initializeWithSignalProtocol() { return TSMResult::Success; }
+
+// TODO: Not yet implemented - hardware-backed TSM integration is a stub.
+//
+// When hardware support is available, this should:
+//   - Detect the platform TSM (TPM 2.0 on desktop, Android Keystore on
+//     Android, iOS Secure Enclave on Apple devices)
+//   - Initialize the TSM interface and verify its capabilities
+//   - Bind the Signal Protocol identity key to a hardware-backed key
+//   - Generate or load a device attestation key for verification
+//
+// The current implementation is a software fallback that reports success
+// without performing any hardware initialization. This is correct for
+// platforms without a usable TSM, but no hardware-backed guarantees are
+// provided.
+TSMResult SignalTSMIntegration::initializeWithSignalProtocol() {
+	qWarning() << "SignalTSMIntegration: using software fallback - no hardware-backed TSM available";
+	return TSMResult::Success;
+}
+
+// TODO: Not yet implemented - hardware-backed security detection is a stub.
+//
+// When hardware support is available, this should return true if the TSM
+// has been initialized on a supported hardware platform (TPM 2.0, Android
+// Keystore, or iOS Secure Enclave) and the Signal Protocol identity key
+// is bound to a hardware-backed key.
+//
+// The current implementation is a software fallback that always returns
+// false, indicating no hardware-backed security is in use.
 bool SignalTSMIntegration::isHardwareBackedSecurity() const { return false; }
+
+// TODO: Not yet implemented - hardware-backed identity key generation is a stub.
+//
+// When hardware support is available, this should generate an Ed25519
+// identity key pair inside the TSM (TPM 2.0 / Android Keystore / iOS
+// Secure Enclave) so the private key never leaves the hardware boundary.
+// The returned bytes::vector should contain the public key portion.
+//
+// The current implementation is a software fallback that returns
+// HardwareNotAvailable, signaling callers to use a software key pair.
 base::expected<bytes::vector, TSMResult> SignalTSMIntegration::generateSignalIdentityKeyPair() { return base::make_unexpected(TSMResult::HardwareNotAvailable); }
+
+// TODO: Not yet implemented - TSM capability reporting is a stub.
+//
+// When hardware support is available, this should query the active TSM
+// (TPM 2.0, Android Keystore, or iOS Secure Enclave) and report its
+// capabilities: supported algorithms, key generation, signing, attestation,
+// and secure storage support.
+//
+// The current implementation is a software fallback that returns empty
+// capabilities, indicating no hardware TSM is in use.
 TSMCapabilities SignalTSMIntegration::getTSMCapabilities() const { return {}; }
 
+// TODO: Not yet implemented - unique key ID generation is a stub.
+// When hardware support is available, this should generate a unique,
+// hardware-attested key identifier. The current software fallback returns
+// an empty string.
 QString TSMInterface::generateUniqueKeyId() const { return QString(); }
+
+// TODO: Not yet implemented - key ID validation is a stub.
+// When hardware support is available, this should validate that a key ID
+// conforms to the TSM's key naming scheme. The current software fallback
+// always returns false.
 bool TSMInterface::validateKeyId(const QString &) const { return false; }
+
+// TODO: Not yet implemented - platform error mapping is a stub.
+// When hardware support is available, this should translate platform-
+// specific error codes (TPM 2.0 / Android Keystore / iOS Secure Enclave)
+// into the appropriate TSMResult value. The current software fallback
+// always returns UnknownError.
 TSMResult TSMInterface::mapPlatformError(int e) const { return TSMResult::UnknownError; }
 }

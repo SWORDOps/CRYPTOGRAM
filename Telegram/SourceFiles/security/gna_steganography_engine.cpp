@@ -12,6 +12,7 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <QtCore/QCryptographicHash>
 #include <QtCore/QRandomGenerator>
 #include <QtCore/QDataStream>
+#include <QtCore/QtEndian>
 #include <QtCore/qglobal.h>
 #include <QtCore/QByteArray>
 #include <QtMultimedia/QAudioFormat>

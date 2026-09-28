@@ -302,6 +302,7 @@ const QString kLabelConfirm = "confirm";
 const QString kLabelMember = "member";
 const QString kLabelApplication = "app";
 const QString kLabelExporter = "exporter";
+const QString kLabelWelcome = "welcome";
 
 // TreeKEM Labels
 const QString kLabelNode = "node";
@@ -1029,19 +1030,42 @@ bool MLSProtocol::verifyCacKeyPackage(
 }
 
 MLSGroupId MLSProtocol::processWelcome(const MLSWelcome &welcome) {
-	// Create group state from welcome message
-	auto groupId = generateRandomBytes(32);
+	// Extract the group ID from the encrypted group info.
+	// In buildOutgoingMLSWelcome the sender stores the group ID here.
+	// A full MLS implementation would decrypt the GroupInfo with the
+	// new member's key package init key; we use the cached value directly.
+	MLSGroupId groupId;
+	if (!welcome.encryptedGroupInfo.empty()) {
+		groupId = welcome.encryptedGroupInfo;
+	} else {
+		// Fallback: derive a deterministic group ID from the welcome secrets
+		// so that processing the same welcome twice yields the same group.
+		groupId = computeSHA256(welcome.encryptedGroupSecrets);
+	}
 
 	MLSGroupState state(groupId, welcome.ciphersuite);
 
-	// Initialize with a placeholder tree (real implementation would decrypt
-	// the encrypted group secrets and group info from the welcome)
-	state._initSecret = generateRandomBytes(getHashSize(welcome.ciphersuite));
+	// Derive the init secret deterministically from the welcome's encrypted
+	// group secrets.  A full implementation would decrypt the per-recipient
+	// GroupSecrets and use the contained epoch secret as the seed.  Here we
+	// run HKDF-Extract over the encrypted secrets (acting as the IKM) with an
+	// empty salt, then HKDF-Expand with the "welcome" label to produce the
+	// init secret.  This makes the resulting group state deterministic for a
+	// given welcome rather than using random placeholder data.
+	const auto hashSize = getHashSize(welcome.ciphersuite);
+	if (!welcome.encryptedGroupSecrets.empty()) {
+		const auto prk = hkdfExtract({}, welcome.encryptedGroupSecrets);
+		state._initSecret = hkdfExpand(prk, kLabelWelcome, hashSize);
+	}
+	if (state._initSecret.empty()) {
+		// Last-resort fallback so the group is still usable.
+		state._initSecret = generateRandomBytes(hashSize);
+	}
 	state._epochSecret = state.deriveEpochSecret();
 
 	_groups[groupId] = state;
 
-	LOG(("MLS: Processed Welcome message for new group"));
+	LOG(("MLS: Processed Welcome message for group, epoch 0"));
 
 	return groupId;
 }

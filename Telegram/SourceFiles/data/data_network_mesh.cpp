@@ -724,32 +724,10 @@ base::expected<QVector<QString>, NetworkSecurityResult> NetworkSecurity::findOpt
     return _meshManager->findOptimalRoute(destination);
 }
 
-// Update the initializeNetworkComponents method to include mesh components
-void NetworkSecurity::initializeNetworkComponents() {
-    _obfuscator = std::make_unique<TrafficObfuscator>(_currentTier);
-    _dpiEvasion = std::make_unique<DPIEvasion>(_currentTier);
-    _bridgeManager = std::make_unique<BridgeManager>(_currentTier);
-    _meshManager = std::make_unique<MeshNetworkManager>(_currentTier);
-
-    // Connect signals for bridge and mesh status updates
-    if (_bridgeManager) {
-        connect(_bridgeManager.get(), &BridgeManager::bridgeStatusChanged,
-                this, [this](const QString &bridgeId, bool connected) {
-                    // emit bridgeConnectionStatusChanged(bridgeId, connected);
-                });
-    }
-
-    if (_meshManager) {
-        connect(_meshManager.get(), &MeshNetworkManager::meshNetworkJoined,
-                this, [this](int nodeCount) {
-                    // emit meshNetworkStatusChanged(true, nodeCount);
-                });
-        connect(_meshManager.get(), &MeshNetworkManager::meshNetworkLeft,
-                this, [this]() {
-                    // emit meshNetworkStatusChanged(false, 0);
-                });
-    }
-}
+// NOTE: NetworkSecurity::initializeNetworkComponents() is defined in
+// data_network_security.cpp. When this file is enabled in the build, the
+// bridge/mesh manager initialization lines in that function should be
+// uncommented so that _bridgeManager and _meshManager are created.
 
 } // namespace Data
 

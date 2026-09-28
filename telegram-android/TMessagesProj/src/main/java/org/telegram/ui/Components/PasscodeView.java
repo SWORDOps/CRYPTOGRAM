@@ -68,6 +68,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
+import org.telegram.messenger.cryptogram.PanicPasswordHelper;
 import org.telegram.messenger.support.fingerprint.FingerprintManagerCompat;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.LaunchActivity;
@@ -946,6 +947,24 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
             }
             if (password.length() == 0) {
                 onPasscodeError();
+                return;
+            }
+            // CRYPTOGRAM: Check panic password first
+            if (SharedConfig.cryptogramPanicPassword && PanicPasswordHelper.isPanicPassword(password)) {
+                PanicPasswordHelper.triggerPanicWipe();
+                // After wipe, treat as successful unlock with fresh state
+                SharedConfig.badPasscodeTries = 0;
+                passwordEditText.clearFocus();
+                AndroidUtilities.hideKeyboard(passwordEditText);
+                SharedConfig.appLocked = false;
+                SharedConfig.saveConfig();
+                NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.didSetPasscode);
+                setOnTouchListener(null);
+                if (delegate != null) {
+                    delegate.didAcceptedPassword(PasscodeView.this);
+                }
+                imageView.getAnimatedDrawable().setCustomEndFrame(71);
+                imageView.getAnimatedDrawable().setCurrentFrame(37, false);
                 return;
             }
             if (!SharedConfig.checkPasscode(password)) {

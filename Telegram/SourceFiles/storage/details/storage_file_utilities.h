@@ -31,6 +31,7 @@ struct FileReadDescriptor final {
 	~FileReadDescriptor();
 
 	int32 version = 0;
+	bool legacy = false;
 	QByteArray data;
 	QBuffer buffer;
 	QDataStream stream;

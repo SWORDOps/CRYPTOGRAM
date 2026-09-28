@@ -251,10 +251,25 @@ QVector<UserId> GroupEncryption::getCryptogramMembers(not_null<PeerData*> group)
 			}
 		}
 	} else if (const auto channel = group->asChannel()) {
-		// Supergroup or channel
-		// In a real implementation, we'd fetch the member list
-		// For now, assume we have access to participants
-		LOG(("GroupEncryption: Channel/supergroup member detection not yet implemented"));
+		// Supergroup or channel.
+		// Megagroups store cached participants in mgInfo->lastParticipants.
+		// Broadcast channels do not expose a member list.
+		if (channel->mgInfo) {
+			for (const auto &participant : channel->mgInfo->lastParticipants) {
+				if (EnhancedPrivacy::IsCryptogramUser(peerToUser(participant->id))) {
+					result.push_back(peerToUser(participant->id));
+				}
+			}
+			if (result.isEmpty()) {
+				LOG(("GroupEncryption: No cached Cryptogram members for"
+					" supergroup %1 (members may need to be fetched)")
+					.arg(channel->id.value));
+			}
+		} else {
+			LOG(("GroupEncryption: Channel %1 has no mgInfo"
+				" (broadcast channel — member list not available)")
+				.arg(channel->id.value));
+		}
 	}
 
 	return result;
