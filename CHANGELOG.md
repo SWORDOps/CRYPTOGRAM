@@ -10,11 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Merged `nonfunctional-dev` branch (43 commits, Jul 28 – Aug 14 2026)**:
+  - Android: CRYPTOGRAM encryption wired into the message pipeline — restored `DoubleRatchet`, `MLSProtocol`, `CryptogramNative`, `CryptogramSettingsActivity`, `PanicPasswordHelper`, `DpiEvasionHelper`, `EnhancedPrivacy`, `AntiForensicsHelper`, and `StylometryShield`; JNI `CryptogramWrapper` and MLS sources updated.
+  - Desktop: real OpenSSL crypto in `EnhancedPrivacy` (encrypt/decrypt), incoming MLS group decryption wired in `history_item.cpp`, covert-channel payload encryption enabled, TagLib audio metadata wired into the build.
+  - `QuantumCryptoServices` with key history management, panic password, and DPI evasion.
+  - Build/CI: strict-mode `build_all.sh` (`--strict`), `tests.yml` CI workflow, expanded compiler candidate lists, SWORDOps forks for `cmake`/`taglib`/`libsignal`, CPU-safe tde2e build flags.
+  - Storage: backwards-compatible 64Gram session import (dual SHA-256/MD5 file signatures; cloud password SRP switched to SHA-256 to match 64Gram).
 - **Universal Threat Detector (UTD) Local AI Integration**:
   - Embedded `llama-server` directly into the CRYPTOGRAM build system.
   - Implemented dynamic hardware profiling (NPU, GPU VRAM, CPU AVX2) to automatically select between Qwen 2.5 0.5B, 1.5B, and 3B models.
   - Added a UI interceptor in `history_view_message.cpp` to visually flag malicious messages with translucent red warnings in real-time.
   - Added granular Privacy & Security settings toggle allowing users to override AI tiers or disable the background AI completely to conserve battery.
+
+### Fixed
+- Desktop incoming messages were never decrypted (P2 audit gap) — incoming MLS group ciphertext is now routed through `Data::GroupEncryption`.
+- Covert-channel packet signatures now use an HKDF-derived stable per-session key (SHA-256 chain) instead of a random per-packet HMAC key; payload encryption through `EnhancedPrivacy` is enabled.
+- `AutoDetectCryptogramUser` hook enabled on covert-peer registration.
 
 ### 🎉 Major Release - CRYPTOGRAM v1.0 Security Overhaul
 
