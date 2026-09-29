@@ -104,6 +104,12 @@ run_static_checks() {
         "tests/unit/CMakeLists.txt"
         "telegram-android/TMessagesProj/jni/CMakeLists.txt"
         "docs/status/TEST_HARNESS_SCOPE.md"
+        "docs/interop/LIVE_EXCHANGE_RUNBOOK.md"
+        "docs/interop/KNOWN_LIMITATIONS.md"
+        "scripts/interop/build_both.sh"
+        "scripts/interop/launch_emulator.sh"
+        "scripts/interop/collect_logs.sh"
+        "scripts/interop/check_wire_evidence.sh"
     )
 
     for rel_path in "${required_files[@]}"; do
