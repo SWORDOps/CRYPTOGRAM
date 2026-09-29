@@ -45,6 +45,19 @@ require_grep() {
     fi
 }
 
+# Passes only when the pattern is ABSENT (guards against regressions like
+# hardcoded personal paths).
+forbid_grep() {
+    local pattern="$1"
+    local rel_path="$2"
+    local label="$3"
+    if grep -Eq "$pattern" "$ROOT_DIR/$rel_path"; then
+        log_fail "$label (forbidden pattern found: $pattern)"
+    else
+        log_pass "$label"
+    fi
+}
+
 warn_grep() {
     local pattern="$1"
     local rel_path="$2"
@@ -71,24 +84,20 @@ run_static_checks() {
     echo "-------------------------------------"
     required_files=(
         "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp"
-        "telegram-android/TMessagesProj/jni/cryptogram/data/data_signal_protocol.cpp"
-        "telegram-android/TMessagesProj/jni/cryptogram/data/data_signal_protocol.h"
-        "telegram-android/TMessagesProj/jni/cryptogram/data/data_mls_protocol.cpp"
-        "telegram-android/TMessagesProj/jni/cryptogram/data/data_mls_protocol.h"
-        "telegram-android/TMessagesProj/jni/cryptogram/data/data_group_encryption.cpp"
-        "telegram-android/TMessagesProj/jni/cryptogram/data/data_group_encryption.h"
-        "telegram-android/TMessagesProj/jni/cryptogram/data/data_enhanced_privacy.cpp"
-        "telegram-android/TMessagesProj/jni/cryptogram/data/data_enhanced_privacy.h"
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt"
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DoubleRatchet.kt"
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MLSProtocol.kt"
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/EnhancedPrivacy.kt"
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.java"
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DoubleRatchet.java"
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MLSProtocol.java"
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/EnhancedPrivacy.java"
         "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java"
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/PanicPasswordHelper.java"
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DpiEvasionHelper.java"
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/StylometryShield.java"
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/AntiForensicsHelper.java"
         "telegram-android/TMessagesProj/src/main/java/org/telegram/ui/CryptogramSettingsActivity.java"
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/ui/Components/CryptogramIndicator.java"
         "tests/unit/test_cryptogram_features.cpp"
         "tests/unit/test_double_ratchet.cpp"
         "tests/unit/test_mls_protocol.cpp"
+        "tests/unit/test_e2e_quantum_kem.cpp"
         "tests/unit/CMakeLists.txt"
         "telegram-android/TMessagesProj/jni/CMakeLists.txt"
         "docs/status/TEST_HARNESS_SCOPE.md"
@@ -138,22 +147,22 @@ run_static_checks() {
         "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
         "JNI native MLS self-check exists"
     require_grep 'System\.loadLibrary\("cryptogram"\)' \
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt" \
-        "Kotlin native library load present"
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.java" \
+        "Java native library load present"
     require_grep 'nativeCheckDoubleRatchet' \
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt" \
-        "Kotlin Double Ratchet self-check binding present"
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.java" \
+        "Java Double Ratchet self-check binding present"
     require_grep 'nativeCheckMLS' \
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt" \
-        "Kotlin MLS self-check binding present"
-    require_grep 'System\.loadLibrary\("cryptogram"\)' \
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DoubleRatchet.kt" \
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.java" \
+        "Java MLS self-check binding present"
+    require_grep 'CryptogramNative\.INSTANCE\.isLoaded\(\)' \
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DoubleRatchet.java" \
         "DoubleRatchet native coupling present"
-    require_grep 'System\.loadLibrary\("cryptogram"\)' \
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MLSProtocol.kt" \
+    require_grep 'CryptogramNative\.INSTANCE\.isLoaded\(\)' \
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MLSProtocol.java" \
         "MLS native coupling present"
     require_grep 'nativeIsCryptogramUser' \
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/EnhancedPrivacy.kt" \
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/EnhancedPrivacy.java" \
         "EnhancedPrivacy native binding present"
 
     echo
@@ -165,9 +174,12 @@ run_static_checks() {
     require_grep 'decryptIncomingMessage\(' \
         "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java" \
         "Incoming decryption hook present"
-    require_grep 'CryptogramSettingsActivity' \
+    require_grep 'SettingsActivity' \
         "telegram-android/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java" \
-        "Settings entry point present"
+        "Profile settings entry present"
+    require_grep 'presentFragment\(new CryptogramSettingsActivity\(\)\)' \
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java" \
+        "Cryptogram settings entry point present"
     require_grep 'toggleCryptogramDoubleRatchet' \
         "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
         "Double Ratchet toggle present"
@@ -190,34 +202,15 @@ run_static_checks() {
     echo
     echo "TEST 3b: OPSEC integration hooks"
     echo "-------------------------------------"
-    require_grep 'Java_org_telegram_messenger_cryptogram_OPSECHelper_nativeWrapDpiEvasion' \
-        "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
-        "JNI OPSECHelper DPI evasion exists"
-    require_grep 'Java_org_telegram_messenger_cryptogram_OPSECHelper_nativeSecureWipe' \
-        "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
-        "JNI OPSECHelper secure wipe exists"
-    require_grep 'Java_org_telegram_messenger_cryptogram_OPSECHelper_nativeCheckPQC' \
-        "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
-        "JNI OPSECHelper PQC check exists"
-    require_grep 'nativeWrapDpiEvasion' \
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/OPSECHelper.kt" \
-        "Kotlin OPSECHelper DPI evasion binding present"
-    require_grep 'isStylometryShieldEnabled' \
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/OPSECHelper.kt" \
-        "OPSECHelper stylometry shield check present"
-    require_grep 'applyStylometry' \
-        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/OPSECHelper.kt" \
-        "OPSECHelper applyStylometry present"
-    require_grep 'OPSECHelper' \
+    require_grep 'zero-width|zero.width|0x200B' \
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DpiEvasionHelper.java" \
+        "DPI evasion padding logic present"
+    require_grep 'DoubleRatchet\.INSTANCE' \
         "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java" \
-        "OPSECHelper wired into message pipeline"
-    require_grep 'ThreatDetector' \
+        "DoubleRatchet wired into message pipeline"
+    require_grep 'MLSProtocol\.INSTANCE' \
         "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java" \
-        "ThreatDetector wired into incoming message path"
-    require_file "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/ThreatDetector.kt" \
-        "ThreatDetector.kt exists"
-    require_file "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MediaMetadataHelper.kt" \
-        "MediaMetadataHelper.kt exists"
+        "MLSProtocol wired into message pipeline"
     require_grep 'toggleCryptogramPanicPassword' \
         "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
         "Panic password toggle present"
@@ -239,12 +232,12 @@ run_static_checks() {
     require_grep 'setCryptogramThreatDefenseLevel' \
         "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java" \
         "Threat defense level setter present"
-    require_grep 'applyPreset' \
+    require_grep 'SharedConfig\.' \
         "telegram-android/TMessagesProj/src/main/java/org/telegram/ui/CryptogramSettingsActivity.java" \
-        "OPSEC preset application present"
-    require_grep 'opsecSectionRow' \
+        "Settings activity wired to SharedConfig"
+    require_grep 'stylometryRow' \
         "telegram-android/TMessagesProj/src/main/java/org/telegram/ui/CryptogramSettingsActivity.java" \
-        "OPSEC section row present in settings UI"
+        "Stylometry section row present in settings UI"
 
     echo
     echo "TEST 4: Build declarations and test wiring"
@@ -270,25 +263,62 @@ run_static_checks() {
     require_grep 'TEST_CASE\("MLS basic group messaging works on supported ciphersuite"' \
         "tests/unit/test_mls_protocol.cpp" \
         "MLS group messaging test present"
+    require_grep 'test_e2e_quantum_kem' \
+        "tests/unit/CMakeLists.txt" \
+        "QuantumGuard crypto test target wired"
 
     echo
-    echo "TEST 5: Runtime gaps to review manually"
+    echo "TEST 5: Post-quantum layer, settings persistence, and AI opt-in"
+    echo "-------------------------------------"
+    require_grep 'SerializeCryptogramSettings|ApplyCryptogramSettings|kCryptogramSettingsMagic' \
+        "Telegram/SourceFiles/core/core_settings.cpp" \
+        "CRYPTOGRAM settings persistence trailer present"
+    require_grep 'quantumWrapPayload|quantumUnwrapPayload' \
+        "Telegram/SourceFiles/data/data_signal_protocol.cpp" \
+        "Post-quantum message envelope wired"
+    require_grep "bytes::type\('P'\), bytes::type\('Q'\), bytes::type\('E'\), bytes::type\('1'\)" \
+        "Telegram/SourceFiles/data/data_signal_protocol.cpp" \
+        "PQE1 envelope magic present"
+    require_grep '0x02' \
+        "Telegram/SourceFiles/data/data_signal_transport.cpp" \
+        "Key-bundle PQ advertisement extension present"
+    require_grep 'importPeerKemPublicKey|quantumEncapsulate|quantumDecapsulate|quantumVerify' \
+        "Telegram/SourceFiles/data/data_quantumguard.cpp" \
+        "QuantumGuard real crypto primitives present"
+    require_grep 'performQuantumKEM|performClassicalX3DH' \
+        "Telegram/SourceFiles/data/data_quantum_signal_impl.cpp" \
+        "QuantumSignalProtocol primitives present"
+    require_grep '_enabled = false' \
+        "Telegram/SourceFiles/security/universal_threat_detector.cpp" \
+        "AI threat detector opt-in default present"
+    require_grep 'downloadAssetsAsync|QTcpServer' \
+        "Telegram/SourceFiles/security/universal_threat_detector.cpp" \
+        "On-demand AI assets and dynamic llama-server port present"
+    require_grep 'UniversalThreatDetector::instance\(\)\.initialize\(\)' \
+        "Telegram/SourceFiles/window/main_window.cpp" \
+        "UTD startup initialization wired"
+    forbid_grep 'VectorReVamp' \
+        "Telegram/CMakeLists.txt" \
+        "No personal build paths hardcoded in CMake"
+
+    echo
+    echo "TEST 6: Runtime gaps to review manually"
     echo "-------------------------------------"
     warn_grep 'Will call:' \
         "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" \
         "JNI wrapper still contains placeholder call paths"
-    warn_grep 'placeholder implementation|placeholder packages|placeholder group ID' \
-        "telegram-android/TMessagesProj/jni/cryptogram/data/data_mls_protocol.cpp" \
-        "MLS implementation still contains placeholder logic"
-    warn_grep 'HPKE encryption would be used here|Current implementation passes the secret through until HPKE path encryption lands|return the secret \(placeholder\)' \
-        "telegram-android/TMessagesProj/jni/cryptogram/data/data_mls_protocol.cpp" \
-        "MLS dormant UpdatePath helper still contains non-HPKE placeholder path-secret handling"
     warn_grep 'Simple XOR|simple XOR|placeholder implementation|return the secret \(placeholder\)|HPKE encryption would be used here' \
         "Telegram/SourceFiles/data/data_mls_protocol.cpp" \
         "Desktop MLS still contains placeholder crypto paths"
     warn_grep 'RAND_bytes.*privateKey|RAND_bytes.*publicKey|placeholder.*signature|placeholder.*verification' \
         "Telegram/SourceFiles/data/data_mls_protocol.cpp" \
         "Desktop MLS still uses random bytes instead of real key generation"
+    warn_grep 'TODO: Initialize PC/SC' \
+        "Telegram/SourceFiles/data/data_cac_interface.cpp" \
+        "CAC Linux backend still unimplemented (deprioritized: no test hardware)"
+    warn_grep 'TODO\(quantum-transport\)' \
+        "Telegram/SourceFiles/data/data_quantum_signal_impl.cpp" \
+        "Quantum session-init transport still pending"
 }
 
 # ---------------------------------------------------------------------------

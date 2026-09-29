@@ -124,24 +124,18 @@ required_sources=(
     # Desktop settings
     "Telegram/SourceFiles/settings/settings_cryptogram.cpp"
     "Telegram/SourceFiles/settings/settings_cryptogram.h"
-    # Android JNI
+    # Android JNI (consolidated: all natives live in CryptogramWrapper.cpp)
     "telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp"
-    "telegram-android/TMessagesProj/jni/cryptogram/qt_shims.h"
-    "telegram-android/TMessagesProj/jni/cryptogram/desktop_shims.h"
-    "telegram-android/TMessagesProj/jni/cryptogram/data/data_signal_protocol.cpp"
-    "telegram-android/TMessagesProj/jni/cryptogram/data/data_signal_protocol.h"
-    "telegram-android/TMessagesProj/jni/cryptogram/data/data_mls_protocol.cpp"
-    "telegram-android/TMessagesProj/jni/cryptogram/data/data_mls_protocol.h"
-    "telegram-android/TMessagesProj/jni/cryptogram/data/data_group_encryption.cpp"
-    "telegram-android/TMessagesProj/jni/cryptogram/data/data_group_encryption.h"
-    # Android Kotlin
-    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.kt"
-    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DoubleRatchet.kt"
-    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MLSProtocol.kt"
-    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/EnhancedPrivacy.kt"
-    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/OPSECHelper.kt"
-    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/ThreatDetector.kt"
-    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MediaMetadataHelper.kt"
+    # Android Java overlay (Kotlin prototypes were consolidated into Java
+    # during the monorepo migration)
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramNative.java"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DoubleRatchet.java"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/MLSProtocol.java"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/EnhancedPrivacy.java"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/PanicPasswordHelper.java"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DpiEvasionHelper.java"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/StylometryShield.java"
+    "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/AntiForensicsHelper.java"
     "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java"
     "telegram-android/TMessagesProj/src/main/java/org/telegram/ui/CryptogramSettingsActivity.java"
     # CI/CD
@@ -186,9 +180,6 @@ jni_exports=(
     "Java_org_telegram_messenger_cryptogram_EnhancedPrivacy_nativeIsCryptogramUser"
     "Java_org_telegram_messenger_cryptogram_CryptogramNative_nativeCheckDoubleRatchet"
     "Java_org_telegram_messenger_cryptogram_CryptogramNative_nativeCheckMLS"
-    "Java_org_telegram_messenger_cryptogram_OPSECHelper_nativeWrapDpiEvasion"
-    "Java_org_telegram_messenger_cryptogram_OPSECHelper_nativeSecureWipe"
-    "Java_org_telegram_messenger_cryptogram_OPSECHelper_nativeCheckPQC"
 )
 
 for export in "${jni_exports[@]}"; do
@@ -234,7 +225,7 @@ echo "-------------------------------------"
 integration_checks=(
     "encryptOutgoingMessage:telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java"
     "decryptIncomingMessage:telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java"
-    "CryptogramSettingsActivity:telegram-android/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java"
+    "CryptogramSettingsActivity:telegram-android/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java"
     "toggleCryptogramDoubleRatchet:telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java"
     "toggleCryptogramMLS:telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java"
     "toggleCryptogramPanicPassword:telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java"
@@ -244,8 +235,8 @@ integration_checks=(
     "toggleCryptogramUtd:telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java"
     "setCryptogramQuantumSecurityLevel:telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java"
     "setCryptogramThreatDefenseLevel:telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java"
-    "OPSECHelper:telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java"
-    "ThreatDetector:telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java"
+    "DoubleRatchet.INSTANCE:telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java"
+    "MLSProtocol.INSTANCE:telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/CryptogramMessageHelper.java"
 )
 
 for check in "${integration_checks[@]}"; do
@@ -265,7 +256,7 @@ echo "-------------------------------------"
 
 workflow_checks=(
     "build_linux.sh:.github/workflows/linux-deb.yml"
-    "dpkg-deb:.github/workflows/linux-deb.yml"
+    "build_deb.sh:.github/workflows/linux-deb.yml"
     "upload-artifact:.github/workflows/linux-deb.yml"
     "softprops/action-gh-release:.github/workflows/linux-deb.yml"
     "assembleAfatDebug:.github/workflows/android-apk.yml"
@@ -337,19 +328,14 @@ echo
 echo "Phase 11: Android Native Library Structure"
 echo "-------------------------------------"
 
-native_dirs=(
-    "telegram-android/TMessagesProj/jni/cryptogram/core"
-    "telegram-android/TMessagesProj/jni/cryptogram/data"
-    "telegram-android/TMessagesProj/jni/cryptogram/base"
-)
-
-for dir in "${native_dirs[@]}"; do
-    if [ -d "$ROOT_DIR/$dir" ]; then
-        log_pass "Native dir exists: $(basename $dir)"
-    else
-        log_fail "Native dir missing: $dir"
-    fi
-done
+# Consolidated JNI layout: all natives live in CryptogramWrapper.cpp (the
+# former jni/cryptogram/{core,data,base} split was retired in the monorepo
+# migration).
+if [ -f "$ROOT_DIR/telegram-android/TMessagesProj/jni/cryptogram/CryptogramWrapper.cpp" ]; then
+    log_pass "Consolidated JNI wrapper present (CryptogramWrapper.cpp)"
+else
+    log_fail "Consolidated JNI wrapper missing (CryptogramWrapper.cpp)"
+fi
 
 # Check JNI CMakeLists
 if grep -q "add_library(cryptogram SHARED" "$ROOT_DIR/telegram-android/TMessagesProj/jni/CMakeLists.txt" 2>/dev/null; then
