@@ -261,9 +261,136 @@ ByteVector sha256Concat(const ByteVector &first, const ByteVector &second) {
     return digest;
 }
 
+// ---------------------------------------------------------------------------
+// Persistent storage (Path 2). All paths derive from the directory the Java
+// layer provisions once at startup via nativeInitializeStorage — no
+// hardcoded /data/data/... anywhere. With storage NOT provisioned the
+// wrapper keeps its legacy memory-only behaviour.
+//
+// Layout (schema details in interop/InteropCore.h):
+//   <storage>/identity.keys.json     local identity (PBKDF2/AES-GCM at rest)
+//   <storage>/sessions/<userId>.json per-peer session, HMAC-protected
+//   <storage>/cryptogram/interop/    Path 1 KemKeyStore (pq_identity, "QGKA")
+// ---------------------------------------------------------------------------
+
+constexpr const char *kIdentityFileName = "/identity.keys.json";
+constexpr const char *kSessionsDirName = "/sessions";
+// Account-stable obfuscation-grade password material for the identity file
+// (desktop parity: PBKDF2(password) wrapping is explicitly documented as
+// obfuscation at rest, not as protection against a compromised device).
+constexpr const char *kIdentityPasswordPrefix = "cryptogram-android-identity-v2:";
+
+bool storageAvailable() {
+    return !gStoragePath.empty();
+}
+
+std::string identityFilePath() {
+    return gStoragePath + kIdentityFileName;
+}
+
+std::string sessionFilePath(int64_t userId) {
+    return gStoragePath + kSessionsDirName + "/" + std::to_string(userId) + ".json";
+}
+
+std::string identityPasswordFor(const std::string &registrationId) {
+    return kIdentityPasswordPrefix + registrationId;
+}
+
+// Loads the persisted identity. The registrationId is stored in plaintext
+// (desktop parity) and rebuilds the file's password before decryption.
+bool loadPersistedIdentityLocked() {
+    if (!storageAvailable()) return false;
+    const auto path = identityFilePath();
+    std::string registrationId;
+    if (!interop::readIdentityRegistrationId(path, registrationId)) return false;
+    return interop::loadIdentity(gIdentity, path, identityPasswordFor(registrationId));
+}
+
+// Path 1 KEM persistence lives NEXT TO this identity store as a DISTINCT
+// file managed by interop/KemKeyStore: <storage>/cryptogram/interop/
+// pq_identity in its own "QGKA" v1 container (see pqIdentityPath below).
+// The identity.keys.json schema intentionally carries no KEM fields so the
+// two formats never collide.
+bool persistIdentityLocked() {
+    if (!storageAvailable()) return false;
+    return interop::saveIdentity(
+        gIdentity,
+        identityFilePath(),
+        identityPasswordFor(std::to_string(gIdentity.registrationId)));
+}
+
 bool ensureIdentity() {
     if (gIdentity.initialized) return true;
-    return interop::generateLocalIdentity(gIdentity);
+
+    // Fixed-spec build: reuse the persisted identity so the key bundle is
+    // STABLE across process restarts (the pre-persistence build regenerated
+    // it on every launch, breaking every peer's established session).
+    if (loadPersistedIdentityLocked()) {
+        LOGD("identity restored from persistent storage");
+        return true;
+    }
+
+    if (!interop::generateLocalIdentity(gIdentity)) return false;
+    if (!persistIdentityLocked()) {
+        // Memory-only fallback (storage not provisioned yet, or IO failure):
+        // the bundle will change on the next process start — say so loudly.
+        LOGE("identity persistence failed; key bundle will NOT survive restart");
+    }
+    return true;
+}
+
+// Desktop deriveKey(identityPrivate, "session_hmac", 32) pattern; the
+// Ed25519 identity seed is the most stable key material we hold.
+bool sessionHmacKeyLocked(ByteVector &outKey) {
+    if (!gIdentity.initialized) return false;
+    outKey = interop::hkdfExpandSha256(
+        gIdentity.ed25519PrivateSeed,
+        "session_hmac",
+        interop::kAesKeySize);
+    return outKey.size() == interop::kAesKeySize;
+}
+
+// Rewrites <storage>/sessions/<userId>.json after every session mutation.
+bool saveSessionLocked(int64_t userId) {
+    const auto it = gSessions.find(userId);
+    if (it == gSessions.end() || !storageAvailable()) return false;
+    ByteVector hmacKey;
+    if (!sessionHmacKeyLocked(hmacKey)) return false;
+    if (!interop::saveSessionFile(
+            it->second,
+            sessionFilePath(userId),
+            hmacKey,
+            interop::kSessionSpecGeneration)) {
+        LOGE("session persistence failed; in-memory session remains authoritative");
+        return false;
+    }
+    return true;
+}
+
+// Lazy load on a memory miss. A tampered, corrupt or wrong-specGeneration
+// file is deleted by loadSessionFile (replace-not-trust): the session is
+// re-established from scratch instead of being trusted.
+bool loadSessionLocked(int64_t userId, interop::SessionState &outState) {
+    if (!storageAvailable()) return false;
+    ByteVector hmacKey;
+    if (!sessionHmacKeyLocked(hmacKey)) return false;
+    return interop::loadSessionFile(
+        outState,
+        sessionFilePath(userId),
+        hmacKey,
+        interop::kSessionSpecGeneration);
+}
+
+// Memory first, disk second. Returned pointer stays valid across subsequent
+// unordered_map inserts (node-based container).
+interop::SessionState *findSessionLocked(int64_t userId) {
+    const auto it = gSessions.find(userId);
+    if (it != gSessions.end()) return &it->second;
+
+    interop::SessionState restored;
+    if (!loadSessionLocked(userId, restored)) return nullptr;
+    LOGD("session restored from persistent storage");
+    return &gSessions.emplace(userId, std::move(restored)).first->second;
 }
 
 // Full path of the encrypted KEM identity store; empty when no storage dir
@@ -315,10 +442,20 @@ bool peerKemAdvertised(int64_t userId) {
 }
 
 ByteVector serializeSignalState(int64_t userId) {
-    const auto it = gSessions.find(userId);
+    // Lazy-load on a memory miss so the reported state reflects the
+    // persisted sessions as well as the in-memory ones. (Called under
+    // gSignalMutex; the identity must exist before sessions can load.)
+    if (!ensureIdentity()) {
+        const std::string error = "{\"initialized\": false, \"userId\": "
+            + std::to_string(userId) + "}";
+        return ByteVector(error.begin(), error.end());
+    }
+    const interop::SessionState *session = findSessionLocked(userId);
+    const bool hasSession = (session != nullptr);
     std::ostringstream out;
     out << "{\"initialized\": true, \"protocol\": \"Signal Double Ratchet (desktop-compatible)\", \"hasSession\": "
-        << (it == gSessions.end() ? "false" : "true")
+        << (hasSession ? "true" : "false")
+        << ", \"persisted\": " << (hasSession && storageAvailable() ? "true" : "false")
         << ", \"userId\": " << userId << "}";
     const auto text = out.str();
     return ByteVector(text.begin(), text.end());
@@ -526,13 +663,16 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeInitializeWithRemoteB
     gSessions[key] = std::move(session);
     gRemoteBundles[key] = bundle;
     gCryptogramUsers[key] = true;
+    // Session mutation: persist (establish).
+    saveSessionLocked(key);
     return JNI_TRUE;
 }
 
 JNIEXPORT jboolean JNICALL
 Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeHasSession(JNIEnv *, jobject, jlong userId) {
     std::lock_guard<std::mutex> lock(gSignalMutex);
-    return gSessions.find(static_cast<int64_t>(userId)) != gSessions.end() ? JNI_TRUE : JNI_FALSE;
+    if (!ensureIdentity()) return JNI_FALSE;
+    return findSessionLocked(static_cast<int64_t>(userId)) != nullptr ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jbyteArray JNICALL
@@ -541,11 +681,11 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeEncrypt(JNIEnv *env, 
 
     std::lock_guard<std::mutex> lock(gSignalMutex);
     if (!ensureIdentity()) return nullptr;
-    const auto it = gSessions.find(static_cast<int64_t>(userId));
-    if (it == gSessions.end()) return nullptr;
+    const auto key = static_cast<int64_t>(userId);
+    auto *session = findSessionLocked(key);
+    if (!session) return nullptr;
 
     const auto plainBytes = jstringToUtf8Bytes(env, plaintext);
-    const auto key = static_cast<int64_t>(userId);
 
     // Post-quantum inner envelope (desktop processOutgoingMessage): when the
     // peer's registered bundle advertised a KEM key (bitmap 0x02), wrap the
@@ -564,7 +704,7 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeEncrypt(JNIEnv *env, 
     }
 
     interop::MessageMetadata metadata;
-    const auto ciphertext = interop::encryptMessage(it->second, payload, metadata);
+    const auto ciphertext = interop::encryptMessage(*session, payload, metadata);
     if (ciphertext.empty()) return nullptr;
 
     // ZK Phase 1: always attach a fresh challenge nonce. Android never
@@ -577,6 +717,9 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeEncrypt(JNIEnv *env, 
     // applies any text-level framing.
     const auto envelope = interop::wrapEnvelope(ciphertext, metadata);
     if (envelope.empty()) return nullptr;
+
+    // Session mutation (chain advanced / possibly DH-ratcheted): persist.
+    saveSessionLocked(static_cast<int64_t>(userId));
     return vectorToJByteArray(env, envelope);
 }
 
@@ -593,8 +736,8 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeDecrypt(JNIEnv *env, 
     if (envelope.metadata.senderPublicKey.size() != interop::kKeySize) return nullptr;
 
     const auto key = static_cast<int64_t>(userId);
-    auto it = gSessions.find(key);
-    if (it == gSessions.end()) {
+    auto *session = findSessionLocked(key);
+    if (!session) {
         // First contact with a registered bundle: run the BOB-side
         // establishment using the sender public key from the metadata as
         // Alice's ephemeral.
@@ -604,11 +747,11 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeDecrypt(JNIEnv *env, 
         if (!interop::establishSessionBob(established, gIdentity, envelope.metadata.senderPublicKey, bundleIt->second)) {
             return nullptr;
         }
-        it = gSessions.emplace(key, std::move(established)).first;
+        session = &gSessions.emplace(key, std::move(established)).first->second;
         gCryptogramUsers[key] = true;
     }
 
-    auto plaintext = interop::decryptMessage(it->second, envelope.ciphertext, envelope.metadata);
+    auto plaintext = interop::decryptMessage(*session, envelope.ciphertext, envelope.metadata);
     if (plaintext.empty()) {
         // Stale-session retry: re-establish once from this message's
         // sender key and retry. The existing session is only replaced
@@ -622,9 +765,14 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeDecrypt(JNIEnv *env, 
                     gSessions[key] = std::move(established);
                     gCryptogramUsers[key] = true;
                     plaintext = std::move(retried);
+                    // Session replaced: persist the new state.
+                    saveSessionLocked(key);
                 }
             }
         }
+    } else {
+        // Session mutation (chain advanced, skipped keys stored): persist.
+        saveSessionLocked(key);
     }
     if (plaintext.empty()) return nullptr;
 
@@ -649,17 +797,22 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeDecrypt(JNIEnv *env, 
 JNIEXPORT jboolean JNICALL
 Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeRotateSession(JNIEnv *, jobject, jlong userId) {
     std::lock_guard<std::mutex> lock(gSignalMutex);
-    const auto it = gSessions.find(static_cast<int64_t>(userId));
-    if (it == gSessions.end()) return JNI_FALSE;
-    return interop::rotateSession(it->second) ? JNI_TRUE : JNI_FALSE;
+    if (!ensureIdentity()) return JNI_FALSE;
+    auto *session = findSessionLocked(static_cast<int64_t>(userId));
+    if (!session) return JNI_FALSE;
+    if (!interop::rotateSession(*session)) return JNI_FALSE;
+    // Session mutation (key rotation): persist.
+    saveSessionLocked(static_cast<int64_t>(userId));
+    return JNI_TRUE;
 }
 
 JNIEXPORT jstring JNICALL
 Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeGetFingerprint(JNIEnv *env, jobject, jlong userId) {
     std::lock_guard<std::mutex> lock(gSignalMutex);
-    const auto it = gSessions.find(static_cast<int64_t>(userId));
-    if (it == gSessions.end() || !ensureIdentity()) return env->NewStringUTF("UNINITIALIZED");
-    const auto digest = sha256Concat(gIdentity.ed25519Public, it->second.remoteIdentityKey);
+    if (!ensureIdentity()) return env->NewStringUTF("UNINITIALIZED");
+    auto *session = findSessionLocked(static_cast<int64_t>(userId));
+    if (!session) return env->NewStringUTF("UNINITIALIZED");
+    const auto digest = sha256Concat(gIdentity.ed25519Public, session->remoteIdentityKey);
     std::ostringstream out;
     for (int i = 0; i < 5; ++i) {
         const uint16_t chunk = static_cast<uint16_t>((digest[i * 2] << 8) | digest[i * 2 + 1]);
@@ -831,7 +984,15 @@ Java_org_telegram_messenger_cryptogram_CryptogramNative_nativeInitializeStorage(
     if (!path) return;
     const char *pathStr = env->GetStringUTFChars(path, nullptr);
     if (!pathStr) return;
-    gStoragePath = pathStr;
+    {
+        std::lock_guard<std::mutex> lock(gSignalMutex);
+        gStoragePath = pathStr;
+        // Backfill: if an identity was generated before storage was
+        // provisioned, persist it now so the bundle survives restarts.
+        if (gIdentity.initialized && !persistIdentityLocked()) {
+            LOGE("identity back-persist after storage provisioning failed");
+        }
+    }
     env->ReleaseStringUTFChars(path, pathStr);
 }
 

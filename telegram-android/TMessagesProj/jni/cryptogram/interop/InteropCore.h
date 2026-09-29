@@ -403,6 +403,128 @@ ByteVector unwrapPqe1(const ByteVector &privateKeyBlob, const ByteVector &blob);
 // Desktop processIncomingMessage gate: size > 8 and the "PQE1" magic.
 bool isPqe1Envelope(const ByteVector &data);
 
+// ---------------------------------------------------------------------------
+// At-rest persistence (Android identity + per-peer session files).
+//
+// JNI-free and host-testable. Every path is supplied by the caller (the JNI
+// wrapper passes the app files dir provisioned from Java at startup — no
+// hardcoded /data/data/... anywhere).
+//
+// Storage schema
+// --------------
+// <storage>/identity.keys.json — local identity, written once at first
+// generation, loaded on every subsequent process start:
+//   {
+//     "formatVersion": 2,
+//     "keyVersion": 2,            // desktop signal_keys.json keyVersion parity
+//     "registrationId": "<u64 decimal, plaintext (desktop parity)>",
+//     "identityPublic":           "<b64 Ed25519 public, 32B>",
+//     "x25519IdentityPublic":     "<b64 X25519 identity public, 32B>",
+//     "signedPreKeyPublic":       "<b64 X25519 SPK public, 32B>",
+//     "oneTimePreKeyPublic":      "<b64 X25519 OPK public, 32B>",
+//     "privateBundle":            "<b64 salt(32)||iv(12)||ct(128)||tag(16)>"
+//   }
+// privateBundle plaintext = ed25519Seed || x25519IdentityPrivate ||
+// signedPreKeyPrivate || oneTimePreKeyPrivate (4 x 32B), AES-256-GCM under
+// PBKDF2-SHA256(password, salt, kPbkdf2Iterations, 32). The GCM AAD binds
+// the plaintext public fields + registrationId so the stored publics cannot
+// be swapped against a different blob. Password = an account-stable string
+// built by the wrapper (documented as obfuscation-grade at rest, same
+// rationale as the desktop's PBKDF2-wrapped signal_keys.json).
+//
+// <storage>/sessions/<userId>.json — per-peer Double Ratchet session,
+// rewritten on every session mutation, loaded lazily on a memory miss:
+//   {
+//     "version": 1,               // desktop session.json version parity
+//     "sessionData": "<b64 compact session JSON>",
+//     "hmac": "<b64 HMAC-SHA256(sessionData bytes)>"
+//   }
+// HMAC key = hkdfExpandSha256(identity.ed25519PrivateSeed, "session_hmac", 32)
+// (desktop deriveKey(identityPrivate, "session_hmac") pattern). The inner
+// session JSON carries "specGeneration": any file whose specGeneration (or
+// HMAC) does not verify is DELETED and re-established, never trusted.
+//
+// Path 1 KEM persistence (ML-KEM/0x02 parity, already merged) stores its
+// quantum key material as a DISTINCT file managed by interop/KemKeyStore:
+// <storage>/cryptogram/interop/pq_identity in its own "QGKA" v1 container
+// (see kInteropStorageSubdir / kPqIdentityFileName above). This identity
+// schema intentionally has no KEM fields so the two formats never collide.
+// ---------------------------------------------------------------------------
+
+// PBKDF2-HMAC-SHA256 iteration count for at-rest key wrapping (the desktop
+// encryptWithPBKDF2 uses the same 100k).
+static constexpr uint32_t kPbkdf2Iterations = 100000;
+static constexpr size_t kPbkdf2SaltSize = 32; // random salt prefix of every blob
+
+// File-format / spec markers.
+static constexpr uint32_t kIdentityFormatVersion = 2; // desktop keyVersion=2 parity
+static constexpr uint32_t kSessionFileFormatVersion = 1; // desktop session.json version parity
+static constexpr uint32_t kSessionSpecGeneration = 2; // fixed-spec marker
+
+// Base64 (standard alphabet, '=' padding). base64Decode fails on any
+// character outside the alphabet/padding or on a dangling final group.
+ByteVector base64Encode(const ByteVector &data);
+bool base64Decode(const std::string &text, ByteVector &out);
+
+// PBKDF2-HMAC-SHA256 (desktop encryptWithPBKDF2 key derivation).
+ByteVector pbkdf2Sha256(
+    const std::string &password,
+    const ByteVector &salt,
+    uint32_t iterations,
+    size_t length);
+
+// Desktop encryptWithPBKDF2 blob layout: salt(32) || iv(12) || ct || tag(16),
+// key = PBKDF2-SHA256(password, salt, kPbkdf2Iterations, 32). `aad` is bound
+// into the GCM tag (the desktop binds nothing; the Android format binds the
+// public header fields so they cannot be swapped against another blob).
+ByteVector encryptWithPbkdf2(
+    const ByteVector &plaintext,
+    const std::string &password,
+    const ByteVector &aad);
+bool decryptWithPbkdf2(
+    const ByteVector &blob,
+    const std::string &password,
+    const ByteVector &aad,
+    ByteVector &out);
+
+// Ed25519 public derived from the 32-byte seed (deterministic; used to
+// validate a loaded identity without trusting the stored public).
+ByteVector ed25519PublicFromSeed(const ByteVector &seed);
+
+// Identity persistence. `password` must be the caller's account-stable
+// string; registrationId is stored in plaintext (desktop parity) and can be
+// read back via readIdentityRegistrationId to rebuild the password before
+// decryption. loadIdentity validates every derived public against the stored
+// public and the SPK signature before returning.
+bool saveIdentity(
+    const LocalIdentity &identity,
+    const std::string &filePath,
+    const std::string &password);
+bool loadIdentity(
+    LocalIdentity &out,
+    const std::string &filePath,
+    const std::string &password);
+bool readIdentityRegistrationId(
+    const std::string &filePath,
+    std::string &registrationIdOut);
+
+// Session persistence. hmacKey = hkdfExpandSha256(
+// identity.ed25519PrivateSeed, "session_hmac", kAesKeySize) — keep the
+// wrapper and any future caller consistent. loadSessionFile verifies the
+// HMAC (constant-time), enforces expectedSpecGeneration, and DELETES the
+// file on any integrity/spec failure (replace-not-trust) — a stale or
+// tampered session must be re-established, never trusted.
+bool saveSessionFile(
+    const SessionState &state,
+    const std::string &filePath,
+    const ByteVector &hmacKey,
+    uint32_t specGeneration);
+bool loadSessionFile(
+    SessionState &outState,
+    const std::string &filePath,
+    const ByteVector &hmacKey,
+    uint32_t expectedSpecGeneration);
+
 } // namespace interop
 
 #endif // CRYPTOGRAM_ANDROID_INTEROP_INTEROP_CORE_H

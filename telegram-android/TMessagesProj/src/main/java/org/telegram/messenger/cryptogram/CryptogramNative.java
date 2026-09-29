@@ -9,6 +9,7 @@ public final class CryptogramNative {
 
     private static final String TAG = "CryptogramNative";
     private static volatile boolean loaded;
+    private static volatile boolean storageProvisioned;
 
     static {
         try {
@@ -24,6 +25,12 @@ public final class CryptogramNative {
     }
 
     public boolean isLoaded() {
+        if (loaded && !storageProvisioned) {
+            // Provision the persistent crypto storage directory once, before
+            // any cryptogram call (every cryptogram wrapper funnels through
+            // this check). No-op until the application context exists.
+            initializeStorage();
+        }
         return loaded;
     }
 
@@ -43,10 +50,11 @@ public final class CryptogramNative {
     }
 
     public void initializeStorage() {
-        if (!loaded || ApplicationLoader.applicationContext == null) {
+        if (!loaded || storageProvisioned || ApplicationLoader.applicationContext == null) {
             return;
         }
         nativeInitializeStorage(ApplicationLoader.applicationContext.getFilesDir().getAbsolutePath());
+        storageProvisioned = true;
     }
 
     private native String nativeGetVersion();

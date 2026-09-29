@@ -13,6 +13,7 @@
 
 #include "interop/InteropCore.h"
 
+#include <openssl/crypto.h> // CRYPTO_memcmp (constant-time HMAC compare)
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/kdf.h>
@@ -30,8 +31,15 @@
 #endif
 
 #include <algorithm>
+#include <cerrno>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <string>
+
+#include <sys/stat.h>
+#include <sys/types.h>
 
 namespace interop {
 namespace {
@@ -1761,6 +1769,934 @@ bool isPqe1Envelope(const ByteVector &data) {
         && data[1] == static_cast<uint8_t>('Q')
         && data[2] == static_cast<uint8_t>('E')
         && data[3] == static_cast<uint8_t>('1');
+}
+
+// ---------------------------------------------------------------------------
+// At-rest persistence
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Refuse absurd files up front (a valid identity file is ~1 KB; a session
+// file with kMaxSkippedKeys entries stays well under this cap).
+constexpr size_t kMaxPersistenceFileSize = 8 * 1024 * 1024;
+
+bool readFileCapped(const std::string &filePath, size_t cap, ByteVector &out) {
+    out.clear();
+    FILE *file = fopen(filePath.c_str(), "rb");
+    if (!file) return false;
+
+    bool ok = true;
+    ByteVector data;
+    if (fseek(file, 0, SEEK_END) == 0) {
+        const long size = ftell(file);
+        if (size >= 0 && static_cast<size_t>(size) <= cap) {
+            data.resize(static_cast<size_t>(size));
+            if (size > 0) {
+                rewind(file);
+                ok = fread(data.data(), 1, data.size(), file) == data.size();
+            }
+        } else {
+            ok = false;
+        }
+    } else {
+        ok = false;
+    }
+    fclose(file);
+
+    if (!ok) return false;
+    out.swap(data);
+    return true;
+}
+
+// Write to "<path>.tmp" then rename over the target: a crash mid-write can
+// never leave a half-written file in place of a good one.
+bool writeFileAtomic(const std::string &filePath, const ByteVector &data) {
+    const std::string tmpPath = filePath + ".tmp";
+    FILE *file = fopen(tmpPath.c_str(), "wb");
+    if (!file) return false;
+
+    const bool wrote = data.empty()
+        || fwrite(data.data(), 1, data.size(), file) == data.size();
+    const bool closed = (fclose(file) == 0);
+    if (!wrote || !closed) {
+        remove(tmpPath.c_str());
+        return false;
+    }
+    if (rename(tmpPath.c_str(), filePath.c_str()) != 0) {
+        remove(tmpPath.c_str());
+        return false;
+    }
+    return true;
+}
+
+// Create every missing directory component of the file's path (progressive
+// left-to-right, so EEXIST is the only tolerated "error"). POSIX — fine on
+// Linux hosts and Android alike.
+bool ensureParentDirectory(const std::string &filePath) {
+    for (size_t i = 0; i < filePath.size(); ++i) {
+        if (filePath[i] != '/' || i == 0) continue;
+        const std::string dir = filePath.substr(0, i);
+        if (mkdir(dir.c_str(), 0755) != 0 && errno != EEXIST) return false;
+    }
+    return true;
+}
+
+void jsonEscapeInto(const std::string &value, std::string &out) {
+    out.push_back('"');
+    for (const char raw : value) {
+        const unsigned char c = static_cast<unsigned char>(raw);
+        switch (c) {
+        case '"': out += "\\\""; break;
+        case '\\': out += "\\\\"; break;
+        case '\b': out += "\\b"; break;
+        case '\f': out += "\\f"; break;
+        case '\n': out += "\\n"; break;
+        case '\r': out += "\\r"; break;
+        case '\t': out += "\\t"; break;
+        default:
+            if (c < 0x20) {
+                static const char kHex[] = "0123456789abcdef";
+                out += "\\u00";
+                out.push_back(kHex[(c >> 4) & 0xF]);
+                out.push_back(kHex[c & 0xF]);
+            } else {
+                out.push_back(raw);
+            }
+        }
+    }
+    out.push_back('"');
+}
+
+std::string jsonQuote(const std::string &value) {
+    std::string out;
+    out.reserve(value.size() + 2);
+    jsonEscapeInto(value, out);
+    return out;
+}
+
+std::string base64String(const ByteVector &data) {
+    const auto encoded = base64Encode(data);
+    return std::string(encoded.begin(), encoded.end());
+}
+
+// Minimal strict JSON for the persistence documents: objects, arrays,
+// strings (standard escapes), numbers (kept as raw token text so 64-bit
+// values survive exactly), true/false, null. Depth-capped.
+struct JsonValue {
+    enum Type { Null, Boolean, Number, String, Array, Object };
+    Type type = Null;
+    bool boolean = false;
+    std::string numberText;
+    std::string stringValue;
+    std::vector<JsonValue> array;
+    std::vector<std::pair<std::string, JsonValue>> members;
+
+    const JsonValue *find(const char *key) const {
+        if (type != Object) return nullptr;
+        for (const auto &member : members) {
+            if (member.first == key) return &member.second;
+        }
+        return nullptr;
+    }
+
+    bool getString(const char *key, std::string &out) const {
+        const JsonValue *value = find(key);
+        if (!value || value->type != String) return false;
+        out = value->stringValue;
+        return true;
+    }
+
+    // Exact unsigned parse of the raw number token (no double round-trip —
+    // registrationId spans the full uint64 range).
+    bool getUint(const char *key, uint64_t &out) const {
+        const JsonValue *value = find(key);
+        if (!value || value->type != Number) return false;
+        const std::string &text = value->numberText;
+        if (text.empty() || text.size() > 20) return false;
+        for (const char c : text) {
+            if (c < '0' || c > '9') return false;
+        }
+        errno = 0;
+        char *end = nullptr;
+        const unsigned long long parsed = strtoull(text.c_str(), &end, 10);
+        if (errno != 0 || !end || *end != '\0') return false;
+        out = static_cast<uint64_t>(parsed);
+        return true;
+    }
+
+    bool getBool(const char *key, bool &out) const {
+        const JsonValue *value = find(key);
+        if (!value || value->type != Boolean) return false;
+        out = value->boolean;
+        return true;
+    }
+};
+
+class JsonParser {
+public:
+    explicit JsonParser(const std::string &text)
+        : data_(text.data()), size_(text.size()) {
+    }
+
+    bool parse(JsonValue &out) {
+        skipWhitespace();
+        if (!parseValue(out, 0)) return false;
+        skipWhitespace();
+        return pos_ >= size_; // strict: no trailing content
+    }
+
+private:
+    static constexpr int kMaxDepth = 32;
+
+    void skipWhitespace() {
+        while (pos_ < size_) {
+            const char c = data_[pos_];
+            if (c != ' ' && c != '\t' && c != '\n' && c != '\r') break;
+            ++pos_;
+        }
+    }
+
+    bool consume(char c) {
+        if (pos_ < size_ && data_[pos_] == c) {
+            ++pos_;
+            return true;
+        }
+        return false;
+    }
+
+    bool parseValue(JsonValue &out, int depth) {
+        if (depth > kMaxDepth || pos_ >= size_) return false;
+        switch (data_[pos_]) {
+        case '{': return parseObject(out, depth);
+        case '[': return parseArray(out, depth);
+        case '"': return parseString(out);
+        case 't': return parseLiteral(out, "true", JsonValue::Boolean, true);
+        case 'f': return parseLiteral(out, "false", JsonValue::Boolean, false);
+        case 'n': return parseNull(out);
+        default: return parseNumber(out);
+        }
+    }
+
+    bool parseLiteral(JsonValue &out, const char *literal, JsonValue::Type type, bool flag) {
+        const size_t len = std::strlen(literal);
+        if (pos_ + len > size_ || std::memcmp(data_ + pos_, literal, len) != 0) {
+            return false;
+        }
+        pos_ += len;
+        out = JsonValue();
+        out.type = type;
+        out.boolean = flag;
+        return true;
+    }
+
+    bool parseNull(JsonValue &out) {
+        return parseLiteral(out, "null", JsonValue::Null, false);
+    }
+
+    bool parseNumber(JsonValue &out) {
+        const size_t start = pos_;
+        while (pos_ < size_) {
+            const char c = data_[pos_];
+            if ((c >= '0' && c <= '9') || c == '-' || c == '+'
+                    || c == '.' || c == 'e' || c == 'E') {
+                ++pos_;
+            } else {
+                break;
+            }
+        }
+        if (pos_ == start) return false;
+        out = JsonValue();
+        out.type = JsonValue::Number;
+        out.numberText.assign(data_ + start, pos_ - start);
+        return true;
+    }
+
+    bool parseString(JsonValue &out) {
+        if (!consume('"')) return false;
+        std::string value;
+        while (pos_ < size_) {
+            const char c = data_[pos_++];
+            if (c == '"') {
+                out = JsonValue();
+                out.type = JsonValue::String;
+                out.stringValue = std::move(value);
+                return true;
+            }
+            if (static_cast<unsigned char>(c) < 0x20) return false;
+            if (c != '\\') {
+                value.push_back(c);
+                continue;
+            }
+            if (pos_ >= size_) return false;
+            const char escape = data_[pos_++];
+            switch (escape) {
+            case '"': value.push_back('"'); break;
+            case '\\': value.push_back('\\'); break;
+            case '/': value.push_back('/'); break;
+            case 'b': value.push_back('\b'); break;
+            case 'f': value.push_back('\f'); break;
+            case 'n': value.push_back('\n'); break;
+            case 'r': value.push_back('\r'); break;
+            case 't': value.push_back('\t'); break;
+            case 'u': {
+                uint32_t cp = 0;
+                if (!readHex4(cp)) return false;
+                // Encode as UTF-8. (The persistence documents carry only
+                // ASCII payloads; surrogate pairs are not produced.)
+                if (cp < 0x80) {
+                    value.push_back(static_cast<char>(cp));
+                } else if (cp < 0x800) {
+                    value.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+                    value.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+                } else {
+                    value.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+                    value.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+                    value.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+                }
+                break;
+            }
+            default: return false;
+            }
+        }
+        return false;
+    }
+
+    bool readHex4(uint32_t &out) {
+        if (pos_ + 4 > size_) return false;
+        uint32_t value = 0;
+        for (int i = 0; i < 4; ++i) {
+            const char c = data_[pos_++];
+            value <<= 4;
+            if (c >= '0' && c <= '9') {
+                value |= static_cast<uint32_t>(c - '0');
+            } else if (c >= 'a' && c <= 'f') {
+                value |= static_cast<uint32_t>(c - 'a' + 10);
+            } else if (c >= 'A' && c <= 'F') {
+                value |= static_cast<uint32_t>(c - 'A' + 10);
+            } else {
+                return false;
+            }
+        }
+        out = value;
+        return true;
+    }
+
+    bool parseArray(JsonValue &out, int depth) {
+        if (!consume('[')) return false;
+        out = JsonValue();
+        out.type = JsonValue::Array;
+        skipWhitespace();
+        if (consume(']')) return true;
+        while (true) {
+            skipWhitespace();
+            JsonValue item;
+            if (!parseValue(item, depth + 1)) return false;
+            out.array.push_back(std::move(item));
+            skipWhitespace();
+            if (consume(']')) return true;
+            if (!consume(',')) return false;
+        }
+    }
+
+    bool parseObject(JsonValue &out, int depth) {
+        if (!consume('{')) return false;
+        out = JsonValue();
+        out.type = JsonValue::Object;
+        skipWhitespace();
+        if (consume('}')) return true;
+        while (true) {
+            skipWhitespace();
+            JsonValue key;
+            if (!parseString(key)) return false;
+            skipWhitespace();
+            if (!consume(':')) return false;
+            skipWhitespace();
+            JsonValue value;
+            if (!parseValue(value, depth + 1)) return false;
+            out.members.emplace_back(std::move(key.stringValue), std::move(value));
+            skipWhitespace();
+            if (consume('}')) return true;
+            if (!consume(',')) return false;
+        }
+    }
+
+    const char *data_ = nullptr;
+    size_t size_ = 0;
+    size_t pos_ = 0;
+};
+
+bool jsonParse(const std::string &text, JsonValue &out) {
+    JsonParser parser(text);
+    return parser.parse(out);
+}
+
+// Binds the encrypted private-key bundle to the stored public fields and
+// registrationId (the desktop binds nothing; see the header schema note).
+ByteVector identityAad(
+        const ByteVector &identityPublic,
+        const ByteVector &x25519IdentityPublic,
+        const ByteVector &signedPreKeyPublic,
+        const ByteVector &oneTimePreKeyPublic,
+        const std::string &registrationId) {
+    const std::string text =
+        "cryptogram-identity-v2|" + registrationId
+        + "|" + base64String(identityPublic)
+        + "|" + base64String(x25519IdentityPublic)
+        + "|" + base64String(signedPreKeyPublic)
+        + "|" + base64String(oneTimePreKeyPublic);
+    return ByteVector(text.begin(), text.end());
+}
+
+std::string serializeSessionJson(
+        const SessionState &state,
+        uint32_t specGeneration) {
+    std::string o;
+    o.reserve(512 + state.skippedMessageKeys.size() * 96);
+    o += "{";
+    o += "\"version\":" + std::to_string(kSessionFileFormatVersion) + ",";
+    o += "\"specGeneration\":" + std::to_string(specGeneration) + ",";
+    o += "\"rootKey\":" + jsonQuote(base64String(state.rootKey)) + ",";
+    o += "\"sendingChainKey\":" + jsonQuote(base64String(state.sendingChainKey)) + ",";
+    o += "\"receivingChainKey\":" + jsonQuote(base64String(state.receivingChainKey)) + ",";
+    o += "\"dhSendingPrivate\":" + jsonQuote(base64String(state.dhSendingPrivateKey)) + ",";
+    o += "\"dhSendingPublic\":" + jsonQuote(base64String(state.dhSendingPublicKey)) + ",";
+    o += "\"dhRemotePublic\":" + jsonQuote(base64String(state.dhRemotePublicKey)) + ",";
+    o += "\"remoteIdentityKey\":" + jsonQuote(base64String(state.remoteIdentityKey)) + ",";
+    o += "\"remoteX25519IdentityKey\":" + jsonQuote(base64String(state.remoteX25519IdentityKey)) + ",";
+    o += "\"sendingCounter\":" + std::to_string(state.sendingMessageCounter) + ",";
+    o += "\"receivingCounter\":" + std::to_string(state.receivingMessageCounter) + ",";
+    o += "\"previousChainLength\":" + std::to_string(state.previousSendingChainLength) + ",";
+    o += std::string("\"pendingRemoteDH\":") + (state.pendingRemoteDH ? "true" : "false") + ",";
+    o += "\"skippedKeys\":[";
+    bool first = true;
+    for (const auto &skipped : state.skippedMessageKeys) {
+        if (!first) o += ",";
+        first = false;
+        o += "{\"messageNumber\":" + std::to_string(skipped.messageNumber);
+        o += ",\"key\":" + jsonQuote(base64String(skipped.key)) + "}";
+    }
+    o += "]}";
+    return o;
+}
+
+bool parseFixedKey(const JsonValue &object, const char *key, ByteVector &out) {
+    std::string text;
+    if (!object.getString(key, text)) return false;
+    ByteVector value;
+    if (!base64Decode(text, value) || value.size() != kKeySize) return false;
+    out = std::move(value);
+    return true;
+}
+
+bool parseSessionJson(
+        const std::string &json,
+        SessionState &outState,
+        uint32_t &specGenerationOut) {
+    JsonValue root;
+    if (!jsonParse(json, root) || root.type != JsonValue::Object) return false;
+
+    uint64_t version = 0;
+    if (!root.getUint("version", version)
+            || version != kSessionFileFormatVersion) {
+        return false;
+    }
+    uint64_t specGeneration = 0;
+    if (!root.getUint("specGeneration", specGeneration)
+            || specGeneration > 0xFFFFFFFFull) {
+        return false;
+    }
+
+    SessionState state;
+    if (!parseFixedKey(root, "rootKey", state.rootKey)) return false;
+    if (!parseFixedKey(root, "sendingChainKey", state.sendingChainKey)) return false;
+    if (!parseFixedKey(root, "receivingChainKey", state.receivingChainKey)) return false;
+    if (!parseFixedKey(root, "dhSendingPrivate", state.dhSendingPrivateKey)) return false;
+    if (!parseFixedKey(root, "dhSendingPublic", state.dhSendingPublicKey)) return false;
+    if (!parseFixedKey(root, "dhRemotePublic", state.dhRemotePublicKey)) return false;
+    if (!parseFixedKey(root, "remoteIdentityKey", state.remoteIdentityKey)) return false;
+    if (!parseFixedKey(root, "remoteX25519IdentityKey", state.remoteX25519IdentityKey)) return false;
+
+    uint64_t counter = 0;
+    if (!root.getUint("sendingCounter", counter) || counter > 0xFFFFFFFFull) return false;
+    state.sendingMessageCounter = static_cast<uint32_t>(counter);
+    if (!root.getUint("receivingCounter", counter) || counter > 0xFFFFFFFFull) return false;
+    state.receivingMessageCounter = static_cast<uint32_t>(counter);
+    if (!root.getUint("previousChainLength", counter) || counter > 0xFFFFFFFFull) return false;
+    state.previousSendingChainLength = static_cast<uint32_t>(counter);
+
+    if (!root.getBool("pendingRemoteDH", state.pendingRemoteDH)) return false;
+
+    const JsonValue *skipped = root.find("skippedKeys");
+    if (!skipped || skipped->type != JsonValue::Array) return false;
+    for (const auto &entry : skipped->array) {
+        if (entry.type != JsonValue::Object) return false;
+        SessionState::SkippedKey key;
+        if (!entry.getUint("messageNumber", counter) || counter > 0xFFFFFFFFull) return false;
+        key.messageNumber = static_cast<uint32_t>(counter);
+        if (!parseFixedKey(entry, "key", key.key)) return false;
+        state.skippedMessageKeys.push_back(std::move(key));
+    }
+
+    specGenerationOut = static_cast<uint32_t>(specGeneration);
+    outState = std::move(state);
+    return true;
+}
+
+bool parseRegistrationId(const std::string &text, uint64_t &out) {
+    if (text.empty() || text.size() > 20) return false;
+    for (const char c : text) {
+        if (c < '0' || c > '9') return false;
+    }
+    errno = 0;
+    char *end = nullptr;
+    const unsigned long long parsed = strtoull(text.c_str(), &end, 10);
+    if (errno != 0 || !end || *end != '\0') return false;
+    out = static_cast<uint64_t>(parsed);
+    return true;
+}
+
+} // namespace
+
+// Base64 (RFC 4648, standard alphabet with '=' padding).
+ByteVector base64Encode(const ByteVector &data) {
+    static const char kAlphabet[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    std::string out;
+    out.reserve(((data.size() + 2) / 3) * 4);
+    size_t i = 0;
+    for (; i + 3 <= data.size(); i += 3) {
+        const uint32_t group = (static_cast<uint32_t>(data[i]) << 16)
+            | (static_cast<uint32_t>(data[i + 1]) << 8)
+            | static_cast<uint32_t>(data[i + 2]);
+        out.push_back(kAlphabet[(group >> 18) & 0x3F]);
+        out.push_back(kAlphabet[(group >> 12) & 0x3F]);
+        out.push_back(kAlphabet[(group >> 6) & 0x3F]);
+        out.push_back(kAlphabet[group & 0x3F]);
+    }
+    const size_t remaining = data.size() - i;
+    if (remaining == 1) {
+        const uint32_t group = static_cast<uint32_t>(data[i]) << 16;
+        out.push_back(kAlphabet[(group >> 18) & 0x3F]);
+        out.push_back(kAlphabet[(group >> 12) & 0x3F]);
+        out.push_back('=');
+        out.push_back('=');
+    } else if (remaining == 2) {
+        const uint32_t group = (static_cast<uint32_t>(data[i]) << 16)
+            | (static_cast<uint32_t>(data[i + 1]) << 8);
+        out.push_back(kAlphabet[(group >> 18) & 0x3F]);
+        out.push_back(kAlphabet[(group >> 12) & 0x3F]);
+        out.push_back(kAlphabet[(group >> 6) & 0x3F]);
+        out.push_back('=');
+    }
+    return ByteVector(out.begin(), out.end());
+}
+
+bool base64Decode(const std::string &text, ByteVector &out) {
+    out.clear();
+    static const int8_t kReverse[256] = {
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63, // + /
+        52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1, // 0-9
+        -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,           // A-O
+        15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1, // P-Z
+        -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, // a-o
+        41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1, // p-z
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    };
+
+    if (text.size() % 4 != 0) return false;
+    if (text.empty()) return true; // valid encoding of empty input
+
+    // Padding may only appear as trailing '=' inside the final group.
+    size_t padding = 0;
+    bool paddingSeen = false;
+    for (const char raw : text) {
+        const unsigned char c = static_cast<unsigned char>(raw);
+        if (c == '=') {
+            paddingSeen = true;
+            ++padding;
+        } else {
+            if (paddingSeen) return false; // data after padding
+            if (kReverse[c] < 0) return false;
+        }
+    }
+    if (padding > 2) return false;
+
+    out.reserve((text.size() / 4) * 3);
+    uint32_t group = 0;
+    int groupSize = 0;
+    for (const char raw : text) {
+        if (raw == '=') break;
+        group = (group << 6)
+            | static_cast<uint32_t>(kReverse[static_cast<unsigned char>(raw)]);
+        if (++groupSize == 4) {
+            out.push_back(static_cast<uint8_t>((group >> 16) & 0xFF));
+            out.push_back(static_cast<uint8_t>((group >> 8) & 0xFF));
+            out.push_back(static_cast<uint8_t>(group & 0xFF));
+            group = 0;
+            groupSize = 0;
+        }
+    }
+    if (groupSize == 2) {
+        out.push_back(static_cast<uint8_t>((group >> 4) & 0xFF));
+    } else if (groupSize == 3) {
+        out.push_back(static_cast<uint8_t>((group >> 10) & 0xFF));
+        out.push_back(static_cast<uint8_t>((group >> 2) & 0xFF));
+    } else if (groupSize != 0) {
+        out.clear();
+        return false;
+    }
+    return true;
+}
+
+// desktop encryptWithPBKDF2 key derivation (PKCS5_PBKDF2_HMAC is available
+// in both OpenSSL and BoringSSL; only the parameter types differ slightly).
+ByteVector pbkdf2Sha256(
+        const std::string &password,
+        const ByteVector &salt,
+        uint32_t iterations,
+        size_t length) {
+    if (length == 0 || length > 0x7FFFFFFF) return {};
+    ByteVector output(length, 0);
+    const int ok = PKCS5_PBKDF2_HMAC(
+        password.c_str(),
+        static_cast<int>(password.size()),
+        salt.empty() ? nullptr : salt.data(),
+        static_cast<int>(salt.size()),
+        static_cast<int>(iterations),
+        EVP_sha256(),
+        static_cast<int>(length),
+        output.data());
+    if (ok != 1) {
+        secureWipe(output);
+        return {};
+    }
+    return output;
+}
+
+ByteVector encryptWithPbkdf2(
+        const ByteVector &plaintext,
+        const std::string &password,
+        const ByteVector &aad) {
+    if (password.empty()) return {};
+
+    ByteVector salt;
+    ByteVector iv;
+    {
+        salt = randomVector(kPbkdf2SaltSize);
+        iv = randomVector(kGcmIvSize);
+        if (salt.empty() || iv.empty()) return {};
+    }
+    auto key = pbkdf2Sha256(password, salt, kPbkdf2Iterations, kAesKeySize);
+    if (key.empty()) return {};
+
+    const auto ciphertext = aesGcmEncrypt(key, iv, plaintext, aad);
+    secureWipe(key);
+    if (ciphertext.empty()) return {};
+
+    // salt(32) || iv(12) || ciphertext||tag — desktop blob layout.
+    ByteVector blob;
+    blob.reserve(salt.size() + iv.size() + ciphertext.size());
+    blob.insert(blob.end(), salt.begin(), salt.end());
+    blob.insert(blob.end(), iv.begin(), iv.end());
+    blob.insert(blob.end(), ciphertext.begin(), ciphertext.end());
+    return blob;
+}
+
+bool decryptWithPbkdf2(
+        const ByteVector &blob,
+        const std::string &password,
+        const ByteVector &aad,
+        ByteVector &out) {
+    out.clear();
+    if (password.empty()) return false;
+    // Minimum: salt(32) + iv(12) + tag(16) — the desktop's magic 60.
+    if (blob.size() < kPbkdf2SaltSize + kGcmIvSize + kGcmTagSize) return false;
+
+    const ByteVector salt(blob.begin(), blob.begin() + kPbkdf2SaltSize);
+    const ByteVector iv(blob.begin() + kPbkdf2SaltSize, blob.begin() + kPbkdf2SaltSize + kGcmIvSize);
+    const ByteVector ciphertext(blob.begin() + kPbkdf2SaltSize + kGcmIvSize, blob.end());
+
+    auto key = pbkdf2Sha256(password, salt, kPbkdf2Iterations, kAesKeySize);
+    if (key.empty()) return false;
+    auto plaintext = aesGcmDecrypt(key, iv, ciphertext, aad);
+    secureWipe(key);
+    if (plaintext.empty()) return false;
+    out = std::move(plaintext);
+    return true;
+}
+
+ByteVector ed25519PublicFromSeed(const ByteVector &seed) {
+    ByteVector result(kKeySize, 0);
+    if (seed.size() != kEd25519SeedSize) return result;
+
+    EVP_PKEY *pkey = EVP_PKEY_new_raw_private_key(
+        EVP_PKEY_ED25519,
+        nullptr,
+        seed.data(),
+        seed.size());
+    if (!pkey) return result;
+
+    size_t len = kKeySize;
+    if (EVP_PKEY_get_raw_public_key(pkey, result.data(), &len) != 1
+            || len != kKeySize) {
+        std::fill(result.begin(), result.end(), static_cast<uint8_t>(0));
+    }
+    EVP_PKEY_free(pkey);
+    return result;
+}
+
+bool saveIdentity(
+        const LocalIdentity &identity,
+        const std::string &filePath,
+        const std::string &password) {
+    if (!identity.initialized || filePath.empty() || password.empty()) return false;
+    if (identity.ed25519PrivateSeed.size() != kEd25519SeedSize
+            || identity.ed25519Public.size() != kKeySize
+            || identity.x25519IdentityPrivate.size() != kKeySize
+            || identity.x25519IdentityPublic.size() != kKeySize
+            || identity.signedPreKeyPrivate.size() != kKeySize
+            || identity.signedPreKeyPublic.size() != kKeySize
+            || identity.oneTimePreKeyPrivate.size() != kKeySize
+            || identity.oneTimePreKeyPublic.size() != kKeySize) {
+        return false;
+    }
+
+    // Private material wrapped as one blob: seed || xid || spk || opk.
+    ByteVector privates;
+    privates.reserve(4 * kKeySize);
+    privates.insert(privates.end(), identity.ed25519PrivateSeed.begin(), identity.ed25519PrivateSeed.end());
+    privates.insert(privates.end(), identity.x25519IdentityPrivate.begin(), identity.x25519IdentityPrivate.end());
+    privates.insert(privates.end(), identity.signedPreKeyPrivate.begin(), identity.signedPreKeyPrivate.end());
+    privates.insert(privates.end(), identity.oneTimePreKeyPrivate.begin(), identity.oneTimePreKeyPrivate.end());
+
+    const std::string registrationId = std::to_string(identity.registrationId);
+    const ByteVector aad = identityAad(
+        identity.ed25519Public,
+        identity.x25519IdentityPublic,
+        identity.signedPreKeyPublic,
+        identity.oneTimePreKeyPublic,
+        registrationId);
+    const auto privateBundle = encryptWithPbkdf2(privates, password, aad);
+    secureWipe(privates);
+    if (privateBundle.empty()) return false;
+
+    std::string json;
+    json.reserve(1024);
+    json += "{";
+    json += "\"formatVersion\":" + std::to_string(kIdentityFormatVersion) + ",";
+    json += "\"keyVersion\":" + std::to_string(kIdentityFormatVersion) + ",";
+    json += "\"registrationId\":" + jsonQuote(registrationId) + ",";
+    json += "\"identityPublic\":" + jsonQuote(base64String(identity.ed25519Public)) + ",";
+    json += "\"x25519IdentityPublic\":" + jsonQuote(base64String(identity.x25519IdentityPublic)) + ",";
+    json += "\"signedPreKeyPublic\":" + jsonQuote(base64String(identity.signedPreKeyPublic)) + ",";
+    json += "\"oneTimePreKeyPublic\":" + jsonQuote(base64String(identity.oneTimePreKeyPublic)) + ",";
+    json += "\"privateBundle\":" + jsonQuote(base64String(privateBundle));
+    json += "}";
+
+    if (!ensureParentDirectory(filePath)) return false;
+    const ByteVector bytes(json.begin(), json.end());
+    return writeFileAtomic(filePath, bytes);
+}
+
+bool loadIdentity(
+        LocalIdentity &out,
+        const std::string &filePath,
+        const std::string &password) {
+    out = LocalIdentity();
+    if (filePath.empty() || password.empty()) return false;
+
+    ByteVector fileBytes;
+    if (!readFileCapped(filePath, kMaxPersistenceFileSize, fileBytes)) return false;
+    const std::string text(fileBytes.begin(), fileBytes.end());
+
+    JsonValue root;
+    if (!jsonParse(text, root) || root.type != JsonValue::Object) return false;
+
+    uint64_t formatVersion = 0;
+    if (!root.getUint("formatVersion", formatVersion)
+            || formatVersion != kIdentityFormatVersion) {
+        return false;
+    }
+    std::string registrationId;
+    if (!root.getString("registrationId", registrationId)) return false;
+    uint64_t registrationIdValue = 0;
+    if (!parseRegistrationId(registrationId, registrationIdValue)) return false;
+
+    ByteVector identityPublic;
+    ByteVector x25519IdentityPublic;
+    ByteVector signedPreKeyPublic;
+    ByteVector oneTimePreKeyPublic;
+    if (!parseFixedKey(root, "identityPublic", identityPublic)) return false;
+    if (!parseFixedKey(root, "x25519IdentityPublic", x25519IdentityPublic)) return false;
+    if (!parseFixedKey(root, "signedPreKeyPublic", signedPreKeyPublic)) return false;
+    if (!parseFixedKey(root, "oneTimePreKeyPublic", oneTimePreKeyPublic)) return false;
+
+    std::string bundleText;
+    if (!root.getString("privateBundle", bundleText)) return false;
+    ByteVector privateBundle;
+    if (!base64Decode(bundleText, privateBundle)) return false;
+
+    // AAD must reproduce the save-time binding exactly — any tampering with
+    // the stored publics (or the registrationId) fails the GCM tag check.
+    const ByteVector aad = identityAad(
+        identityPublic,
+        x25519IdentityPublic,
+        signedPreKeyPublic,
+        oneTimePreKeyPublic,
+        registrationId);
+    ByteVector privates;
+    if (!decryptWithPbkdf2(privateBundle, password, aad, privates)) return false;
+    if (privates.size() != 4 * kKeySize) {
+        secureWipe(privates);
+        return false;
+    }
+
+    LocalIdentity candidate;
+    candidate.ed25519PrivateSeed.assign(privates.begin(), privates.begin() + kEd25519SeedSize);
+    candidate.x25519IdentityPrivate.assign(privates.begin() + kEd25519SeedSize, privates.begin() + 2 * kKeySize);
+    candidate.signedPreKeyPrivate.assign(privates.begin() + 2 * kKeySize, privates.begin() + 3 * kKeySize);
+    candidate.oneTimePreKeyPrivate.assign(privates.begin() + 3 * kKeySize, privates.end());
+    secureWipe(privates);
+
+    candidate.ed25519Public = identityPublic;
+    candidate.x25519IdentityPublic = x25519IdentityPublic;
+    candidate.signedPreKeyPublic = signedPreKeyPublic;
+    candidate.oneTimePreKeyPublic = oneTimePreKeyPublic;
+    candidate.registrationId = registrationIdValue;
+    candidate.initialized = true;
+
+    // Trust nothing the file asserts without re-deriving it: every public
+    // must match its private counterpart and the SPK signature must verify.
+    if (ed25519PublicFromSeed(candidate.ed25519PrivateSeed) != candidate.ed25519Public
+            || x25519PublicFromPrivate(candidate.x25519IdentityPrivate) != candidate.x25519IdentityPublic
+            || x25519PublicFromPrivate(candidate.signedPreKeyPrivate) != candidate.signedPreKeyPublic
+            || x25519PublicFromPrivate(candidate.oneTimePreKeyPrivate) != candidate.oneTimePreKeyPublic
+            || !verifyKeyBundleSignature(localKeyBundle(candidate))) {
+        return false;
+    }
+
+    out = std::move(candidate);
+    return true;
+}
+
+bool readIdentityRegistrationId(
+        const std::string &filePath,
+        std::string &registrationIdOut) {
+    registrationIdOut.clear();
+    ByteVector fileBytes;
+    if (!readFileCapped(filePath, kMaxPersistenceFileSize, fileBytes)) return false;
+    const std::string text(fileBytes.begin(), fileBytes.end());
+
+    JsonValue root;
+    if (!jsonParse(text, root) || root.type != JsonValue::Object) return false;
+    std::string registrationId;
+    if (!root.getString("registrationId", registrationId)) return false;
+    uint64_t ignored = 0;
+    if (!parseRegistrationId(registrationId, ignored)) return false;
+    registrationIdOut = std::move(registrationId);
+    return true;
+}
+
+bool saveSessionFile(
+        const SessionState &state,
+        const std::string &filePath,
+        const ByteVector &hmacKey,
+        uint32_t specGeneration) {
+    if (filePath.empty() || hmacKey.size() != kAesKeySize) return false;
+
+    // Compact inner session JSON, HMAC'd raw (desktop session.json parity:
+    // sessionData base64 + HMAC over the DECODED bytes).
+    const std::string inner = serializeSessionJson(state, specGeneration);
+    const ByteVector sessionData(inner.begin(), inner.end());
+    const auto mac = hmacSha256(hmacKey, sessionData);
+    if (mac.empty()) return false;
+
+    std::string json;
+    json.reserve(inner.size() + 256);
+    json += "{";
+    json += "\"version\":" + std::to_string(kSessionFileFormatVersion) + ",";
+    json += "\"sessionData\":" + jsonQuote(base64String(sessionData)) + ",";
+    json += "\"hmac\":" + jsonQuote(base64String(mac));
+    json += "}";
+
+    if (!ensureParentDirectory(filePath)) return false;
+    const ByteVector bytes(json.begin(), json.end());
+    return writeFileAtomic(filePath, bytes);
+}
+
+bool loadSessionFile(
+        SessionState &outState,
+        const std::string &filePath,
+        const ByteVector &hmacKey,
+        uint32_t expectedSpecGeneration) {
+    outState = SessionState();
+    if (filePath.empty() || hmacKey.size() != kAesKeySize) return false;
+
+    ByteVector fileBytes;
+    if (!readFileCapped(filePath, kMaxPersistenceFileSize, fileBytes)) return false;
+    const std::string text(fileBytes.begin(), fileBytes.end());
+
+    JsonValue root;
+    if (!jsonParse(text, root) || root.type != JsonValue::Object) {
+        remove(filePath.c_str());
+        return false;
+    }
+
+    uint64_t version = 0;
+    std::string sessionDataText;
+    std::string hmacText;
+    if (!root.getUint("version", version)
+            || version != kSessionFileFormatVersion
+            || !root.getString("sessionData", sessionDataText)
+            || !root.getString("hmac", hmacText)) {
+        remove(filePath.c_str());
+        return false;
+    }
+
+    ByteVector sessionData;
+    ByteVector storedMac;
+    if (!base64Decode(sessionDataText, sessionData) || !base64Decode(hmacText, storedMac)) {
+        remove(filePath.c_str());
+        return false;
+    }
+
+    // Constant-time HMAC verification (desktop calculateHMAC + CRYPTO_memcmp
+    // pattern) before any field is trusted.
+    const auto calculatedMac = hmacSha256(hmacKey, sessionData);
+    if (calculatedMac.empty()
+            || storedMac.size() != calculatedMac.size()
+            || CRYPTO_memcmp(
+                   storedMac.data(),
+                   calculatedMac.data(),
+                   calculatedMac.size()) != 0) {
+        // Tamper attempt or foreign session: DELETE and report a miss so the
+        // caller re-establishes. The file is never trusted after a failure.
+        remove(filePath.c_str());
+        return false;
+    }
+
+    const std::string inner(sessionData.begin(), sessionData.end());
+    SessionState state;
+    uint32_t specGeneration = 0;
+    if (!parseSessionJson(inner, state, specGeneration)
+            || specGeneration != expectedSpecGeneration) {
+        // Wrong-spec sessions from older builds are REPLACED, not trusted.
+        remove(filePath.c_str());
+        return false;
+    }
+
+    outState = std::move(state);
+    return true;
 }
 
 } // namespace interop

@@ -120,6 +120,23 @@ target_link_libraries(test_e2e_x3dh_fixed
     OpenSSL::Crypto
 )
 
+# Path 2 host test: Android identity + session persistence in the JNI-free
+# InteropCore. Standalone main(); needs only OpenSSL — no Catch2, no Qt.
+add_executable(test_android_persistence_host
+    test_android_persistence_host.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../telegram-android/TMessagesProj/jni/cryptogram/interop/InteropCore.cpp
+)
+
+target_include_directories(test_android_persistence_host
+    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../telegram-android/TMessagesProj/jni/cryptogram
+)
+
+target_link_libraries(test_android_persistence_host
+    PRIVATE
+    OpenSSL::Crypto
+)
+
 # Exercises the production QuantumGuard implementation itself (ML-KEM
 # encapsulation/decapsulation, AES-256-GCM, key import and persistence).
 # Requires Qt6::Core, so it is NOT part of the minimal standalone CI set.
