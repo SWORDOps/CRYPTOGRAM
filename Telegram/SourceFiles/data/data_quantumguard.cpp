@@ -14,6 +14,7 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include <openssl/err.h>
 #include <openssl/core_names.h>
 #include <openssl/param_build.h>
+#include <openssl/x509.h>
 
 #include <QtCore/QDebug>
 #include <QtCore/QFile>
@@ -397,6 +398,237 @@ base::expected<QuantumKeyResult, QString> QuantumGuard::generateQuantumKey(
     _keyStore[result.keyId.toStdString()] = pkey;
 
     return result;
+}
+
+base::expected<QString, QString> QuantumGuard::importPeerKemPublicKey(
+        const QString &keyId,
+        QuantumAlgorithm algorithm,
+        const QByteArray &derPublicKey) {
+    if (!_initialized) {
+        return base::make_unexpected(QStringLiteral("QuantumGuard not initialized"));
+    }
+    if (derPublicKey.isEmpty()) {
+        return base::make_unexpected(QStringLiteral("Empty peer public key"));
+    }
+
+    // Parse the SubjectPublicKeyInfo DER into an EVP_PKEY. This yields a
+    // PUBLIC-only key: quantumDecrypt() against it will fail by design.
+    const auto *der = reinterpret_cast<const unsigned char *>(
+        derPublicKey.constData());
+    EVP_PKEY *pkey = d2i_PUBKEY(nullptr, &der, derPublicKey.size());
+    if (!pkey) {
+        return base::make_unexpected(
+            QStringLiteral("d2i_PUBKEY failed: %1").arg(opensslLastError()));
+    }
+
+    // Sanity: the parsed key must be an ML-KEM key. Provider-native keys do
+    // not carry legacy NIDs (EVP_PKEY_get_base_id returns NID_undef for
+    // them), so identify via the key type name instead.
+    const auto *parsedType = EVP_PKEY_get0_type_name(pkey);
+    const QByteArray parsedName = parsedType
+        ? QByteArray(parsedType)
+        : QByteArray();
+    if (!parsedName.startsWith("ML-KEM")) {
+        EVP_PKEY_free(pkey);
+        return base::make_unexpected(
+            QStringLiteral("Imported key is not an ML-KEM key (type: %1)")
+                .arg(QString::fromUtf8(parsedName)));
+    }
+    if (algorithm != QuantumAlgorithm::Unknown) {
+        const char *wanted =
+            (algorithm == QuantumAlgorithm::ML_KEM_512)
+                ? "ML-KEM-512"
+                : (algorithm == QuantumAlgorithm::ML_KEM_768)
+                    ? "ML-KEM-768"
+                    : "ML-KEM-1024";
+        if (parsedName != wanted) {
+            EVP_PKEY_free(pkey);
+            return base::make_unexpected(
+                QStringLiteral("Imported key is %1, expected %2")
+                    .arg(QString::fromUtf8(parsedName), QLatin1String(wanted)));
+        }
+    }
+
+    const auto stdKeyId = keyId.toStdString();
+    const auto existing = _keyStore.find(stdKeyId);
+    if (existing != _keyStore.end()) {
+        EVP_PKEY_free(existing->second);
+    }
+    _keyStore[stdKeyId] = pkey;
+    return keyId;
+}
+
+base::expected<QString, QString> QuantumGuard::importPeerKemPublicKeyRaw(
+        const QString &keyId,
+        QuantumAlgorithm algorithm,
+        const QByteArray &rawPublicKey) {
+    if (!_initialized) {
+        return base::make_unexpected(QStringLiteral("QuantumGuard not initialized"));
+    }
+    if (rawPublicKey.isEmpty()) {
+        return base::make_unexpected(QStringLiteral("Empty peer public key"));
+    }
+
+    const int type = [algorithm]() -> int {
+        switch (algorithm) {
+        case QuantumAlgorithm::ML_KEM_512: return NID_ML_KEM_512;
+        case QuantumAlgorithm::ML_KEM_768: return NID_ML_KEM_768;
+        case QuantumAlgorithm::ML_KEM_1024: return NID_ML_KEM_1024;
+        case QuantumAlgorithm::ML_DSA_44: return EVP_PKEY_ML_DSA_44;
+        case QuantumAlgorithm::ML_DSA_65: return EVP_PKEY_ML_DSA_65;
+        case QuantumAlgorithm::ML_DSA_87: return EVP_PKEY_ML_DSA_87;
+        default: return NID_ML_KEM_1024;
+        }
+    }();
+    EVP_PKEY *pkey = EVP_PKEY_new_raw_public_key(
+        type,
+        nullptr,
+        reinterpret_cast<const unsigned char *>(rawPublicKey.constData()),
+        size_t(rawPublicKey.size()));
+    if (!pkey) {
+        return base::make_unexpected(
+            QStringLiteral("raw public key import failed: %1").arg(opensslLastError()));
+    }
+
+    const auto stdKeyId = keyId.toStdString();
+    const auto existing = _keyStore.find(stdKeyId);
+    if (existing != _keyStore.end()) {
+        EVP_PKEY_free(existing->second);
+    }
+    _keyStore[stdKeyId] = pkey;
+    return keyId;
+}
+
+base::expected<QuantumKemEncapsulation, QString> QuantumGuard::quantumEncapsulate(
+        const QString &keyId) {
+    if (!_initialized) {
+        return base::make_unexpected(QStringLiteral("QuantumGuard not initialized"));
+    }
+
+    auto it = _keyStore.find(keyId.toStdString());
+    if (it == _keyStore.end()) {
+        return base::make_unexpected(
+            QStringLiteral("Key not found: %1").arg(keyId));
+    }
+    EVP_PKEY *pkey = it->second;
+
+    EVP_PKEY_CTX *kemCtx = EVP_PKEY_CTX_new(pkey, nullptr);
+    if (!kemCtx) {
+        return base::make_unexpected(QStringLiteral("EVP_PKEY_CTX_new failed"));
+    }
+    if (EVP_PKEY_encapsulate_init(kemCtx, nullptr) != 1) {
+        EVP_PKEY_CTX_free(kemCtx);
+        return base::make_unexpected(
+            QStringLiteral("EVP_PKEY_encapsulate_init failed: %1").arg(opensslLastError()));
+    }
+
+    size_t encapCiphertextLen = 0, sharedSecretLen = 0;
+    if (EVP_PKEY_encapsulate(
+            kemCtx, nullptr, &encapCiphertextLen, nullptr, &sharedSecretLen) != 1) {
+        EVP_PKEY_CTX_free(kemCtx);
+        return base::make_unexpected(
+            QStringLiteral("EVP_PKEY_encapsulate (size) failed: %1").arg(opensslLastError()));
+    }
+
+    QuantumKemEncapsulation result;
+    result.ciphertext.resize(encapCiphertextLen);
+    result.sharedSecret.resize(sharedSecretLen);
+    if (EVP_PKEY_encapsulate(
+            kemCtx,
+            reinterpret_cast<unsigned char *>(result.ciphertext.data()),
+            &encapCiphertextLen,
+            reinterpret_cast<unsigned char *>(result.sharedSecret.data()),
+            &sharedSecretLen) != 1) {
+        EVP_PKEY_CTX_free(kemCtx);
+        return base::make_unexpected(
+            QStringLiteral("EVP_PKEY_encapsulate failed: %1").arg(opensslLastError()));
+    }
+    EVP_PKEY_CTX_free(kemCtx);
+    return result;
+}
+
+base::expected<bytes::vector, QString> QuantumGuard::quantumDecapsulate(
+        const QString &keyId,
+        const bytes::const_span &encapsulatedSecret) {
+    if (!_initialized) {
+        return base::make_unexpected(QStringLiteral("QuantumGuard not initialized"));
+    }
+
+    auto it = _keyStore.find(keyId.toStdString());
+    if (it == _keyStore.end()) {
+        return base::make_unexpected(
+            QStringLiteral("Key not found: %1").arg(keyId));
+    }
+    EVP_PKEY *pkey = it->second;
+
+    EVP_PKEY_CTX *kemCtx = EVP_PKEY_CTX_new(pkey, nullptr);
+    if (!kemCtx) {
+        return base::make_unexpected(QStringLiteral("EVP_PKEY_CTX_new failed"));
+    }
+    if (EVP_PKEY_decapsulate_init(kemCtx, nullptr) != 1) {
+        EVP_PKEY_CTX_free(kemCtx);
+        return base::make_unexpected(
+            QStringLiteral("EVP_PKEY_decapsulate_init failed: %1").arg(opensslLastError()));
+    }
+
+    size_t sharedSecretLen = 0;
+    if (EVP_PKEY_decapsulate(
+            kemCtx, nullptr, &sharedSecretLen,
+            reinterpret_cast<const unsigned char *>(encapsulatedSecret.data()),
+            encapsulatedSecret.size()) != 1) {
+        EVP_PKEY_CTX_free(kemCtx);
+        return base::make_unexpected(
+            QStringLiteral("EVP_PKEY_decapsulate (size) failed: %1").arg(opensslLastError()));
+    }
+
+    bytes::vector sharedSecret(sharedSecretLen);
+    if (EVP_PKEY_decapsulate(
+            kemCtx,
+            reinterpret_cast<unsigned char *>(sharedSecret.data()),
+            &sharedSecretLen,
+            reinterpret_cast<const unsigned char *>(encapsulatedSecret.data()),
+            encapsulatedSecret.size()) != 1) {
+        EVP_PKEY_CTX_free(kemCtx);
+        return base::make_unexpected(
+            QStringLiteral("EVP_PKEY_decapsulate failed: %1").arg(opensslLastError()));
+    }
+    EVP_PKEY_CTX_free(kemCtx);
+    return sharedSecret;
+}
+
+base::expected<bool, QString> QuantumGuard::quantumVerify(
+        const QString &keyId,
+        const QByteArray &data,
+        const QByteArray &signature) {
+    if (!_initialized) {
+        return base::make_unexpected(QStringLiteral("QuantumGuard not initialized"));
+    }
+
+    auto it = _keyStore.find(keyId.toStdString());
+    if (it == _keyStore.end()) {
+        return base::make_unexpected(
+            QStringLiteral("Key not found: %1").arg(keyId));
+    }
+    EVP_PKEY *pkey = it->second;
+
+    EVP_MD_CTX *mdCtx = EVP_MD_CTX_new();
+    if (!mdCtx) {
+        return base::make_unexpected(QStringLiteral("EVP_MD_CTX_new failed"));
+    }
+    // ML-DSA is a pure signature scheme (no digest).
+    if (EVP_DigestVerifyInit(mdCtx, nullptr, nullptr, nullptr, pkey) != 1) {
+        EVP_MD_CTX_free(mdCtx);
+        return base::make_unexpected(
+            QStringLiteral("EVP_DigestVerifyInit failed: %1").arg(opensslLastError()));
+    }
+    const auto ok = EVP_DigestVerify(
+        mdCtx,
+        reinterpret_cast<const unsigned char *>(signature.constData()),
+        size_t(signature.size()),
+        reinterpret_cast<const unsigned char *>(data.constData()),
+        size_t(data.size())) == 1;
+    EVP_MD_CTX_free(mdCtx);
+    return ok;
 }
 
 QuantumAlgorithm QuantumGuard::selectOptimalKEM(QuantumSecurityLevel level) const {

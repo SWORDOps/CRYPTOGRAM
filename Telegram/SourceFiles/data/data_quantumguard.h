@@ -43,6 +43,13 @@ struct QuantumEncryptionResult {
     bytes::vector authTag;           // AES-256-GCM auth tag (16 bytes)
 };
 
+// Bare ML-KEM encapsulation: fresh shared secret + the ciphertext that the
+// key holder must decapsulate to derive the same secret.
+struct QuantumKemEncapsulation {
+    bytes::vector sharedSecret;
+    bytes::vector ciphertext;
+};
+
 class QuantumGuard final {
 public:
     QuantumGuard() = default;
@@ -69,6 +76,42 @@ public:
     base::expected<QuantumKeyResult, QString> generateQuantumKey(
         QuantumKeyType type,
         QuantumAlgorithm algorithm);
+
+    // Import a PEER's ML-KEM public key for encapsulation (public half only,
+    // decapsulation requires the peer's private key). Accepts a
+    // SubjectPublicKeyInfo DER encoding as produced by i2d_PUBKEY(). The
+    // imported key is stored under |keyId| and usable with quantumEncrypt().
+    base::expected<QString, QString> importPeerKemPublicKey(
+        const QString &keyId,
+        QuantumAlgorithm algorithm,
+        const QByteArray &derPublicKey);
+
+    // Same as above but for the RAW (fixed-length) public key encoding
+    // returned by EVP_PKEY_get_raw_public_key() / generateQuantumKey().
+    // Accepts ML-KEM and ML-DSA key types.
+    base::expected<QString, QString> importPeerKemPublicKeyRaw(
+        const QString &keyId,
+        QuantumAlgorithm algorithm,
+        const QByteArray &rawPublicKey);
+
+    // Bare ML-KEM encapsulation against the imported public key |keyId|:
+    // returns the raw shared secret and the encapsulation ciphertext that
+    // the key holder must decapsulate.
+    base::expected<QuantumKemEncapsulation, QString> quantumEncapsulate(
+        const QString &keyId);
+
+    // Holder side of the above: decapsulate with the private ML-KEM key
+    // |keyId| and return the shared secret.
+    base::expected<bytes::vector, QString> quantumDecapsulate(
+        const QString &keyId,
+        const bytes::const_span &encapsulatedSecret);
+
+    // Verify an ML-DSA signature over |data| with the imported public key
+    // |keyId|. Returns true only on a valid signature.
+    base::expected<bool, QString> quantumVerify(
+        const QString &keyId,
+        const QByteArray &data,
+        const QByteArray &signature);
 
     QuantumAlgorithm selectOptimalKEM(QuantumSecurityLevel level) const;
     QuantumAlgorithm selectOptimalSignature(QuantumSecurityLevel level) const;

@@ -109,16 +109,13 @@ namespace {
 	}
 
 	QuantumSession getQuantumSession(not_null<PeerData*> peer) {
-		const auto id = peer->peerId();
-		auto it = g_quantumSessions.find(id);
+		// Sessions may ONLY come from real key agreement. Never mint
+		// local-only random keys here: the remote peer could not decrypt
+		// anything encrypted under them, which is exactly the failure the
+		// previous lazy creation had.
+		const auto it = g_quantumSessions.find(peer->peerId());
 		if (it == g_quantumSessions.end()) {
-			QuantumSession session;
-			session.quantumRootKey = generateQuantumRandomBytes(32);
-			session.quantumSendingChainKey = generateQuantumRandomBytes(32);
-			session.quantumReceivingChainKey = generateQuantumRandomBytes(32);
-			session.quantumSignatureKey = generateQuantumRandomBytes(32);
-			session.lastQuantumRatchet = QDateTime::currentDateTime();
-			it = g_quantumSessions.emplace(id, session).first;
+			return QuantumSession{};
 		}
 		return it->second;
 	}
@@ -182,9 +179,46 @@ namespace {
 }
 
 	bool verifyQuantumKeyBundle(
-		const QuantumSignalProtocol::QuantumKeyBundle &bundle) {
-		return !bundle.quantumSignature.isEmpty()
-			&& !bundle.quantumIdentityKey.isEmpty();
+			QuantumGuard &guard,
+			const QuantumSignalProtocol::QuantumKeyBundle &bundle) {
+		if (bundle.quantumSignature.isEmpty()
+			|| bundle.quantumIdentityKey.isEmpty()
+			|| bundle.quantumIdentityKey.isEmpty()) {
+			return false;
+		}
+		// Real ML-DSA verification against the identity key TRANSMITTED in
+		// the bundle. This proves integrity and key-to-signature binding;
+		// first-use trust (TOFU) for the identity itself is established by
+		// the caller on first receipt, on top of the classic ratchet layer.
+		const auto importId = QStringLiteral("qbk-%1").arg(
+			quint64(bundle.deviceId.registrationId));
+		const auto imported = guard.importPeerKemPublicKeyRaw(
+			importId,
+			bundle.signatureAlgorithm,
+			bundle.quantumIdentityKey);
+		if (!imported) {
+			return false;
+		}
+		QByteArray bundleBytes;
+		{
+			QDataStream stream(&bundleBytes, QIODevice::WriteOnly);
+			stream << bundle.deviceId.identifier;
+			stream << bundle.deviceId.registrationId;
+			stream << bundle.created;
+			stream << bundle.expires;
+			stream << bundle.classicalIdentityKey;
+			stream << bundle.classicalSignedPreKey;
+			stream << bundle.classicalOneTimePreKey;
+			stream << bundle.quantumIdentityKey;
+			stream << bundle.quantumSignedPreKey;
+			stream << bundle.quantumOneTimePreKey;
+			stream << qint32(bundle.kemAlgorithm);
+			stream << qint32(bundle.signatureAlgorithm);
+			stream << qint32(bundle.securityLevel);
+			stream << bundle.isHybridBundle;
+		}
+		auto verified = guard.quantumVerify(importId, bundleBytes, bundle.quantumSignature);
+		return verified && *verified;
 	}
 
 	// AES-256-GCM helpers used by hybridEncrypt/Decrypt and quantumEncrypt/Decrypt.
@@ -384,6 +418,13 @@ public:
     std::shared_ptr<NSASecurity> nsaSecurity;
     std::shared_ptr<QuantumTSMInterface> quantumTSM;
 
+    // REAL X25519 identity for the classical X3DH leg. The private half is
+    // held only here (never serialized into bundles); the public half is
+    // advertised as the bundle's classicalSignedPreKey.
+    bytes::vector x25519Private;
+    bytes::vector x25519Public;
+    bool generateX25519Identity();
+
     QTimer *threatAssessmentTimer;
     QuantumThreatLevel currentQuantumThreatLevel = QuantumThreatLevel::Moderate;
     QuantumThreatLevel lastThreatLevel = QuantumThreatLevel::Minimal;
@@ -403,6 +444,39 @@ QuantumSignalProtocol::QuantumSignalProtocol(not_null<Session*> session)
 }
 
 QuantumSignalProtocol::~QuantumSignalProtocol() = default;
+
+bool QuantumSignalProtocol::QuantumSignalProtocolPrivate::generateX25519Identity() {
+    if (!x25519Public.empty() && !x25519Private.empty()) {
+        return true;
+    }
+    EVP_PKEY *pkey = EVP_PKEY_Q_keygen(nullptr, nullptr, "X25519");
+    if (!pkey) {
+        return false;
+    }
+    auto ok = true;
+    size_t pubLen = 32, privLen = 32;
+    x25519Public.resize(32);
+    x25519Private.resize(32);
+    if (EVP_PKEY_get_raw_public_key(
+            pkey,
+            reinterpret_cast<unsigned char *>(x25519Public.data()),
+            &pubLen) != 1
+        || pubLen != 32) {
+        ok = false;
+    }
+    if (ok && EVP_PKEY_get_raw_private_key(
+            pkey,
+            reinterpret_cast<unsigned char *>(x25519Private.data()),
+            &privLen) != 1) {
+        ok = false;
+    }
+    EVP_PKEY_free(pkey);
+    if (!ok) {
+        x25519Public.clear();
+        x25519Private.clear();
+    }
+    return ok;
+}
 
 bool QuantumSignalProtocol::initializeQuantumSecurity() {
     if (_quantumSecurityInitialized) {
@@ -458,7 +532,8 @@ QuantumSignalProtocol::QuantumKeyBundle QuantumSignalProtocol::generateQuantumKe
 
     // Generate classical keys for hybrid mode
     if (_hybridModeEnabled) {
-        // Classical identity key (Ed25519)
+        // Classical identity key (ML-DSA-87); advertised but not used in
+        // the classical X3DH derivation below.
         auto classicalIdentityResult = d->quantumGuard->generateQuantumKey(
             QuantumKeyType::IdentityKey,
             QuantumAlgorithm::HybridEd25519_ML_DSA_87);
@@ -467,22 +542,14 @@ QuantumSignalProtocol::QuantumKeyBundle QuantumSignalProtocol::generateQuantumKe
             bundle.classicalIdentityKey = classicalIdentityResult->publicKey;
         }
 
-        // Classical signed pre-key (X25519)
-        auto classicalPreKeyResult = d->quantumGuard->generateQuantumKey(
-            QuantumKeyType::PreKey,
-            QuantumAlgorithm::HybridX25519_ML_KEM_1024);
-
-        if (classicalPreKeyResult) {
-            bundle.classicalSignedPreKey = classicalPreKeyResult->publicKey;
-        }
-
-        // Classical one-time key
-        auto classicalOneTimeResult = d->quantumGuard->generateQuantumKey(
-            QuantumKeyType::OneTimeKey,
-            QuantumAlgorithm::HybridX25519_ML_KEM_1024);
-
-        if (classicalOneTimeResult) {
-            bundle.classicalOneTimePreKey = classicalOneTimeResult->publicKey;
+        // Classical signed pre-key: a REAL X25519 identity held privately
+        // by this protocol instance. (The previous version advertised an
+        // ML-KEM public key under the "classical" name, which a peer could
+        // not run X25519 against.)
+        if (d->generateX25519Identity()) {
+            bundle.classicalSignedPreKey = QByteArray(
+                reinterpret_cast<const char *>(d->x25519Public.data()),
+                int(d->x25519Public.size()));
         }
     }
 
@@ -547,7 +614,7 @@ base::expected<bytes::vector, QString> QuantumSignalProtocol::performQuantumX3DH
     }
 
     // Verify remote bundle signature first
-    if (!verifyQuantumKeyBundle(remoteBundle)) {
+    if (!verifyQuantumKeyBundle(*d->quantumGuard, remoteBundle)) {
         return base::make_unexpected("Invalid remote key bundle signature");
     }
 
@@ -571,14 +638,17 @@ base::expected<bytes::vector, QString> QuantumSignalProtocol::performQuantumX3DH
     if (_hybridModeEnabled) {
         // Perform hybrid X3DH (classical + quantum)
 
-        // Classical ECDH components
-        auto classicalSharedSecret = performClassicalX3DH(localBundle, remoteBundle);
+        // Classical leg: real X25519 ECDH against the remote pre-key.
+        auto classicalSharedSecret = performClassicalX3DH(remoteBundle);
         if (!classicalSharedSecret) {
             return base::make_unexpected("Classical X3DH failed: " + classicalSharedSecret.error());
         }
 
-        // Quantum KEM components
-        auto quantumSharedSecret = performQuantumKEM(localBundle, remoteBundle);
+        // Quantum leg: real ML-KEM encapsulation against the remote pre-key.
+        // The encapsulation ciphertext MUST be transported to the remote
+        // holder as part of session establishment, or they cannot derive
+        // the same secret.
+        auto quantumSharedSecret = performQuantumKEM(remoteBundle);
         if (!quantumSharedSecret) {
             return base::make_unexpected("Quantum KEM failed: " + quantumSharedSecret.error());
         }
@@ -586,17 +656,21 @@ base::expected<bytes::vector, QString> QuantumSignalProtocol::performQuantumX3DH
         // Combine classical and quantum shared secrets using quantum-safe KDF
         sharedSecret = hybridKDF(
             *classicalSharedSecret,
-            *quantumSharedSecret,
+            quantumSharedSecret->sharedSecret,
             "SpyGram-Quantum-X3DH",
             kHybridSharedSecretSize);
 
+        // TODO(quantum-transport): carry quantumSharedSecret->kemCiphertext
+        // in the session-init payload so the remote can decapsulate. Until
+        // that transport exists, sessions established here must not be used
+        // for bidirectional traffic.
     } else {
         // Pure quantum X3DH
-        auto quantumResult = performQuantumKEM(localBundle, remoteBundle);
+        auto quantumResult = performQuantumKEM(remoteBundle);
         if (!quantumResult) {
-            return quantumResult;
+            return base::make_unexpected(quantumResult.error());
         }
-        sharedSecret = *quantumResult;
+        sharedSecret = quantumResult->sharedSecret;
     }
 
     // Apply NSA-grade key strengthening
@@ -760,80 +834,99 @@ void QuantumSignalProtocol::updateQuantumThreatLevel(QuantumThreatLevel level) {
     }
 }
 
-base::expected<bytes::vector, QString> QuantumSignalProtocol::performQuantumKEM(
-    const QuantumKeyBundle &localBundle,
+base::expected<QuantumSignalProtocol::QuantumKemResult, QString>
+QuantumSignalProtocol::performQuantumKEM(
     const QuantumKeyBundle &remoteBundle) {
 
-    // Use identity and signed prekey blobs to derive a shared secret via HKDF
-    auto makeBlob = [](const QuantumKeyBundle &bundle) {
-        bytes::vector blob;
-        const auto append = [&blob](const QByteArray &chunk) {
-            const auto span = bytes::make_span(
-                reinterpret_cast<const bytes::type *>(chunk.constData()),
-                chunk.size());
-            blob.insert(blob.end(), span.begin(), span.end());
-        };
-        append(bundle.quantumIdentityKey);
-        append(bundle.quantumSignedPreKey);
-        append(bundle.quantumOneTimePreKey);
-        append(bundle.quantumSignature);
-        return blob;
-    };
-
-    auto localBlob = makeBlob(localBundle);
-    auto remoteBlob = makeBlob(remoteBundle);
-
-    bytes::vector material;
-    material.reserve(localBlob.size() + remoteBlob.size());
-    material.insert(material.end(), localBlob.begin(), localBlob.end());
-    material.insert(material.end(), remoteBlob.begin(), remoteBlob.end());
-    material = quantumKDF(material, "SpyGram-Quantum-KEM", kHybridSharedSecretSize);
-
-    if (material.empty()) {
-        return base::make_unexpected("Quantum KEM derivation failed");
+    if (remoteBundle.quantumSignedPreKey.isEmpty()) {
+        return base::make_unexpected("Remote bundle carries no KEM public key");
     }
-    return material;
+    if (!d->quantumGuard || !d->quantumGuard->isInitialized()) {
+        return base::make_unexpected("QuantumGuard unavailable");
+    }
+
+    // Real ML-KEM encapsulation: fresh shared secret + ciphertext for the
+    // remote holder (decapsulation on their side yields the same secret).
+    // No public-material-only derivation can substitute for this.
+    const auto importId = QStringLiteral("qsk-%1")
+        .arg(quint64(remoteBundle.deviceId.registrationId));
+    const auto imported = d->quantumGuard->importPeerKemPublicKeyRaw(
+        importId,
+        remoteBundle.kemAlgorithm,
+        remoteBundle.quantumSignedPreKey);
+    if (!imported) {
+        return base::make_unexpected("KEM key import failed: " + imported.error());
+    }
+
+    auto encapsulated = d->quantumGuard->quantumEncapsulate(importId);
+    if (!encapsulated) {
+        return base::make_unexpected("Encapsulation failed: " + encapsulated.error());
+    }
+
+    QuantumKemResult result;
+    result.sharedSecret = std::move(encapsulated->sharedSecret);
+    result.kemCiphertext = std::move(encapsulated->ciphertext);
+    return result;
 }
 
-base::expected<bytes::vector, QString> QuantumSignalProtocol::performClassicalX3DH(
-    const QuantumKeyBundle &localBundle,
+base::expected<bytes::vector, QString>
+QuantumSignalProtocol::performClassicalX3DH(
     const QuantumKeyBundle &remoteBundle) {
 
-    // Combine classical identity and pre-keys into blobs
-    auto makeBlob = [](const QuantumKeyBundle &bundle) {
-        bytes::vector blob;
-        const auto append = [&blob](const QByteArray &chunk) {
-            if (!chunk.isEmpty()) {
-                const auto span = bytes::make_span(
-                    reinterpret_cast<const bytes::type *>(chunk.constData()),
-                    chunk.size());
-                blob.insert(blob.end(), span.begin(), span.end());
-            }
-        };
-        append(bundle.classicalIdentityKey);
-        append(bundle.classicalSignedPreKey);
-        append(bundle.classicalOneTimePreKey);
-        return blob;
-    };
-
-    auto localBlob = makeBlob(localBundle);
-    auto remoteBlob = makeBlob(remoteBundle);
-
-    // Combine both blobs
-    bytes::vector material;
-    material.reserve(localBlob.size() + remoteBlob.size());
-    material.insert(material.end(), localBlob.begin(), localBlob.end());
-    material.insert(material.end(), remoteBlob.begin(), remoteBlob.end());
-
-    // Derive classical shared secret (32 bytes for classical component)
-    const auto classicalSecretSize = kHybridSharedSecretSize / 2;
-    material = quantumKDF(material, "SpyGram-Classical-X3DH", classicalSecretSize);
-
-    if (material.empty()) {
-        return base::make_unexpected("Classical X3DH derivation failed");
+    if (remoteBundle.classicalSignedPreKey.size() != 32) {
+        return base::make_unexpected(
+            "Remote bundle carries no X25519 signed pre-key");
+    }
+    if (!d->generateX25519Identity()) {
+        return base::make_unexpected("Local X25519 identity unavailable");
     }
 
-    return material;
+    // Real X25519 ECDH: our private identity x remote signed pre-key.
+    EVP_PKEY *priv = EVP_PKEY_new_raw_private_key(
+        EVP_PKEY_X25519,
+        nullptr,
+        reinterpret_cast<const unsigned char *>(d->x25519Private.data()),
+        d->x25519Private.size());
+    EVP_PKEY *pub = EVP_PKEY_new_raw_public_key(
+        EVP_PKEY_X25519,
+        nullptr,
+        reinterpret_cast<const unsigned char *>(
+            remoteBundle.classicalSignedPreKey.constData()),
+        size_t(remoteBundle.classicalSignedPreKey.size()));
+    if (!priv || !pub) {
+        EVP_PKEY_free(priv);
+        EVP_PKEY_free(pub);
+        return base::make_unexpected("X25519 key import failed");
+    }
+
+    EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new(priv, nullptr);
+    if (!ctx) {
+        EVP_PKEY_free(priv);
+        EVP_PKEY_free(pub);
+        return base::make_unexpected("EVP_PKEY_CTX_new failed");
+    }
+    bytes::vector secret;
+    do {
+        if (EVP_PKEY_derive_init(ctx) != 1) break;
+        if (EVP_PKEY_derive_set_peer(ctx, pub) != 1) break;
+        size_t len = 0;
+        if (EVP_PKEY_derive(ctx, nullptr, &len) != 1 || len == 0) break;
+        secret.resize(len);
+        if (EVP_PKEY_derive(
+                ctx,
+                reinterpret_cast<unsigned char *>(secret.data()),
+                &len) != 1) {
+            secret.clear();
+        }
+    } while (false);
+    EVP_PKEY_CTX_free(ctx);
+    EVP_PKEY_free(priv);
+    EVP_PKEY_free(pub);
+
+    if (secret.empty()) {
+        return base::make_unexpected("X25519 derivation failed");
+    }
+    return secret;
 }
 
 bytes::vector QuantumSignalProtocol::hybridKDF(

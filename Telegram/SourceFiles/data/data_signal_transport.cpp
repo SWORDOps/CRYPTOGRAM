@@ -92,15 +92,22 @@ QByteArray SignalProtocolTransport::encodeKeyBundle(
 	}
 
 	const bool hasOtp = (bundle.oneTimePreKey.size() == 32);
+	// Optional post-quantum extension carried AFTER the fixed v1 layout.
+	// v1 parsers read their fields and ignore trailing bytes, so advertising
+	// a KEM key stays compatible with older CRYPTOGRAM clients.
+	const bool hasPq = !bundle.quantumKemPublicKey.empty();
+	const auto pqLen = hasPq
+		? static_cast<quint16>(bundle.quantumKemPublicKey.size())
+		: quint16(0);
 
 	QByteArray raw;
-	raw.reserve(kMinPayloadBytes + (hasOtp ? 32 : 0));
+	raw.reserve(kMinPayloadBytes + (hasOtp ? 32 : 0) + (hasPq ? 2 + pqLen : 0));
 
 	QDataStream out(&raw, QIODevice::WriteOnly);
 	out.setByteOrder(QDataStream::LittleEndian);
 
 	out << static_cast<quint8>(kTransportVersion);
-	out << static_cast<quint8>(hasOtp ? 0x01 : 0x00);
+	out << static_cast<quint8>((hasOtp ? 0x01 : 0x00) | (hasPq ? 0x02 : 0x00));
 	out << static_cast<quint64>(bundle.deviceId.registrationId);
 
 	out.writeRawData(
@@ -112,6 +119,12 @@ QByteArray SignalProtocolTransport::encodeKeyBundle(
 	if (hasOtp) {
 		out.writeRawData(
 			reinterpret_cast<const char *>(bundle.oneTimePreKey.data()), 32);
+	}
+	if (hasPq) {
+		out << pqLen;
+		out.writeRawData(
+			reinterpret_cast<const char *>(bundle.quantumKemPublicKey.data()),
+			pqLen);
 	}
 
 	return (out.status() == QDataStream::Ok) ? raw : QByteArray{};
@@ -149,6 +162,19 @@ SignalProtocolTransport::decodeKeyBundle(const QByteArray &raw) {
 	bundle.signedPreKey  = readKey(32);
 	bundle.signature     = readKey(64);
 	if (hasOtp) bundle.oneTimePreKey = readKey(32);
+
+	// Optional post-quantum extension (bitmap 0x02): u16 length + SPKI DER.
+	if ((bitmap & 0x02) != 0 && !in.atEnd()) {
+		quint16 pqLen = 0;
+		in >> pqLen;
+		if (pqLen > 0 && pqLen <= 4096) {
+			bytes::vector pq(pqLen);
+			if (in.readRawData(
+					reinterpret_cast<char *>(pq.data()), pqLen) == pqLen) {
+				bundle.quantumKemPublicKey = std::move(pq);
+			}
+		}
+	}
 
 	if (in.status() != QDataStream::Ok
 		|| bundle.identityKey.empty()

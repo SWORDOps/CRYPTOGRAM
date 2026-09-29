@@ -115,6 +115,14 @@ public:
 		not_null<PeerData*> peer,
 		const QuantumMessageMetadata &metadata);
 
+	// Result of a REAL ML-KEM encapsulation. The shared secret feeds the
+	// session KDF; kemCiphertext MUST be transported to the remote key
+	// holder, who decapsulates it to arrive at the same secret.
+	struct QuantumKemResult {
+		bytes::vector sharedSecret;
+		bytes::vector kemCiphertext;
+	};
+
 	void updateQuantumThreatLevel(QuantumThreatLevel level);
 	bool detectDeviceAttestationAttempt(const bytes::const_span &messageData);
 
@@ -122,8 +130,9 @@ public:
 	void resetQuantumMetrics();
 
 private:
-	base::expected<bytes::vector, QString> performQuantumKEM(
-		const QuantumKeyBundle &localBundle,
+	// Real ML-KEM encapsulation against the REMOTE bundle's KEM public key.
+	// The returned kemCiphertext must be transported to the remote holder.
+	base::expected<QuantumKemResult, QString> performQuantumKEM(
 		const QuantumKeyBundle &remoteBundle);
 	bytes::vector hybridKDF(
 		const bytes::vector &classicalSecret,
@@ -132,8 +141,10 @@ private:
 		size_t outputLength);
 	bytes::vector strengthenWithNSASecurity(
 		const bytes::vector &input);
+	// Real X25519 ECDH between our identity and the remote bundle's
+	// signed pre-key (remote key only; our private half lives in the
+	// protocol instance, never in the bundle).
 	base::expected<bytes::vector, QString> performClassicalX3DH(
-		const QuantumKeyBundle &localBundle,
 		const QuantumKeyBundle &remoteBundle);
 
 Q_SIGNALS:

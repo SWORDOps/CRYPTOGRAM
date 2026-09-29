@@ -24,6 +24,7 @@ namespace Data {
 
 // Forward declarations
 class Session;
+class QuantumGuard;
 
 // Signal Protocol integration for Telegram Desktop
 class SignalProtocol final {
@@ -114,6 +115,11 @@ public:
         bytes::vector signedPreKey;
         bytes::vector oneTimePreKey;
         bytes::vector signature;
+        // Optional post-quantum addition (transport v1 extension):
+        // sender's static ML-KEM public key as SubjectPublicKeyInfo DER.
+        // Empty for classic-only peers. Receivers encapsulate against this
+        // key; the owner decapsulates with the private half.
+        bytes::vector quantumKemPublicKey;
     };
 
     SignalProtocol(not_null<Session*> session);
@@ -262,6 +268,19 @@ private:
     QByteArray encryptWithPBKDF2(const bytes::const_span &data, const QString &password);
     bytes::vector decryptWithPBKDF2(const QByteArray &encryptedData, const QString &password);
     void saveIdentityKeys();
+
+    // Post-quantum (QuantumGuard ML-KEM) layer. All key material is real:
+    // our static KEM keypair persists next to the identity keys, peers
+    // advertise their KEM public key inside the key-bundle entity, and the
+    // per-message envelope is a genuine ML-KEM encapsulation + AES-256-GCM.
+    [[nodiscard]] bool quantumProtectionActive() const;
+    void ensureQuantumIdentity();
+    [[nodiscard]] QString peerQuantumKeyPath(not_null<PeerData*> peer) const;
+    [[nodiscard]] std::optional<bytes::vector> quantumWrapPayload(
+        not_null<PeerData*> peer,
+        const bytes::const_span &plaintext);
+    [[nodiscard]] std::optional<bytes::vector> quantumUnwrapPayload(
+        const bytes::const_span &envelope);
     
     // Current state
     bool _enabled = false;
@@ -292,6 +311,12 @@ private:
     DeviceId _localDevice;
     bytes::vector _identityKeyPrivate;
     bytes::vector _identityKeyPublic;
+
+    // Post-quantum state (lazy-initialized; KEM private key lives inside
+    // _quantumGuard's key store and persists via QuantumGuard::saveKeys).
+    std::shared_ptr<QuantumGuard> _quantumGuard;
+    QString _quantumKemKeyId;
+    bytes::vector _quantumKemPublicKeyDer;
     
     // Scheduled operations
     struct ScheduledKeyRotation {

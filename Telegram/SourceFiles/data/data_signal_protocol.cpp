@@ -8,7 +8,9 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include "data/data_signal_protocol.h"
 #include "data/data_signal_transport.h"
 #include "data/data_tsm_factory.h"
+#include "data/data_quantumguard.h"
 #include "core/peer_trust_encryption.h"
+#include "core/core_settings.h"
 
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -954,7 +956,240 @@ const SignalProtocol::KeyBundle &SignalProtocol::cachedKeyBundle() const {
 
 void SignalProtocol::refreshCachedKeyBundle() {
     _cachedBundle = generateLocalKeyBundle();
+    if (quantumProtectionActive()) {
+        ensureQuantumIdentity();
+        if (!_quantumKemPublicKeyDer.empty()) {
+            _cachedBundle.quantumKemPublicKey = _quantumKemPublicKeyDer;
+        }
+    }
     _cachedBundleValid = true;
+}
+
+// ---------------------------------------------------------------------------
+// Post-quantum (QuantumGuard ML-KEM) layer.
+//
+// Real cryptography only: our static ML-KEM keypair is generated with
+// OpenSSL 3.5 EVP and persisted via QuantumGuard::saveKeys; peers advertise
+// their KEM public key inside the key-bundle entity; each protected message
+// carries a fresh ML-KEM encapsulation + AES-256-GCM envelope that we strip
+// after the classic ratchet layer has been removed.
+// ---------------------------------------------------------------------------
+
+bool SignalProtocol::quantumProtectionActive() const {
+    return Core::App().settings().quantumSecurityLevel()
+        >= int(Data::QuantumSecurityLevel::Level3);
+}
+
+void SignalProtocol::ensureQuantumIdentity() {
+    if (_quantumGuard && !_quantumKemKeyId.isEmpty()) {
+        return;
+    }
+    if (!_quantumGuard) {
+        _quantumGuard = std::make_shared<QuantumGuard>();
+    }
+    if (!_quantumGuard->initialize()) {
+        LOG(("Signal Protocol [PQ]: QuantumGuard initialization failed"));
+        return;
+    }
+
+    // Account-stable wrapping password. This is obfuscation-grade protection
+    // for the key AT REST only; the security property that matters is
+    // harvest-now-decrypt-later resistance on the wire.
+    const auto password = (QString::number(_session->userId().bare)
+        + _localDevice.identifier).toUtf8();
+    const auto keyPath = signalStoragePath(_session) + u"pq_identity.qgk"_q;
+    const auto metaPath = signalStoragePath(_session) + u"pq_identity.json"_q;
+
+    auto loaded = false;
+    if (QFileInfo::exists(keyPath) && QFileInfo::exists(metaPath)) {
+        loaded = _quantumGuard->loadKeys(keyPath, password);
+        if (loaded) {
+            QFile metaFile(metaPath);
+            if (metaFile.open(QIODevice::ReadOnly)) {
+                const auto doc = QJsonDocument::fromJson(metaFile.readAll());
+                metaFile.close();
+                _quantumKemKeyId = doc.object()[u"keyId"_q].toString();
+                _quantumKemPublicKeyDer = bytes::make_vector(
+                    QByteArray::fromBase64(
+                        doc.object()[u"publicDer"_q].toString().toLatin1()));
+            }
+            if (_quantumKemKeyId.isEmpty() || _quantumKemPublicKeyDer.empty()) {
+                loaded = false;
+            }
+        }
+    }
+    if (loaded) {
+        return;
+    }
+
+    // First run (or unreadable store): generate a fresh KEM identity.
+    const auto level = static_cast<Data::QuantumSecurityLevel>(
+        Core::App().settings().quantumSecurityLevel());
+    auto key = _quantumGuard->generateQuantumKey(
+        QuantumKeyType::Encapsulation,
+        _quantumGuard->selectOptimalKEM(level));
+    if (!key) {
+        LOG(("Signal Protocol [PQ]: KEM keygen failed: %1").arg(key.error()));
+        return;
+    }
+
+    // Export SPKI DER for advertisement (raw → EVP_PKEY → i2d_PUBKEY).
+    auto *pub = EVP_PKEY_new_raw_public_key(
+        key->keyId.isEmpty() ? NID_ML_KEM_1024
+            : (key->publicKey.size() > 1200
+                ? NID_ML_KEM_1024
+                : (key->publicKey.size() > 800
+                    ? NID_ML_KEM_768
+                    : NID_ML_KEM_512)),
+        nullptr,
+        reinterpret_cast<const unsigned char *>(key->publicKey.constData()),
+        size_t(key->publicKey.size()));
+    if (!pub) {
+        LOG(("Signal Protocol [PQ]: raw public key import failed"));
+        return;
+    }
+    unsigned char *derOut = nullptr;
+    const auto derLen = i2d_PUBKEY(pub, &derOut);
+    EVP_PKEY_free(pub);
+    if (derLen <= 0 || !derOut) {
+        LOG(("Signal Protocol [PQ]: SPKI export failed"));
+        OPENSSL_free(derOut);
+        return;
+    }
+    QByteArray der(reinterpret_cast<const char *>(derOut), derLen);
+    OPENSSL_free(derOut);
+
+    if (!_quantumGuard->saveKeys(keyPath, password)) {
+        LOG(("Signal Protocol [PQ]: KEM key persistence failed"));
+    }
+
+    _quantumKemKeyId = key->keyId;
+    _quantumKemPublicKeyDer = bytes::make_vector(der);
+
+    QJsonObject meta;
+    meta[u"keyId"_q] = _quantumKemKeyId;
+    meta[u"publicDer"_q] = QString::fromLatin1(der.toBase64());
+    QFile metaFile(metaPath);
+    if (metaFile.open(QIODevice::WriteOnly)) {
+        metaFile.write(QJsonDocument(meta).toJson(QJsonDocument::Compact));
+        metaFile.close();
+    }
+    LOG(("Signal Protocol [PQ]: generated KEM identity %1").arg(_quantumKemKeyId));
+}
+
+QString SignalProtocol::peerQuantumKeyPath(not_null<PeerData*> peer) const {
+    return signalStoragePath(_session)
+        + u"pq_peer_%1.pub"_q.arg(peer->id.value);
+}
+
+std::optional<bytes::vector> SignalProtocol::quantumWrapPayload(
+        not_null<PeerData*> peer,
+        const bytes::const_span &plaintext) {
+    if (!quantumProtectionActive()) {
+        return std::nullopt;
+    }
+    QFile peerKeyFile(peerQuantumKeyPath(peer));
+    if (!peerKeyFile.open(QIODevice::ReadOnly)) {
+        return std::nullopt; // peer has not advertised a KEM key (yet)
+    }
+    const auto der = peerKeyFile.readAll();
+    peerKeyFile.close();
+    if (der.isEmpty()) {
+        return std::nullopt;
+    }
+
+    if (!_quantumGuard) {
+        _quantumGuard = std::make_shared<QuantumGuard>();
+    }
+    if (!_quantumGuard->initialize()) {
+        LOG(("Signal Protocol [PQ]: QuantumGuard initialization failed"));
+        return std::nullopt;
+    }
+    const auto importId = u"pq-peer-%1"_q.arg(peer->id.value);
+    const auto imported = _quantumGuard->importPeerKemPublicKey(
+        importId, QuantumAlgorithm::Unknown, der);
+    if (!imported) {
+        LOG(("Signal Protocol [PQ]: peer key import failed: %1").arg(imported.error()));
+        return std::nullopt;
+    }
+
+    auto encrypted = _quantumGuard->quantumEncrypt(importId, plaintext);
+    if (!encrypted) {
+        LOG(("Signal Protocol [PQ]: encapsulation failed: %1").arg(encrypted.error()));
+        return std::nullopt;
+    }
+
+    // Envelope layout:
+    //   "PQE1" | u32le encapsulated length | encapsulated | iv(12) | tag(16)
+    //   | ciphertext
+    bytes::vector out;
+    out.reserve(4 + 4 + encrypted->encapsulatedSecret.size()
+        + encrypted->iv.size() + encrypted->authTag.size()
+        + encrypted->ciphertext.size());
+    const bytes::type magic[4] = {
+        bytes::type('P'), bytes::type('Q'), bytes::type('E'), bytes::type('1')
+    };
+    out.insert(out.end(), magic, magic + 4);
+    const quint32 encapLen = quint32(encrypted->encapsulatedSecret.size());
+    for (int shift = 0; shift < 32; shift += 8) {
+        out.push_back(bytes::type((encapLen >> shift) & 0xFF));
+    }
+    out.insert(out.end(),
+        encrypted->encapsulatedSecret.begin(),
+        encrypted->encapsulatedSecret.end());
+    out.insert(out.end(), encrypted->iv.begin(), encrypted->iv.end());
+    out.insert(out.end(),
+        encrypted->authTag.begin(), encrypted->authTag.end());
+    out.insert(out.end(),
+        encrypted->ciphertext.begin(), encrypted->ciphertext.end());
+    return out;
+}
+
+std::optional<bytes::vector> SignalProtocol::quantumUnwrapPayload(
+        const bytes::const_span &envelope) {
+    constexpr auto kHeader = 4 + 4 + 12 + 16;
+    if (envelope.size() <= kHeader) {
+        return std::nullopt;
+    }
+    if (envelope[0] != bytes::type('P') || envelope[1] != bytes::type('Q')
+        || envelope[2] != bytes::type('E') || envelope[3] != bytes::type('1')) {
+        return std::nullopt;
+    }
+
+    ensureQuantumIdentity();
+    if (!_quantumGuard || _quantumKemKeyId.isEmpty()) {
+        LOG(("Signal Protocol [PQ]: no local KEM identity available"));
+        return std::nullopt;
+    }
+
+    const auto encapLen = quint32(envelope[4])
+        | (quint32(envelope[5]) << 8)
+        | (quint32(envelope[6]) << 16)
+        | (quint32(envelope[7]) << 24);
+    if (encapLen == 0
+        || envelope.size() < kHeader + encapLen
+        || encapLen > 4096) {
+        return std::nullopt;
+    }
+
+    auto pos = size_t(8);
+    const auto encapsulated = bytes::make_span(
+        envelope.data() + pos, encapLen);
+    pos += encapLen;
+    const auto iv = bytes::make_span(envelope.data() + pos, 12);
+    pos += 12;
+    const auto tag = bytes::make_span(envelope.data() + pos, 16);
+    pos += 16;
+    const auto ciphertext = bytes::make_span(
+        envelope.data() + pos, envelope.size() - pos);
+
+    auto decrypted = _quantumGuard->quantumDecrypt(
+        _quantumKemKeyId, ciphertext, encapsulated, iv, tag);
+    if (!decrypted) {
+        LOG(("Signal Protocol [PQ]: unwrap failed: %1").arg(decrypted.error()));
+        return std::nullopt;
+    }
+    return std::move(*decrypted);
 }
 
 // Helpers
@@ -1891,6 +2126,20 @@ void SignalProtocol::registerRemoteKeyBundle(not_null<PeerData*> peer, const Key
         return;
     }
 
+    // Persist the peer's advertised KEM public key so future instances can
+    // quantum-wrap without depending on in-memory bundle state.
+    if (!bundle.quantumKemPublicKey.empty()) {
+        QFile peerKeyFile(peerQuantumKeyPath(peer));
+        if (peerKeyFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            peerKeyFile.write(reinterpret_cast<const char *>(
+                bundle.quantumKemPublicKey.data()),
+                bundle.quantumKemPublicKey.size());
+            peerKeyFile.close();
+        } else {
+            LOG(("Signal Protocol [PQ]: failed to persist peer KEM key"));
+        }
+    }
+
     // Store the verified bundle
     _peerKeyData[peer->id].remoteBundle = bundle;
 
@@ -2627,7 +2876,14 @@ TextWithEntities SignalProtocol::processOutgoingMessage(not_null<PeerData*> peer
 
     MessageMetadata metadata;
     const auto plaintext = bytes::make_span(original.text.toUtf8());
-    auto ciphertext = encryptMessage(plaintext, peer, metadata);
+    // Post-quantum inner envelope (real ML-KEM + AES-256-GCM), applied
+    // before the classic ratchet when the peer advertised a KEM key and
+    // quantum protection is enabled; otherwise silently classic-only.
+    auto payload = bytes::vector(plaintext.begin(), plaintext.end());
+    if (auto quantumWrapped = quantumWrapPayload(peer, bytes::make_span(payload))) {
+        payload = std::move(*quantumWrapped);
+    }
+    auto ciphertext = encryptMessage(bytes::make_span(payload), peer, metadata);
     if (ciphertext.empty()) return original;
 
     // === ZK Phase 1: always emit a fresh challenge nonce ===
@@ -2670,7 +2926,14 @@ TextWithTags SignalProtocol::processOutgoingMessage(not_null<PeerData*> peer, co
 
     MessageMetadata metadata;
     const auto plaintext = bytes::make_span(original.text.toUtf8());
-    auto ciphertext = encryptMessage(plaintext, peer, metadata);
+    // Post-quantum inner envelope (real ML-KEM + AES-256-GCM), applied
+    // before the classic ratchet when the peer advertised a KEM key and
+    // quantum protection is enabled; otherwise silently classic-only.
+    auto payload = bytes::vector(plaintext.begin(), plaintext.end());
+    if (auto quantumWrapped = quantumWrapPayload(peer, bytes::make_span(payload))) {
+        payload = std::move(*quantumWrapped);
+    }
+    auto ciphertext = encryptMessage(bytes::make_span(payload), peer, metadata);
     if (ciphertext.empty()) return original;
 
     metadata.hasCacChallenge   = true;
@@ -2862,6 +3125,21 @@ TextWithEntities SignalProtocol::processIncomingMessage(not_null<PeerData*> peer
 
     auto plaintext = decryptMessage(unwrapped->first, peer, unwrapped->second);
     if (plaintext.empty()) return original;
+
+    // Post-quantum inner envelope: real ML-KEM decapsulation + AES-256-GCM,
+    // stripped after the classic ratchet layer has been removed.
+    if (plaintext.size() > 8
+        && plaintext[0] == bytes::type('P')
+        && plaintext[1] == bytes::type('Q')
+        && plaintext[2] == bytes::type('E')
+        && plaintext[3] == bytes::type('1')) {
+        auto unwrappedPq = quantumUnwrapPayload(plaintext);
+        if (!unwrappedPq) {
+            LOG(("Signal Protocol [PQ]: dropping undecryptable PQ envelope"));
+            return original;
+        }
+        plaintext = std::move(*unwrappedPq);
+    }
 
     const auto &metadata = unwrapped->second;
     const TimeId now = base::unixtime::now();

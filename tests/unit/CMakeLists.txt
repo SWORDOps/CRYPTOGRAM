@@ -107,3 +107,30 @@ target_link_libraries(test_e2e_roundtrip
     Catch2::Catch2WithMain
     OpenSSL::Crypto
 )
+
+# Exercises the production QuantumGuard implementation itself (ML-KEM
+# encapsulation/decapsulation, AES-256-GCM, key import and persistence).
+# Requires Qt6::Core, so it is NOT part of the minimal standalone CI set.
+find_package(Qt6 COMPONENTS Core QUIET)
+if (Qt6_FOUND)
+    add_executable(test_e2e_quantum_kem
+        test_e2e_quantum_kem.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Telegram/SourceFiles/data/data_quantumguard.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Telegram/lib_base/base/random.cpp
+    )
+
+    target_include_directories(test_e2e_quantum_kem
+        PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Telegram/SourceFiles
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Telegram/lib_base
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Telegram/ThirdParty/GSL/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Telegram/ThirdParty/expected/include
+    )
+
+    target_link_libraries(test_e2e_quantum_kem
+        PRIVATE
+        Catch2::Catch2WithMain
+        OpenSSL::Crypto
+        Qt6::Core
+    )
+endif()
