@@ -149,6 +149,166 @@ Settings::Settings()
 
 Settings::~Settings() = default;
 
+namespace {
+
+constexpr qint32 kCryptogramSettingsMagic = 0x43525950; // 'CRYP'
+constexpr qint32 kCryptogramSettingsVersion = 1;
+
+// CRYPTOGRAM settings live in a versioned, self-contained trailer at the
+// end of the serialized blob: old blobs (no trailer) keep their defaults
+// and future versions can append fields without breaking v1 readers.
+QByteArray SerializeCryptogramSettings(const Settings &s) {
+	auto result = QByteArray();
+	QDataStream stream(&result, QIODevice::WriteOnly);
+	stream.setVersion(QDataStream::Qt_5_1);
+	stream
+		<< qint32(s.pluggableTransportsEnabled() ? 1 : 0)
+		<< qint32(s.dpiEvasionEnabled() ? 1 : 0)
+		<< qint32(s.dpiEvasionMethod())
+		<< qint32(s.stylometryShieldEnabled() ? 1 : 0)
+		<< qint32(s.stylometryMode())
+		<< qint32(s.stylometryStrength())
+		<< qint32(s.opsecHUDEnabled() ? 1 : 0)
+		<< qint32(s.ramScramblingEnabled() ? 1 : 0)
+		<< qint32(s.locationRandomizationEnabled() ? 1 : 0)
+		<< qint32(s.locationNoiseRadius())
+		<< qint32(s.timezoneAnonymizationEnabled() ? 1 : 0)
+		<< qint32(static_cast<int>(s.quantumSecurityLevelEnum()))
+		<< qint32(s.mediaMetadataSpoofingEnabled() ? 1 : 0)
+		<< qint32(s.trafficPaddingEnabled() ? 1 : 0)
+		<< qint32(s.keyboardSwitchingEnabled() ? 1 : 0)
+		<< qint32(s.nsaClassificationLevel())
+		<< qint32(s.antiForensicsEnabled() ? 1 : 0)
+		<< qint32(s.trafficObfuscationEnabled() ? 1 : 0)
+		<< qint32(s.deadManSwitchEnabled() ? 1 : 0)
+		<< qint32(s.panicPasswordEnabled() ? 1 : 0)
+		<< qint32(s.hardwareTetherEnabled() ? 1 : 0)
+		<< qint32(s.imapProtectionEnabled() ? 1 : 0)
+		<< qint32(s.imapProtectionLevel())
+		<< qint32(s.tsmEnabled() ? 1 : 0)
+		<< qint32(s.torSnowflakeCPU())
+		<< qint32(s.i2pRelayCPU())
+		<< qint32(s.utdEnabled() ? 1 : 0)
+		<< qint32(s.utdThreshold())
+		<< qint32(s.voiceMorphingMode())
+		<< qint32(s.acousticMonitoringEnabled() ? 1 : 0)
+		<< qint32(s.curatedStickersEnabled() ? 1 : 0)
+		<< qint32(s.maxStickerSets())
+		<< qint32(int(s.curatedStickerSetIds().size()));
+	for (const auto id : s.curatedStickerSetIds()) {
+		stream << quint64(id);
+	}
+	stream
+		<< qint32(s.torEnabled() ? 1 : 0)
+		<< qint32(s.i2pEnabled() ? 1 : 0)
+		<< qint32(s.torSnowflakeEnabled() ? 1 : 0)
+		<< qint32(s.i2pRelayEnabled() ? 1 : 0)
+		<< qint32(s.miningEnabled() ? 1 : 0)
+		<< qint32(s.miningCpuPercent())
+		<< qint32(s.miningOnlyWhenIdle() ? 1 : 0)
+		<< qint32(s.miningOnlyWhenCharging() ? 1 : 0)
+		<< s.miningWalletAddress()
+		<< s.miningPoolAddress()
+		<< qint32(s.translationEnabled() ? 1 : 0)
+		<< qint32(s.translationAutoDetect() ? 1 : 0)
+		<< qint32(s.translationTargetLanguage())
+		<< qint32(s.translationQuality())
+		<< qint32(s.translationDevice())
+		<< qint32(s.translationCacheEnabled() ? 1 : 0)
+		<< qint32(s.translationAutomatic() ? 1 : 0)
+		<< qint32(s.autoJoinCryptogramChannel() ? 1 : 0)
+		<< qint32(s.cryptogramPremiumOverride() ? 1 : 0)
+		<< qint32(s.cryptogramHideOnlineStatus() ? 1 : 0)
+		<< qint32(s.cryptogramHideTypingIndicator() ? 1 : 0)
+		<< qint32(s.cryptogramHideReadReceipts() ? 1 : 0);
+	return result;
+}
+
+void ApplyCryptogramSettings(Settings &s, QDataStream &stream) {
+	auto b = qint32(0);
+	auto str = QString();
+	auto ids = std::vector<uint64>();
+	auto count = qint32(0);
+	auto id = quint64(0);
+	const auto readBool = [&] {
+		stream >> b;
+		return (b == 1);
+	};
+	const auto readInt = [&] {
+		stream >> b;
+		return int(b);
+	};
+	const auto readString = [&] {
+		stream >> str;
+		return str;
+	};
+	s.setPluggableTransportsEnabled(readBool());
+	s.setDpiEvasionEnabled(readBool());
+	s.setDpiEvasionMethod(readInt());
+	s.setStylometryShieldEnabled(readBool());
+	s.setStylometryMode(readInt());
+	s.setStylometryStrength(readInt());
+	s.setOpsecHUDEnabled(readBool());
+	s.setRamScramblingEnabled(readBool());
+	s.setLocationRandomizationEnabled(readBool());
+	s.setLocationNoiseRadius(readInt());
+	s.setTimezoneAnonymizationEnabled(readBool());
+	s.setQuantumSecurityLevel(readInt());
+	s.setMediaMetadataSpoofingEnabled(readBool());
+	s.setTrafficPaddingEnabled(readBool());
+	s.setKeyboardSwitchingEnabled(readBool());
+	s.setNsaClassificationLevel(readInt());
+	s.setAntiForensicsEnabled(readBool());
+	s.setTrafficObfuscationEnabled(readBool());
+	s.setDeadManSwitchEnabled(readBool());
+	s.setPanicPasswordEnabled(readBool());
+	s.setHardwareTetherEnabled(readBool());
+	s.setImapProtectionEnabled(readBool());
+	s.setImapProtectionLevel(readInt());
+	s.setTsmEnabled(readBool());
+	s.setTorSnowflakeCPU(readInt());
+	s.setI2pRelayCPU(readInt());
+	s.setUtdEnabled(readBool());
+	s.setUtdThreshold(readInt());
+	s.setVoiceMorphingMode(readInt());
+	s.setAcousticMonitoringEnabled(readBool());
+	s.setCuratedStickersEnabled(readBool());
+	s.setMaxStickerSets(readInt());
+	stream >> count;
+	if (count > 0 && count < 10000) {
+		ids.reserve(count);
+		for (auto i = 0; i != count; ++i) {
+			stream >> id;
+			ids.push_back(id);
+		}
+	}
+	s.setCuratedStickerSetIds(std::move(ids));
+	s.setTorEnabled(readBool());
+	s.setI2pEnabled(readBool());
+	s.setTorSnowflakeEnabled(readBool());
+	s.setI2pRelayEnabled(readBool());
+	s.setMiningEnabled(readBool());
+	s.setMiningCpuPercent(readInt());
+	s.setMiningOnlyWhenIdle(readBool());
+	s.setMiningOnlyWhenCharging(readBool());
+	s.setMiningWalletAddress(readString());
+	s.setMiningPoolAddress(readString());
+	s.setTranslationEnabled(readBool());
+	s.setTranslationAutoDetect(readBool());
+	s.setTranslationTargetLanguage(readInt());
+	s.setTranslationQuality(readInt());
+	s.setTranslationDevice(readInt());
+	s.setTranslationCacheEnabled(readBool());
+	s.setTranslationAutomatic(readBool());
+	s.setAutoJoinCryptogramChannel(readBool());
+	s.setCryptogramPremiumOverride(readBool());
+	s.setCryptogramHideOnlineStatus(readBool());
+	s.setCryptogramHideTypingIndicator(readBool());
+	s.setCryptogramHideReadReceipts(readBool());
+}
+
+} // namespace
+
 QByteArray Settings::serialize() const {
 	const auto themesAccentColors = _themesAccentColors.serialize();
 	const auto windowPosition = Serialize(_windowPosition);
@@ -177,6 +337,7 @@ QByteArray Settings::serialize() const {
 	const auto &recentEmojiPreloadData = _recentEmojiPreload.empty()
 		? recentEmojiPreloadGenerated
 		: _recentEmojiPreload;
+	const auto cryptogramBlob = SerializeCryptogramSettings(*this);
 	const auto noWarningExtensions = QStringList(
 		begin(_noWarningExtensions),
 		end(_noWarningExtensions)
@@ -247,7 +408,9 @@ QByteArray Settings::serialize() const {
 		+ sizeof(qint32) // _notificationsDisplayChecksum
 		+ sizeof(qint32) // _torBridgeEnabled
 		+ Serialize::stringSize(_torBridgeType)
-		+ Serialize::stringSize(_torBridgeAddress);
+		+ Serialize::stringSize(_torBridgeAddress)
+		+ sizeof(qint32) * 2 // cryptogram trailer magic + version
+		+ Serialize::bytearraySize(cryptogramBlob);
 
 	auto result = QByteArray();
 	result.reserve(size);
@@ -414,7 +577,10 @@ QByteArray Settings::serialize() const {
 			<< _notificationsDisplayChecksum
 			<< qint32(_torBridgeEnabled ? 1 : 0)
 			<< _torBridgeType
-			<< _torBridgeAddress;
+			<< _torBridgeAddress
+			<< qint32(kCryptogramSettingsMagic)
+			<< qint32(kCryptogramSettingsVersion)
+			<< cryptogramBlob;
 	}
 
 	Ensures(result.size() == size);
@@ -1121,6 +1287,32 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 	_chatFiltersHorizontal = (chatFiltersHorizontal == 1);
 	_quickDialogAction = Dialogs::Ui::QuickDialogAction(quickDialogAction);
 	_notificationsVolume = notificationsVolume;
+	if (!stream.atEnd()) {
+		qint32 notificationsDisplayChecksum = 0;
+		stream >> notificationsDisplayChecksum;
+		_notificationsDisplayChecksum = notificationsDisplayChecksum;
+	}
+	if (!stream.atEnd()) {
+		qint32 torBridgeEnabled = 0;
+		QString torBridgeType, torBridgeAddress;
+		stream >> torBridgeEnabled >> torBridgeType >> torBridgeAddress;
+		_torBridgeEnabled = (torBridgeEnabled == 1);
+		_torBridgeType = torBridgeType;
+		_torBridgeAddress = torBridgeAddress;
+	}
+	if (!stream.atEnd()) {
+		qint32 magic = 0;
+		qint32 version = 0;
+		QByteArray blob;
+		stream >> magic >> version >> blob;
+		if (magic == kCryptogramSettingsMagic
+			&& version >= kCryptogramSettingsVersion
+			&& !blob.isEmpty()) {
+			QDataStream cryptogramStream(blob);
+			cryptogramStream.setVersion(QDataStream::Qt_5_1);
+			ApplyCryptogramSettings(*this, cryptogramStream);
+		}
+	}
 }
 
 QString Settings::getSoundPath(const QString &key) const {
