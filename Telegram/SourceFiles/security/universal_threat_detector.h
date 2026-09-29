@@ -16,6 +16,7 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <QtCore/QThread>
 #include <QtCore/QMutex>
 #include <QtCore/QJsonObject>
+#include <atomic>
 #include <memory>
 #include <vector>
 #include <map>
@@ -259,6 +260,14 @@ private:
     void unloadCurrentModel();
     bool validateModel(const QString &modelPath);
 
+    // On-demand local AI engine assets (never bundled with the app)
+    [[nodiscard]] QString assetStorageDir() const;
+    [[nodiscard]] QString resolveLlamaServerPath() const;
+    [[nodiscard]] QString resolveModelPath(const QString &tierName) const;
+    void ensureTierModel(const QString &tierName);
+    void downloadAssetsAsync(const QString &tierName);
+    void onAssetsReady(const QString &tierName, bool success, const QString &error);
+
     // Content preprocessing
     QString preprocessText(const QString &text);
     QByteArray preprocessBinaryData(const QByteArray &data);
@@ -315,6 +324,7 @@ private:
     std::unique_ptr<AIEngine> _aiEngine;
     AIModelInfo _currentModel;
     bool _modelLoaded = false;
+    std::atomic<bool> _assetDownloadActive{false};
 
     // Analysis queue
     QVector<AnalysisRequest> _analysisQueue;

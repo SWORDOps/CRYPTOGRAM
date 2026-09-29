@@ -30,6 +30,9 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <QtCore/QSettings>
 #include <QtCore/QUrl>
 #include <QtCore/QEventLoop>
+#include <QtCore/QFile>
+#include <QtNetwork/QTcpServer>
+#include <QtNetwork/QHostAddress>
 
 #include <immintrin.h>  // AVX/AVX2 intrinsics
 #include <thread>
@@ -100,6 +103,43 @@ namespace {
         "liking", "commitment", "trust", "fear", "greed", "curiosity"
     };
 
+    // Local AI engine assets (llama-server + the tier-selected GGUF model)
+    // are downloaded on demand when the user opts in — they are never
+    // bundled with the application. Hosts are expected to serve the raw
+    // files plus optional ".sha256" sidecars (hex digest + whitespace).
+    // Override the host with the CRYPTOGRAM_AI_ASSETS_URL environment var.
+    constexpr auto kDefaultAssetBaseUrl =
+        "https://github.com/SWORDOps/CRYPTOGRAM/releases/download/ai-assets-v1";
+    constexpr int kAssetDownloadTimeoutMs = 30 * 60 * 1000; // multi-GB models
+
+    QString assetBaseUrl() {
+        const char *env = std::getenv("CRYPTOGRAM_AI_ASSETS_URL");
+        return (env && *env)
+            ? QString::fromUtf8(env)
+            : QString::fromUtf8(kDefaultAssetBaseUrl);
+    }
+
+    // llama-server is started on a kernel-assigned port so concurrent
+    // instances and unrelated services never collide.
+    std::atomic<quint16> g_utdServerPort{0};
+
+    QString llamaServerFileName() {
+#ifdef Q_OS_WIN
+        return QStringLiteral("llama-server.exe");
+#else
+        return QStringLiteral("llama-server");
+#endif
+    }
+
+    QString modelFileNameForTier(const QString &tierName) {
+        if (tierName == "Tier1") {
+            return QStringLiteral("qwen2.5-3b-utd-q4_k_m.gguf");
+        } else if (tierName == "Tier2") {
+            return QStringLiteral("qwen2.5-1.5b-utd-q8_0.gguf");
+        }
+        return QStringLiteral("qwen2.5-0.5b-utd-q8_0.gguf");
+    }
+
     struct NebiusAIConfig {
         QString endpoint = QStringLiteral("https://api.studio.nebius.ai/v1/chat/completions");
         QString apiKey;
@@ -122,8 +162,12 @@ namespace {
         if (envEndpoint) {
             config.endpoint = QString::fromUtf8(envEndpoint);
         } else {
-            // Default endpoint for local llama-server
-            config.endpoint = "http://127.0.0.1:8080/v1/chat/completions";
+            // Default endpoint for local llama-server (dynamic port;
+            // 0 until loadModel() has started one this session).
+            const auto port = g_utdServerPort.load();
+            config.endpoint = port
+                ? QStringLiteral("http://127.0.0.1:%1/v1/chat/completions").arg(port)
+                : QStringLiteral("http://127.0.0.1:0/v1/chat/completions");
         }
         return config;
     }
@@ -373,17 +417,15 @@ void UniversalThreatDetector::initialize() {
             _currentTier = AIProcessingTier::Tier4_Pattern_Only;
         }
 
-        // Start analysis thread. The local model is loaded only when the
-        // feature is enabled; without bundled assets the detector stays on
-        // pattern-only heuristics instead of pretending to run a model.
+        // Start analysis thread. The local model runs only when the
+        // feature is enabled; missing engine assets are fetched on demand
+        // (opt-in download) and the detector stays on pattern-only
+        // heuristics until they land.
         if (_enabled && _currentTier != AIProcessingTier::Tier4_Pattern_Only) {
             const auto tierName = (_currentTier == AIProcessingTier::Tier1_NPU_Accelerated)
                 ? "Tier1"
                 : (_currentTier == AIProcessingTier::Tier2_GPU_Accelerated ? "Tier2" : "Tier3");
-            if (!loadModel(tierName)) {
-                qWarning() << "Local AI assets unavailable; falling back to pattern-only tier";
-                _currentTier = AIProcessingTier::Tier4_Pattern_Only;
-            }
+            ensureTierModel(tierName);
         }
         _analysisThread->start();
 
@@ -447,11 +489,11 @@ void UniversalThreatDetector::setProcessingTier(AIProcessingTier tier) {
     _currentTier = tier;
 
     if (_currentTier == AIProcessingTier::Tier1_NPU_Accelerated) {
-        loadModel("Tier1");
+        ensureTierModel("Tier1");
     } else if (_currentTier == AIProcessingTier::Tier2_GPU_Accelerated) {
-        loadModel("Tier2");
+        ensureTierModel("Tier2");
     } else if (_currentTier == AIProcessingTier::Tier3_CPU_Optimized) {
-        loadModel("Tier3");
+        ensureTierModel("Tier3");
     } else {
         unloadCurrentModel();
     }
@@ -1262,16 +1304,8 @@ bool UniversalThreatDetector::loadNPUModel(const QString &modelPath) {
 bool UniversalThreatDetector::loadModel(const QString &modelName) {
     unloadCurrentModel();
 
-    QString basePath = QCoreApplication::applicationDirPath();
-    QString binPath = basePath + "/ai/llama-server";
-    QString modelPath;
-    if (modelName == "Tier1" || modelName == "Qwen/Qwen2.5-3B-Instruct") {
-        modelPath = basePath + "/ai/models/qwen2.5-3b-utd-q4_k_m.gguf";
-    } else if (modelName == "Tier2" || modelName == "Qwen/Qwen2.5-1.5B-Instruct") {
-        modelPath = basePath + "/ai/models/qwen2.5-1.5b-utd-q8_0.gguf";
-    } else {
-        modelPath = basePath + "/ai/models/qwen2.5-0.5b-utd-q8_0.gguf";
-    }
+    const auto binPath = resolveLlamaServerPath();
+    QString modelPath = resolveModelPath(modelName);
 
     if (!QFileInfo::exists(binPath) || !QFileInfo::exists(modelPath)) {
         qWarning() << "Missing llama-server binary or GGUF model file: " << modelPath;
@@ -1279,10 +1313,24 @@ bool UniversalThreatDetector::loadModel(const QString &modelName) {
     }
 
     _aiEngine->serverProcess = std::make_unique<QProcess>();
-    
+
+    // Bind a kernel-assigned port first so concurrent instances and
+    // unrelated services on 8080 never collide.
+    quint16 port = 0;
+    {
+        QTcpServer probe;
+        if (probe.listen(QHostAddress::LocalHost)) {
+            port = probe.serverPort();
+        }
+        probe.close();
+    }
+    if (!port) {
+        port = 8080; // last resort
+    }
+
     QStringList args;
     args << "-m" << modelPath;
-    args << "--port" << "8080";
+    args << "--port" << QString::number(port);
     args << "--host" << "127.0.0.1";
     args << "-t" << "4";
     args << "-c" << "2048";
@@ -1294,12 +1342,204 @@ bool UniversalThreatDetector::loadModel(const QString &modelName) {
         _aiEngine->serverProcess.reset();
         return false;
     }
-    
+
+    g_utdServerPort.store(port);
     _modelLoaded = true;
     _aiEngine->currentModelPath = modelPath;
     Q_EMIT modelLoaded(modelName);
-    qDebug() << "Started llama-server on port 8080 with model:" << modelPath;
+    qDebug() << "Started llama-server on port" << port << "with model:" << modelPath;
     return true;
+}
+
+QString UniversalThreatDetector::assetStorageDir() const {
+    // Per-user writable location: the engine is downloaded on demand and
+    // must work when the application itself is installed read-only.
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+        + "/ai";
+}
+
+QString UniversalThreatDetector::resolveLlamaServerPath() const {
+    const auto downloaded = assetStorageDir() + "/" + llamaServerFileName();
+    if (QFileInfo::exists(downloaded)) {
+        return downloaded;
+    }
+    // Developer bundles (explicit CRYPTOGRAM_AI_* build variables) keep
+    // working, but nothing ships with the app by default.
+    return QCoreApplication::applicationDirPath() + "/ai/"
+        + llamaServerFileName();
+}
+
+QString UniversalThreatDetector::resolveModelPath(const QString &tierName) const {
+    const auto fileName = modelFileNameForTier(tierName);
+    const auto downloaded = assetStorageDir() + "/models/" + fileName;
+    if (QFileInfo::exists(downloaded)) {
+        return downloaded;
+    }
+    return QCoreApplication::applicationDirPath() + "/ai/models/" + fileName;
+}
+
+void UniversalThreatDetector::ensureTierModel(const QString &tierName) {
+    if (loadModel(tierName)) {
+        return; // assets already present and the server is running
+    }
+    // Opt-in fetch: the engine binary plus this tier's single model.
+    downloadAssetsAsync(tierName);
+}
+
+void UniversalThreatDetector::onAssetsReady(
+        const QString &tierName, bool success, const QString &error) {
+    _assetDownloadActive.store(false);
+    if (!success) {
+        qWarning() << "Local AI asset download failed:" << error;
+        Q_EMIT modelLoadError(tierName, error);
+        return;
+    }
+    if (!_enabled) {
+        return; // user disabled the feature while downloading
+    }
+    if (!loadModel(tierName)) {
+        Q_EMIT modelLoadError(tierName, "Assets downloaded but engine failed to start");
+    }
+}
+
+void UniversalThreatDetector::downloadAssetsAsync(const QString &tierName) {
+    bool expected = false;
+    if (!_assetDownloadActive.compare_exchange_strong(expected, true)) {
+        qDebug() << "AI asset download already in progress";
+        return;
+    }
+
+    const auto modelFile = modelFileNameForTier(tierName);
+    qInfo() << "Downloading local AI engine + model (opt-in):"
+            << llamaServerFileName() << "+" << modelFile;
+
+    // QNetworkAccessManager must live in the thread that uses it, and a
+    // multi-GB download must never block the UI thread, so the whole
+    // chain runs in a worker and hops back via the event queue.
+    QtConcurrent::run([this, tierName, modelFile]() {
+        const auto base = assetBaseUrl();
+        const auto destDir = assetStorageDir();
+        QString error;
+        bool ok = false;
+
+        QNetworkAccessManager nam;
+
+        const auto fetchToFile =
+                [&](const QUrl &url, const QString &dest,
+                        bool executable, int timeoutMs) -> bool {
+            QDir().mkpath(QFileInfo(dest).absolutePath());
+            const auto tmp = dest + ".part";
+            QFile out(tmp);
+            if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                error = QStringLiteral("cannot write %1").arg(tmp);
+                return false;
+            }
+
+            QNetworkRequest request(url);
+            request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                QNetworkRequest::NoLessSafeRedirectPolicy);
+            auto *reply = nam.get(request);
+            QObject::connect(reply, &QNetworkReply::readyRead, [&] {
+                out.write(reply->readAll());
+            });
+            QEventLoop loop;
+            QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+            QTimer timer;
+            timer.setSingleShot(true);
+            QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+            timer.start(timeoutMs);
+            loop.exec();
+
+            out.write(reply->readAll());
+            out.close();
+
+            const bool done = reply->isFinished()
+                && reply->error() == QNetworkReply::NoError;
+            if (!done) {
+                error = QStringLiteral("%1: %2")
+                    .arg(url.toString(), reply->errorString());
+                reply->abort();
+                reply->deleteLater();
+                QFile::remove(tmp);
+                return false;
+            }
+            const auto size = out.size();
+            reply->deleteLater();
+            QFile::remove(dest);
+            if (!QFile::rename(tmp, dest)) {
+                error = QStringLiteral("cannot finalize %1").arg(dest);
+                QFile::remove(tmp);
+                return false;
+            }
+            if (executable) {
+                QFile::setPermissions(dest,
+                    QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner
+                    | QFile::ReadGroup | QFile::ExeGroup
+                    | QFile::ReadOther | QFile::ExeOther);
+            }
+            qInfo() << "Fetched" << url.toString() << "(" << size << "bytes )";
+            return true;
+        };
+
+        const auto verifySha256 = [&](const QString &dest) -> bool {
+            // Sidecar is optional; when present the digest must match.
+            const auto sidecar = dest + ".sha256";
+            QString sidecarError;
+            const auto sidecarUrl = QUrl(base + "/" + QFileInfo(dest).fileName()
+                + ".sha256");
+            if (!fetchToFile(sidecarUrl, sidecar, false, 15000)) {
+                qInfo() << "No SHA-256 sidecar for"
+                    << QFileInfo(dest).fileName() << "- skipping verification";
+                QFile::remove(sidecar);
+                return true;
+            }
+            QFile digestFile(sidecar);
+            if (!digestFile.open(QIODevice::ReadOnly)) {
+                error = QStringLiteral("cannot read %1").arg(sidecar);
+                return false;
+            }
+            const auto expectedHex = QString::fromUtf8(
+                digestFile.readAll().split(' ').value(0)).trimmed();
+            digestFile.remove();
+
+            QCryptographicHash hash(QCryptographicHash::Sha256);
+            QFile blob(dest);
+            if (!blob.open(QIODevice::ReadOnly)) {
+                error = QStringLiteral("cannot reopen %1").arg(dest);
+                return false;
+            }
+            char chunk[1 << 20];
+            while (!blob.atEnd()) {
+                hash.addData(chunk, blob.read(chunk, sizeof(chunk)));
+            }
+            const auto actualHex = QString::fromUtf8(hash.result().toHex());
+            if (actualHex != expectedHex) {
+                error = QStringLiteral("SHA-256 mismatch for %1").arg(dest);
+                QFile::remove(dest);
+                return false;
+            }
+            return true;
+        };
+
+        const auto serverUrl = QUrl(base + "/" + llamaServerFileName());
+        const auto serverDest = destDir + "/" + llamaServerFileName();
+        const auto modelUrl = QUrl(base + "/" + modelFile);
+        const auto modelDest = destDir + "/models/" + modelFile;
+
+        if (QFileInfo::exists(serverDest) && QFileInfo::exists(modelDest)) {
+            ok = true; // both assets appeared while we were queued
+        } else if (fetchToFile(serverUrl, serverDest, true, 15 * 60 * 1000)
+            && verifySha256(serverDest)
+            && fetchToFile(modelUrl, modelDest, false, kAssetDownloadTimeoutMs)
+            && verifySha256(modelDest)) {
+            ok = true;
+        }
+
+        const auto failure = ok ? QString() : error;
+        QMetaObject::invokeMethod(this, [this, tierName, ok, failure] {
+            onAssetsReady(tierName, ok, failure);
+        }, Qt::QueuedConnection);
+    });
 }
 
 void UniversalThreatDetector::unloadCurrentModel() {

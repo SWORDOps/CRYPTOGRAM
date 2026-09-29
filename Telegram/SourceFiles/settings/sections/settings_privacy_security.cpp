@@ -564,7 +564,7 @@ void BuildThreatDetectorSection(SectionBuilder &builder) {
 	}
 	
 	builder.addSkip();
-	builder.addDividerText(rpl::single(QString("Automatically scans incoming messages for phishing, malware, and social engineering using a local AI model (Qwen 2.5). Disable this if you want to save battery life.")));
+	builder.addDividerText(rpl::single(QString("Automatically scans incoming messages for phishing, malware, and social engineering using a local AI model (Qwen 2.5). The AI engine and the selected model (~0.5–2 GB) are downloaded on demand when you enable this — nothing is bundled with the app. Disable to save battery life.")));
 	
 	builder.addSkip(st::settingsPrivacySkip);
 	builder.addSubsectionTitle({

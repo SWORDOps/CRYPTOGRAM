@@ -2557,13 +2557,13 @@ if (LINUX AND DESKTOP_APP_USE_PACKAGED)
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/io.github.tdesktop_x64.TDesktop.metainfo.xml" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo")
 endif()
 
-# Bundle local AI components (optional).
-# The threat detector looks for `ai/llama-server` and `ai/models/qwen2.5-*-utd-*.gguf`
-# next to the binary at runtime; without them it runs in pattern-only mode.
-# Configure with -DCRYPTOGRAM_AI_LLAMA_SERVER=<bin> and/or
-# -DCRYPTOGRAM_AI_MODELS_DIR=<dir> to bundle assets, or export the same-named
-# environment variables. If unset and a local llama.cpp checkout exists
-# (maintainer machines), it is picked up automatically.
+# Bundle local AI components (developer-only, opt-in).
+# The application NEVER bundles AI assets: the threat detector downloads
+# the llama-server engine and the tier-selected model on demand when the
+# user enables the feature (see universal_threat_detector.cpp).
+# For offline development builds only, point these at local files:
+#   -DCRYPTOGRAM_AI_LLAMA_SERVER=<bin> -DCRYPTOGRAM_AI_MODELS_DIR=<dir>
+#   (or the same-named environment variables).
 set(CRYPTOGRAM_AI_LLAMA_SERVER "" CACHE FILEPATH "Prebuilt llama-server binary bundled as ai/llama-server")
 set(CRYPTOGRAM_AI_MODELS_DIR "" CACHE PATH "Directory with qwen2.5-*-utd-*.gguf models bundled as ai/models")
 
@@ -2572,18 +2572,6 @@ if(NOT CRYPTOGRAM_AI_LLAMA_SERVER AND DEFINED ENV{CRYPTOGRAM_AI_LLAMA_SERVER})
 endif()
 if(NOT CRYPTOGRAM_AI_MODELS_DIR AND DEFINED ENV{CRYPTOGRAM_AI_MODELS_DIR})
     set(CRYPTOGRAM_AI_MODELS_DIR "$ENV{CRYPTOGRAM_AI_MODELS_DIR}" CACHE PATH "Directory with qwen2.5-*-utd-*.gguf models bundled as ai/models" FORCE)
-endif()
-if(NOT CRYPTOGRAM_AI_LLAMA_SERVER)
-    set(_cg_llama_hint "$ENV{HOME}/Documents/VectorReVamp/llama.cpp/build/bin/llama-server")
-    if(EXISTS "${_cg_llama_hint}")
-        set(CRYPTOGRAM_AI_LLAMA_SERVER "${_cg_llama_hint}" CACHE FILEPATH "Prebuilt llama-server binary bundled as ai/llama-server" FORCE)
-    endif()
-endif()
-if(NOT CRYPTOGRAM_AI_MODELS_DIR)
-    set(_cg_models_hint "$ENV{HOME}/Documents/VectorReVamp/models/gguf")
-    if(EXISTS "${_cg_models_hint}")
-        set(CRYPTOGRAM_AI_MODELS_DIR "${_cg_models_hint}" CACHE PATH "Directory with qwen2.5-*-utd-*.gguf models bundled as ai/models" FORCE)
-    endif()
 endif()
 
 set(_cg_ai_copy_commands "")
@@ -2607,11 +2595,13 @@ foreach(_cg_model IN ITEMS qwen2.5-0.5b-utd-q8_0.gguf qwen2.5-1.5b-utd-q8_0.gguf
     endif()
 endforeach()
 
-add_custom_command(TARGET Telegram POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:Telegram>/ai/models"
-    ${_cg_ai_copy_commands}
-    COMMENT "Bundling local AI components (optional)"
-)
+if(_cg_ai_copy_commands)
+    add_custom_command(TARGET Telegram POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:Telegram>/ai/models"
+        ${_cg_ai_copy_commands}
+        COMMENT "Bundling local AI components (developer build only)"
+    )
+endif()
 if(_cg_ai_missing)
-    message(STATUS "CRYPTOGRAM AI assets NOT bundled (pattern-only fallback stays active); missing: ${_cg_ai_missing}")
+    message(STATUS "CRYPTOGRAM AI assets NOT bundled (runtime downloads them on opt-in); missing: ${_cg_ai_missing}")
 endif()
