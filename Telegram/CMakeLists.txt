@@ -107,6 +107,42 @@ PRIVATE
 
 target_compile_definitions(Telegram PRIVATE HAVE_TAGLIB)
 
+# Counterintelligence + GNA audio engines: large placeholder scaffolding
+# (surveillance detector, adaptive countermeasures, QtCharts dashboard,
+# voice/steganography/covert-channel engines, hardware profiler) with no
+# runtime callers. Compiled ONLY on explicit request so release binaries
+# carry no dead security code; the Settings "Surveillance Detection"
+# section hides itself accordingly (CRYPTOGRAM_COUNTERINTELLIGENCE).
+option(CRYPTOGRAM_ENABLE_COUNTERINTELLIGENCE
+    "Compile the counterintelligence and GNA audio engine scaffolding" OFF)
+if (CRYPTOGRAM_ENABLE_COUNTERINTELLIGENCE)
+    target_sources(Telegram PRIVATE
+        ${src_loc}/counterintelligence/surveillance_detector.cpp
+        ${src_loc}/counterintelligence/surveillance_detector.h
+        ${src_loc}/counterintelligence/adaptive_countermeasures.cpp
+        ${src_loc}/counterintelligence/adaptive_countermeasures.h
+        ${src_loc}/counterintelligence/counterintelligence_controller.h
+        ${src_loc}/counterintelligence/counterintelligence_controller.cpp
+        ${src_loc}/counterintelligence/counterintelligence_dashboard.h
+        ${src_loc}/counterintelligence/counterintelligence_dashboard.cpp
+        ${src_loc}/counterintelligence/countermeasure_randomizer.cpp
+        ${src_loc}/counterintelligence/countermeasure_randomizer.h
+        ${src_loc}/counterintelligence/universal_security_validator.cpp
+        ${src_loc}/counterintelligence/universal_security_validator.h
+        ${src_loc}/security/gna_acoustic_security.cpp
+        ${src_loc}/security/gna_acoustic_security.h
+        ${src_loc}/security/gna_covert_channel_engine.cpp
+        ${src_loc}/security/gna_covert_channel_engine.h
+        ${src_loc}/security/gna_steganography_engine.cpp
+        ${src_loc}/security/gna_steganography_engine.h
+        ${src_loc}/security/gna_voice_morphing_engine.cpp
+        ${src_loc}/security/gna_voice_morphing_engine.h
+        ${src_loc}/security/hardware_detector.h
+        ${src_loc}/security/hardware_detector.cpp
+    )
+    target_compile_definitions(Telegram PRIVATE CRYPTOGRAM_COUNTERINTELLIGENCE=1)
+endif()
+
 # TagLib include directories (added here because the tag target's
 # INTERFACE_INCLUDE_DIRECTORIES can't contain source tree paths)
 target_include_directories(Telegram PRIVATE
@@ -866,28 +902,6 @@ PRIVATE
     data/data_user_names.h
     data/data_voice_security.cpp
     data/data_voice_security.h
-    counterintelligence/surveillance_detector.cpp
-    counterintelligence/surveillance_detector.h
-    counterintelligence/adaptive_countermeasures.cpp
-    counterintelligence/adaptive_countermeasures.h
-    counterintelligence/counterintelligence_controller.h
-    counterintelligence/counterintelligence_controller.cpp
-    counterintelligence/counterintelligence_dashboard.h
-    counterintelligence/counterintelligence_dashboard.cpp
-    counterintelligence/countermeasure_randomizer.cpp
-    counterintelligence/countermeasure_randomizer.h
-    counterintelligence/universal_security_validator.cpp
-    counterintelligence/universal_security_validator.h
-    security/gna_acoustic_security.cpp
-    security/gna_acoustic_security.h
-    security/gna_covert_channel_engine.cpp
-    security/gna_covert_channel_engine.h
-    security/gna_steganography_engine.cpp
-    security/gna_steganography_engine.h
-    security/gna_voice_morphing_engine.cpp
-    security/gna_voice_morphing_engine.h
-    security/hardware_detector.h
-    security/hardware_detector.cpp
     security/universal_threat_detector.cpp
     security/universal_threat_detector.h
     data/data_wall_paper.cpp

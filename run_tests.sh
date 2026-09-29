@@ -300,6 +300,12 @@ run_static_checks() {
     forbid_grep 'VectorReVamp' \
         "Telegram/CMakeLists.txt" \
         "No personal build paths hardcoded in CMake"
+    require_grep 'CRYPTOGRAM_ENABLE_COUNTERINTELLIGENCE' \
+        "Telegram/CMakeLists.txt" \
+        "Counterintelligence scaffolding gated behind build option (default OFF)"
+    require_grep 'ifdef CRYPTOGRAM_COUNTERINTELLIGENCE' \
+        "Telegram/SourceFiles/settings/settings_cryptogram.cpp" \
+        "Surveillance settings section hidden when scaffolding compiled out"
 
     echo
     echo "TEST 6: Runtime gaps to review manually"

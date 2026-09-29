@@ -221,11 +221,17 @@ rpl::producer<QString> CryptogramOPSEC::title() {
 void CryptogramOPSEC::setupContent() {
 	const auto content = Ui::CreateChild<Ui::VerticalLayout>(this);
 
+	// The surveillance-detection UI only exists when the (placeholder)
+	// counterintelligence scaffolding is compiled in
+	// (-DCRYPTOGRAM_ENABLE_COUNTERINTELLIGENCE=ON). Otherwise the toggles
+	// would persist settings that nothing consumes.
+#ifdef CRYPTOGRAM_COUNTERINTELLIGENCE
 	setupSurveillanceSection(content);
 
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
 	Ui::AddSkip(content);
+#endif
 
 	setupVoiceSecuritySection(content);
 
