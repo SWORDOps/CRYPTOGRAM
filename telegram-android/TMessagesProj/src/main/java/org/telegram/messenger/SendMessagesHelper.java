@@ -4119,6 +4119,12 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 message = DpiEvasionHelper.getInstance().applyPadding(message);
             }
             message = CryptogramMessageHelper.encryptOutgoingMessage(currentAccount, message, peer);
+            // CRYPTOGRAM: advertise our key bundle inside the outgoing message
+            // as an invisible entity-covered payload (desktop interop).
+            if (entities == null) {
+                entities = new ArrayList<>();
+            }
+            message = CryptogramMessageHelper.attachKeyBundleIfNeeded(currentAccount, message, peer, entities);
         }
 
         long _payStars = getMessagesController().getSendPaidMessagesStars(peer);

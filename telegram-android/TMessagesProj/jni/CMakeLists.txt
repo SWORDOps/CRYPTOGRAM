@@ -681,6 +681,7 @@ android_ndk_import_module_cpufeatures()
 #cryptogram library
 add_library(cryptogram SHARED
         cryptogram/CryptogramWrapper.cpp
+        cryptogram/interop/InteropCore.cpp
 )
 add_dependencies(cryptogram tgcalls tgvoip tgnet rlottie)
 

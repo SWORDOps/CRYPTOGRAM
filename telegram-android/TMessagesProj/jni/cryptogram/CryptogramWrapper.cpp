@@ -1,24 +1,27 @@
 /*
  * CRYPTOGRAM Android JNI bridge.
+ *
+ * The Double Ratchet protocol core lives in cryptogram/interop/
+ * InteropCore.{h,cpp} — a JNI-free, byte-compatible port of the desktop
+ * spec (Telegram/SourceFiles/data/data_signal_protocol.cpp and
+ * data_signal_transport.cpp). This wrapper keeps the per-user session map
+ * and mutexes and delegates all crypto and wire-format work to InteropCore.
  */
 
 #include <jni.h>
 #include <android/log.h>
 
-#include <openssl/curve25519.h>
 #include <openssl/evp.h>
 #include <openssl/hkdf.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 
-#include <algorithm>
-#include <array>
+#include "interop/InteropCore.h"
+
 #include <cstdint>
 #include <cstring>
 #include <iomanip>
-#include <map>
 #include <mutex>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -34,57 +37,12 @@ using ByteVector = std::vector<uint8_t>;
 
 constexpr size_t kX25519KeySize = 32;
 constexpr size_t kEd25519PublicKeySize = 32;
-constexpr size_t kEd25519PrivateKeySize = 64;
 constexpr size_t kAes256KeySize = 32;
 constexpr size_t kGcmIvSize = 12;
-constexpr size_t kGcmTagSize = 16;
-constexpr uint8_t kSignalEnvelopeVersion = 1;
 constexpr uint8_t kMlsEnvelopeVersion = 1;
-constexpr size_t kMaxSkippedKeys = 128;
 
 JavaVM *gJavaVM = nullptr;
 std::string gStoragePath;
-
-struct DeviceId {
-    std::string identifier;
-    uint64_t registrationId = 0;
-};
-
-struct KeyBundle {
-    DeviceId deviceId;
-    ByteVector identityKey;
-    ByteVector signedPreKey;
-    ByteVector oneTimePreKey;
-    ByteVector signature;
-};
-
-struct MessageMetadata {
-    uint32_t messageCounter = 0;
-    ByteVector iv;
-    ByteVector senderPublicKey;
-    uint32_t timestamp = 0;
-};
-
-struct SessionState {
-    ByteVector rootKey;
-    ByteVector sendingChainKey;
-    ByteVector receivingChainKey;
-    ByteVector remoteIdentityKey;
-    uint32_t sendingCounter = 0;
-    uint32_t receivingCounter = 0;
-    std::map<uint32_t, ByteVector> skippedReceivingKeys;
-};
-
-struct LocalIdentity {
-    DeviceId deviceId;
-    ByteVector identityPublic;
-    std::array<uint8_t, kEd25519PrivateKeySize> identityPrivate{};
-    ByteVector signedPreKeyPublic;
-    std::array<uint8_t, kX25519KeySize> signedPreKeyPrivate{};
-    ByteVector oneTimePreKeyPublic;
-    std::array<uint8_t, kX25519KeySize> oneTimePreKeyPrivate{};
-    bool initialized = false;
-};
 
 struct MlsGroup {
     ByteVector groupId;
@@ -93,8 +51,12 @@ struct MlsGroup {
 };
 
 std::mutex gSignalMutex;
-LocalIdentity gIdentity;
-std::unordered_map<int64_t, SessionState> gSessions;
+interop::LocalIdentity gIdentity;
+std::unordered_map<int64_t, interop::SessionState> gSessions;
+// Remote bundles registered via nativeInitializeWithRemoteBundle. They are
+// needed for the Bob-side session establishment at first contact and for
+// the stale-session retry in nativeDecrypt.
+std::unordered_map<int64_t, interop::KeyBundle> gRemoteBundles;
 std::mutex gMlsMutex;
 std::unordered_map<int64_t, MlsGroup> gMlsGroups;
 std::mutex gPrivacyMutex;
@@ -105,7 +67,7 @@ uint32_t nowSeconds() {
 }
 
 bool randomBytes(uint8_t *data, size_t size) {
-    return RAND_bytes(data, size) == 1;
+    return RAND_bytes(data, static_cast<int>(size)) == 1;
 }
 
 ByteVector randomVector(size_t size) {
@@ -132,18 +94,14 @@ void pushU64(ByteVector &out, uint64_t value) {
     }
 }
 
+void pushVector(ByteVector &out, const ByteVector &value) {
+    pushU32(out, static_cast<uint32_t>(value.size()));
+    out.insert(out.end(), value.begin(), value.end());
+}
+
 bool readU8(const uint8_t *data, size_t size, size_t &pos, uint8_t &value) {
     if (pos + sizeof(value) > size) return false;
     value = data[pos++];
-    return true;
-}
-
-bool readU32(const uint8_t *data, size_t size, size_t &pos, uint32_t &value) {
-    if (pos + sizeof(value) > size) return false;
-    value = 0;
-    for (int shift = 0; shift < 32; shift += 8) {
-        value |= static_cast<uint32_t>(data[pos++]) << shift;
-    }
     return true;
 }
 
@@ -156,14 +114,13 @@ bool readU64(const uint8_t *data, size_t size, size_t &pos, uint64_t &value) {
     return true;
 }
 
-void pushVector(ByteVector &out, const ByteVector &value) {
-    pushU32(out, static_cast<uint32_t>(value.size()));
-    out.insert(out.end(), value.begin(), value.end());
-}
-
 bool readVector(const uint8_t *data, size_t size, size_t &pos, ByteVector &value) {
     uint32_t len = 0;
-    if (!readU32(data, size, pos, len) || pos + len > size) return false;
+    for (int shift = 0; shift < 32; shift += 8) {
+        if (pos + sizeof(uint8_t) > size) return false;
+        len |= static_cast<uint32_t>(data[pos++]) << shift;
+    }
+    if (len > size - pos) return false; // pos <= size always; overflow-safe
     value.assign(data + pos, data + pos + len);
     pos += len;
     return true;
@@ -188,6 +145,92 @@ jbyteArray vectorToJByteArray(JNIEnv *env, const ByteVector &data) {
     return result;
 }
 
+// Proper UTF-8 encoding of a jstring (GetStringUTFChars yields JNI
+// "modified UTF-8", which is NOT UTF-8 for supplementary characters —
+// the desktop side decodes real UTF-8).
+ByteVector jstringToUtf8Bytes(JNIEnv *env, jstring text) {
+    ByteVector result;
+    if (!text) return result;
+    const jsize length = env->GetStringLength(text);
+    if (length <= 0) return result;
+    const jchar *chars = env->GetStringChars(text, nullptr);
+    if (!chars) return result;
+
+    auto pushCodePoint = [&result](uint32_t cp) {
+        if (cp < 0x80) {
+            result.push_back(static_cast<uint8_t>(cp));
+        } else if (cp < 0x800) {
+            result.push_back(static_cast<uint8_t>(0xC0 | (cp >> 6)));
+            result.push_back(static_cast<uint8_t>(0x80 | (cp & 0x3F)));
+        } else if (cp < 0x10000) {
+            result.push_back(static_cast<uint8_t>(0xE0 | (cp >> 12)));
+            result.push_back(static_cast<uint8_t>(0x80 | ((cp >> 6) & 0x3F)));
+            result.push_back(static_cast<uint8_t>(0x80 | (cp & 0x3F)));
+        } else {
+            result.push_back(static_cast<uint8_t>(0xF0 | (cp >> 18)));
+            result.push_back(static_cast<uint8_t>(0x80 | ((cp >> 12) & 0x3F)));
+            result.push_back(static_cast<uint8_t>(0x80 | ((cp >> 6) & 0x3F)));
+            result.push_back(static_cast<uint8_t>(0x80 | (cp & 0x3F)));
+        }
+    };
+
+    for (jsize i = 0; i < length;) {
+        uint32_t cp = chars[i];
+        if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < length) {
+            const uint32_t low = chars[i + 1];
+            if (low >= 0xDC00 && low <= 0xDFFF) {
+                cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+                pushCodePoint(cp);
+                i += 2;
+                continue;
+            }
+        }
+        pushCodePoint(cp);
+        i += 1;
+    }
+    env->ReleaseStringChars(text, chars);
+    return result;
+}
+
+// jstring from real UTF-8 bytes (NewStringUTF expects modified UTF-8 and
+// corrupts 4-byte sequences; the desktop sends real UTF-8).
+jstring utf8BytesToJString(JNIEnv *env, const ByteVector &bytes) {
+    std::vector<uint16_t> units;
+    units.reserve(bytes.size());
+    size_t i = 0;
+    while (i < bytes.size()) {
+        const uint8_t first = bytes[i];
+        uint32_t cp = first;
+        size_t advance = 1;
+        if ((first & 0xE0) == 0xC0 && i + 1 < bytes.size()) {
+            cp = (static_cast<uint32_t>(first & 0x1F) << 6)
+                | (bytes[i + 1] & 0x3F);
+            advance = 2;
+        } else if ((first & 0xF0) == 0xE0 && i + 2 < bytes.size()) {
+            cp = (static_cast<uint32_t>(first & 0x0F) << 12)
+                | (static_cast<uint32_t>(bytes[i + 1] & 0x3F) << 6)
+                | (bytes[i + 2] & 0x3F);
+            advance = 3;
+        } else if ((first & 0xF8) == 0xF0 && i + 3 < bytes.size()) {
+            cp = (static_cast<uint32_t>(first & 0x07) << 18)
+                | (static_cast<uint32_t>(bytes[i + 1] & 0x3F) << 12)
+                | (static_cast<uint32_t>(bytes[i + 2] & 0x3F) << 6)
+                | (bytes[i + 3] & 0x3F);
+            advance = 4;
+        }
+        i += advance;
+
+        if (cp >= 0x10000) {
+            cp -= 0x10000;
+            units.push_back(static_cast<uint16_t>(0xD800 + (cp >> 10)));
+            units.push_back(static_cast<uint16_t>(0xDC00 + (cp & 0x3FF)));
+        } else {
+            units.push_back(static_cast<uint16_t>(cp));
+        }
+    }
+    return env->NewString(units.data(), static_cast<jsize>(units.size()));
+}
+
 ByteVector hkdfSha256(const ByteVector &secret, const std::string &info, size_t outSize, const ByteVector &salt = {}) {
     ByteVector result(outSize);
     const uint8_t *saltData = salt.empty() ? nullptr : salt.data();
@@ -208,218 +251,15 @@ ByteVector sha256Concat(const ByteVector &first, const ByteVector &second) {
     return digest;
 }
 
-std::optional<ByteVector> aesGcmEncrypt(const ByteVector &key, const ByteVector &iv, const ByteVector &plaintext, const ByteVector &aad) {
-    if (key.size() != kAes256KeySize || iv.size() != kGcmIvSize) return std::nullopt;
-    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-    if (!ctx) return std::nullopt;
-
-    ByteVector output(plaintext.size() + kGcmTagSize);
-    int outLen = 0;
-    int totalLen = 0;
-    bool ok = EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) == 1 &&
-        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, static_cast<int>(iv.size()), nullptr) == 1 &&
-        EVP_EncryptInit_ex(ctx, nullptr, nullptr, key.data(), iv.data()) == 1;
-    if (ok && !aad.empty()) {
-        ok = EVP_EncryptUpdate(ctx, nullptr, &outLen, aad.data(), static_cast<int>(aad.size())) == 1;
-    }
-    if (ok && !plaintext.empty()) {
-        ok = EVP_EncryptUpdate(ctx, output.data(), &outLen, plaintext.data(), static_cast<int>(plaintext.size())) == 1;
-        totalLen = outLen;
-    }
-    if (ok) {
-        ok = EVP_EncryptFinal_ex(ctx, output.data() + totalLen, &outLen) == 1;
-        totalLen += outLen;
-    }
-    if (ok) {
-        ok = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, kGcmTagSize, output.data() + totalLen) == 1;
-    }
-    EVP_CIPHER_CTX_free(ctx);
-    if (!ok) return std::nullopt;
-    output.resize(static_cast<size_t>(totalLen) + kGcmTagSize);
-    return output;
-}
-
-std::optional<ByteVector> aesGcmDecrypt(const ByteVector &key, const ByteVector &iv, const ByteVector &ciphertextWithTag, const ByteVector &aad) {
-    if (key.size() != kAes256KeySize || iv.size() != kGcmIvSize || ciphertextWithTag.size() < kGcmTagSize) return std::nullopt;
-    const size_t ciphertextSize = ciphertextWithTag.size() - kGcmTagSize;
-    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-    if (!ctx) return std::nullopt;
-
-    ByteVector plaintext(ciphertextSize);
-    int outLen = 0;
-    int totalLen = 0;
-    bool ok = EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) == 1 &&
-        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, static_cast<int>(iv.size()), nullptr) == 1 &&
-        EVP_DecryptInit_ex(ctx, nullptr, nullptr, key.data(), iv.data()) == 1;
-    if (ok && !aad.empty()) {
-        ok = EVP_DecryptUpdate(ctx, nullptr, &outLen, aad.data(), static_cast<int>(aad.size())) == 1;
-    }
-    if (ok && ciphertextSize > 0) {
-        ok = EVP_DecryptUpdate(ctx, plaintext.data(), &outLen, ciphertextWithTag.data(), static_cast<int>(ciphertextSize)) == 1;
-        totalLen = outLen;
-    }
-    if (ok) {
-        ok = EVP_CIPHER_CTX_ctrl(
-            ctx,
-            EVP_CTRL_GCM_SET_TAG,
-            kGcmTagSize,
-            const_cast<uint8_t *>(ciphertextWithTag.data() + ciphertextSize)) == 1;
-    }
-    if (ok) {
-        ok = EVP_DecryptFinal_ex(ctx, plaintext.data() + totalLen, &outLen) == 1;
-        totalLen += outLen;
-    }
-    EVP_CIPHER_CTX_free(ctx);
-    if (!ok) return std::nullopt;
-    plaintext.resize(static_cast<size_t>(totalLen));
-    return plaintext;
-}
-
-ByteVector deriveMessageKey(const ByteVector &chainKey, uint32_t counter) {
-    ByteVector counterBytes;
-    pushU32(counterBytes, counter);
-    return hkdfSha256(chainKey, "Cryptogram-Android-DoubleRatchet-Message", kAes256KeySize, counterBytes);
-}
-
-ByteVector ratchetChain(const ByteVector &chainKey) {
-    return hkdfSha256(chainKey, "Cryptogram-Android-DoubleRatchet-Chain", kAes256KeySize);
-}
-
 bool ensureIdentity() {
     if (gIdentity.initialized) return true;
-
-    std::array<uint8_t, kEd25519PublicKeySize> publicKey{};
-    ED25519_keypair(publicKey.data(), gIdentity.identityPrivate.data());
-    gIdentity.identityPublic.assign(publicKey.begin(), publicKey.end());
-
-    std::array<uint8_t, kX25519KeySize> signedPublic{};
-    X25519_keypair(signedPublic.data(), gIdentity.signedPreKeyPrivate.data());
-    gIdentity.signedPreKeyPublic.assign(signedPublic.begin(), signedPublic.end());
-
-    std::array<uint8_t, kX25519KeySize> oneTimePublic{};
-    X25519_keypair(oneTimePublic.data(), gIdentity.oneTimePreKeyPrivate.data());
-    gIdentity.oneTimePreKeyPublic.assign(oneTimePublic.begin(), oneTimePublic.end());
-
-    gIdentity.deviceId.identifier = "android-primary";
-    if (!randomBytes(reinterpret_cast<uint8_t *>(&gIdentity.deviceId.registrationId), sizeof(gIdentity.deviceId.registrationId))) {
-        return false;
-    }
-    gIdentity.initialized = true;
-    return true;
-}
-
-ByteVector signBytes(const ByteVector &data) {
-    ByteVector signature(ED25519_SIGNATURE_LEN);
-    if (!ensureIdentity()) return {};
-    if (!ED25519_sign(signature.data(), data.data(), data.size(), gIdentity.identityPrivate.data())) {
-        return {};
-    }
-    return signature;
-}
-
-bool verifySignature(const ByteVector &signature, const ByteVector &data, const ByteVector &publicKey) {
-    if (signature.size() != ED25519_SIGNATURE_LEN || publicKey.size() != kEd25519PublicKeySize) return false;
-    return ED25519_verify(data.data(), data.size(), signature.data(), publicKey.data()) == 1;
-}
-
-KeyBundle localKeyBundle() {
-    ensureIdentity();
-    KeyBundle bundle;
-    bundle.deviceId = gIdentity.deviceId;
-    bundle.identityKey = gIdentity.identityPublic;
-    bundle.signedPreKey = gIdentity.signedPreKeyPublic;
-    bundle.oneTimePreKey = gIdentity.oneTimePreKeyPublic;
-    bundle.signature = signBytes(bundle.signedPreKey);
-    return bundle;
-}
-
-ByteVector serializeKeyBundle(const KeyBundle &bundle) {
-    ByteVector result;
-    pushU32(result, static_cast<uint32_t>(bundle.deviceId.identifier.size()));
-    result.insert(result.end(), bundle.deviceId.identifier.begin(), bundle.deviceId.identifier.end());
-    pushU64(result, bundle.deviceId.registrationId);
-    pushVector(result, bundle.identityKey);
-    pushVector(result, bundle.signedPreKey);
-    pushVector(result, bundle.oneTimePreKey);
-    pushVector(result, bundle.signature);
-    return result;
-}
-
-std::optional<KeyBundle> deserializeKeyBundle(const ByteVector &data) {
-    KeyBundle bundle;
-    size_t pos = 0;
-    uint32_t idLen = 0;
-    if (!readU32(data.data(), data.size(), pos, idLen) || pos + idLen > data.size()) return std::nullopt;
-    bundle.deviceId.identifier.assign(reinterpret_cast<const char *>(data.data() + pos), idLen);
-    pos += idLen;
-    if (!readU64(data.data(), data.size(), pos, bundle.deviceId.registrationId)) return std::nullopt;
-    if (!readVector(data.data(), data.size(), pos, bundle.identityKey)) return std::nullopt;
-    if (!readVector(data.data(), data.size(), pos, bundle.signedPreKey)) return std::nullopt;
-    if (!readVector(data.data(), data.size(), pos, bundle.oneTimePreKey)) return std::nullopt;
-    if (!readVector(data.data(), data.size(), pos, bundle.signature)) return std::nullopt;
-    return bundle;
-}
-
-bool createSessionFromBundle(int64_t userId, const KeyBundle &remoteBundle) {
-    if (!ensureIdentity()) return false;
-    if (remoteBundle.signedPreKey.size() != kX25519KeySize ||
-        !verifySignature(remoteBundle.signature, remoteBundle.signedPreKey, remoteBundle.identityKey)) {
-        return false;
-    }
-
-    std::array<uint8_t, kX25519KeySize> sharedSecret{};
-    if (!X25519(sharedSecret.data(), gIdentity.signedPreKeyPrivate.data(), remoteBundle.signedPreKey.data())) {
-        return false;
-    }
-    ByteVector shared(sharedSecret.begin(), sharedSecret.end());
-    ByteVector root = hkdfSha256(shared, "Cryptogram-Android-X3DH-Root", kAes256KeySize);
-    if (root.empty()) return false;
-
-    const bool localFirst = std::lexicographical_compare(
-        gIdentity.identityPublic.begin(),
-        gIdentity.identityPublic.end(),
-        remoteBundle.identityKey.begin(),
-        remoteBundle.identityKey.end());
-
-    SessionState state;
-    state.rootKey = root;
-    state.remoteIdentityKey = remoteBundle.identityKey;
-    state.sendingChainKey = hkdfSha256(root, localFirst ? "Cryptogram-Android-Chain-A" : "Cryptogram-Android-Chain-B", kAes256KeySize);
-    state.receivingChainKey = hkdfSha256(root, localFirst ? "Cryptogram-Android-Chain-B" : "Cryptogram-Android-Chain-A", kAes256KeySize);
-    if (state.sendingChainKey.empty() || state.receivingChainKey.empty()) return false;
-    gSessions[userId] = std::move(state);
-    gCryptogramUsers[userId] = true;
-    return true;
-}
-
-ByteVector metadataAad(const MessageMetadata &metadata) {
-    ByteVector aad;
-    pushU32(aad, metadata.messageCounter);
-    pushVector(aad, metadata.senderPublicKey);
-    pushU32(aad, metadata.timestamp);
-    return aad;
-}
-
-ByteVector serializeMetadata(const MessageMetadata &metadata) {
-    ByteVector result;
-    pushU32(result, metadata.messageCounter);
-    pushVector(result, metadata.iv);
-    pushVector(result, metadata.senderPublicKey);
-    pushU32(result, metadata.timestamp);
-    return result;
-}
-
-bool deserializeMetadata(const uint8_t *data, size_t size, size_t &pos, MessageMetadata &metadata) {
-    return readU32(data, size, pos, metadata.messageCounter) &&
-        readVector(data, size, pos, metadata.iv) &&
-        readVector(data, size, pos, metadata.senderPublicKey) &&
-        readU32(data, size, pos, metadata.timestamp);
+    return interop::generateLocalIdentity(gIdentity);
 }
 
 ByteVector serializeSignalState(int64_t userId) {
     const auto it = gSessions.find(userId);
     std::ostringstream out;
-    out << "{\"initialized\": true, \"protocol\": \"Cryptogram Android Double Ratchet\", \"hasSession\": "
+    out << "{\"initialized\": true, \"protocol\": \"Signal Double Ratchet (desktop-compatible)\", \"hasSession\": "
         << (it == gSessions.end() ? "false" : "true")
         << ", \"userId\": " << userId << "}";
     const auto text = out.str();
@@ -432,9 +272,92 @@ ByteVector mlsSecretForGroup(MlsGroup &group) {
     return hkdfSha256(group.epochSecret, "Cryptogram-Android-MLS-Application", kAes256KeySize, epochBytes);
 }
 
+// Full both-sides exercise of the desktop-compatible core:
+// bundle serialization -> Alice X3DH -> encrypt -> envelope round-trip ->
+// Bob-side establishment -> decrypt -> DH-ratcheted reply -> out-of-order
+// delivery with skipped keys.
 bool runDoubleRatchetSelfTest() {
-    auto bundle = localKeyBundle();
-    return createSessionFromBundle(1, bundle) && gSessions.find(1) != gSessions.end();
+    interop::LocalIdentity alice;
+    interop::LocalIdentity bob;
+    if (!interop::generateLocalIdentity(alice) || !interop::generateLocalIdentity(bob)) {
+        return false;
+    }
+
+    // Bob advertises his bundle; Alice consumes the serialized form.
+    const auto bobBundleRaw = interop::encodeKeyBundle(interop::localKeyBundle(bob));
+    interop::KeyBundle bobBundle;
+    if (!interop::decodeKeyBundle(bobBundleRaw, bobBundle)
+            || !interop::verifyKeyBundleSignature(bobBundle)) {
+        return false;
+    }
+
+    const auto aliceBundleRaw = interop::encodeKeyBundle(interop::localKeyBundle(alice));
+    interop::KeyBundle aliceBundle;
+    if (!interop::decodeKeyBundle(aliceBundleRaw, aliceBundle)) {
+        return false;
+    }
+
+    interop::SessionState aliceSession;
+    if (!interop::establishSessionAlice(aliceSession, alice, bobBundle)) {
+        return false;
+    }
+
+    const ByteVector hello = {'h', 'e', 'l', 'l', 'o'};
+    interop::MessageMetadata metadata;
+    const auto ciphertext = interop::encryptMessage(aliceSession, hello, metadata);
+    if (ciphertext.empty()) {
+        return false;
+    }
+
+    const auto envelopeRaw = interop::wrapEnvelope(ciphertext, metadata);
+    interop::Envelope unwrapped;
+    if (!interop::unwrapEnvelope(envelopeRaw, unwrapped)) {
+        return false;
+    }
+
+    // Bob-side establishment is driven by the sender public key carried in
+    // the first message's metadata.
+    interop::SessionState bobSession;
+    if (!interop::establishSessionBob(bobSession, bob, unwrapped.metadata.senderPublicKey, aliceBundle)) {
+        return false;
+    }
+    const auto plaintext = interop::decryptMessage(bobSession, unwrapped.ciphertext, unwrapped.metadata);
+    if (plaintext != hello) {
+        return false;
+    }
+
+    // Bob replies; Alice's receiving chain must stay in sync.
+    const ByteVector reply = {'r', 'e', 'p', 'l', 'y'};
+    interop::MessageMetadata replyMetadata;
+    const auto replyCiphertext = interop::encryptMessage(bobSession, reply, replyMetadata);
+    if (replyCiphertext.empty()) {
+        return false;
+    }
+    const auto replyPlaintext = interop::decryptMessage(aliceSession, replyCiphertext, replyMetadata);
+    if (replyPlaintext != reply) {
+        return false;
+    }
+
+    // Out-of-order delivery: skip-ahead storage, then skipped-key lookup.
+    const ByteVector second = {'m', '2'};
+    const ByteVector third = {'m', '3'};
+    interop::MessageMetadata secondMetadata;
+    interop::MessageMetadata thirdMetadata;
+    const auto secondCiphertext = interop::encryptMessage(aliceSession, second, secondMetadata);
+    const auto thirdCiphertext = interop::encryptMessage(aliceSession, third, thirdMetadata);
+    if (secondCiphertext.empty() || thirdCiphertext.empty()) {
+        return false;
+    }
+    const auto thirdPlaintext = interop::decryptMessage(bobSession, thirdCiphertext, thirdMetadata);
+    if (thirdPlaintext != third) {
+        return false;
+    }
+    const auto secondPlaintext = interop::decryptMessage(bobSession, secondCiphertext, secondMetadata);
+    if (secondPlaintext != second) {
+        return false;
+    }
+
+    return true;
 }
 
 bool runMlsSelfTest() {
@@ -447,10 +370,10 @@ bool runMlsSelfTest() {
     ByteVector plaintext{'m', 'l', 's'};
     ByteVector aad;
     pushU64(aad, group.epoch);
-    auto encrypted = aesGcmEncrypt(key, iv, plaintext, aad);
-    if (!encrypted.has_value()) return false;
-    auto decrypted = aesGcmDecrypt(key, iv, *encrypted, aad);
-    return decrypted.has_value() && *decrypted == plaintext;
+    auto encrypted = interop::aesGcmEncrypt(key, iv, plaintext, aad);
+    if (encrypted.empty()) return false;
+    auto decrypted = interop::aesGcmDecrypt(key, iv, encrypted, aad);
+    return !decrypted.empty() && decrypted == plaintext;
 }
 
 } // namespace
@@ -460,22 +383,47 @@ extern "C" {
 JNIEXPORT jboolean JNICALL
 Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeInitializeSession(JNIEnv *, jobject, jlong userId) {
     std::lock_guard<std::mutex> lock(gSignalMutex);
-    return createSessionFromBundle(static_cast<int64_t>(userId), localKeyBundle()) ? JNI_TRUE : JNI_FALSE;
+    // A real session requires a remote bundle (X3DH); this prepares the
+    // local identity so bundles can be generated and first-contact
+    // establishment can succeed.
+    if (!ensureIdentity()) return JNI_FALSE;
+    gCryptogramUsers[static_cast<int64_t>(userId)] = true;
+    return JNI_TRUE;
 }
 
 JNIEXPORT jbyteArray JNICALL
 Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeGenerateKeyBundle(JNIEnv *env, jobject) {
     std::lock_guard<std::mutex> lock(gSignalMutex);
-    return vectorToJByteArray(env, serializeKeyBundle(localKeyBundle()));
+    if (!ensureIdentity()) return nullptr;
+    const auto bundle = interop::localKeyBundle(gIdentity);
+    // Desktop transport format: version 0x01, one-time pre-key present,
+    // no KEM extension (Android), X25519 identity in the 0x04 extension.
+    const auto raw = interop::encodeKeyBundle(bundle);
+    if (raw.empty()) return nullptr;
+    return vectorToJByteArray(env, raw);
 }
 
 JNIEXPORT jboolean JNICALL
 Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeInitializeWithRemoteBundle(JNIEnv *env, jobject, jlong userId, jbyteArray bundleData) {
     const auto data = jbyteArrayToVector(env, bundleData);
-    const auto bundle = deserializeKeyBundle(data);
-    if (!bundle.has_value()) return JNI_FALSE;
+    if (data.empty()) return JNI_FALSE;
+    interop::KeyBundle bundle;
+    if (!interop::decodeKeyBundle(data, bundle)) return JNI_FALSE;
+
     std::lock_guard<std::mutex> lock(gSignalMutex);
-    return createSessionFromBundle(static_cast<int64_t>(userId), *bundle) ? JNI_TRUE : JNI_FALSE;
+    if (!ensureIdentity()) return JNI_FALSE;
+    if (!interop::verifyKeyBundleSignature(bundle)) return JNI_FALSE;
+
+    // Alice side of the fixed X3DH; requires the bundle's 0x04 X25519
+    // identity. Bob-side establishment happens at first decrypt.
+    interop::SessionState session;
+    if (!interop::establishSessionAlice(session, gIdentity, bundle)) return JNI_FALSE;
+
+    const auto key = static_cast<int64_t>(userId);
+    gSessions[key] = std::move(session);
+    gRemoteBundles[key] = bundle;
+    gCryptogramUsers[key] = true;
+    return JNI_TRUE;
 }
 
 JNIEXPORT jboolean JNICALL
@@ -487,88 +435,79 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeHasSession(JNIEnv *, 
 JNIEXPORT jbyteArray JNICALL
 Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeEncrypt(JNIEnv *env, jobject, jlong userId, jstring plaintext) {
     if (!plaintext) return nullptr;
-    const char *messageText = env->GetStringUTFChars(plaintext, nullptr);
-    if (!messageText) return nullptr;
 
     std::lock_guard<std::mutex> lock(gSignalMutex);
+    if (!ensureIdentity()) return nullptr;
     const auto it = gSessions.find(static_cast<int64_t>(userId));
-    if (it == gSessions.end()) {
-        env->ReleaseStringUTFChars(plaintext, messageText);
-        return nullptr;
-    }
+    if (it == gSessions.end()) return nullptr;
 
-    auto &session = it->second;
-    MessageMetadata metadata;
-    metadata.messageCounter = session.sendingCounter++;
-    metadata.iv = randomVector(kGcmIvSize);
-    metadata.senderPublicKey = gIdentity.identityPublic;
-    metadata.timestamp = nowSeconds();
+    const auto plainBytes = jstringToUtf8Bytes(env, plaintext);
 
-    ByteVector plainBytes(reinterpret_cast<const uint8_t *>(messageText), reinterpret_cast<const uint8_t *>(messageText) + std::strlen(messageText));
-    env->ReleaseStringUTFChars(plaintext, messageText);
+    interop::MessageMetadata metadata;
+    const auto ciphertext = interop::encryptMessage(it->second, plainBytes, metadata);
+    if (ciphertext.empty()) return nullptr;
 
-    const auto key = deriveMessageKey(session.sendingChainKey, metadata.messageCounter);
-    session.sendingChainKey = ratchetChain(session.sendingChainKey);
-    const auto ciphertext = aesGcmEncrypt(key, metadata.iv, plainBytes, metadataAad(metadata));
-    if (!ciphertext.has_value()) return nullptr;
+    // ZK Phase 1: always attach a fresh challenge nonce. Android never
+    // emits a CAC response.
+    metadata.hasCacChallenge = true;
+    metadata.cacChallengeNonce = interop::randomVector(interop::kCacChallengeNonceSize);
+    if (metadata.cacChallengeNonce.empty()) return nullptr;
 
-    const auto metaBytes = serializeMetadata(metadata);
-    ByteVector envelope;
-    pushU8(envelope, kSignalEnvelopeVersion);
-    pushVector(envelope, metaBytes);
-    pushVector(envelope, *ciphertext);
+    // Raw desktop envelope bytes (QDataStream layout); the Java layer
+    // applies any text-level framing.
+    const auto envelope = interop::wrapEnvelope(ciphertext, metadata);
+    if (envelope.empty()) return nullptr;
     return vectorToJByteArray(env, envelope);
 }
 
 JNIEXPORT jstring JNICALL
 Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeDecrypt(JNIEnv *env, jobject, jlong userId, jbyteArray ciphertext) {
-    const auto envelope = jbyteArrayToVector(env, ciphertext);
-    if (envelope.empty()) return nullptr;
+    const auto blob = jbyteArrayToVector(env, ciphertext);
+    if (blob.empty()) return nullptr;
 
     std::lock_guard<std::mutex> lock(gSignalMutex);
-    const auto it = gSessions.find(static_cast<int64_t>(userId));
-    if (it == gSessions.end()) return nullptr;
+    if (!ensureIdentity()) return nullptr;
 
-    size_t pos = 0;
-    uint8_t version = 0;
-    ByteVector metaBytes;
-    ByteVector payload;
-    if (!readU8(envelope.data(), envelope.size(), pos, version) ||
-        version != kSignalEnvelopeVersion ||
-        !readVector(envelope.data(), envelope.size(), pos, metaBytes) ||
-        !readVector(envelope.data(), envelope.size(), pos, payload)) {
-        return nullptr;
-    }
+    interop::Envelope envelope;
+    if (!interop::unwrapEnvelope(blob, envelope)) return nullptr;
+    if (envelope.metadata.senderPublicKey.size() != interop::kKeySize) return nullptr;
 
-    MessageMetadata metadata;
-    size_t metaPos = 0;
-    if (!deserializeMetadata(metaBytes.data(), metaBytes.size(), metaPos, metadata)) return nullptr;
-
-    auto &session = it->second;
-    while (session.receivingCounter < metadata.messageCounter) {
-        if (session.skippedReceivingKeys.size() >= kMaxSkippedKeys) {
-            session.skippedReceivingKeys.erase(session.skippedReceivingKeys.begin());
+    const auto key = static_cast<int64_t>(userId);
+    auto it = gSessions.find(key);
+    if (it == gSessions.end()) {
+        // First contact with a registered bundle: run the BOB-side
+        // establishment using the sender public key from the metadata as
+        // Alice's ephemeral.
+        const auto bundleIt = gRemoteBundles.find(key);
+        if (bundleIt == gRemoteBundles.end()) return nullptr;
+        interop::SessionState established;
+        if (!interop::establishSessionBob(established, gIdentity, envelope.metadata.senderPublicKey, bundleIt->second)) {
+            return nullptr;
         }
-        session.skippedReceivingKeys[session.receivingCounter] = deriveMessageKey(session.receivingChainKey, session.receivingCounter);
-        session.receivingChainKey = ratchetChain(session.receivingChainKey);
-        ++session.receivingCounter;
+        it = gSessions.emplace(key, std::move(established)).first;
+        gCryptogramUsers[key] = true;
     }
 
-    ByteVector key;
-    const auto skipped = session.skippedReceivingKeys.find(metadata.messageCounter);
-    if (skipped != session.skippedReceivingKeys.end()) {
-        key = skipped->second;
-        session.skippedReceivingKeys.erase(skipped);
-    } else {
-        key = deriveMessageKey(session.receivingChainKey, metadata.messageCounter);
-        session.receivingChainKey = ratchetChain(session.receivingChainKey);
-        session.receivingCounter = metadata.messageCounter + 1;
+    auto plaintext = interop::decryptMessage(it->second, envelope.ciphertext, envelope.metadata);
+    if (plaintext.empty()) {
+        // Stale-session retry: re-establish once from this message's
+        // sender key and retry. The existing session is only replaced
+        // when the retry succeeds.
+        const auto bundleIt = gRemoteBundles.find(key);
+        if (bundleIt != gRemoteBundles.end()) {
+            interop::SessionState established;
+            if (interop::establishSessionBob(established, gIdentity, envelope.metadata.senderPublicKey, bundleIt->second)) {
+                auto retried = interop::decryptMessage(established, envelope.ciphertext, envelope.metadata);
+                if (!retried.empty()) {
+                    gSessions[key] = std::move(established);
+                    gCryptogramUsers[key] = true;
+                    plaintext = std::move(retried);
+                }
+            }
+        }
     }
-
-    const auto plaintext = aesGcmDecrypt(key, metadata.iv, payload, metadataAad(metadata));
-    if (!plaintext.has_value()) return nullptr;
-    std::string text(reinterpret_cast<const char *>(plaintext->data()), plaintext->size());
-    return env->NewStringUTF(text.c_str());
+    if (plaintext.empty()) return nullptr;
+    return utf8BytesToJString(env, plaintext);
 }
 
 JNIEXPORT jboolean JNICALL
@@ -576,22 +515,15 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeRotateSession(JNIEnv 
     std::lock_guard<std::mutex> lock(gSignalMutex);
     const auto it = gSessions.find(static_cast<int64_t>(userId));
     if (it == gSessions.end()) return JNI_FALSE;
-    auto dh = randomVector(kAes256KeySize);
-    it->second.rootKey = hkdfSha256(it->second.rootKey, "Cryptogram-Android-DoubleRatchet-Rotate", kAes256KeySize, dh);
-    it->second.sendingChainKey = hkdfSha256(it->second.rootKey, "Cryptogram-Android-Chain-A", kAes256KeySize);
-    it->second.receivingChainKey = hkdfSha256(it->second.rootKey, "Cryptogram-Android-Chain-B", kAes256KeySize);
-    it->second.sendingCounter = 0;
-    it->second.receivingCounter = 0;
-    it->second.skippedReceivingKeys.clear();
-    return JNI_TRUE;
+    return interop::rotateSession(it->second) ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jstring JNICALL
 Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeGetFingerprint(JNIEnv *env, jobject, jlong userId) {
     std::lock_guard<std::mutex> lock(gSignalMutex);
     const auto it = gSessions.find(static_cast<int64_t>(userId));
-    if (it == gSessions.end()) return env->NewStringUTF("UNINITIALIZED");
-    const auto digest = sha256Concat(gIdentity.identityPublic, it->second.remoteIdentityKey);
+    if (it == gSessions.end() || !ensureIdentity()) return env->NewStringUTF("UNINITIALIZED");
+    const auto digest = sha256Concat(gIdentity.ed25519Public, it->second.remoteIdentityKey);
     std::ostringstream out;
     for (int i = 0; i < 5; ++i) {
         const uint16_t chunk = static_cast<uint16_t>((digest[i * 2] << 8) | digest[i * 2 + 1]);
@@ -675,13 +607,13 @@ Java_org_telegram_messenger_cryptogram_MLSProtocol_nativeEncryptGroupMessage(JNI
     env->ReleaseStringUTFChars(plaintext, messageText);
     ByteVector aad;
     pushU64(aad, it->second.epoch);
-    auto ciphertext = aesGcmEncrypt(key, iv, plainBytes, aad);
-    if (!ciphertext.has_value()) return nullptr;
+    auto ciphertext = interop::aesGcmEncrypt(key, iv, plainBytes, aad);
+    if (ciphertext.empty()) return nullptr;
     ByteVector envelope;
     pushU8(envelope, kMlsEnvelopeVersion);
     pushU64(envelope, it->second.epoch);
     pushVector(envelope, iv);
-    pushVector(envelope, *ciphertext);
+    pushVector(envelope, ciphertext);
     return vectorToJByteArray(env, envelope);
 }
 
@@ -708,9 +640,9 @@ Java_org_telegram_messenger_cryptogram_MLSProtocol_nativeDecryptGroupMessage(JNI
     auto key = mlsSecretForGroup(it->second);
     ByteVector aad;
     pushU64(aad, epoch);
-    auto plaintext = aesGcmDecrypt(key, iv, payload, aad);
-    if (!plaintext.has_value()) return nullptr;
-    std::string text(reinterpret_cast<const char *>(plaintext->data()), plaintext->size());
+    auto plaintext = interop::aesGcmDecrypt(key, iv, payload, aad);
+    if (plaintext.empty()) return nullptr;
+    std::string text(reinterpret_cast<const char *>(plaintext.data()), plaintext.size());
     return env->NewStringUTF(text.c_str());
 }
 

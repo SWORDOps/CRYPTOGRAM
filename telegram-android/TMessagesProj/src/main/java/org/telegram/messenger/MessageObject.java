@@ -6005,10 +6005,13 @@ public class MessageObject {
                 }
             } else {
                 String sourceText = messageOwner.message;
+                long peerId = getDialogId();
+                long fromId = messageOwner.from_id instanceof TLRPC.TL_peerUser ? messageOwner.from_id.user_id : 0;
+                // CRYPTOGRAM: consume desktop-style zero-width key bundles
+                // (entity-covered invisible payloads) before the marker checks.
+                sourceText = CryptogramMessageHelper.extractIncomingBundles(currentAccount, sourceText, messageOwner.entities, peerId, fromId);
                 boolean wasEncrypted = CryptogramMessageHelper.isEncryptedMessage(sourceText);
                 if (wasEncrypted) {
-                    long peerId = getDialogId();
-                    long fromId = messageOwner.from_id instanceof TLRPC.TL_peerUser ? messageOwner.from_id.user_id : 0;
                     sourceText = CryptogramMessageHelper.decryptIncomingMessage(currentAccount, sourceText, peerId, fromId);
                 }
                 if (sourceText != null && SharedConfig.cryptogramDpiEvasion) {

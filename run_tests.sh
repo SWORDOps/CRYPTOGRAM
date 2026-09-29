@@ -93,6 +93,9 @@ run_static_checks() {
         "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DpiEvasionHelper.java"
         "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/StylometryShield.java"
         "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/AntiForensicsHelper.java"
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DesktopBundleTransport.java"
+        "telegram-android/TMessagesProj/jni/cryptogram/interop/InteropCore.h"
+        "telegram-android/TMessagesProj/jni/cryptogram/interop/InteropCore.cpp"
         "telegram-android/TMessagesProj/src/main/java/org/telegram/ui/CryptogramSettingsActivity.java"
         "tests/unit/test_cryptogram_features.cpp"
         "tests/unit/test_double_ratchet.cpp"
@@ -297,6 +300,12 @@ run_static_checks() {
     require_grep 'UniversalThreatDetector::instance\(\)\.initialize\(\)' \
         "Telegram/SourceFiles/window/main_window.cpp" \
         "UTD startup initialization wired"
+    require_grep 'establishSessionAlice|establishSessionBob' \
+        "telegram-android/TMessagesProj/jni/cryptogram/interop/InteropCore.cpp" \
+        "Android JNI core implements the fixed desktop X3DH spec"
+    require_grep 'DESKTOP_MESSAGE_MARKER|encodeDesktopMessageEnvelope' \
+        "telegram-android/TMessagesProj/src/main/java/org/telegram/messenger/cryptogram/DesktopBundleTransport.java" \
+        "Android desktop message-envelope framing present"
     forbid_grep 'VectorReVamp' \
         "Telegram/CMakeLists.txt" \
         "No personal build paths hardcoded in CMake"
@@ -306,6 +315,25 @@ run_static_checks() {
     require_grep 'ifdef CRYPTOGRAM_COUNTERINTELLIGENCE' \
         "Telegram/SourceFiles/settings/settings_cryptogram.cpp" \
         "Surveillance settings section hidden when scaffolding compiled out"
+
+    echo
+    echo "TEST 5b: Enhanced Privacy passphrase crypto"
+    echo "-------------------------------------"
+    forbid_grep 'default_passphrase' \
+        "Telegram/SourceFiles/data/data_enhanced_privacy.cpp" \
+        "No hardcoded default encryption passphrase shipped"
+    require_grep 'PKCS5_PBKDF2_HMAC' \
+        "Telegram/SourceFiles/data/enhanced_privacy_crypto.cpp" \
+        "Real PBKDF2 key derivation present in crypto unit"
+    require_grep 'CR2:' \
+        "Telegram/SourceFiles/data/enhanced_privacy_crypto.cpp" \
+        "Versioned CR2 envelope format present in crypto unit"
+    require_grep 'kPbkdf2Iterations' \
+        "Telegram/SourceFiles/data/data_enhanced_privacy.cpp" \
+        "EnhancedPrivacy delegates to the hardened KDF unit"
+    require_grep 'test_e2e_enhanced_privacy' \
+        "tests/unit/CMakeLists.txt" \
+        "EnhancedPrivacy crypto test target wired"
 
     echo
     echo "TEST 6: Runtime gaps to review manually"
@@ -350,12 +378,14 @@ run_unit_tests() {
     fi
 
     # Collect executable test binaries — skip CMake internals and non-executables.
+    # Binaries land in build_tests/tests/unit/ (CMake target output dirs),
+    # so search the whole build tree for test_* executables.
     local test_binaries=()
     while IFS= read -r bin; do
         if [ -x "$bin" ] && file "$bin" | grep -q 'ELF.*executable'; then
             test_binaries+=("$bin")
         fi
-    done < <(find "$build_dir" -maxdepth 1 -type f -executable 2>/dev/null | sort)
+    done < <(find "$build_dir" -type f -name 'test_*' -executable 2>/dev/null | sort)
 
     if [ "${#test_binaries[@]}" -eq 0 ]; then
         echo "[INFO] No test binaries found in build_tests/."
@@ -376,11 +406,11 @@ run_unit_tests() {
         echo "Running: $name"
         if "$bin" > "/tmp/${name}.out" 2>&1; then
             log_pass "Unit test: $name"
-            ((ut_pass++))
+            ut_pass=$((ut_pass + 1))
         else
             log_fail "Unit test: $name (exit code $?)"
             cat "/tmp/${name}.out"
-            ((ut_fail++))
+            ut_fail=$((ut_fail + 1))
         fi
     done
 
