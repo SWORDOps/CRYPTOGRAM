@@ -422,6 +422,27 @@ SignalProtocol::SignalProtocol(not_null<Session*> session)
                 saveIdentityKeys();
             }
         }
+
+        // Load the dedicated X25519 identity (fixed X3DH spec) when stored.
+        // These fields only ever exist in PBKDF2-encrypted (v2+) stores.
+        if (obj.contains("x25519IdentityPublic")
+            && obj.contains("x25519IdentityPrivate")) {
+            auto passwordData = QString::number(session->userId().bare) +
+                               _localDevice.identifier +
+                               QString::number(_localDevice.registrationId);
+            _x25519IdentityPublic = bytes::make_vector(
+                QByteArray::fromBase64(
+                    obj["x25519IdentityPublic"].toString().toLatin1()));
+            _x25519IdentityPrivate = decryptWithPBKDF2(
+                QByteArray::fromBase64(
+                    obj["x25519IdentityPrivate"].toString().toLatin1()),
+                passwordData);
+            if (_x25519IdentityPrivate.size() != 32
+                || _x25519IdentityPublic.size() != 32) {
+                _x25519IdentityPrivate.clear();
+                _x25519IdentityPublic.clear();
+            }
+        }
         
         keyFile.close();
     }
@@ -479,6 +500,14 @@ void SignalProtocol::saveIdentityKeys() {
 
         obj["identityPublic"] = QString::fromLatin1(publicKey);
         obj["identityPrivate"] = QString::fromLatin1(encryptedPrivateKey.toBase64());
+        if (!_x25519IdentityPrivate.empty() && !_x25519IdentityPublic.empty()) {
+            obj["x25519IdentityPublic"] = QString::fromLatin1(QByteArray(
+                reinterpret_cast<const char*>(_x25519IdentityPublic.data()),
+                _x25519IdentityPublic.size()).toBase64());
+            auto encryptedX = encryptWithPBKDF2(_x25519IdentityPrivate, passwordData);
+            obj["x25519IdentityPrivate"] = QString::fromLatin1(
+                encryptedX.toBase64());
+        }
         obj["deviceId"] = _localDevice.identifier;
         obj["registrationId"] = QString::number(_localDevice.registrationId);
         obj["keyVersion"] = 2; // Version 2 uses PBKDF2 encryption
@@ -491,9 +520,13 @@ void SignalProtocol::saveIdentityKeys() {
 
 // Generate a new key bundle for local device
 SignalProtocol::KeyBundle SignalProtocol::generateLocalKeyBundle() {
+    ensureX25519Identity();
     KeyBundle bundle;
     bundle.deviceId = _localDevice;
     bundle.identityKey = _identityKeyPublic;
+    if (!_x25519IdentityPublic.empty()) {
+        bundle.x25519IdentityKey = _x25519IdentityPublic;
+    }
     
     // Generate a signed pre-key
     auto preKeyPrivate = generateDH();
@@ -823,7 +856,16 @@ bytes::vector SignalProtocol::deriveKey(
         LOG(("Signal Protocol Error: Failed to initialize HKDF"));
         return output;
     }
-    
+
+    // Set the digest — OpenSSL 3.x requires it even in EXPAND_ONLY mode;
+    // without it EVP_PKEY_derive fails ("missing message digest") and this
+    // function silently returned ZERO-FILLED keys for every caller.
+    if (EVP_PKEY_CTX_set_hkdf_md(pctx, EVP_sha256()) <= 0) {
+        EVP_PKEY_CTX_free(pctx);
+        LOG(("Signal Protocol Error: Failed to set HKDF digest"));
+        return output;
+    }
+
     // Set HKDF mode to expand only (we're using the input directly as PRK)
     if (EVP_PKEY_CTX_set_hkdf_mode(pctx, EVP_KDF_HKDF_MODE_EXPAND_ONLY) <= 0) {
         EVP_PKEY_CTX_free(pctx);
@@ -952,6 +994,16 @@ void SignalProtocol::secureWipe(bytes::vector &data) {
 
 const SignalProtocol::KeyBundle &SignalProtocol::cachedKeyBundle() const {
     return _cachedBundle;
+}
+
+void SignalProtocol::ensureX25519Identity() {
+    if (!_x25519IdentityPrivate.empty() && !_x25519IdentityPublic.empty()) {
+        return;
+    }
+    auto keyPair = generateDH();
+    _x25519IdentityPrivate = keyPair;
+    _x25519IdentityPublic = x25519PublicFromPrivate(_x25519IdentityPrivate);
+    saveIdentityKeys();
 }
 
 void SignalProtocol::refreshCachedKeyBundle() {
@@ -1322,25 +1374,32 @@ void SignalProtocol::createSession(not_null<PeerData*> peer, const KeyBundle &re
     // Set remote DH public key to Bob's signed pre-key
     state.dhRemotePublicKey = remoteBundle.signedPreKey;
 
-    // X3DH: Alice uses her identity key (IK_A) and ephemeral key (EK_A)
-    // against Bob's signed pre-key (SPK_B) and optional one-time pre-key (OPK_B)
+    // X3DH (fixed spec): the identity leg uses our dedicated X25519
+    // identity — NOT the Ed25519 bundle identity, whose seed is not the
+    // X25519 scalar matching its public (the two ends never agreed on it).
     //
-    // DH1 = X25519(IK_A_priv, SPK_B_pub)  -- Alice identity x Bob signed pre-key
-    // DH2 = X25519(EK_A_priv, SPK_B_pub)  -- Alice ephemeral x Bob signed pre-key
-    // DH3 = X25519(IK_A_priv, OPK_B_pub)  -- Alice identity x Bob one-time pre-key (if present)
-    // DH4 = X25519(EK_A_priv, OPK_B_pub)  -- Alice ephemeral x Bob one-time pre-key (if present)
+    // DH1 = X25519(XIK_A_priv, SPK_B_pub)  -- Alice X25519 identity x Bob signed pre-key
+    // DH2 = X25519(EK_A_priv, SPK_B_pub)   -- Alice ephemeral x Bob signed pre-key
+    // DH3 = X25519(XIK_A_priv, OPK_B_pub)  -- Alice X25519 identity x Bob one-time pre-key
+    // DH4 = X25519(EK_A_priv, OPK_B_pub)   -- Alice ephemeral x Bob one-time pre-key
     //
-    // RK = HKDF(DH1 || DH2 || DH3 || DH4, info=kInfoX3DH)
-    // SK (initial sending chain) = KDF_RK(RK, DH4) if OPK exists, else KDF_RK(RK, DH2)
+    // RK = HKDF-EXPAND(DH1 || DH2 [|| DH3 || DH4] as PRK, info=kInfoX3DH)
+    ensureX25519Identity();
+    if (remoteBundle.x25519IdentityKey.size() != 32) {
+        LOG(("Signal Protocol: Refusing session with peer %1 — bundle has "
+             "no X25519 identity (legacy/broken peer)")
+            .arg(peer->id.value));
+        return;
+    }
 
-    auto dh1 = x25519(_identityKeyPrivate, remoteBundle.signedPreKey);
+    auto dh1 = x25519(_x25519IdentityPrivate, remoteBundle.signedPreKey);
     auto dh2 = x25519(state.dhSendingPrivateKey, remoteBundle.signedPreKey);
 
     bytes::vector combined;
     bytes::vector dhForChainInit;
 
     if (!remoteBundle.oneTimePreKey.empty()) {
-        auto dh3 = x25519(_identityKeyPrivate, remoteBundle.oneTimePreKey);
+        auto dh3 = x25519(_x25519IdentityPrivate, remoteBundle.oneTimePreKey);
         auto dh4 = x25519(state.dhSendingPrivateKey, remoteBundle.oneTimePreKey);
         combined = bytes::concatenate(dh1, dh2, dh3, dh4);
         dhForChainInit = dh4;
@@ -1358,13 +1417,9 @@ void SignalProtocol::createSession(not_null<PeerData*> peer, const KeyBundle &re
     state.rootKey = rkResult.rootKey;
     state.sendingChainKey = rkResult.chainKey;
 
-    // Receiving chain key: derive from root key with different info
-    // Bob will derive the same when he processes Alice's first message
-    auto recvChainData = deriveKey(state.rootKey, kInfoChainKey, kAesKeySize * 2);
-    {
-        auto span = bytes::make_span(recvChainData);
-        state.receivingChainKey = bytes::vector(span.begin() + kAesKeySize, span.begin() + (kAesKeySize * 2));
-    }
+    // Symmetric chain-init: Bob derives the SAME 32 bytes from the same
+    // root and uses them as his SENDING chain; ours is RECEIVING.
+    state.receivingChainKey = deriveKey(state.rootKey, kInfoChainKey, kAesKeySize);
 
     // Initialize counters
     state.sendingMessageCounter = 0;
@@ -1382,9 +1437,12 @@ void SignalProtocol::createSession(not_null<PeerData*> peer, const KeyBundle &re
     secureWipe(dhForChainInit);
     secureWipe(combined);
 
-    // Store the session
-    _peerKeyData[peer->id].remoteBundle = remoteBundle;
-    _peerKeyData[peer->id].sessions.push_back(state);
+    // Store the session (single active session per peer: a re-established
+    // session replaces any stale one — pre-fix sessions cannot decrypt).
+    auto &peerData = _peerKeyData[peer->id];
+    peerData.remoteBundle = remoteBundle;
+    peerData.sessions.clear();
+    peerData.sessions.push_back(state);
 
     // Save to disk
     saveSession(peer, state);
@@ -1392,11 +1450,11 @@ void SignalProtocol::createSession(not_null<PeerData*> peer, const KeyBundle &re
 
 void SignalProtocol::createSessionFromInitialMessage(
         not_null<PeerData*> peer,
-        const bytes::const_span &aliceIdentityKey,
         const bytes::const_span &aliceEphemeralKey,
         const KeyBundle &aliceBundle) {
-    // Bob's side: he receives Alice's identity key and ephemeral key
-    // along with Alice's key bundle (for future ratcheting).
+    // Bob's side: he receives Alice's ephemeral X25519 public key in the
+    // first message's metadata and Alice's key bundle (with her X25519
+    // identity in the 0x04 extension) alongside it.
 
     // Load Bob's signed pre-key private and one-time pre-key private from storage
     auto keyPath = signalStoragePath(_session) + kSignalKeyDbName;
@@ -1440,19 +1498,26 @@ void SignalProtocol::createSessionFromInitialMessage(
     // Remote DH key is Alice's ephemeral key
     state.dhRemotePublicKey = bytes::make_vector(aliceEphemeralKey);
 
-    // X3DH from Bob's perspective:
-    // DH1 = X25519(SPK_B_priv, IK_A_pub)  -- Bob signed pre-key x Alice identity key
-    // DH2 = X25519(SPK_B_priv, EK_A_pub)  -- Bob signed pre-key x Alice ephemeral key
-    // DH3 = X25519(OPK_B_priv, IK_A_pub)  -- Bob one-time pre-key x Alice identity key (if present)
-    // DH4 = X25519(OPK_B_priv, EK_A_pub)  -- Bob one-time pre-key x Alice ephemeral key (if present)
-    auto dh1 = x25519(signedPreKeyPrivate, aliceIdentityKey);
+    // X3DH from Bob's perspective (fixed spec, mirrors Alice):
+    // DH1 = X25519(SPK_B_priv, XIK_A_pub)  -- Bob signed pre-key x Alice X25519 identity
+    // DH2 = X25519(SPK_B_priv, EK_A_pub)   -- Bob signed pre-key x Alice ephemeral
+    // DH3 = X25519(OPK_B_priv, XIK_A_pub)  -- Bob one-time pre-key x Alice X25519 identity
+    // DH4 = X25519(OPK_B_priv, EK_A_pub)   -- Bob one-time pre-key x Alice ephemeral
+    // The Alice X25519 identity arrives in her bundle's 0x04 extension.
+    if (aliceBundle.x25519IdentityKey.size() != 32) {
+        LOG(("Signal Protocol: Refusing receiver-side session with peer %1 — "
+             "Alice bundle has no X25519 identity").arg(peer->id.value));
+        return;
+    }
+    const auto &aliceXIdentity = aliceBundle.x25519IdentityKey;
+    auto dh1 = x25519(signedPreKeyPrivate, aliceXIdentity);
     auto dh2 = x25519(signedPreKeyPrivate, aliceEphemeralKey);
 
     bytes::vector combined;
     bytes::vector dhForChainInit;
 
     if (!oneTimePreKeyPrivate.empty()) {
-        auto dh3 = x25519(oneTimePreKeyPrivate, aliceIdentityKey);
+        auto dh3 = x25519(oneTimePreKeyPrivate, aliceXIdentity);
         auto dh4 = x25519(oneTimePreKeyPrivate, aliceEphemeralKey);
         combined = bytes::concatenate(dh1, dh2, dh3, dh4);
         dhForChainInit = dh4;
@@ -1469,15 +1534,12 @@ void SignalProtocol::createSessionFromInitialMessage(
     auto rkResult = kdfRk(state.rootKey, dhForChainInit);
     state.rootKey = rkResult.rootKey;
 
-    // Bob's receiving chain = Alice's sending chain, and vice versa
+    // Bob's receiving chain = Alice's sending chain
     state.receivingChainKey = rkResult.chainKey;
 
-    // Bob's sending chain: derive from root key with different info
-    auto sendChainData = deriveKey(state.rootKey, kInfoChainKey, kAesKeySize * 2);
-    {
-        auto span = bytes::make_span(sendChainData);
-        state.sendingChainKey = bytes::vector(span.begin(), span.begin() + kAesKeySize);
-    }
+    // Symmetric chain-init: the SAME 32 bytes Alice uses as her RECEIVING
+    // chain become Bob's SENDING chain.
+    state.sendingChainKey = deriveKey(state.rootKey, kInfoChainKey, kAesKeySize);
 
     // Initialize counters
     state.sendingMessageCounter = 0;
@@ -1496,9 +1558,11 @@ void SignalProtocol::createSessionFromInitialMessage(
     secureWipe(combined);
     secureWipe(oneTimePreKeyPrivate);
 
-    // Store Alice's bundle and the session
-    _peerKeyData[peer->id].remoteBundle = aliceBundle;
-    _peerKeyData[peer->id].sessions.push_back(state);
+    // Store Alice's bundle and the session (single active session per peer)
+    auto &peerData = _peerKeyData[peer->id];
+    peerData.remoteBundle = aliceBundle;
+    peerData.sessions.clear();
+    peerData.sessions.push_back(state);
 
     // Save to disk
     saveSession(peer, state);
@@ -1540,12 +1604,13 @@ void SignalProtocol::updateSession(not_null<PeerData*> peer, const SessionState 
 }
 
 SignalProtocol::SessionState SignalProtocol::getSession(not_null<PeerData*> peer) const {
-    // Try to find in memory first
+    // Try to find in memory first — the LATEST session wins (re-established
+    // sessions replace stale ones).
     auto it = _peerKeyData.find(peer->id);
     if (it != _peerKeyData.end() && !it->second.sessions.empty()) {
-        return it->second.sessions.front(); // Return first session
+        return it->second.sessions.back();
     }
-    
+
     // Load from storage
     return const_cast<SignalProtocol*>(this)->loadSession(peer);
 }
@@ -3124,6 +3189,21 @@ TextWithEntities SignalProtocol::processIncomingMessage(not_null<PeerData*> peer
     if (!unwrapped) return original;
 
     auto plaintext = decryptMessage(unwrapped->first, peer, unwrapped->second);
+    if (plaintext.empty() && !unwrapped->second.senderPublicKey.empty()) {
+        // No working session: either first contact (Alice's initial message
+        // carries her ephemeral X25519 key in the metadata) or a stale
+        // pre-fix session that can never decrypt. Re-establish from the
+        // registered remote bundle and retry once.
+        const auto it = _peerKeyData.find(peer->id);
+        if (it != _peerKeyData.end()
+            && !it->second.remoteBundle.x25519IdentityKey.empty()) {
+            createSessionFromInitialMessage(
+                peer,
+                bytes::make_span(unwrapped->second.senderPublicKey),
+                it->second.remoteBundle);
+            plaintext = decryptMessage(unwrapped->first, peer, unwrapped->second);
+        }
+    }
     if (plaintext.empty()) return original;
 
     // Post-quantum inner envelope: real ML-KEM decapsulation + AES-256-GCM,
@@ -3295,23 +3375,14 @@ TextWithEntities SignalProtocol::processIncomingKeyBundle(
             continue;
         }
 
-        if (!hasSession(peer)) {
-            // We don't have a session yet — this is Alice's initial message
-            // carrying her key bundle. Create a receiver-side session.
-            // We need Alice's identity key and ephemeral key from the bundle.
-            // The identity key is in the bundle, and the ephemeral key
-            // is the signedPreKey (since Alice uses it as her initial DH key).
-            createSessionFromInitialMessage(
-                peer,
-                bundle.identityKey,
-                bundle.signedPreKey,
-                bundle);
-            LOG(("Signal Protocol: Created session from incoming key bundle for peer %1").arg(peer->id.value));
-        } else {
-            // We already have a session — this might be a key rotation
-            // or a new bundle from the peer. Register it for future use.
-            registerRemoteKeyBundle(peer, bundle);
-        }
+        // Register (and persist) every verified bundle: it carries the
+        // peer's X25519 identity (0x04) and KEM key (0x02) extensions that
+        // session establishment and the PQ layer need later. The
+        // receiver-side session itself is established lazily in
+        // processIncomingMessage once Alice's first message arrives and her
+        // ephemeral X25519 key is known (it rides the message metadata,
+        // not the bundle).
+        registerRemoteKeyBundle(peer, bundle);
     }
 
     // Return the text with stripped entities

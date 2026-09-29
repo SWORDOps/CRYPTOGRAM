@@ -115,11 +115,18 @@ public:
         bytes::vector signedPreKey;
         bytes::vector oneTimePreKey;
         bytes::vector signature;
-        // Optional post-quantum addition (transport v1 extension):
+        // Optional post-quantum addition (transport v1 extension, 0x02):
         // sender's static ML-KEM public key as SubjectPublicKeyInfo DER.
         // Empty for classic-only peers. Receivers encapsulate against this
         // key; the owner decapsulates with the private half.
         bytes::vector quantumKemPublicKey;
+        // Optional X3DH fix extension (transport v1 extension, 0x04): the
+        // sender's dedicated X25519 identity PUBLIC key used for the DH1/DH3
+        // identity legs. The legacy identityKey field is an Ed25519 public
+        // (signature identity) whose seed is NOT the X25519 scalar matching
+        // this public — using it for DH produced non-agreeing secrets on
+        // the two ends. Empty = legacy peer (session refused, see below).
+        bytes::vector x25519IdentityKey;
     };
 
     SignalProtocol(not_null<Session*> session);
@@ -145,7 +152,6 @@ public:
     void createSession(not_null<PeerData*> peer, const KeyBundle &remoteBundle);
     void createSessionFromInitialMessage(
         not_null<PeerData*> peer,
-        const bytes::const_span &aliceIdentityKey,
         const bytes::const_span &aliceEphemeralKey,
         const KeyBundle &aliceBundle);
     [[nodiscard]] bool hasSession(not_null<PeerData*> peer) const;
@@ -311,6 +317,14 @@ private:
     DeviceId _localDevice;
     bytes::vector _identityKeyPrivate;
     bytes::vector _identityKeyPublic;
+
+    // Dedicated X25519 identity for the X3DH DH1/DH3 legs (fixed spec).
+    // The Ed25519 identity above signs bundles; its seed is not the X25519
+    // scalar matching its public, so DH via the Ed25519 pair never agreed
+    // across the two session-establishment sides.
+    bytes::vector _x25519IdentityPrivate;
+    bytes::vector _x25519IdentityPublic;
+    void ensureX25519Identity();
 
     // Post-quantum state (lazy-initialized; KEM private key lives inside
     // _quantumGuard's key store and persists via QuantumGuard::saveKeys).

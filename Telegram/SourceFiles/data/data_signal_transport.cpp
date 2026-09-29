@@ -99,15 +99,23 @@ QByteArray SignalProtocolTransport::encodeKeyBundle(
 	const auto pqLen = hasPq
 		? static_cast<quint16>(bundle.quantumKemPublicKey.size())
 		: quint16(0);
+	// Optional X3DH fix extension (0x04): dedicated X25519 identity public
+	// used for the DH1/DH3 identity legs (the Ed25519 bundle identity cannot
+	// serve as an X25519 public — see SignalProtocol::createSession).
+	const bool hasXid = (bundle.x25519IdentityKey.size() == 32);
 
 	QByteArray raw;
-	raw.reserve(kMinPayloadBytes + (hasOtp ? 32 : 0) + (hasPq ? 2 + pqLen : 0));
+	raw.reserve(
+		kMinPayloadBytes + (hasOtp ? 32 : 0) + (hasPq ? 2 + pqLen : 0)
+		+ (hasXid ? 2 + 32 : 0));
 
 	QDataStream out(&raw, QIODevice::WriteOnly);
 	out.setByteOrder(QDataStream::LittleEndian);
 
 	out << static_cast<quint8>(kTransportVersion);
-	out << static_cast<quint8>((hasOtp ? 0x01 : 0x00) | (hasPq ? 0x02 : 0x00));
+	out << static_cast<quint8>(
+		(hasOtp ? 0x01 : 0x00) | (hasPq ? 0x02 : 0x00)
+		| (hasXid ? 0x04 : 0x00));
 	out << static_cast<quint64>(bundle.deviceId.registrationId);
 
 	out.writeRawData(
@@ -125,6 +133,13 @@ QByteArray SignalProtocolTransport::encodeKeyBundle(
 		out.writeRawData(
 			reinterpret_cast<const char *>(bundle.quantumKemPublicKey.data()),
 			pqLen);
+	}
+	if (hasXid) {
+		const quint16 xidLen = 32;
+		out << xidLen;
+		out.writeRawData(
+			reinterpret_cast<const char *>(bundle.x25519IdentityKey.data()),
+			xidLen);
 	}
 
 	return (out.status() == QDataStream::Ok) ? raw : QByteArray{};
@@ -172,6 +187,20 @@ SignalProtocolTransport::decodeKeyBundle(const QByteArray &raw) {
 			if (in.readRawData(
 					reinterpret_cast<char *>(pq.data()), pqLen) == pqLen) {
 				bundle.quantumKemPublicKey = std::move(pq);
+			}
+		}
+	}
+
+	// Optional X3DH fix extension (bitmap 0x04): u16 length + 32-byte
+	// X25519 identity public.
+	if ((bitmap & 0x04) != 0 && !in.atEnd()) {
+		quint16 xidLen = 0;
+		in >> xidLen;
+		if (xidLen == 32) {
+			bytes::vector xid(32);
+			if (in.readRawData(
+					reinterpret_cast<char *>(xid.data()), 32) == 32) {
+				bundle.x25519IdentityKey = std::move(xid);
 			}
 		}
 	}

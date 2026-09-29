@@ -108,6 +108,18 @@ target_link_libraries(test_e2e_roundtrip
     OpenSSL::Crypto
 )
 
+# Cross-side conformance for the FIXED X3DH/double-ratchet spec
+# (desktop data_signal_protocol.cpp identity-leg fix). Pure OpenSSL.
+add_executable(test_e2e_x3dh_fixed
+    test_e2e_x3dh_fixed.cpp
+)
+
+target_link_libraries(test_e2e_x3dh_fixed
+    PRIVATE
+    Catch2::Catch2WithMain
+    OpenSSL::Crypto
+)
+
 # Exercises the production QuantumGuard implementation itself (ML-KEM
 # encapsulation/decapsulation, AES-256-GCM, key import and persistence).
 # Requires Qt6::Core, so it is NOT part of the minimal standalone CI set.
