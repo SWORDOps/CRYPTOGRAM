@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added granular Privacy & Security settings toggle allowing users to override AI tiers or disable the background AI completely to conserve battery.
 
 ### Fixed
+- **Universal Threat Detector is now wired and strictly opt-in**: `initialize()` is called once at startup (deferred so it never delays the first window). The local llama-server model is only spawned when the user has enabled the feature in Settings → Privacy & Security; fresh installs default to **off**, incoming-message queueing consumes nothing while disabled, and machines without the AI assets fall back to pattern-only heuristics. Hardware probing no longer stalls startup when `lspci` is absent.
+- The build no longer hardcodes a personal llama.cpp path: AI assets are bundled via `-DCRYPTOGRAM_AI_LLAMA_SERVER` / `-DCRYPTOGRAM_AI_MODELS_DIR` (CMake cache or environment variables), with a guarded auto-detect for maintainer machines and a clear configure-time notice when assets are skipped.
 - Desktop incoming messages were never decrypted (P2 audit gap) — incoming MLS group ciphertext is now routed through `Data::GroupEncryption`.
 - Covert-channel packet signatures now use an HKDF-derived stable per-session key (SHA-256 chain) instead of a random per-packet HMAC key; payload encryption through `EnhancedPrivacy` is enabled.
 - `AutoDetectCryptogramUser` hook enabled on covert-peer registration.

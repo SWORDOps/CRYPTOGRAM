@@ -2557,12 +2557,61 @@ if (LINUX AND DESKTOP_APP_USE_PACKAGED)
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/io.github.tdesktop_x64.TDesktop.metainfo.xml" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo")
 endif()
 
-# Bundle local AI components
+# Bundle local AI components (optional).
+# The threat detector looks for `ai/llama-server` and `ai/models/qwen2.5-*-utd-*.gguf`
+# next to the binary at runtime; without them it runs in pattern-only mode.
+# Configure with -DCRYPTOGRAM_AI_LLAMA_SERVER=<bin> and/or
+# -DCRYPTOGRAM_AI_MODELS_DIR=<dir> to bundle assets, or export the same-named
+# environment variables. If unset and a local llama.cpp checkout exists
+# (maintainer machines), it is picked up automatically.
+set(CRYPTOGRAM_AI_LLAMA_SERVER "" CACHE FILEPATH "Prebuilt llama-server binary bundled as ai/llama-server")
+set(CRYPTOGRAM_AI_MODELS_DIR "" CACHE PATH "Directory with qwen2.5-*-utd-*.gguf models bundled as ai/models")
+
+if(NOT CRYPTOGRAM_AI_LLAMA_SERVER AND DEFINED ENV{CRYPTOGRAM_AI_LLAMA_SERVER})
+    set(CRYPTOGRAM_AI_LLAMA_SERVER "$ENV{CRYPTOGRAM_AI_LLAMA_SERVER}" CACHE FILEPATH "Prebuilt llama-server binary bundled as ai/llama-server" FORCE)
+endif()
+if(NOT CRYPTOGRAM_AI_MODELS_DIR AND DEFINED ENV{CRYPTOGRAM_AI_MODELS_DIR})
+    set(CRYPTOGRAM_AI_MODELS_DIR "$ENV{CRYPTOGRAM_AI_MODELS_DIR}" CACHE PATH "Directory with qwen2.5-*-utd-*.gguf models bundled as ai/models" FORCE)
+endif()
+if(NOT CRYPTOGRAM_AI_LLAMA_SERVER)
+    set(_cg_llama_hint "$ENV{HOME}/Documents/VectorReVamp/llama.cpp/build/bin/llama-server")
+    if(EXISTS "${_cg_llama_hint}")
+        set(CRYPTOGRAM_AI_LLAMA_SERVER "${_cg_llama_hint}" CACHE FILEPATH "Prebuilt llama-server binary bundled as ai/llama-server" FORCE)
+    endif()
+endif()
+if(NOT CRYPTOGRAM_AI_MODELS_DIR)
+    set(_cg_models_hint "$ENV{HOME}/Documents/VectorReVamp/models/gguf")
+    if(EXISTS "${_cg_models_hint}")
+        set(CRYPTOGRAM_AI_MODELS_DIR "${_cg_models_hint}" CACHE PATH "Directory with qwen2.5-*-utd-*.gguf models bundled as ai/models" FORCE)
+    endif()
+endif()
+
+set(_cg_ai_copy_commands "")
+set(_cg_ai_missing "")
+if(CRYPTOGRAM_AI_LLAMA_SERVER)
+    if(EXISTS "${CRYPTOGRAM_AI_LLAMA_SERVER}")
+        list(APPEND _cg_ai_copy_commands
+            COMMAND ${CMAKE_COMMAND} -E copy "${CRYPTOGRAM_AI_LLAMA_SERVER}" "$<TARGET_FILE_DIR:Telegram>/ai/llama-server")
+    else()
+        list(APPEND _cg_ai_missing "llama-server: ${CRYPTOGRAM_AI_LLAMA_SERVER}")
+    endif()
+endif()
+foreach(_cg_model IN ITEMS qwen2.5-0.5b-utd-q8_0.gguf qwen2.5-1.5b-utd-q8_0.gguf qwen2.5-3b-utd-q4_k_m.gguf)
+    if(CRYPTOGRAM_AI_MODELS_DIR)
+        if(EXISTS "${CRYPTOGRAM_AI_MODELS_DIR}/${_cg_model}")
+            list(APPEND _cg_ai_copy_commands
+                COMMAND ${CMAKE_COMMAND} -E copy "${CRYPTOGRAM_AI_MODELS_DIR}/${_cg_model}" "$<TARGET_FILE_DIR:Telegram>/ai/models/")
+        else()
+            list(APPEND _cg_ai_missing "${_cg_model} (in ${CRYPTOGRAM_AI_MODELS_DIR})")
+        endif()
+    endif()
+endforeach()
+
 add_custom_command(TARGET Telegram POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:Telegram>/ai/models
-    COMMAND ${CMAKE_COMMAND} -E copy /home/john/Documents/VectorReVamp/llama.cpp/build/bin/llama-server $<TARGET_FILE_DIR:Telegram>/ai/llama-server
-    COMMAND ${CMAKE_COMMAND} -E copy /home/john/Documents/VectorReVamp/models/gguf/qwen2.5-0.5b-utd-q8_0.gguf $<TARGET_FILE_DIR:Telegram>/ai/models/
-    COMMAND ${CMAKE_COMMAND} -E copy /home/john/Documents/VectorReVamp/models/gguf/qwen2.5-1.5b-utd-q8_0.gguf $<TARGET_FILE_DIR:Telegram>/ai/models/
-    COMMAND ${CMAKE_COMMAND} -E copy /home/john/Documents/VectorReVamp/models/gguf/qwen2.5-3b-utd-q4_k_m.gguf $<TARGET_FILE_DIR:Telegram>/ai/models/
-    COMMENT "Bundling local AI components"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:Telegram>/ai/models"
+    ${_cg_ai_copy_commands}
+    COMMENT "Bundling local AI components (optional)"
 )
+if(_cg_ai_missing)
+    message(STATUS "CRYPTOGRAM AI assets NOT bundled (pattern-only fallback stays active); missing: ${_cg_ai_missing}")
+endif()

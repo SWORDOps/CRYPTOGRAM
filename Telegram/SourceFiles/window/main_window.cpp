@@ -31,6 +31,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session_settings.h"
 #include "base/options.h"
 #include "base/crc32hash.h"
+#include "security/universal_threat_detector.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/toast/toast.h"
 #include "ui/widgets/shadow.h"
@@ -50,6 +51,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #endif // Q_OS_MAC
 
 #include <QtCore/QMimeData>
+#include <QtCore/QTimer>
 #include <QtGui/QWindow>
 #include <QtGui/QScreen>
 #include <QtGui/QDrag>
@@ -530,6 +532,13 @@ QRect MainWindow::desktopRect() const {
 
 void MainWindow::init() {
 	initHook();
+
+	// CRYPTOGRAM: bring up the local AI threat detector once per app run.
+	// Deferred so hardware probing and (when enabled) llama-server startup
+	// do not delay the first window paint. initialize() is idempotent.
+	QTimer::singleShot(0, [] {
+		Security::UniversalThreatDetector::instance().initialize();
+	});
 
 	updatePalette();
 

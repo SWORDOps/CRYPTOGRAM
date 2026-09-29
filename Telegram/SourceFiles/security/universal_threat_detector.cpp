@@ -373,15 +373,18 @@ void UniversalThreatDetector::initialize() {
             _currentTier = AIProcessingTier::Tier4_Pattern_Only;
         }
 
-        // Start analysis thread
-        if (_currentTier == AIProcessingTier::Tier1_NPU_Accelerated) {
-            loadModel("Tier1");
-        } else if (_currentTier == AIProcessingTier::Tier2_GPU_Accelerated) {
-            loadModel("Tier2");
-        } else if (_currentTier == AIProcessingTier::Tier3_CPU_Optimized) {
-            loadModel("Tier3");
+        // Start analysis thread. The local model is loaded only when the
+        // feature is enabled; without bundled assets the detector stays on
+        // pattern-only heuristics instead of pretending to run a model.
+        if (_enabled && _currentTier != AIProcessingTier::Tier4_Pattern_Only) {
+            const auto tierName = (_currentTier == AIProcessingTier::Tier1_NPU_Accelerated)
+                ? "Tier1"
+                : (_currentTier == AIProcessingTier::Tier2_GPU_Accelerated ? "Tier2" : "Tier3");
+            if (!loadModel(tierName)) {
+                qWarning() << "Local AI assets unavailable; falling back to pattern-only tier";
+                _currentTier = AIProcessingTier::Tier4_Pattern_Only;
+            }
         }
-
         _analysisThread->start();
 
         _initialized = true;
@@ -632,6 +635,11 @@ ThreatAnalysis UniversalThreatDetector::analyzeBinaryData(const QByteArray &data
 }
 
 QString UniversalThreatDetector::requestAnalysis(const AnalysisRequest &request) {
+    // Opt-in feature: while disabled, consume nothing and queue nothing.
+    if (!_enabled || !_initialized) {
+        return QString();
+    }
+
     QString requestId = request.requestId.isEmpty() ? generateRequestId() : request.requestId;
 
     AnalysisRequest req = request;
@@ -1003,6 +1011,11 @@ QStringList UniversalThreatDetector::detectStatisticalAnomalies(const QString &c
 
 bool UniversalThreatDetector::detectNPUCapability() {
     // Check for Intel NPU or other neural processing units
+    if (QStandardPaths::findExecutable("lspci").isEmpty()) {
+        // Avoid a 3s QProcess timeout on systems without pciutils.
+        _aiEngine->npuAvailable = false;
+        return false;
+    }
     QProcess process;
     process.start("lspci", QStringList() << "-nn");
     process.waitForFinished(3000);
@@ -1022,6 +1035,11 @@ bool UniversalThreatDetector::detectNPUCapability() {
 
 bool UniversalThreatDetector::detectGPUCapability() {
     // Check for GPU with compute capability
+    if (QStandardPaths::findExecutable("lspci").isEmpty()) {
+        _aiEngine->gpuAvailable = false;
+        _aiEngine->vramMB = 0;
+        return false;
+    }
     QProcess process;
     process.start("lspci", QStringList() << "-nn");
     process.waitForFinished(3000);
@@ -1121,7 +1139,11 @@ ThreatAnalysis UniversalThreatDetector::handleAnalysisError(const AnalysisReques
 }
 
 void UniversalThreatDetector::setupDefaultConfiguration() {
-    _enabled = true;
+    // AI security is strictly opt-in: scanning costs real CPU/GPU/RAM
+    // (and spawns llama-server), so it stays off until the user enables
+    // it in Settings -> Privacy & Security. The choice persists to
+    // threat_detector.ini via setEnabled().
+    _enabled = false;
     _analysisTimeoutMs = 10000;
     _maxConcurrentAnalyses = 4;
     _memoryLimitMB = 1024;
