@@ -682,6 +682,7 @@ android_ndk_import_module_cpufeatures()
 add_library(cryptogram SHARED
         cryptogram/CryptogramWrapper.cpp
         cryptogram/interop/InteropCore.cpp
+        cryptogram/interop/KemKeyStore.cpp
 )
 add_dependencies(cryptogram tgcalls tgvoip tgnet rlottie)
 
@@ -690,7 +691,10 @@ target_compile_options(cryptogram PUBLIC
         -Wall -frtti -finline-functions -ffast-math -Oz)
 
 target_compile_definitions(cryptogram PUBLIC
-        HAVE_PTHREAD)
+        HAVE_PTHREAD
+        # BoringSSL's span.h (pulled in via bytestring.h) requires C++17;
+        # this target is C++14 and uses only the BoringSSL C API.
+        BORINGSSL_NO_CXX)
 
 target_include_directories(cryptogram PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/cryptogram

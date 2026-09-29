@@ -28,7 +28,8 @@ import java.util.List;
  * Binary bundle layout (all multi-byte integers LITTLE-ENDIAN):
  *   [u8]  version = 0x01
  *   [u8]  bitmap: 0x01 = oneTimePreKey present, 0x02 = quantum KEM extension
- *         (u16le length + DER bytes, desktop-only — parsed, never emitted),
+ *         (u16le length + SPKI DER bytes — emitted when the native bundle
+ *         carries a static ML-KEM public key, desktop PQ parity),
  *         0x04 = X25519 identity extension (u16le length + 32 bytes)
  *   [u64] registrationId
  *   [32]  identityKey
@@ -142,14 +143,28 @@ public final class DesktopBundleTransport {
     // ------------------------------------------------------------------
 
     /**
-     * Serialise a key bundle into the desktop v1 transport layout.
-     *
-     * The quantum KEM extension (0x02) is desktop-only and never emitted here.
+     * Serialise a key bundle into the desktop v1 transport layout (no KEM
+     * extension — see the full overload).
      *
      * @return the encoded bundle, or an empty array on invalid key sizes.
      */
     public static byte[] encodeKeyBundle(byte[] identityKey, byte[] signedPreKey, byte[] signature,
                                          byte[] oneTimePreKey, long registrationId, byte[] x25519IdentityKey) {
+        return encodeKeyBundle(identityKey, signedPreKey, signature,
+            oneTimePreKey, registrationId, x25519IdentityKey, null);
+    }
+
+    /**
+     * Serialise a key bundle into the desktop v1 transport layout, including
+     * the post-quantum extension (bitmap 0x02: u16le length + SPKI DER) when
+     * {@param quantumKemPublicKey} is non-empty — desktop PQ parity; the
+     * native layer carries the static ML-KEM public key in its bundle.
+     *
+     * @return the encoded bundle, or an empty array on invalid key sizes.
+     */
+    public static byte[] encodeKeyBundle(byte[] identityKey, byte[] signedPreKey, byte[] signature,
+                                         byte[] oneTimePreKey, long registrationId, byte[] x25519IdentityKey,
+                                         byte[] quantumKemPublicKey) {
         if (identityKey == null || identityKey.length != 32
                 || signedPreKey == null || signedPreKey.length != 32
                 || signature == null || signature.length != 64) {
@@ -157,9 +172,15 @@ public final class DesktopBundleTransport {
         }
         final boolean hasOtp = oneTimePreKey != null && oneTimePreKey.length == 32;
         final boolean hasXid = x25519IdentityKey != null && x25519IdentityKey.length == 32;
-        final int bitmap = (hasOtp ? FLAG_ONE_TIME_PRE_KEY : 0) | (hasXid ? FLAG_X25519_IDENTITY : 0);
+        final boolean hasKem = quantumKemPublicKey != null && quantumKemPublicKey.length > 0
+            && quantumKemPublicKey.length <= MAX_QUANTUM_KEM_LEN;
+        final int bitmap = (hasOtp ? FLAG_ONE_TIME_PRE_KEY : 0)
+            | (hasKem ? FLAG_QUANTUM_KEM : 0)
+            | (hasXid ? FLAG_X25519_IDENTITY : 0);
 
-        final int size = MIN_PAYLOAD_BYTES + (hasOtp ? 32 : 0) + (hasXid ? 2 + 32 : 0);
+        final int size = MIN_PAYLOAD_BYTES + (hasOtp ? 32 : 0)
+            + (hasKem ? 2 + quantumKemPublicKey.length : 0)
+            + (hasXid ? 2 + 32 : 0);
         final ByteBuffer out = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN);
         out.put((byte) TRANSPORT_VERSION);
         out.put((byte) bitmap);
@@ -169,6 +190,11 @@ public final class DesktopBundleTransport {
         out.put(signature);
         if (hasOtp) {
             out.put(oneTimePreKey);
+        }
+        // Extensions in bitmap order: 0x02 before 0x04.
+        if (hasKem) {
+            out.putShort((short) quantumKemPublicKey.length);
+            out.put(quantumKemPublicKey);
         }
         if (hasXid) {
             out.putShort((short) 32);
@@ -210,8 +236,9 @@ public final class DesktopBundleTransport {
             }
         }
 
-        // Optional post-quantum extension (bitmap 0x02): u16le length + DER.
-        // Desktop-only; Android parses but never emits it. An invalid length is
+        // Optional post-quantum extension (bitmap 0x02): u16le length + SPKI
+        // DER. Emitted by desktop and (PQ parity) by Android when the native
+        // bundle carries a static ML-KEM public key. An invalid length is
         // skipped without consuming (matching the desktop parser), leaving the
         // bytes to be ignored as trailing garbage.
         if ((bitmap & FLAG_QUANTUM_KEM) != 0 && in.remaining() >= 2) {
@@ -455,7 +482,8 @@ public final class DesktopBundleTransport {
             return nativeBundle;
         }
         final byte[] transport = encodeKeyBundle(legacy.identityKey, legacy.signedPreKey, legacy.signature,
-            legacy.oneTimePreKey, legacy.registrationId, legacy.x25519IdentityKey);
+            legacy.oneTimePreKey, legacy.registrationId, legacy.x25519IdentityKey,
+            legacy.quantumKemPublicKey);
         return transport.length > 0 ? transport : nativeBundle;
     }
 

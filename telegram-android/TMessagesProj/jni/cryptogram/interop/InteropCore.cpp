@@ -20,6 +20,13 @@
 
 #if defined(OPENSSL_IS_BORINGSSL)
 #include <openssl/mem.h> // OPENSSL_cleanse (pulled in transitively on OpenSSL)
+#include <openssl/mlkem.h> // low-level ML-KEM (no ML-KEM EVP integration in BoringSSL)
+// CBB/CBS for MLKEM*_(de)serialisation. The cryptogram target defines
+// BORINGSSL_NO_CXX: this BoringSSL drop's span.h (pulled in by bytestring.h)
+// requires C++17 and the target is C++14 — only the C API is used.
+#include <openssl/bytestring.h>
+#else
+#include <openssl/x509.h> // i2d_PUBKEY / d2i_PUBKEY (ML-KEM SPKI, OpenSSL backend)
 #endif
 
 #include <algorithm>
@@ -46,13 +53,6 @@ ByteVector metadataAad(const MessageMetadata &metadata) {
     return aad;
 }
 
-void secureWipe(ByteVector &data) {
-    if (!data.empty()) {
-        OPENSSL_cleanse(data.data(), data.size());
-    }
-    data.clear();
-}
-
 ByteVector concatenate3(const ByteVector &a, const ByteVector &b) {
     ByteVector result;
     result.reserve(a.size() + b.size());
@@ -70,6 +70,12 @@ void pushU32Be(ByteVector &out, uint32_t value) {
     out.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
     out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
     out.push_back(static_cast<uint8_t>(value & 0xFF));
+}
+
+void pushU32Le(ByteVector &out, uint32_t value) {
+    for (int shift = 0; shift < 32; shift += 8) {
+        out.push_back(static_cast<uint8_t>((value >> shift) & 0xFF));
+    }
 }
 
 void pushU16Le(ByteVector &out, uint16_t value) {
@@ -161,6 +167,14 @@ private:
 // ---------------------------------------------------------------------------
 // Primitives
 // ---------------------------------------------------------------------------
+
+// OPENSSL_cleanse over the bytes, then clear.
+void secureWipe(ByteVector &data) {
+    if (!data.empty()) {
+        OPENSSL_cleanse(data.data(), data.size());
+    }
+    data.clear();
+}
 
 ByteVector randomVector(size_t size) {
     ByteVector result(size);
@@ -1157,6 +1171,596 @@ bool rotateSession(SessionState &session) {
 
     secureWipe(dhResult);
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// Post-quantum KEM (ML-KEM, desktop QuantumGuard / PQE1 parity)
+//
+// Dual backend, chosen at compile time (see InteropCore.h): provider-native
+// ML-KEM EVP keys on OpenSSL 3.5+ (host tests), the low-level mlkem.h API on
+// the in-tree BoringSSL (Android device builds).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// DER definite-length writer (1 tag byte + up to 2 length bytes — enough for
+// every ML-KEM SPKI element).
+void derPushTagAndLength(ByteVector &out, uint8_t tag, size_t length) {
+    out.push_back(tag);
+    if (length < 0x80) {
+        out.push_back(static_cast<uint8_t>(length));
+    } else if (length <= 0xFF) {
+        out.push_back(0x81);
+        out.push_back(static_cast<uint8_t>(length));
+    } else {
+        out.push_back(0x82);
+        out.push_back(static_cast<uint8_t>((length >> 8) & 0xFF));
+        out.push_back(static_cast<uint8_t>(length & 0xFF));
+    }
+}
+
+// DER definite-length reader; pos sits on the length byte and advances past
+// it. Limited to 2 length bytes (max 65535) — SPKI sizes only.
+bool derReadLength(const ByteVector &der, size_t &pos, size_t &length) {
+    if (pos + 1 > der.size()) return false;
+    const uint8_t first = der[pos++];
+    if (first < 0x80) {
+        length = first;
+        return true;
+    }
+    const size_t count = (first & 0x7F);
+    if (count > 2 || count > der.size() - pos) return false;
+    length = 0;
+    for (size_t i = 0; i < count; ++i) {
+        length = (length << 8) | der[pos++];
+    }
+    return true;
+}
+
+// DER content bytes of the RFC 9935 ML-KEM algorithm OIDs:
+//   2.16.840.1.101.3.4.4.2 (id-ML-KEM-768), 2.16.840.1.101.3.4.4.3
+//   (id-ML-KEM-1024) — 0x60 86 48 01 65 03 04 04 0{2,3}.
+bool mlKemOidForParameterSet(int parameterSet, ByteVector &out) {
+    static const uint8_t kOidPrefix[] = {0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04};
+    switch (parameterSet) {
+    case kMlKemParam768:
+        out.assign(kOidPrefix, kOidPrefix + sizeof(kOidPrefix));
+        out.push_back(0x02);
+        return true;
+    case kMlKemParam1024:
+        out.assign(kOidPrefix, kOidPrefix + sizeof(kOidPrefix));
+        out.push_back(0x03);
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool mlKemRawSizeForParameterSet(int parameterSet, size_t &size) {
+    switch (parameterSet) {
+    case kMlKemParam768:
+        size = kMlKem768PublicKeySize;
+        return true;
+    case kMlKemParam1024:
+        size = kMlKem1024PublicKeySize;
+        return true;
+    default:
+        return false;
+    }
+}
+
+} // namespace
+
+ByteVector buildMlKemSpkiDer(int parameterSet, const ByteVector &rawPublicKey) {
+    ByteVector oid;
+    size_t rawSize = 0;
+    if (!mlKemOidForParameterSet(parameterSet, oid)
+            || !mlKemRawSizeForParameterSet(parameterSet, rawSize)
+            || rawPublicKey.size() != rawSize) {
+        return {};
+    }
+
+    // AlgorithmIdentifier ::= SEQUENCE { algorithm OID }
+    ByteVector algorithmIdentifier;
+    derPushTagAndLength(algorithmIdentifier, 0x30, oid.size() + 2);
+    derPushTagAndLength(algorithmIdentifier, 0x06, oid.size());
+    algorithmIdentifier.insert(algorithmIdentifier.end(), oid.begin(), oid.end());
+
+    // subjectPublicKey ::= BIT STRING — one leading 0x00 (0 unused bits).
+    ByteVector bitString;
+    derPushTagAndLength(bitString, 0x03, 1 + rawPublicKey.size());
+    bitString.push_back(0x00);
+    bitString.insert(bitString.end(), rawPublicKey.begin(), rawPublicKey.end());
+
+    ByteVector out;
+    derPushTagAndLength(
+        out,
+        0x30,
+        algorithmIdentifier.size() + bitString.size());
+    out.insert(out.end(), algorithmIdentifier.begin(), algorithmIdentifier.end());
+    out.insert(out.end(), bitString.begin(), bitString.end());
+    return out;
+}
+
+bool parseMlKemSpkiDer(
+        const ByteVector &der,
+        int &outParameterSet,
+        ByteVector &outRawPublicKey) {
+    outParameterSet = 0;
+    outRawPublicKey.clear();
+    if (der.size() < 2 || der[0] != 0x30) return false;
+
+    size_t pos = 1;
+    size_t len = 0;
+    if (!derReadLength(der, pos, len) || len != der.size() - pos) {
+        return false; // strict: no trailing bytes
+    }
+
+    // AlgorithmIdentifier ::= SEQUENCE { OID } — no optional parameters.
+    if (pos >= der.size() || der[pos] != 0x30) return false;
+    ++pos;
+    if (!derReadLength(der, pos, len)) return false;
+    const size_t algorithmEnd = pos + len;
+    if (algorithmEnd > der.size()) return false;
+
+    if (pos >= algorithmEnd || der[pos] != 0x06) return false;
+    ++pos;
+    if (!derReadLength(der, pos, len)) return false;
+    if (len == 0 || pos + len != algorithmEnd) return false;
+    ByteVector oid(der.begin() + pos, der.begin() + pos + len);
+    pos = algorithmEnd;
+
+    // subjectPublicKey ::= BIT STRING (0 unused bits).
+    if (pos >= der.size() || der[pos] != 0x03) return false;
+    ++pos;
+    if (!derReadLength(der, pos, len)) return false;
+    if (len < 1 || pos + len != der.size() || der[pos] != 0x00) return false;
+    ++pos;
+    ByteVector raw(der.begin() + pos, der.begin() + pos + (len - 1));
+
+    int parameterSet = 0;
+    ByteVector expectedOid;
+    if (mlKemOidForParameterSet(kMlKemParam768, expectedOid) && oid == expectedOid) {
+        parameterSet = kMlKemParam768;
+    } else if (mlKemOidForParameterSet(kMlKemParam1024, expectedOid)
+            && oid == expectedOid) {
+        parameterSet = kMlKemParam1024;
+    } else {
+        return false;
+    }
+
+    size_t rawSize = 0;
+    if (!mlKemRawSizeForParameterSet(parameterSet, rawSize)
+            || raw.size() != rawSize) {
+        return false;
+    }
+
+    outParameterSet = parameterSet;
+    outRawPublicKey = std::move(raw);
+    return true;
+}
+
+#if !defined(OPENSSL_IS_BORINGSSL)
+// ---------------------------------------------------------------------------
+// OpenSSL 3.5+ backend: provider-native ML-KEM EVP keys (host builds/tests).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Fills a KemKeyPair from an ML-KEM EVP key, taking ownership of pkey.
+// Provider-native ML-KEM keys have no legacy NIDs, so the type check goes
+// through EVP_PKEY_get0_type_name — never EVP_PKEY_get_base_id (desktop
+// importPeerKemPublicKey convention).
+KemKeyPair kemKeyPairFromEvp(EVP_PKEY *pkey) {
+    KemKeyPair pair;
+    if (!pkey) return pair;
+    const auto *typeName = EVP_PKEY_get0_type_name(pkey);
+    if (!typeName || std::strncmp(typeName, "ML-KEM", 6) != 0) {
+        EVP_PKEY_free(pkey);
+        return pair;
+    }
+
+    size_t rawLen = 0;
+    if (EVP_PKEY_get_raw_public_key(pkey, nullptr, &rawLen) != 1 || rawLen == 0) {
+        EVP_PKEY_free(pkey);
+        return pair;
+    }
+    pair.rawPublicKey.resize(rawLen);
+    if (EVP_PKEY_get_raw_public_key(pkey, pair.rawPublicKey.data(), &rawLen) != 1) {
+        pair.rawPublicKey.clear();
+        EVP_PKEY_free(pkey);
+        return pair;
+    }
+
+    unsigned char *spki = nullptr;
+    const int spkiLen = i2d_PUBKEY(pkey, &spki);
+    if (spkiLen <= 0 || !spki) {
+        OPENSSL_free(spki);
+        EVP_PKEY_free(pkey);
+        return pair;
+    }
+    pair.publicKeyDer.assign(spki, spki + spkiLen);
+    OPENSSL_free(spki);
+
+    // i2d_PrivateKey yields the PKCS#8 PrivateKeyInfo for ML-KEM — the
+    // persist-capable export (desktop QuantumGuard::saveKeys).
+    unsigned char *privDer = nullptr;
+    const int privLen = i2d_PrivateKey(pkey, &privDer);
+    if (privLen <= 0 || !privDer) {
+        OPENSSL_free(privDer);
+        EVP_PKEY_free(pkey);
+        return pair;
+    }
+    pair.privateKeyBlob.assign(privDer, privDer + privLen);
+    OPENSSL_free(privDer);
+
+    EVP_PKEY_free(pkey);
+    return pair;
+}
+
+EVP_PKEY *kemPrivateFromBlob(const ByteVector &privateKeyBlob) {
+    if (privateKeyBlob.empty()) return nullptr;
+    const auto *der = privateKeyBlob.data();
+    // d2i_AutoPrivateKey handles PKCS#8 (desktop QuantumGuard::loadKeys).
+    return d2i_AutoPrivateKey(
+        nullptr, &der, static_cast<long>(privateKeyBlob.size()));
+}
+
+} // namespace
+
+KemKeyPair generateKemIdentity() {
+    // desktop generateQuantumKey: EVP_PKEY_Q_keygen(nullptr, nullptr, algName)
+    // with "ML-KEM-1024" (Android advertises the level-4 parameter set).
+    EVP_PKEY *pkey = EVP_PKEY_Q_keygen(nullptr, nullptr, "ML-KEM-1024");
+    return kemKeyPairFromEvp(pkey);
+}
+
+KemKeyPair kemIdentityFromPrivateBlob(const ByteVector &privateKeyBlob) {
+    return kemKeyPairFromEvp(kemPrivateFromBlob(privateKeyBlob));
+}
+
+ByteVector importPeerKemRaw(const ByteVector &rawPublicKey) {
+    // desktop ensureQuantumIdentity: infer the parameter set from the raw
+    // size, import raw, export SPKI via i2d_PUBKEY.
+    const int nid = rawPublicKey.size() > 1200
+        ? NID_ML_KEM_1024
+        : (rawPublicKey.size() > 800 ? NID_ML_KEM_768 : NID_ML_KEM_512);
+    EVP_PKEY *pkey = EVP_PKEY_new_raw_public_key(
+        nid, nullptr, rawPublicKey.data(), rawPublicKey.size());
+    if (!pkey) return {};
+
+    unsigned char *spki = nullptr;
+    const int spkiLen = i2d_PUBKEY(pkey, &spki);
+    EVP_PKEY_free(pkey);
+    if (spkiLen <= 0 || !spki) {
+        OPENSSL_free(spki);
+        return {};
+    }
+    ByteVector result(spki, spki + spkiLen);
+    OPENSSL_free(spki);
+    return result;
+}
+
+KemEncapsulation kemEncapsulate(const ByteVector &peerPublicKeyDer) {
+    KemEncapsulation result;
+    if (peerPublicKeyDer.empty()) return result;
+
+    const auto *der = peerPublicKeyDer.data();
+    EVP_PKEY *pkey = d2i_PUBKEY(
+        nullptr, &der, static_cast<long>(peerPublicKeyDer.size()));
+    if (!pkey) return result;
+    const auto *typeName = EVP_PKEY_get0_type_name(pkey);
+    if (!typeName || std::strncmp(typeName, "ML-KEM", 6) != 0) {
+        EVP_PKEY_free(pkey);
+        return result;
+    }
+
+    // desktop quantumEncapsulate: two-call EVP_PKEY_encapsulate.
+    EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new(pkey, nullptr);
+    EVP_PKEY_free(pkey);
+    if (!ctx) return result;
+
+    size_t ciphertextLen = 0;
+    size_t sharedLen = 0;
+    if (EVP_PKEY_encapsulate_init(ctx, nullptr) != 1
+            || EVP_PKEY_encapsulate(
+                   ctx, nullptr, &ciphertextLen, nullptr, &sharedLen) != 1) {
+        EVP_PKEY_CTX_free(ctx);
+        return result;
+    }
+    result.ciphertext.resize(ciphertextLen);
+    result.sharedSecret.resize(sharedLen);
+    const bool ok = EVP_PKEY_encapsulate(
+                        ctx,
+                        result.ciphertext.data(),
+                        &ciphertextLen,
+                        result.sharedSecret.data(),
+                        &sharedLen) == 1;
+    EVP_PKEY_CTX_free(ctx);
+    if (!ok) {
+        result.ciphertext.clear();
+        secureWipe(result.sharedSecret);
+    }
+    return result;
+}
+
+ByteVector kemDecapsulate(
+        const ByteVector &privateKeyBlob,
+        const ByteVector &ciphertext) {
+    if (ciphertext.empty()) return {};
+    EVP_PKEY *pkey = kemPrivateFromBlob(privateKeyBlob);
+    if (!pkey) return {};
+
+    // desktop quantumDecapsulate: two-call EVP_PKEY_decapsulate.
+    EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new(pkey, nullptr);
+    EVP_PKEY_free(pkey);
+    if (!ctx) return {};
+
+    size_t sharedLen = 0;
+    if (EVP_PKEY_decapsulate_init(ctx, nullptr) != 1
+            || EVP_PKEY_decapsulate(
+                   ctx, nullptr, &sharedLen,
+                   ciphertext.data(), ciphertext.size()) != 1) {
+        EVP_PKEY_CTX_free(ctx);
+        return {};
+    }
+    ByteVector sharedSecret(sharedLen);
+    const bool ok = EVP_PKEY_decapsulate(
+                        ctx,
+                        sharedSecret.data(),
+                        &sharedLen,
+                        ciphertext.data(),
+                        ciphertext.size()) == 1;
+    EVP_PKEY_CTX_free(ctx);
+    if (!ok) return {};
+    return sharedSecret;
+}
+
+#else // OPENSSL_IS_BORINGSSL
+// ---------------------------------------------------------------------------
+// BoringSSL backend (Android device builds): the in-tree BoringSSL ships
+// ML-KEM only through the low-level openssl/mlkem.h API — no ML-KEM EVP
+// integration — so keygen/encap/decap use MLKEM1024_* and SPKI DER is
+// built/parsed with the pure helpers above (byte-identical to OpenSSL's
+// i2d_PUBKEY output; cross-checked in the host test).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Android identities are always ML-KEM-1024; the persisted private blob is
+// the 64-byte FIPS 203 seed.
+bool kem1024PrivateFromSeed(
+        const ByteVector &seed,
+        MLKEM1024_private_key &out) {
+    return seed.size() == kMlKemSeedSize
+        && MLKEM1024_private_key_from_seed(&out, seed.data(), seed.size()) == 1;
+}
+
+} // namespace
+
+KemKeyPair generateKemIdentity() {
+    KemKeyPair pair;
+
+    ByteVector rawPublicKey(kMlKem1024PublicKeySize);
+    uint8_t seed[kMlKemSeedSize];
+    MLKEM1024_private_key priv;
+    MLKEM1024_generate_key(rawPublicKey.data(), seed, &priv);
+    OPENSSL_cleanse(&priv, sizeof(priv));
+
+    pair.privateKeyBlob.assign(seed, seed + sizeof(seed));
+    OPENSSL_cleanse(seed, sizeof(seed));
+    pair.rawPublicKey = std::move(rawPublicKey);
+    pair.publicKeyDer = buildMlKemSpkiDer(kMlKemParam1024, pair.rawPublicKey);
+    if (pair.publicKeyDer.empty()) {
+        secureWipe(pair.privateKeyBlob);
+        pair.rawPublicKey.clear();
+    }
+    return pair;
+}
+
+KemKeyPair kemIdentityFromPrivateBlob(const ByteVector &privateKeyBlob) {
+    KemKeyPair pair;
+
+    MLKEM1024_private_key priv;
+    if (!kem1024PrivateFromSeed(privateKeyBlob, priv)) return pair;
+
+    MLKEM1024_public_key pub;
+    MLKEM1024_public_from_private(&pub, &priv);
+    OPENSSL_cleanse(&priv, sizeof(priv));
+
+    CBB cbb;
+    uint8_t *raw = nullptr;
+    size_t rawLen = 0;
+    if (!CBB_init(&cbb, 0)
+            || !MLKEM1024_marshal_public_key(&cbb, &pub)
+            || !CBB_finish(&cbb, &raw, &rawLen)) {
+        CBB_cleanup(&cbb);
+        return pair;
+    }
+    pair.privateKeyBlob = privateKeyBlob;
+    pair.rawPublicKey.assign(raw, raw + rawLen);
+    OPENSSL_free(raw);
+    pair.publicKeyDer = buildMlKemSpkiDer(kMlKemParam1024, pair.rawPublicKey);
+    return pair;
+}
+
+ByteVector importPeerKemRaw(const ByteVector &rawPublicKey) {
+    if (rawPublicKey.size() == kMlKem1024PublicKeySize) {
+        return buildMlKemSpkiDer(kMlKemParam1024, rawPublicKey);
+    }
+    if (rawPublicKey.size() == kMlKem768PublicKeySize) {
+        return buildMlKemSpkiDer(kMlKemParam768, rawPublicKey);
+    }
+    // ML-KEM-512 is not available in the in-tree BoringSSL (and desktop only
+    // advertises 768/1024 on quantum levels 3+).
+    return {};
+}
+
+KemEncapsulation kemEncapsulate(const ByteVector &peerPublicKeyDer) {
+    KemEncapsulation result;
+
+    int parameterSet = 0;
+    ByteVector rawPublicKey;
+    if (!parseMlKemSpkiDer(peerPublicKeyDer, parameterSet, rawPublicKey)) {
+        return result;
+    }
+
+    CBS cbs;
+    CBS_init(&cbs, rawPublicKey.data(), rawPublicKey.size());
+    if (parameterSet == kMlKemParam1024) {
+        MLKEM1024_public_key pub;
+        if (MLKEM1024_parse_public_key(&pub, &cbs) != 1) return result;
+        result.ciphertext.resize(kMlKem1024CiphertextSize);
+        result.sharedSecret.resize(kMlKemSharedSecretSize);
+        MLKEM1024_encap(
+            result.ciphertext.data(),
+            result.sharedSecret.data(),
+            &pub);
+    } else if (parameterSet == kMlKemParam768) {
+        MLKEM768_public_key pub;
+        if (MLKEM768_parse_public_key(&pub, &cbs) != 1) return result;
+        result.ciphertext.resize(kMlKem768CiphertextSize);
+        result.sharedSecret.resize(kMlKemSharedSecretSize);
+        MLKEM768_encap(
+            result.ciphertext.data(),
+            result.sharedSecret.data(),
+            &pub);
+    }
+    return result;
+}
+
+ByteVector kemDecapsulate(
+        const ByteVector &privateKeyBlob,
+        const ByteVector &ciphertext) {
+    // The ciphertext length selects the parameter set: a ciphertext can only
+    // be decapsulated with the key it was encapsulated against.
+    if (ciphertext.size() == kMlKem1024CiphertextSize) {
+        MLKEM1024_private_key priv;
+        if (!kem1024PrivateFromSeed(privateKeyBlob, priv)) return {};
+        ByteVector sharedSecret(kMlKemSharedSecretSize);
+        if (MLKEM1024_decap(
+                sharedSecret.data(),
+                ciphertext.data(),
+                ciphertext.size(),
+                &priv) != 1) {
+            return {};
+        }
+        return sharedSecret;
+    }
+    if (ciphertext.size() == kMlKem768CiphertextSize) {
+        // Unreachable today (Android only advertises ML-KEM-1024), but a
+        // mismatched set must fail cleanly: the same seed derives a different
+        // 768 key and the symmetric layer rejects the result.
+        MLKEM768_private_key priv;
+        if (privateKeyBlob.size() != kMlKemSeedSize
+                || MLKEM768_private_key_from_seed(
+                       &priv,
+                       privateKeyBlob.data(),
+                       privateKeyBlob.size()) != 1) {
+            return {};
+        }
+        ByteVector sharedSecret(kMlKemSharedSecretSize);
+        if (MLKEM768_decap(
+                sharedSecret.data(),
+                ciphertext.data(),
+                ciphertext.size(),
+                &priv) != 1) {
+            return {};
+        }
+        return sharedSecret;
+    }
+    return {};
+}
+
+#endif // OPENSSL_IS_BORINGSSL
+
+ByteVector wrapPqe1(
+        const ByteVector &peerPublicKeyDer,
+        const ByteVector &plaintext) {
+    KemEncapsulation encapsulation = kemEncapsulate(peerPublicKeyDer);
+    if (encapsulation.sharedSecret.size() != kMlKemSharedSecretSize
+            || encapsulation.ciphertext.empty()) {
+        return {};
+    }
+
+    const auto iv = randomVector(kGcmIvSize);
+    if (iv.empty()) {
+        secureWipe(encapsulation.sharedSecret);
+        return {};
+    }
+
+    // interop AES-GCM returns ciphertext||tag; the desktop envelope keeps
+    // them as separate fields.
+    const auto ciphertextWithTag = aesGcmEncrypt(
+        encapsulation.sharedSecret, iv, plaintext, ByteVector());
+    secureWipe(encapsulation.sharedSecret);
+    if (ciphertextWithTag.size() < kGcmTagSize) return {};
+
+    // FROZEN desktop layout (quantumWrapPayload):
+    //   "PQE1" | u32 LE encapsulated length | encapsulated | iv(12)
+    //   | tag(16) | ciphertext
+    ByteVector out;
+    out.reserve(
+        8 + encapsulation.ciphertext.size()
+        + kGcmIvSize + kGcmTagSize
+        + (ciphertextWithTag.size() - kGcmTagSize));
+    const uint8_t magic[] = {'P', 'Q', 'E', '1'};
+    out.insert(out.end(), magic, magic + sizeof(magic));
+    pushU32Le(out, static_cast<uint32_t>(encapsulation.ciphertext.size()));
+    out.insert(
+        out.end(),
+        encapsulation.ciphertext.begin(),
+        encapsulation.ciphertext.end());
+    out.insert(out.end(), iv.begin(), iv.end());
+    out.insert(out.end(), ciphertextWithTag.end() - kGcmTagSize, ciphertextWithTag.end());
+    out.insert(
+        out.end(),
+        ciphertextWithTag.begin(),
+        ciphertextWithTag.end() - kGcmTagSize);
+    return out;
+}
+
+ByteVector unwrapPqe1(const ByteVector &privateKeyBlob, const ByteVector &blob) {
+    constexpr size_t kHeaderSize = 4 + 4 + kGcmIvSize + kGcmTagSize;
+    if (blob.size() <= kHeaderSize) return {};
+    if (!isPqe1Envelope(blob)) return {};
+
+    // desktop quantumUnwrapPayload: the length field is little-endian.
+    const uint32_t encapLen = static_cast<uint32_t>(blob[4])
+        | (static_cast<uint32_t>(blob[5]) << 8)
+        | (static_cast<uint32_t>(blob[6]) << 16)
+        | (static_cast<uint32_t>(blob[7]) << 24);
+    if (encapLen == 0 || encapLen > 4096 || blob.size() < kHeaderSize + encapLen) {
+        return {};
+    }
+
+    size_t pos = 8;
+    ByteVector encapsulated(blob.begin() + pos, blob.begin() + pos + encapLen);
+    pos += encapLen;
+    ByteVector iv(blob.begin() + pos, blob.begin() + pos + kGcmIvSize);
+    pos += kGcmIvSize;
+    ByteVector tag(blob.begin() + pos, blob.begin() + pos + kGcmTagSize);
+    pos += kGcmTagSize;
+    ByteVector ciphertext(blob.begin() + pos, blob.end());
+
+    ByteVector sharedSecret = kemDecapsulate(privateKeyBlob, encapsulated);
+    if (sharedSecret.size() != kMlKemSharedSecretSize) return {};
+
+    ByteVector ciphertextWithTag = ciphertext;
+    ciphertextWithTag.insert(ciphertextWithTag.end(), tag.begin(), tag.end());
+    const auto plaintext = aesGcmDecrypt(
+        sharedSecret, iv, ciphertextWithTag, ByteVector());
+    secureWipe(sharedSecret);
+    return plaintext;
+}
+
+bool isPqe1Envelope(const ByteVector &data) {
+    // desktop processIncomingMessage gate: size > 8 and the "PQE1" magic.
+    return data.size() > 8
+        && data[0] == static_cast<uint8_t>('P')
+        && data[1] == static_cast<uint8_t>('Q')
+        && data[2] == static_cast<uint8_t>('E')
+        && data[3] == static_cast<uint8_t>('1');
 }
 
 } // namespace interop

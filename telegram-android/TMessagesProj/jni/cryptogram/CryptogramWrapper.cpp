@@ -17,6 +17,7 @@
 #include <openssl/sha.h>
 
 #include "interop/InteropCore.h"
+#include "interop/KemKeyStore.h"
 
 #include <cstdint>
 #include <cstring>
@@ -52,10 +53,19 @@ struct MlsGroup {
 
 std::mutex gSignalMutex;
 interop::LocalIdentity gIdentity;
+// Static ML-KEM identity (desktop ensureQuantumIdentity parity): generated
+// once, persisted under <filesDir>/cryptogram/interop/pq_identity, advertised
+// in the local bundle's 0x02 extension. Guarded by gSignalMutex.
+interop::KemKeyPair gKemIdentity;
+// Obfuscation-grade AT-REST wrapping only (desktop wraps its QuantumGuard
+// store with userId + device identifier; Android's identity is app-scoped,
+// so a fixed app-local string plays the same role).
+const char kPqIdentityPassword[] = "cryptogram-android-pq-identity";
 std::unordered_map<int64_t, interop::SessionState> gSessions;
 // Remote bundles registered via nativeInitializeWithRemoteBundle. They are
 // needed for the Bob-side session establishment at first contact and for
-// the stale-session retry in nativeDecrypt.
+// the stale-session retry in nativeDecrypt. A bundle's quantumKemPublicKey
+// (extension 0x02) gates PQE1 wrapping for that peer.
 std::unordered_map<int64_t, interop::KeyBundle> gRemoteBundles;
 std::mutex gMlsMutex;
 std::unordered_map<int64_t, MlsGroup> gMlsGroups;
@@ -256,6 +266,54 @@ bool ensureIdentity() {
     return interop::generateLocalIdentity(gIdentity);
 }
 
+// Full path of the encrypted KEM identity store; empty when no storage dir
+// was passed via nativeInitializeStorage (identity then lives in memory
+// only, matching the desktop's tolerance for persistence failures).
+std::string pqIdentityPath() {
+    const auto dir = interop::interopStoragePath(gStoragePath);
+    if (dir.empty()) return {};
+    return dir + "/" + interop::kPqIdentityFileName;
+}
+
+// Desktop ensureQuantumIdentity semantics: load the persisted static KEM
+// identity when present, otherwise generate and persist. Persistence failure
+// is non-fatal (desktop logs and keeps the in-memory identity).
+bool ensureKemIdentity() {
+    if (!gKemIdentity.publicKeyDer.empty()) return true;
+
+    const auto path = pqIdentityPath();
+    if (!path.empty()) {
+        interop::KemKeyPair stored;
+        if (interop::loadKemIdentity(path, kPqIdentityPassword, stored)
+                && !stored.privateKeyBlob.empty()
+                && !stored.publicKeyDer.empty()) {
+            gKemIdentity = std::move(stored);
+            LOGD("Loaded persisted ML-KEM identity");
+            return true;
+        }
+    }
+
+    gKemIdentity = interop::generateKemIdentity();
+    if (gKemIdentity.publicKeyDer.empty()) {
+        LOGE("ML-KEM identity generation failed");
+        return false;
+    }
+    if (!path.empty() && interop::saveKemIdentity(path, kPqIdentityPassword, gKemIdentity)) {
+        LOGD("Generated and persisted static ML-KEM identity");
+    } else if (!path.empty()) {
+        LOGE("ML-KEM identity persistence failed — keeping in-memory identity");
+    }
+    return true;
+}
+
+// Desktop gate semantics: PQ-wrap outgoing payloads ONLY when the peer's
+// registered bundle advertised the 0x02 KEM extension.
+bool peerKemAdvertised(int64_t userId) {
+    const auto it = gRemoteBundles.find(userId);
+    return it != gRemoteBundles.end()
+        && !it->second.quantumKemPublicKey.empty();
+}
+
 ByteVector serializeSignalState(int64_t userId) {
     const auto it = gSessions.find(userId);
     std::ostringstream out;
@@ -360,6 +418,42 @@ bool runDoubleRatchetSelfTest() {
     return true;
 }
 
+// Full both-sides exercise of the post-quantum layer: KEM identity
+// generation, persistence-blob restore, PQE1 wrap/unwrap, tamper rejection
+// and wrong-key rejection (desktop quantumWrap/quantumUnwrap parity).
+bool runPqSelfTest() {
+    const auto alice = interop::generateKemIdentity();
+    const auto bob = interop::generateKemIdentity();
+    if (alice.publicKeyDer.empty() || bob.publicKeyDer.empty()) {
+        return false;
+    }
+
+    // The persisted-private-restore path (what loadKemIdentity hands back).
+    const auto bobRestored = interop::kemIdentityFromPrivateBlob(bob.privateKeyBlob);
+    if (bobRestored.publicKeyDer != bob.publicKeyDer) {
+        return false;
+    }
+
+    const ByteVector message = {'p', 'q', ' ', 'o', 'k'};
+    const auto wrapped = interop::wrapPqe1(bob.publicKeyDer, message);
+    if (wrapped.empty()
+            || !interop::isPqe1Envelope(wrapped)
+            || interop::unwrapPqe1(bobRestored.privateKeyBlob, wrapped) != message) {
+        return false;
+    }
+
+    // Tampered envelope must fail authentication.
+    auto tampered = wrapped;
+    tampered.back() ^= 0x01;
+    if (!interop::unwrapPqe1(bobRestored.privateKeyBlob, tampered).empty()) {
+        return false;
+    }
+
+    // A wrong private key must never yield the message.
+    const auto eve = interop::generateKemIdentity();
+    return interop::unwrapPqe1(eve.privateKeyBlob, wrapped).empty();
+}
+
 bool runMlsSelfTest() {
     MlsGroup group;
     group.groupId = randomVector(kAes256KeySize);
@@ -396,9 +490,18 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeGenerateKeyBundle(JNI
     std::lock_guard<std::mutex> lock(gSignalMutex);
     if (!ensureIdentity()) return nullptr;
     const auto bundle = interop::localKeyBundle(gIdentity);
-    // Desktop transport format: version 0x01, one-time pre-key present,
-    // no KEM extension (Android), X25519 identity in the 0x04 extension.
-    const auto raw = interop::encodeKeyBundle(bundle);
+    // Desktop transport format: version 0x01, one-time pre-key present, the
+    // static KEM public key (SPKI DER) in the 0x02 extension (desktop PQ
+    // parity), X25519 identity in the 0x04 extension. Like the desktop's
+    // ensureQuantumIdentity, an unavailable KEM identity degrades the bundle
+    // to classic-only instead of failing.
+    interop::KeyBundle fullBundle = bundle;
+    if (ensureKemIdentity()) {
+        fullBundle.quantumKemPublicKey = gKemIdentity.publicKeyDer;
+    } else {
+        LOGE("KEM identity unavailable — emitting classic-only bundle");
+    }
+    const auto raw = interop::encodeKeyBundle(fullBundle);
     if (raw.empty()) return nullptr;
     return vectorToJByteArray(env, raw);
 }
@@ -442,9 +545,26 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeEncrypt(JNIEnv *env, 
     if (it == gSessions.end()) return nullptr;
 
     const auto plainBytes = jstringToUtf8Bytes(env, plaintext);
+    const auto key = static_cast<int64_t>(userId);
+
+    // Post-quantum inner envelope (desktop processOutgoingMessage): when the
+    // peer's registered bundle advertised a KEM key (bitmap 0x02), wrap the
+    // PLAINTEXT in the PQE1 envelope BEFORE the ratchet encrypt. On wrap
+    // failure the desktop silently falls back to classic-only — so do we.
+    ByteVector payload = plainBytes;
+    if (peerKemAdvertised(key) && ensureKemIdentity()) {
+        auto quantumWrapped = interop::wrapPqe1(
+            gRemoteBundles[key].quantumKemPublicKey, plainBytes);
+        if (!quantumWrapped.empty()) {
+            payload = std::move(quantumWrapped);
+        } else {
+            LOGE("PQE1 wrap failed — sending classic-only for user %lld",
+                 static_cast<long long>(key));
+        }
+    }
 
     interop::MessageMetadata metadata;
-    const auto ciphertext = interop::encryptMessage(it->second, plainBytes, metadata);
+    const auto ciphertext = interop::encryptMessage(it->second, payload, metadata);
     if (ciphertext.empty()) return nullptr;
 
     // ZK Phase 1: always attach a fresh challenge nonce. Android never
@@ -507,6 +627,22 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeDecrypt(JNIEnv *env, 
         }
     }
     if (plaintext.empty()) return nullptr;
+
+    // Post-quantum inner envelope (desktop processIncomingMessage): real
+    // ML-KEM decapsulation + AES-256-GCM, stripped AFTER the classic ratchet
+    // layer has been removed. An unwrap failure drops the message — the
+    // desktop does the same rather than showing a mixed-classical payload.
+    if (interop::isPqe1Envelope(plaintext)) {
+        if (!ensureKemIdentity()) return nullptr;
+        auto unwrappedPq = interop::unwrapPqe1(gKemIdentity.privateKeyBlob, plaintext);
+        if (unwrappedPq.empty()) {
+            LOGE("PQE1 unwrap failed — dropping message from user %lld",
+                 static_cast<long long>(key));
+            return nullptr;
+        }
+        plaintext = std::move(unwrappedPq);
+    }
+
     return utf8BytesToJString(env, plaintext);
 }
 
@@ -680,7 +816,9 @@ Java_org_telegram_messenger_cryptogram_CryptogramNative_nativeGetVersion(JNIEnv 
 JNIEXPORT jboolean JNICALL
 Java_org_telegram_messenger_cryptogram_CryptogramNative_nativeCheckDoubleRatchet(JNIEnv *, jobject) {
     std::lock_guard<std::mutex> lock(gSignalMutex);
-    return runDoubleRatchetSelfTest() ? JNI_TRUE : JNI_FALSE;
+    // The PQ self-test rides the Double Ratchet check: the post-quantum
+    // layer is part of the same 1:1 message pipeline.
+    return (runDoubleRatchetSelfTest() && runPqSelfTest()) ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jboolean JNICALL
