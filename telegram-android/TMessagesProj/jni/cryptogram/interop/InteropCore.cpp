@@ -45,21 +45,10 @@ namespace interop {
 namespace {
 
 // AAD: 4-byte BIG-ENDIAN counter || 32-byte sender public key
-// (desktop encryptMessage/decryptMessage — NO timestamp).
-ByteVector metadataAad(const MessageMetadata &metadata) {
-    ByteVector aad;
-    aad.reserve(4 + metadata.senderPublicKey.size());
-    const uint32_t counter = metadata.messageCounter;
-    aad.push_back(static_cast<uint8_t>((counter >> 24) & 0xFF));
-    aad.push_back(static_cast<uint8_t>((counter >> 16) & 0xFF));
-    aad.push_back(static_cast<uint8_t>((counter >> 8) & 0xFF));
-    aad.push_back(static_cast<uint8_t>(counter & 0xFF));
-    aad.insert(
-        aad.end(),
-        metadata.senderPublicKey.begin(),
-        metadata.senderPublicKey.end());
-    return aad;
-}
+// (desktop encryptMessage/decryptMessage — NO timestamp). Implementation
+// lives below in the interop namespace so it can be exported for the
+// quantum-session callers.
+
 
 ByteVector concatenate3(const ByteVector &a, const ByteVector &b) {
     ByteVector result;
@@ -175,6 +164,24 @@ private:
 // ---------------------------------------------------------------------------
 // Primitives
 // ---------------------------------------------------------------------------
+
+// AAD: 4-byte BIG-ENDIAN counter || 32-byte sender public key (desktop
+// encryptMessage/decryptMessage — NO timestamp). Also used as the quantum
+// layer's AAD (desktop encryptQuantumSessionMessage/quantumUnwrapSessionPayload).
+ByteVector messageAad(const MessageMetadata &metadata) {
+    ByteVector aad;
+    aad.reserve(4 + metadata.senderPublicKey.size());
+    const uint32_t counter = metadata.messageCounter;
+    aad.push_back(static_cast<uint8_t>((counter >> 24) & 0xFF));
+    aad.push_back(static_cast<uint8_t>((counter >> 16) & 0xFF));
+    aad.push_back(static_cast<uint8_t>((counter >> 8) & 0xFF));
+    aad.push_back(static_cast<uint8_t>(counter & 0xFF));
+    aad.insert(
+        aad.end(),
+        metadata.senderPublicKey.begin(),
+        metadata.senderPublicKey.end());
+    return aad;
+}
 
 // OPENSSL_cleanse over the bytes, then clear.
 void secureWipe(ByteVector &data) {
@@ -922,21 +929,27 @@ bool establishSessionBob(
 
 // desktop wrapEncryptedText minus the zero-width encoding (the Java layer
 // applies any text-level framing). All integers big-endian (QDataStream
-// Qt_5_15 default).
+// Qt_5_15 default). Envelope VERSION 2: the leading qint32 version routes
+// the receiver's parser (desktop parity — legacy envelopes start at the
+// classic message counter instead).
 ByteVector wrapEnvelope(
         const ByteVector &ciphertext,
         const MessageMetadata &metadata) {
     ByteVector data;
     data.reserve(
-        4 + (4 + metadata.iv.size())
+        4 + 4 + (4 + metadata.iv.size())
         + (4 + metadata.senderPublicKey.size())
         + 4 + 1 + (metadata.hasCacChallenge
                    ? 4 + metadata.cacChallengeNonce.size() : 0)
         + 1 + (metadata.hasCacResponse
                ? 4 + metadata.cacSignature.size()
                + 4 + metadata.cacCertChainDer.size() : 0)
+        + 1 + (metadata.hasQuantumInit
+               ? 4 + metadata.quantumKemCiphertext.size()
+               + 4 + metadata.quantumKemEmitterPublic.size() : 0)
         + 4 + ciphertext.size());
 
+    pushU32Be(data, kEnvelopeVersion);
     pushU32Be(data, metadata.messageCounter);
     pushQByteArray(data, metadata.iv);
     pushQByteArray(data, metadata.senderPublicKey);
@@ -956,11 +969,21 @@ ByteVector wrapEnvelope(
         pushQByteArray(data, metadata.cacCertChainDer);
     }
 
+    // Quantum session init (v2 only): the ML-KEM encapsulation ciphertext is
+    // transported ONCE per session, with the sender's static KEM public.
+    pushU8(data, metadata.hasQuantumInit ? 1 : 0);
+    if (metadata.hasQuantumInit) {
+        pushQByteArray(data, metadata.quantumKemCiphertext);
+        pushQByteArray(data, metadata.quantumKemEmitterPublic);
+    }
+
     pushQByteArray(data, ciphertext);
     return data;
 }
 
-bool unwrapEnvelope(const ByteVector &blob, Envelope &out) {
+// Legacy field order (envelopes already persisted in-flight): the leading
+// int IS the classic message counter.
+bool unwrapEnvelopeLegacy(const ByteVector &blob, Envelope &out) {
     ByteReader reader(blob.data(), blob.size());
 
     Envelope envelope;
@@ -993,14 +1016,89 @@ bool unwrapEnvelope(const ByteVector &blob, Envelope &out) {
     return true;
 }
 
+// Version 2 field order (desktop UnwrapEncryptedTextV2).
+bool unwrapEnvelopeV2(const ByteVector &blob, Envelope &out) {
+    ByteReader reader(blob.data(), blob.size());
+
+    Envelope envelope;
+    MessageMetadata &metadata = envelope.metadata;
+
+    uint32_t version = 0;
+    if (!reader.readU32Be(version)) return false;
+    if (version != kEnvelopeVersion) return false;
+    metadata.envelopeVersion = static_cast<int32_t>(version);
+
+    if (!reader.readU32Be(metadata.messageCounter)) return false;
+    if (!reader.readByteArray(metadata.iv)) return false;
+    if (!reader.readByteArray(metadata.senderPublicKey)) return false;
+    if (!reader.readU32Be(metadata.timestamp)) return false;
+
+    // ZK Phase 1 (identical to legacy)
+    uint8_t hasChallenge = 0;
+    if (!reader.readU8(hasChallenge)) return false;
+    metadata.hasCacChallenge = (hasChallenge != 0);
+    if (metadata.hasCacChallenge) {
+        if (!reader.readByteArray(metadata.cacChallengeNonce)) return false;
+    }
+
+    // ZK Phase 2 — DER cert chain, NO DN (identical to legacy)
+    uint8_t hasResponse = 0;
+    if (!reader.readU8(hasResponse)) return false;
+    metadata.hasCacResponse = (hasResponse != 0);
+    if (metadata.hasCacResponse) {
+        if (!reader.readByteArray(metadata.cacSignature)) return false;
+        if (!reader.readByteArray(metadata.cacCertChainDer)) return false;
+    }
+
+    // Quantum session init (v2 only)
+    uint8_t hasQuantumInit = 0;
+    if (!reader.readU8(hasQuantumInit)) return false;
+    metadata.hasQuantumInit = (hasQuantumInit != 0);
+    if (metadata.hasQuantumInit) {
+        if (!reader.readByteArray(metadata.quantumKemCiphertext)) return false;
+        if (!reader.readByteArray(metadata.quantumKemEmitterPublic)) return false;
+        if (metadata.quantumKemCiphertext.empty()
+                || metadata.quantumKemEmitterPublic.empty()) {
+            return false;
+        }
+    }
+
+    if (!reader.readByteArray(envelope.ciphertext)) return false;
+    out = std::move(envelope);
+    return true;
+}
+
+// Routes on the leading version int (desktop unwrapEncryptedText): version 2
+// → v2 field order; anything else → legacy field order. A legacy message
+// whose counter happens to be 2 is structurally rejected by the v2 parser
+// (the legacy IV length prefix is the random first four IV bytes) and still
+// parses as legacy below.
+bool unwrapEnvelope(const ByteVector &blob, Envelope &out) {
+    if (blob.size() >= 4) {
+        const uint32_t version = (static_cast<uint32_t>(blob[0]) << 24)
+            | (static_cast<uint32_t>(blob[1]) << 16)
+            | (static_cast<uint32_t>(blob[2]) << 8)
+            | static_cast<uint32_t>(blob[3]);
+        if (version == kEnvelopeVersion && unwrapEnvelopeV2(blob, out)) {
+            return true;
+        }
+    }
+    return unwrapEnvelopeLegacy(blob, out);
+}
+
 // ---------------------------------------------------------------------------
 // Double ratchet (desktop encryptMessage / decryptMessage)
 // ---------------------------------------------------------------------------
 
-ByteVector encryptMessage(
+// desktop beginClassicEncryption parity: DH-ratchet when pending, derive
+// + advance the sending chain, fill the metadata and build the AAD. Returns
+// the classic message key (empty on failure); the caller completes the
+// encryption with aesGcmEncrypt under the SAME iv + aad — the quantum
+// session path reuses this to bind its payload to the exact classic message.
+ByteVector beginMessage(
         SessionState &session,
-        const ByteVector &plaintext,
-        MessageMetadata &outMetadata) {
+        MessageMetadata &outMetadata,
+        ByteVector &outAad) {
     // DH ratchet: if we received a new remote DH key, rotate our DH key
     // pair (desktop encryptMessage — pendingRemoteDH is only ever set
     // externally; the field is kept for byte-level state fidelity).
@@ -1037,7 +1135,20 @@ ByteVector encryptMessage(
         return {};
     }
 
-    const ByteVector aad = metadataAad(outMetadata);
+    outAad = messageAad(outMetadata);
+    return messageKey;
+}
+
+ByteVector encryptMessage(
+        SessionState &session,
+        const ByteVector &plaintext,
+        MessageMetadata &outMetadata) {
+    ByteVector aad;
+    ByteVector messageKey = beginMessage(session, outMetadata, aad);
+    if (messageKey.empty()) {
+        return {};
+    }
+
     ByteVector ciphertext = aesGcmEncrypt(messageKey, outMetadata.iv, plaintext, aad);
     secureWipe(messageKey);
     if (ciphertext.empty()) {
@@ -1137,7 +1248,7 @@ ByteVector decryptMessage(
         session.skippedMessageKeys.erase(it);
     }
 
-    const ByteVector aad = metadataAad(metadata);
+    const ByteVector aad = messageAad(metadata);
     ByteVector plaintext = aesGcmDecrypt(messageKey, metadata.iv, ciphertextWithTag, aad);
     secureWipe(messageKey);
     if (plaintext.empty()) {
@@ -1769,6 +1880,199 @@ bool isPqe1Envelope(const ByteVector &data) {
         && data[1] == static_cast<uint8_t>('Q')
         && data[2] == static_cast<uint8_t>('E')
         && data[3] == static_cast<uint8_t>('1');
+}
+
+// ---------------------------------------------------------------------------
+// Ratcheted quantum sessions (desktop parity, see InteropCore.h)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// desktop usableQuantumChain: hkdfExpandSha256 returns zero-filled output on
+// some HKDF setup failures (silent in OpenSSL 3.x without the digest — the
+// digest is always set here, but defensive); an all-zero chain is never a
+// usable session key.
+bool usableQuantumChain(const ByteVector &chain) {
+    if (chain.size() != kAesKeySize) return false;
+    for (const auto byte : chain) {
+        if (byte != 0) return true;
+    }
+    return false;
+}
+
+// Chain advance: expand(PRK = qChain, "CryptogramQChainStep", 32).
+ByteVector quantumChainStep(const ByteVector &chainKey) {
+    return hkdfExpandSha256(chainKey, kInfoQuantumChainStep, kAesKeySize);
+}
+
+// Quantum message key: expand(PRK = qChain, "CryptogramQMessage", 32).
+ByteVector quantumMessageKeyFromChain(const ByteVector &chainKey) {
+    return hkdfExpandSha256(chainKey, kInfoQuantumMessage, kAesKeySize);
+}
+
+// Both chains from an agreed root, role-resolved: the INITIATOR sends on
+// ChainA and receives on ChainB; the resolver swaps the labels.
+void fillQuantumChains(
+        QuantumSessionState &out,
+        const ByteVector &root,
+        bool initiator) {
+    out.rootKey = root;
+    out.sendChainKey = hkdfExpandSha256(root,
+        initiator ? kInfoQuantumChainA : kInfoQuantumChainB, kAesKeySize);
+    out.recvChainKey = hkdfExpandSha256(root,
+        initiator ? kInfoQuantumChainB : kInfoQuantumChainA, kAesKeySize);
+}
+
+} // namespace
+
+bool quantumSessionUsable(const QuantumSessionState &state) {
+    return usableQuantumChain(state.rootKey)
+        && usableQuantumChain(state.sendChainKey)
+        && usableQuantumChain(state.recvChainKey);
+}
+
+bool establishQuantumSessionInitiator(
+        QuantumSessionState &outState,
+        const ByteVector &peerPublicKeyDer,
+        ByteVector &outKemCiphertext) {
+    outState = QuantumSessionState{};
+    outKemCiphertext.clear();
+
+    // REAL ML-KEM encapsulation: fresh shared secret + the ciphertext the
+    // peer decapsulates with their static private key.
+    auto encapsulation = kemEncapsulate(peerPublicKeyDer);
+    if (encapsulation.sharedSecret.size() != kMlKemSharedSecretSize
+            || encapsulation.ciphertext.empty()) {
+        return false;
+    }
+
+    const auto root = hkdfExpandSha256(
+        encapsulation.sharedSecret, kInfoQuantumRoot, kAesKeySize);
+    secureWipe(encapsulation.sharedSecret);
+    if (root.size() != kAesKeySize) return false;
+
+    QuantumSessionState state;
+    fillQuantumChains(state, root, true);
+    if (!quantumSessionUsable(state)) return false;
+
+    outState = std::move(state);
+    outKemCiphertext = encapsulation.ciphertext;
+    return true;
+}
+
+bool establishQuantumSessionResolver(
+        QuantumSessionState &outState,
+        const ByteVector &privateKeyBlob,
+        const ByteVector &kemCiphertext) {
+    outState = QuantumSessionState{};
+
+    ByteVector sharedSecret = kemDecapsulate(privateKeyBlob, kemCiphertext);
+    if (sharedSecret.size() != kMlKemSharedSecretSize) return false;
+
+    const auto root = hkdfExpandSha256(
+        sharedSecret, kInfoQuantumRoot, kAesKeySize);
+    secureWipe(sharedSecret);
+    if (root.size() != kAesKeySize) return false;
+
+    QuantumSessionState state;
+    fillQuantumChains(state, root, false);
+    if (!quantumSessionUsable(state)) return false;
+
+    outState = std::move(state);
+    return true;
+}
+
+ByteVector quantumSessionWrap(
+        QuantumSessionState &state,
+        const ByteVector &plaintext,
+        const ByteVector &iv,
+        const ByteVector &aad) {
+    if (!quantumSessionUsable(state) || iv.size() != kGcmIvSize) return {};
+
+    // Derive the message key and advance the chain on a working copy; commit
+    // only after the AEAD succeeded (desktop encryptQuantumSessionMessage).
+    QuantumSessionState next = state;
+    ByteVector messageKey = quantumMessageKeyFromChain(next.sendChainKey);
+    next.sendChainKey = quantumChainStep(next.sendChainKey);
+    if (messageKey.size() != kAesKeySize
+            || next.sendChainKey.size() != kAesKeySize) {
+        secureWipe(messageKey);
+        return {};
+    }
+
+    ByteVector ciphertext = aesGcmEncrypt(messageKey, iv, plaintext, aad);
+    secureWipe(messageKey);
+    if (ciphertext.empty()) return {};
+
+    next.sendCounter++;
+    state = std::move(next);
+    return ciphertext;
+}
+
+ByteVector quantumSessionUnwrap(
+        QuantumSessionState &state,
+        const ByteVector &payload,
+        const ByteVector &iv,
+        const ByteVector &aad,
+        uint32_t counter) {
+    if (!quantumSessionUsable(state) || iv.size() != kGcmIvSize) return {};
+
+    // Work on a copy; the receive state advances only after a successful
+    // unwrap (desktop quantumUnwrapSessionPayload).
+    QuantumSessionState next = state;
+    ByteVector messageKey;
+    if (counter == next.recvCounter) {
+        // Expected message — derive the quantum message key and advance.
+        messageKey = quantumMessageKeyFromChain(next.recvChainKey);
+        next.recvChainKey = quantumChainStep(next.recvChainKey);
+        next.recvCounter++;
+    } else if (counter > next.recvCounter) {
+        // Future message — catch up, storing the skipped quantum keys exactly
+        // like the classic layer stores its skipped message keys.
+        if (counter - next.recvCounter > kMaxQuantumSkipAhead) return {};
+        ByteVector currentChain = next.recvChainKey;
+        uint32_t currentCounter = next.recvCounter;
+        while (currentCounter < counter) {
+            QuantumSessionState::SkippedKey skip;
+            skip.messageNumber = currentCounter;
+            skip.key = quantumMessageKeyFromChain(currentChain);
+            next.skippedMessageKeys.push_back(std::move(skip));
+
+            if (next.skippedMessageKeys.size() > kMaxSkippedKeys) {
+                secureWipe(next.skippedMessageKeys.front().key);
+                next.skippedMessageKeys.erase(next.skippedMessageKeys.begin());
+            }
+
+            currentChain = quantumChainStep(currentChain);
+            currentCounter++;
+        }
+        messageKey = quantumMessageKeyFromChain(currentChain);
+        next.recvChainKey = quantumChainStep(currentChain);
+        next.recvCounter = currentCounter + 1;
+    } else {
+        // Old message — check the skipped quantum key store.
+        const auto it = std::find_if(
+            next.skippedMessageKeys.begin(),
+            next.skippedMessageKeys.end(),
+            [&](const QuantumSessionState::SkippedKey &key) {
+                return key.messageNumber == counter;
+            });
+        if (it == next.skippedMessageKeys.end()) return {};
+        messageKey = it->key;
+        next.skippedMessageKeys.erase(it);
+    }
+
+    if (messageKey.size() != kAesKeySize) {
+        secureWipe(messageKey);
+        return {};
+    }
+
+    ByteVector plaintext = aesGcmDecrypt(messageKey, iv, payload, aad);
+    secureWipe(messageKey);
+    if (plaintext.empty()) return {};
+
+    state = std::move(next);
+    return plaintext;
 }
 
 // ---------------------------------------------------------------------------

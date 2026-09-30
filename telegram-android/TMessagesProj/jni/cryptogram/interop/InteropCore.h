@@ -65,6 +65,24 @@ static constexpr const char *kInfoMessageKey = "WhisperMessageKey";
 static constexpr const char *kInfoKdfRk = "CryptogramKDF_RK";
 static constexpr const char *kInfoX3DH = "CryptogramX3DH";
 
+// Ratcheted quantum session key schedule — MUST match the desktop constants
+// exactly (data_signal_protocol.cpp): qRoot from the ML-KEM shared secret,
+// the initiator sends on ChainA / receives on ChainB (the resolver swaps the
+// labels), one quantum message key per classic message in lockstep.
+static constexpr const char *kInfoQuantumRoot = "CryptogramQX3DH";
+static constexpr const char *kInfoQuantumChainA = "CryptogramQChainA";
+static constexpr const char *kInfoQuantumChainB = "CryptogramQChainB";
+static constexpr const char *kInfoQuantumMessage = "CryptogramQMessage";
+static constexpr const char *kInfoQuantumChainStep = "CryptogramQChainStep";
+
+// Envelope routing version. 0 = legacy field order (envelopes already
+// persisted in-flight), 2 = quantum-session capable layout (leading version
+// int, quantum init fields before the ciphertext). Every NEW envelope writes
+// version 2 — desktop wrapEncryptedText parity.
+static constexpr uint32_t kEnvelopeVersion = 2;
+// Quantum recv-chain skip-ahead bound (desktop kMaxQuantumSkipAhead).
+static constexpr uint32_t kMaxQuantumSkipAhead = 2000;
+
 // Storage convention: the JNI layer passes the app files dir and the
 // protocol keys live under "<filesDir>/cryptogram/interop/". The KEM
 // identity file name mirrors the desktop (pq_identity.*).
@@ -100,6 +118,16 @@ struct MessageMetadata {
     bool hasCacResponse = false;
     ByteVector cacSignature;
     ByteVector cacCertChainDer;
+
+    // Ratcheted quantum session (envelope version 2). envelopeVersion routes
+    // unwrapEnvelope: 0 = legacy field order, 2 = v2 layout. hasQuantumInit
+    // carries the ML-KEM encapsulation ciphertext (transported ONCE, on the
+    // first quantum-protected message of a fresh session) plus the sender's
+    // static KEM public (SPKI DER) — both empty afterwards.
+    int32_t envelopeVersion = 0;
+    bool hasQuantumInit = false;
+    ByteVector quantumKemCiphertext;
+    ByteVector quantumKemEmitterPublic;
 };
 
 // Desktop SignalProtocol::SessionState.
@@ -268,11 +296,17 @@ bool establishSessionBob(
 // Envelope (desktop wrapEncryptedText / unwrapEncryptedText)
 // ---------------------------------------------------------------------------
 
-// QDataStream (Qt_5_15, all integers big-endian) layout:
-//   quint32 counter | QByteArray iv | QByteArray senderPublicKey
-//   | qint32 timestamp | bool hasCacChallenge [nonce] | bool hasCacResponse
-//   [signature, certChainDer] | QByteArray ciphertext
-// QByteArray = u32 BE length + raw bytes; bool = one byte.
+// QDataStream (Qt_5_15, all integers big-endian) layout — version 2 (every
+// NEW envelope; the leading qint32 version routes the parser):
+//   qint32 envelopeVersion(=2) | quint32 counter | QByteArray iv
+//   | QByteArray senderPublicKey | qint32 timestamp
+//   | bool hasCacChallenge [nonce] | bool hasCacResponse
+//   [signature, certChainDer]
+//   | bool hasQuantumInit [QByteArray kemCiphertext, QByteArray kemEmitterPublic]
+//   | QByteArray ciphertext
+// Legacy envelopes (already persisted in-flight) start at the counter — the
+// leading int IS the classic message counter there. QByteArray = u32 BE
+// length + raw bytes; bool = one byte.
 // This is the RAW blob — zero-width encoding is applied by the Java layer.
 ByteVector wrapEnvelope(const ByteVector &ciphertext, const MessageMetadata &metadata);
 
@@ -281,12 +315,28 @@ struct Envelope {
     MessageMetadata metadata;
 };
 
+// Routes on the leading version int: version 2 → v2 field order; anything
+// else → legacy field order (the leading int is the message counter).
 // Returns false on truncation (desktop unwrapEncryptedText failure).
 bool unwrapEnvelope(const ByteVector &data, Envelope &out);
 
 // ---------------------------------------------------------------------------
 // Double ratchet (desktop encryptMessage / decryptMessage semantics)
 // ---------------------------------------------------------------------------
+
+// AAD: 4-byte BIG-ENDIAN counter || sender public key (desktop
+// encryptMessage/decryptMessage). Also the quantum layer's AAD.
+ByteVector messageAad(const MessageMetadata &metadata);
+
+// desktop beginClassicEncryption parity: DH-ratchet when pending, derive +
+// advance the sending chain, fill outMetadata (counter, iv, senderPublicKey,
+// timestamp) and build the AAD. Returns the classic message key; the caller
+// completes the encryption with aesGcmEncrypt under the SAME iv + aad (the
+// quantum session send path binds its payload to the exact classic message).
+ByteVector beginMessage(
+    SessionState &session,
+    MessageMetadata &outMetadata,
+    ByteVector &outAad);
 
 // Performs the DH-ratchet step when session.pendingRemoteDH is set, derives
 // the message key from the sending chain, advances the chain and fills
@@ -402,6 +452,90 @@ ByteVector unwrapPqe1(const ByteVector &privateKeyBlob, const ByteVector &blob);
 
 // Desktop processIncomingMessage gate: size > 8 and the "PQE1" magic.
 bool isPqe1Envelope(const ByteVector &data);
+
+// ---------------------------------------------------------------------------
+// Ratcheted quantum sessions (desktop envelope-v2 parity)
+//
+// A per-peer quantum session is established by ONE real ML-KEM encapsulation
+// against the peer's static KEM public (bundle extension 0x02) and then
+// SUPERSEDES the per-message PQE1 envelopes:
+//   qRoot      = expand(PRK = ss,    info = "CryptogramQX3DH",    32)
+//   qSend/qRecv = expand(PRK = qRoot, info = "CryptogramQChainA"/"…B", 32)
+// (the initiator sends on ChainA; the resolver swaps the labels), and per
+// classic message in lockstep:
+//   qMessageKey = expand(PRK = qChain, info = "CryptogramQMessage",   32)
+//   qChain      = expand(PRK = qChain, info = "CryptogramQChainStep", 32)
+// The quantum AEAD is the desktop construction: AES-256-GCM under the
+// quantum message key with the SAME 12-byte IV and the SAME AAD
+// (u32be counter || senderDhPub) as the classic layer, so the quantum
+// payload is bound to the exact classic message. The quantum layer wraps
+// the plaintext BEFORE the classic ratchet; on receive the quantum layer
+// unwraps AFTER classic decryption.
+//
+// The kemCiphertext is transported ONCE — in the v2 envelope metadata of
+// the first quantum-protected message (hasQuantumInit, alongside the
+// sender's static KEM public); subsequent messages set hasQuantumInit =
+// false with empty fields.
+// ---------------------------------------------------------------------------
+
+struct QuantumSessionState {
+    ByteVector rootKey;
+    ByteVector sendChainKey;
+    ByteVector recvChainKey;
+    uint32_t sendCounter = 0;
+    uint32_t recvCounter = 0;
+
+    // Receive-side out-of-order storage — same semantics and cap as the
+    // classic layer's skippedMessageKeys.
+    struct SkippedKey {
+        uint32_t messageNumber = 0;
+        ByteVector key;
+    };
+    std::vector<SkippedKey> skippedMessageKeys;
+};
+
+// A session is usable only with three non-empty, not-all-zero 32-byte chain
+// values (guards against silent HKDF failures, desktop usableQuantumChain).
+bool quantumSessionUsable(const QuantumSessionState &state);
+
+// Initiator ("Alice") establishment: a REAL ML-KEM encapsulation against the
+// peer's static KEM public (bundle 0x02 SPKI DER). Fills outState and returns
+// the encapsulation ciphertext via outKemCiphertext for transport in the v2
+// envelope metadata. False on failure (session untouched).
+bool establishQuantumSessionInitiator(
+    QuantumSessionState &outState,
+    const ByteVector &peerPublicKeyDer,
+    ByteVector &outKemCiphertext);
+
+// Resolver ("Bob") establishment: decapsulate the transported kemCiphertext
+// with OUR static KEM private blob — the same shared secret — and swap the
+// chain labels. False on failure.
+bool establishQuantumSessionResolver(
+    QuantumSessionState &outState,
+    const ByteVector &privateKeyBlob,
+    const ByteVector &kemCiphertext);
+
+// Send path: derive the quantum message key from sendChainKey, advance the
+// chain and AES-256-GCM-encrypt the plaintext under the caller-provided iv
+// + aad (the classic message's — desktop encryptQuantumSessionMessage).
+// Advances the send chain ONLY on success. Empty result = failure.
+ByteVector quantumSessionWrap(
+    QuantumSessionState &state,
+    const ByteVector &plaintext,
+    const ByteVector &iv,
+    const ByteVector &aad);
+
+// Receive path (desktop quantumUnwrapSessionPayload): derive the quantum
+// message key for the classic message `counter` — expected / skip-ahead
+// (storing skipped keys, capped at kMaxSkippedKeys) / skipped-store lookup —
+// then AES-256-GCM-decrypt the payload with the given iv + aad. Receive
+// state advances ONLY on a successful unwrap. Empty result = failure.
+ByteVector quantumSessionUnwrap(
+    QuantumSessionState &state,
+    const ByteVector &payload,
+    const ByteVector &iv,
+    const ByteVector &aad,
+    uint32_t counter);
 
 // ---------------------------------------------------------------------------
 // At-rest persistence (Android identity + per-peer session files).

@@ -18,6 +18,7 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include <QtCore/QObject>
 #include <QtCore/QString>
 #include <memory>
+#include <vector>
 
 namespace Data {
 
@@ -163,5 +164,45 @@ private:
 	QuantumThreatLevel _currentQuantumThreatLevel = QuantumThreatLevel::Moderate;
 	QuantumSignalMetrics _quantumMetrics;
 };
+
+// ---------------------------------------------------------------------------
+// Ratcheted quantum sessions (per-peer, envelope version 2).
+//
+// A quantum session is established by ONE real ML-KEM encapsulation against
+// the peer's static KEM public and then replaces the per-message PQE1
+// envelopes: the two derived chains advance one message key per classic
+// message in lockstep. The session state lives in the shared
+// g_quantumSessions map in data_quantum_signal_impl.cpp (extended, not
+// duplicated); SignalProtocol reaches it through the snapshot bridge below.
+//
+// Key schedule (HKDF-SHA256 EXPAND-ONLY, input used directly as PRK — the
+// desktop deriveKey):
+//   qRoot    = expand(PRK = ss,            info = "CryptogramQX3DH",     32)
+//   qSend    = expand(PRK = qRoot,         info = "CryptogramQChainA",   32)  // initiator
+//   qRecv    = expand(PRK = qRoot,         info = "CryptogramQChainB",   32)  // initiator
+// (the resolver swaps the A/B labels: its send chain is ChainB). Per message:
+//   qMessageKey = expand(PRK = qChain, info = "CryptogramQMessage",   32)
+//   qChain     = expand(PRK = qChain, info = "CryptogramQChainStep", 32)
+// ---------------------------------------------------------------------------
+struct QuantumSessionSnapshot {
+	bytes::vector rootKey;
+	bytes::vector sendChainKey;
+	bytes::vector recvChainKey;
+	quint32 sendCounter = 0;
+	quint32 recvCounter = 0;
+
+	// Receive-side out-of-order storage, mirroring the classic layer's
+	// skippedMessageKeys (same cap, same semantics).
+	struct SkippedKey {
+		quint32 messageNumber = 0;
+		bytes::vector key;
+	};
+	std::vector<SkippedKey> skippedKeys;
+};
+
+[[nodiscard]] bool peerQuantumSessionExists(PeerId peerId);
+[[nodiscard]] QuantumSessionSnapshot loadPeerQuantumSession(PeerId peerId);
+void savePeerQuantumSession(PeerId peerId, const QuantumSessionSnapshot &snapshot);
+void erasePeerQuantumSession(PeerId peerId);
 
 } // namespace Data

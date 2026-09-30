@@ -120,6 +120,20 @@ target_link_libraries(test_e2e_x3dh_fixed
     OpenSSL::Crypto
 )
 
+# Cross-side conformance for RATCHETED QUANTUM SESSIONS (envelope v2):
+# per-peer ML-KEM session superseding the per-message PQE1 envelopes,
+# lockstep quantum chains, v2 envelope routing. Pure OpenSSL (real ML-KEM
+# when the host provides it, KEM-shaped X25519 fallback otherwise).
+add_executable(test_e2e_quantum_session
+    test_e2e_quantum_session.cpp
+)
+
+target_link_libraries(test_e2e_quantum_session
+    PRIVATE
+    Catch2::Catch2WithMain
+    OpenSSL::Crypto
+)
+
 # Path 2 host test: Android identity + session persistence in the JNI-free
 # InteropCore. Standalone main(); needs only OpenSSL — no Catch2, no Qt.
 add_executable(test_android_persistence_host

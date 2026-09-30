@@ -106,6 +106,24 @@ public:
         bytes::vector cacSignature;        // hardware signature over the nonce
         bytes::vector cacCertChainDer;     // full DER cert chain for validation
         // cacUserDN is NOT transmitted; extracted locally from cacCertChainDer
+
+        // === Ratcheted quantum session (envelope version 2) ===
+        //
+        // envelopeVersion routes unwrapEncryptedText: 0 = legacy field order
+        // (envelopes already persisted in-flight), 2 = the quantum-session
+        // capable layout (leading qint32 version, quantum init fields before
+        // the ciphertext). Every NEW envelope writes version 2.
+        int envelopeVersion = 0;
+
+        // Set on the FIRST quantum-protected message of a fresh quantum
+        // session: carries the ML-KEM encapsulation ciphertext (decapsulated
+        // by the receiver with their static KEM private) and the sender's
+        // static KEM public (SPKI DER, lets the receiver pick the right key
+        // store entry). Both are empty (false) on every subsequent message —
+        // the session chains take over.
+        bool hasQuantumInit = false;
+        bytes::vector quantumKemCiphertext;
+        bytes::vector quantumKemEmitterPublic;
     };
 
     // Encryption key bundle
@@ -287,6 +305,48 @@ private:
         const bytes::const_span &plaintext);
     [[nodiscard]] std::optional<bytes::vector> quantumUnwrapPayload(
         const bytes::const_span &envelope);
+
+    // Ratcheted quantum sessions (envelope version 2). A per-peer session
+    // established by ONE real ML-KEM encapsulation supersedes the per-message
+    // PQE1 envelopes: chains advance one message key per classic message in
+    // lockstep, so subsequent messages carry no new encapsulation.
+    [[nodiscard]] bool peerKemKeyAdvertised(not_null<PeerData*> peer) const;
+    [[nodiscard]] bool peerQuantumSessionActive(not_null<PeerData*> peer) const;
+    // Initiator ("Alice") establishment: encapsulate against the peer's
+    // static KEM public, derive the chain pair, and fill the metadata fields
+    // that transport the kemCiphertext to the peer (v2 envelope).
+    bool establishQuantumSessionInitiator(
+        not_null<PeerData*> peer,
+        MessageMetadata &outMetadata);
+    // Resolver ("Bob") establishment: decapsulate the transported kemCiphertext
+    // with our static KEM private and derive the SAME chains (labels swapped).
+    bool acceptQuantumSessionInit(
+        not_null<PeerData*> peer,
+        const bytes::const_span &kemCiphertext);
+    // Shared tail of encryptMessage and the quantum send path: DH-ratchet
+    // when pending, derive + advance the classic sending chain, fill the
+    // metadata (counter/iv/senderPub/timestamp) and build the AAD. Returns
+    // the classic message key (empty on failure); `inoutSession` carries the
+    // live session copy the caller commits via updateSession on success.
+    bytes::vector beginClassicEncryption(
+        not_null<PeerData*> peer,
+        MessageMetadata &outMetadata,
+        bytes::vector &outAad,
+        SessionState &inoutSession);
+    // Quantum-protected send path (established session): the plaintext is
+    // encrypted under the quantum chain key with the SAME iv + AAD as the
+    // classic layer, then the classic ratchet encrypts the quantum payload.
+    bytes::vector encryptQuantumSessionMessage(
+        const bytes::const_span &plaintext,
+        not_null<PeerData*> peer,
+        MessageMetadata &outMetadata);
+    // Quantum unwrap AFTER classic decryption: derive the recv-chain message
+    // key for metadata.messageCounter (skipped-key storage mirrors the classic
+    // layer) and AES-256-GCM-decrypt with the same iv + AAD.
+    [[nodiscard]] std::optional<bytes::vector> quantumUnwrapSessionPayload(
+        not_null<PeerData*> peer,
+        const bytes::const_span &payload,
+        const MessageMetadata &metadata);
     
     // Current state
     bool _enabled = false;

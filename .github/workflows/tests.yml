@@ -96,6 +96,13 @@ jobs:
               PRIVATE Catch2::Catch2WithMain OpenSSL::Crypto)
           add_test(NAME test_e2e_x3dh_fixed COMMAND test_e2e_x3dh_fixed)
 
+          add_executable(test_e2e_quantum_session
+              ${REPO_ROOT}/tests/unit/test_e2e_quantum_session.cpp)
+          target_link_libraries(test_e2e_quantum_session
+              PRIVATE Catch2::Catch2WithMain OpenSSL::Crypto)
+          add_test(NAME test_e2e_quantum_session
+              COMMAND test_e2e_quantum_session)
+
           add_executable(test_covert_channel_sha384
               ${REPO_ROOT}/tests/unit/test_covert_channel_sha384.cpp)
           target_link_libraries(test_covert_channel_sha384

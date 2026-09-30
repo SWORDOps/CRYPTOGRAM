@@ -62,6 +62,12 @@ interop::KemKeyPair gKemIdentity;
 // so a fixed app-local string plays the same role).
 const char kPqIdentityPassword[] = "cryptogram-android-pq-identity";
 std::unordered_map<int64_t, interop::SessionState> gSessions;
+// Ratcheted quantum sessions (desktop g_quantumSessions parity, envelope
+// v2): one real ML-KEM encapsulation per peer supersedes the per-message
+// PQE1 envelopes; the chains advance one message key per classic message.
+// Memory-only on BOTH platforms (the desktop store is memory-only too), so
+// a peer that restarts re-establishes via a fresh hasQuantumInit transport.
+std::unordered_map<int64_t, interop::QuantumSessionState> gQuantumSessions;
 // Remote bundles registered via nativeInitializeWithRemoteBundle. They are
 // needed for the Bob-side session establishment at first contact and for
 // the stale-session retry in nativeDecrypt. A bundle's quantumKemPublicKey
@@ -687,25 +693,88 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeEncrypt(JNIEnv *env, 
 
     const auto plainBytes = jstringToUtf8Bytes(env, plaintext);
 
-    // Post-quantum inner envelope (desktop processOutgoingMessage): when the
-    // peer's registered bundle advertised a KEM key (bitmap 0x02), wrap the
-    // PLAINTEXT in the PQE1 envelope BEFORE the ratchet encrypt. On wrap
-    // failure the desktop silently falls back to classic-only — so do we.
+    interop::MessageMetadata metadata;
+
+    // Post-quantum protection (desktop processOutgoingMessage): an
+    // established ratcheted quantum session — one REAL ML-KEM encapsulation
+    // when the peer advertised a KEM key (bitmap 0x02) — SUPERSEDES the
+    // per-message PQE1 envelopes. The FIRST quantum-protected message of a
+    // fresh session transports the encapsulation ciphertext in the v2
+    // envelope metadata (hasQuantumInit); later messages advance the chains
+    // with no new encapsulation. Without a session the per-message PQE1
+    // envelope applies as before; failing both, classic-only.
     ByteVector payload = plainBytes;
+    ByteVector ciphertext;
+    bool quantumSessionActive = false;
     if (peerKemAdvertised(key) && ensureKemIdentity()) {
-        auto quantumWrapped = interop::wrapPqe1(
-            gRemoteBundles[key].quantumKemPublicKey, plainBytes);
-        if (!quantumWrapped.empty()) {
-            payload = std::move(quantumWrapped);
+        auto qsIt = gQuantumSessions.find(key);
+        if (qsIt == gQuantumSessions.end()) {
+            interop::QuantumSessionState established;
+            ByteVector kemCiphertext;
+            if (interop::establishQuantumSessionInitiator(
+                    established,
+                    gRemoteBundles[key].quantumKemPublicKey,
+                    kemCiphertext)) {
+                metadata.hasQuantumInit = true;
+                metadata.quantumKemCiphertext = std::move(kemCiphertext);
+                // The sender's static KEM public (SPKI DER) lets the receiver
+                // pick the right key store entry; they decapsulate with their
+                // own static private key.
+                metadata.quantumKemEmitterPublic = gKemIdentity.publicKeyDer;
+                qsIt = gQuantumSessions.emplace(key, std::move(established)).first;
+                LOGD("Established quantum session for user %lld",
+                     static_cast<long long>(key));
+                quantumSessionActive = true;
+            } else {
+                LOGE("Quantum session establishment failed — per-message PQE1 "
+                     "fallback for user %lld", static_cast<long long>(key));
+            }
+        } else if (interop::quantumSessionUsable(qsIt->second)) {
+            quantumSessionActive = true;
         } else {
-            LOGE("PQE1 wrap failed — sending classic-only for user %lld",
-                 static_cast<long long>(key));
+            gQuantumSessions.erase(qsIt);
         }
     }
+    if (quantumSessionActive) {
+        // Classic layer FIRST in preparation only (chain advance, counter,
+        // iv, aad — desktop beginClassicEncryption), then the quantum layer
+        // encrypts the plaintext under the SAME iv + aad, then the classic
+        // layer encrypts the quantum payload.
+        ByteVector aad;
+        auto classicKey = interop::beginMessage(*session, metadata, aad);
+        if (classicKey.empty()) return nullptr;
 
-    interop::MessageMetadata metadata;
-    const auto ciphertext = interop::encryptMessage(*session, payload, metadata);
-    if (ciphertext.empty()) return nullptr;
+        auto quantumCiphertext = interop::quantumSessionWrap(
+            gQuantumSessions[key], payload, metadata.iv, aad);
+        if (quantumCiphertext.empty()) {
+            interop::secureWipe(classicKey);
+            LOGE("Quantum wrap failed for user %lld", static_cast<long long>(key));
+            return nullptr;
+        }
+
+        ciphertext = interop::aesGcmEncrypt(
+            classicKey, metadata.iv, quantumCiphertext, aad);
+        interop::secureWipe(classicKey);
+        interop::secureWipe(quantumCiphertext);
+        if (ciphertext.empty()) return nullptr;
+    } else {
+        // Per-message PQE1 fallback: wrap the PLAINTEXT in the PQE1 envelope
+        // BEFORE the ratchet encrypt. On wrap failure the desktop silently
+        // falls back to classic-only — so do we.
+        if (peerKemAdvertised(key) && ensureKemIdentity()) {
+            auto quantumWrapped = interop::wrapPqe1(
+                gRemoteBundles[key].quantumKemPublicKey, plainBytes);
+            if (!quantumWrapped.empty()) {
+                payload = std::move(quantumWrapped);
+            } else {
+                LOGE("PQE1 wrap failed — sending classic-only for user %lld",
+                     static_cast<long long>(key));
+            }
+        }
+
+        ciphertext = interop::encryptMessage(*session, payload, metadata);
+        if (ciphertext.empty()) return nullptr;
+    }
 
     // ZK Phase 1: always attach a fresh challenge nonce. Android never
     // emits a CAC response.
@@ -776,10 +845,15 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeDecrypt(JNIEnv *env, 
     }
     if (plaintext.empty()) return nullptr;
 
-    // Post-quantum inner envelope (desktop processIncomingMessage): real
-    // ML-KEM decapsulation + AES-256-GCM, stripped AFTER the classic ratchet
-    // layer has been removed. An unwrap failure drops the message — the
-    // desktop does the same rather than showing a mixed-classical payload.
+    // Post-quantum inner envelopes (desktop processIncomingMessage routing),
+    // stripped AFTER the classic ratchet layer has been removed:
+    //   1. Legacy per-message PQE1 (magic-gated) — the fallback for peers
+    //      advertising 0x02 without an established quantum session.
+    //   2. Quantum session (envelope v2): the FIRST quantum-protected message
+    //      carries hasQuantumInit (ML-KEM ciphertext decapsulated with OUR
+    //      static private); every subsequent message unwraps with the
+    //      lockstep chain keys and carries NO new encapsulation. An unwrap
+    //      failure drops the message rather than showing a mixed payload.
     if (interop::isPqe1Envelope(plaintext)) {
         if (!ensureKemIdentity()) return nullptr;
         auto unwrappedPq = interop::unwrapPqe1(gKemIdentity.privateKeyBlob, plaintext);
@@ -789,6 +863,48 @@ Java_org_telegram_messenger_cryptogram_DoubleRatchet_nativeDecrypt(JNIEnv *env, 
             return nullptr;
         }
         plaintext = std::move(unwrappedPq);
+    } else if (envelope.metadata.envelopeVersion
+                == static_cast<int32_t>(interop::kEnvelopeVersion)) {
+        if (envelope.metadata.hasQuantumInit) {
+            interop::QuantumSessionState established;
+            if (interop::establishQuantumSessionResolver(
+                    established,
+                    gKemIdentity.privateKeyBlob,
+                    envelope.metadata.quantumKemCiphertext)) {
+                // A fresh init (re)establishes the session — this recovers a
+                // peer that restarted with lost quantum state. Replaying an
+                // old init only resets the chains (fails closed).
+                gQuantumSessions[key] = std::move(established);
+                LOGD("Accepted quantum session init from user %lld",
+                     static_cast<long long>(key));
+            } else {
+                LOGE("Quantum init decapsulation failed from user %lld",
+                     static_cast<long long>(key));
+            }
+        }
+        auto qsIt = gQuantumSessions.find(key);
+        if (qsIt != gQuantumSessions.end()
+                && interop::quantumSessionUsable(qsIt->second)) {
+            auto unwrappedQuantum = interop::quantumSessionUnwrap(
+                qsIt->second,
+                plaintext,
+                envelope.metadata.iv,
+                interop::messageAad(envelope.metadata),
+                envelope.metadata.messageCounter);
+            if (unwrappedQuantum.empty()) {
+                LOGE("Quantum unwrap failed — dropping message from user %lld",
+                     static_cast<long long>(key));
+                return nullptr;
+            }
+            plaintext = std::move(unwrappedQuantum);
+        } else if (envelope.metadata.hasQuantumInit) {
+            // A quantum-protected payload without usable chains is not
+            // readable — never surface the raw ciphertext as text.
+            LOGE("No usable quantum session — dropping message from user %lld",
+                 static_cast<long long>(key));
+            return nullptr;
+        }
+        // No quantum session and no init: classic-only v2 message.
     }
 
     return utf8BytesToJString(env, plaintext);

@@ -93,6 +93,14 @@ namespace {
 		bytes::vector quantumSignatureKey = bytes::vector(32, kZero);
 		int quantumOperations = 0;
 		QDateTime lastQuantumRatchet = QDateTime::currentDateTime();
+
+		// Ratcheted quantum sessions (envelope v2, SignalProtocol): the
+		// chains above carry the lockstep per-message keys, the counters
+		// track how many message keys each side consumed, and the skipped
+		// keys mirror the classic layer's out-of-order storage.
+		quint32 quantumSendCounter = 0;
+		quint32 quantumRecvCounter = 0;
+		std::vector<QuantumSessionSnapshot::SkippedKey> skippedMessageKeys;
 	};
 
 	std::map<PeerId, QuantumSession> g_quantumSessions;
@@ -329,6 +337,49 @@ namespace {
 	}
 
 } // namespace
+
+// ---------------------------------------------------------------------------
+// Ratcheted quantum session snapshot bridge (see data_signal_quantum.h).
+// SignalProtocol drives the per-message chain stepping; these functions only
+// move snapshots in and out of the shared g_quantumSessions map so both the
+// legacy QuantumSignalProtocol state and the envelope-v2 sessions share one
+// store per peer.
+// ---------------------------------------------------------------------------
+
+bool peerQuantumSessionExists(PeerId peerId) {
+	return g_quantumSessions.find(peerId) != g_quantumSessions.end();
+}
+
+QuantumSessionSnapshot loadPeerQuantumSession(PeerId peerId) {
+	const auto it = g_quantumSessions.find(peerId);
+	if (it == g_quantumSessions.end()) {
+		return QuantumSessionSnapshot{};
+	}
+	const auto &stored = it->second;
+	QuantumSessionSnapshot snapshot;
+	snapshot.rootKey = stored.quantumRootKey;
+	snapshot.sendChainKey = stored.quantumSendingChainKey;
+	snapshot.recvChainKey = stored.quantumReceivingChainKey;
+	snapshot.sendCounter = stored.quantumSendCounter;
+	snapshot.recvCounter = stored.quantumRecvCounter;
+	snapshot.skippedKeys = stored.skippedMessageKeys;
+	return snapshot;
+}
+
+void savePeerQuantumSession(PeerId peerId, const QuantumSessionSnapshot &snapshot) {
+	auto &stored = g_quantumSessions[peerId];
+	stored.quantumRootKey = snapshot.rootKey;
+	stored.quantumSendingChainKey = snapshot.sendChainKey;
+	stored.quantumReceivingChainKey = snapshot.recvChainKey;
+	stored.quantumSendCounter = snapshot.sendCounter;
+	stored.quantumRecvCounter = snapshot.recvCounter;
+	stored.skippedMessageKeys = snapshot.skippedKeys;
+	stored.lastQuantumRatchet = QDateTime::currentDateTime();
+}
+
+void erasePeerQuantumSession(PeerId peerId) {
+	g_quantumSessions.erase(peerId);
+}
 
 class QuantumSignalProtocol::QuantumSignalProtocolPrivate {
 public:

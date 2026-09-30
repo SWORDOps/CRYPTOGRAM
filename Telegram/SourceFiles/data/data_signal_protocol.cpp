@@ -7,6 +7,7 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 */
 #include "data/data_signal_protocol.h"
 #include "data/data_signal_transport.h"
+#include "data/data_signal_quantum.h"
 #include "data/data_tsm_factory.h"
 #include "data/data_quantumguard.h"
 #include "core/peer_trust_encryption.h"
@@ -63,6 +64,20 @@ constexpr auto kInfoChainKey = "WhisperMessageKeys"; // Used in HKDF for chain k
 constexpr auto kInfoMessageKey = "WhisperMessageKey"; // Used in HKDF for message keys
 constexpr auto kInfoKdfRk = "CryptogramKDF_RK"; // Used in HKDF for KDF_RK
 constexpr auto kInfoX3DH = "CryptogramX3DH"; // Used in HKDF for X3DH initial root key
+
+// Ratcheted quantum session key schedule (envelope v2). MUST match the
+// Android InteropCore constants byte for byte.
+constexpr auto kInfoQuantumRoot = "CryptogramQX3DH";
+constexpr auto kInfoQuantumChainA = "CryptogramQChainA"; // initiator send chain
+constexpr auto kInfoQuantumChainB = "CryptogramQChainB"; // initiator recv chain
+constexpr auto kInfoQuantumMessage = "CryptogramQMessage";
+constexpr auto kInfoQuantumChainStep = "CryptogramQChainStep";
+// Envelope routing version. 0 = legacy field order (envelopes already
+// persisted in-flight), 2 = quantum-session capable layout. Every NEW
+// envelope writes version 2.
+constexpr auto kEnvelopeVersion2 = 2;
+// Quantum recv-chain bounds, mirroring the classic layer's limits.
+constexpr auto kMaxQuantumSkipAhead = 2000;
 
 inline const unsigned char *asConstUChar(const bytes::const_span &span) {
     return reinterpret_cast<const unsigned char *>(span.data());
@@ -607,53 +622,11 @@ bytes::vector SignalProtocol::encryptMessage(
     // Update last used timestamp
     session.lastUsedAt = base::unixtime::now();
 
-    // DH ratchet: if we received a new remote DH key, rotate our DH key pair
-    if (session.pendingRemoteDH) {
-        // Save old sending chain length
-        session.previousSendingChainLength = session.sendingMessageCounter;
-
-        // Generate new DH key pair
-        session.dhSendingPrivateKey = generateDH();
-        session.dhSendingPublicKey = x25519PublicFromPrivate(session.dhSendingPrivateKey);
-
-        // Perform DH ratchet: KDF_RK(rootKey, DH(new_priv, remote_pub))
-        auto dhOutput = x25519(session.dhSendingPrivateKey, session.dhRemotePublicKey);
-        auto rkResult = kdfRk(session.rootKey, dhOutput);
-        session.rootKey = rkResult.rootKey;
-        session.sendingChainKey = rkResult.chainKey;
-
-        // Reset sending counter
-        session.sendingMessageCounter = 0;
-        session.pendingRemoteDH = false;
-
-        secureWipe(dhOutput);
-    }
-
-    // Generate message key from chain key
-    auto messageKey = deriveKey(session.sendingChainKey,
-                               kInfoMessageKey,
-                               kAesKeySize);
-
-    // Advance the chain key
-    session.sendingChainKey = ratchetChainKey(session.sendingChainKey);
-
-    // Prepare metadata
-    outMetadata.messageCounter = session.sendingMessageCounter++;
-    outMetadata.senderPublicKey = session.dhSendingPublicKey;
-    outMetadata.timestamp = base::unixtime::now();
-
-    // Create random IV for AES-GCM (12 bytes)
-    outMetadata.iv = generateRandomBytes(kGcmIvSize);
-
-    // Build AAD: message counter (4 bytes) + sender public key (32 bytes)
     bytes::vector aad;
-    aad.reserve(4 + session.dhSendingPublicKey.size());
-    auto counter = outMetadata.messageCounter;
-    aad.push_back(bytes::type((counter >> 24) & 0xFF));
-    aad.push_back(bytes::type((counter >> 16) & 0xFF));
-    aad.push_back(bytes::type((counter >> 8) & 0xFF));
-    aad.push_back(bytes::type(counter & 0xFF));
-    aad.insert(aad.end(), session.dhSendingPublicKey.begin(), session.dhSendingPublicKey.end());
+    auto messageKey = beginClassicEncryption(peer, outMetadata, aad, session);
+    if (messageKey.empty()) {
+        return {};
+    }
 
     // Encrypt plaintext using AES-256-GCM (returns ciphertext || tag)
     auto ciphertext = aesGcmEncrypt(plaintext, messageKey, outMetadata.iv, aad);
@@ -671,6 +644,71 @@ bytes::vector SignalProtocol::encryptMessage(
     updateSession(peer, session);
 
     return ciphertext;
+}
+
+// Shared classic-layer preparation for encryptMessage and the quantum
+// session send path: DH-ratchet when pending, derive + advance the sending
+// chain, fill the outgoing metadata and build the AAD. The operations (and
+// their order) are exactly the ones encryptMessage has always performed, so
+// the classic wire output is unchanged.
+bytes::vector SignalProtocol::beginClassicEncryption(
+        not_null<PeerData*> peer,
+        MessageMetadata &outMetadata,
+        bytes::vector &outAad,
+        SessionState &inoutSession) {
+
+    // DH ratchet: if we received a new remote DH key, rotate our DH key pair
+    if (inoutSession.pendingRemoteDH) {
+        // Save old sending chain length
+        inoutSession.previousSendingChainLength = inoutSession.sendingMessageCounter;
+
+        // Generate new DH key pair
+        inoutSession.dhSendingPrivateKey = generateDH();
+        inoutSession.dhSendingPublicKey = x25519PublicFromPrivate(inoutSession.dhSendingPrivateKey);
+
+        // Perform DH ratchet: KDF_RK(rootKey, DH(new_priv, remote_pub))
+        auto dhOutput = x25519(inoutSession.dhSendingPrivateKey, inoutSession.dhRemotePublicKey);
+        auto rkResult = kdfRk(inoutSession.rootKey, dhOutput);
+        inoutSession.rootKey = rkResult.rootKey;
+        inoutSession.sendingChainKey = rkResult.chainKey;
+
+        // Reset sending counter
+        inoutSession.sendingMessageCounter = 0;
+        inoutSession.pendingRemoteDH = false;
+
+        secureWipe(dhOutput);
+    }
+
+    // Generate message key from chain key
+    auto messageKey = deriveKey(inoutSession.sendingChainKey,
+                               kInfoMessageKey,
+                               kAesKeySize);
+
+    // Advance the chain key
+    inoutSession.sendingChainKey = ratchetChainKey(inoutSession.sendingChainKey);
+
+    // Prepare metadata
+    outMetadata.messageCounter = inoutSession.sendingMessageCounter++;
+    outMetadata.senderPublicKey = inoutSession.dhSendingPublicKey;
+    outMetadata.timestamp = base::unixtime::now();
+
+    // Create random IV for AES-GCM (12 bytes)
+    outMetadata.iv = generateRandomBytes(kGcmIvSize);
+
+    // Build AAD: message counter (4 bytes) + sender public key (32 bytes)
+    outAad.clear();
+    outAad.reserve(4 + inoutSession.dhSendingPublicKey.size());
+    auto counter = outMetadata.messageCounter;
+    outAad.push_back(bytes::type((counter >> 24) & 0xFF));
+    outAad.push_back(bytes::type((counter >> 16) & 0xFF));
+    outAad.push_back(bytes::type((counter >> 8) & 0xFF));
+    outAad.push_back(bytes::type(counter & 0xFF));
+    outAad.insert(
+        outAad.end(),
+        inoutSession.dhSendingPublicKey.begin(),
+        inoutSession.dhSendingPublicKey.end());
+
+    return messageKey;
 }
 
 // Message decryption
@@ -1242,6 +1280,325 @@ std::optional<bytes::vector> SignalProtocol::quantumUnwrapPayload(
         return std::nullopt;
     }
     return std::move(*decrypted);
+}
+
+// ---------------------------------------------------------------------------
+// Ratcheted quantum sessions (envelope version 2).
+//
+// A per-peer quantum session is established by ONE real ML-KEM encapsulation
+// against the peer's static KEM public (the 0x02 bundle extension) and then
+// SUPERSEDES the per-message PQE1 envelopes: qRoot and the two chain keys
+// come from the encapsulation shared secret, and both sides derive one
+// quantum message key per classic message in lockstep (the initiator sends
+// on "CryptogramQChainA", the resolver on "CryptogramQChainB"). The first
+// quantum-protected message transports the encapsulation ciphertext in the
+// v2 envelope metadata; every later message carries no new encapsulation.
+// The session state lives in the shared g_quantumSessions map (see
+// data_quantum_signal_impl.cpp) accessed through the snapshot bridge in
+// data_signal_quantum.h.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// deriveKey returns zero-filled output on some HKDF setup failures (silent
+// in OpenSSL 3.x without the digest — fixed here, but defensive): a chain of
+// all zeros is never a usable session key.
+bool usableQuantumChain(const bytes::vector &chain) {
+    if (chain.size() != kAesKeySize) {
+        return false;
+    }
+    for (const auto byte : chain) {
+        if (byte != bytes::type(0)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool usableQuantumSnapshot(const QuantumSessionSnapshot &state) {
+    return usableQuantumChain(state.rootKey)
+        && usableQuantumChain(state.sendChainKey)
+        && usableQuantumChain(state.recvChainKey);
+}
+
+} // namespace
+
+bool SignalProtocol::peerKemKeyAdvertised(not_null<PeerData*> peer) const {
+    if (!quantumProtectionActive()) {
+        return false;
+    }
+    QFile peerKeyFile(peerQuantumKeyPath(peer));
+    return peerKeyFile.exists() && peerKeyFile.size() > 0;
+}
+
+bool SignalProtocol::peerQuantumSessionActive(not_null<PeerData*> peer) const {
+    return usableQuantumSnapshot(loadPeerQuantumSession(peer->id));
+}
+
+bool SignalProtocol::establishQuantumSessionInitiator(
+        not_null<PeerData*> peer,
+        MessageMetadata &outMetadata) {
+    if (!quantumProtectionActive() || peerQuantumSessionActive(peer)) {
+        return false;
+    }
+    QFile peerKeyFile(peerQuantumKeyPath(peer));
+    if (!peerKeyFile.open(QIODevice::ReadOnly)) {
+        return false; // peer has not advertised a KEM key (yet)
+    }
+    const auto der = peerKeyFile.readAll();
+    peerKeyFile.close();
+    if (der.isEmpty()) {
+        return false;
+    }
+
+    ensureQuantumIdentity();
+    if (!_quantumGuard
+        || !_quantumGuard->initialize()
+        || _quantumKemKeyId.isEmpty()
+        || _quantumKemPublicKeyDer.empty()) {
+        LOG(("Signal Protocol [PQ]: no local KEM identity for quantum session establishment"));
+        return false;
+    }
+
+    const auto importId = u"pq-peer-%1"_q.arg(peer->id.value);
+    const auto imported = _quantumGuard->importPeerKemPublicKey(
+        importId, QuantumAlgorithm::Unknown, der);
+    if (!imported) {
+        LOG(("Signal Protocol [PQ]: peer key import failed: %1").arg(imported.error()));
+        return false;
+    }
+
+    // REAL ML-KEM encapsulation: fresh shared secret + the ciphertext the
+    // peer must decapsulate with their static private key.
+    auto encapsulated = _quantumGuard->quantumEncapsulate(importId);
+    if (!encapsulated
+        || encapsulated->sharedSecret.empty()
+        || encapsulated->ciphertext.empty()) {
+        LOG(("Signal Protocol [PQ]: quantum session encapsulation failed"));
+        return false;
+    }
+
+    QuantumSessionSnapshot state;
+    state.rootKey = deriveKey(
+        encapsulated->sharedSecret, kInfoQuantumRoot, kAesKeySize);
+    // Initiator ("Alice") labels: send chain A, receive chain B.
+    state.sendChainKey = deriveKey(
+        state.rootKey, kInfoQuantumChainA, kAesKeySize);
+    state.recvChainKey = deriveKey(
+        state.rootKey, kInfoQuantumChainB, kAesKeySize);
+    secureWipe(encapsulated->sharedSecret);
+    if (!usableQuantumSnapshot(state)) {
+        LOG(("Signal Protocol [PQ]: quantum session key derivation failed"));
+        return false;
+    }
+    savePeerQuantumSession(peer->id, state);
+
+    // The encapsulation ciphertext is transported ONCE (first quantum-
+    // protected message per session); subsequent messages set hasQuantumInit
+    // = false with empty fields and advance the chains instead.
+    outMetadata.hasQuantumInit = true;
+    outMetadata.quantumKemCiphertext = encapsulated->ciphertext;
+    outMetadata.quantumKemEmitterPublic = _quantumKemPublicKeyDer;
+
+    LOG(("Signal Protocol [PQ]: established quantum session with peer %1")
+        .arg(peer->id.value));
+    return true;
+}
+
+bool SignalProtocol::acceptQuantumSessionInit(
+        not_null<PeerData*> peer,
+        const bytes::const_span &kemCiphertext) {
+    if (!quantumProtectionActive() || kemCiphertext.empty()) {
+        return false;
+    }
+    ensureQuantumIdentity();
+    if (!_quantumGuard || !_quantumGuard->initialize() || _quantumKemKeyId.isEmpty()) {
+        LOG(("Signal Protocol [PQ]: no local KEM identity to accept quantum init"));
+        return false;
+    }
+
+    // Resolver ("Bob") side: decapsulate with OUR static KEM private — the
+    // same shared secret the initiator derived — and swap the chain labels
+    // (our send chain is ChainB, the initiator's is ChainA).
+    auto sharedSecret = _quantumGuard->quantumDecapsulate(
+        _quantumKemKeyId, kemCiphertext);
+    if (!sharedSecret || sharedSecret->empty()) {
+        LOG(("Signal Protocol [PQ]: quantum init decapsulation failed"));
+        return false;
+    }
+
+    QuantumSessionSnapshot state;
+    state.rootKey = deriveKey(*sharedSecret, kInfoQuantumRoot, kAesKeySize);
+    state.recvChainKey = deriveKey(
+        state.rootKey, kInfoQuantumChainA, kAesKeySize);
+    state.sendChainKey = deriveKey(
+        state.rootKey, kInfoQuantumChainB, kAesKeySize);
+    secureWipe(*sharedSecret);
+    if (!usableQuantumSnapshot(state)) {
+        LOG(("Signal Protocol [PQ]: quantum session key derivation failed"));
+        return false;
+    }
+    // A fresh init (re)establishes the session. This recovers a peer that
+    // restarted with lost session state; replaying an OLD init only resets
+    // the chains, which fails closed (every message protected under the
+    // previous session then fails authentication — a DoS at worst).
+    savePeerQuantumSession(peer->id, state);
+
+    LOG(("Signal Protocol [PQ]: accepted quantum session init from peer %1")
+        .arg(peer->id.value));
+    return true;
+}
+
+bytes::vector SignalProtocol::encryptQuantumSessionMessage(
+        const bytes::const_span &plaintext,
+        not_null<PeerData*> peer,
+        MessageMetadata &outMetadata) {
+
+    if (!hasSession(peer)) {
+        LOG(("Signal Protocol: No session for peer %1").arg(peer->id.value));
+        return {};
+    }
+
+    // Check for CAC-verified peer trust encryption (parity with
+    // encryptMessage — the classic layer still carries the message).
+    const auto trustParams = Core::PeerTrustEncryption::GetEncryptionParams(peer->id.value);
+    if (trustParams.verified && trustParams.useTPM) {
+        LOG(("Signal Protocol: Using %1 with TPM backing for CAC-verified peer %2")
+            .arg(trustParams.cipher)
+            .arg(peer->id.value));
+    }
+
+    auto session = getSession(peer);
+    session.lastUsedAt = base::unixtime::now();
+
+    bytes::vector aad;
+    auto classicKey = beginClassicEncryption(peer, outMetadata, aad, session);
+    if (classicKey.empty()) {
+        return {};
+    }
+
+    auto state = loadPeerQuantumSession(peer->id);
+    if (!usableQuantumSnapshot(state)) {
+        secureWipe(classicKey);
+        secureWipe(aad);
+        return {};
+    }
+
+    // Quantum layer FIRST: the plaintext is encrypted under the quantum
+    // chain key with the SAME iv + AAD as the classic layer, binding the
+    // quantum payload to this exact message.
+    auto quantumKey = deriveKey(state.sendChainKey, kInfoQuantumMessage, kAesKeySize);
+    auto nextSendChain = deriveKey(state.sendChainKey, kInfoQuantumChainStep, kAesKeySize);
+    auto quantumCiphertext = aesGcmEncrypt(plaintext, quantumKey, outMetadata.iv, aad);
+    secureWipe(quantumKey);
+    if (quantumCiphertext.empty()) {
+        secureWipe(nextSendChain);
+        secureWipe(classicKey);
+        secureWipe(aad);
+        LOG(("Signal Protocol [PQ]: quantum session encryption failed"));
+        return {};
+    }
+
+    // ...then the classic ratchet encrypts the whole quantum-protected
+    // payload exactly as it encrypts any payload.
+    auto ciphertext = aesGcmEncrypt(quantumCiphertext, classicKey, outMetadata.iv, aad);
+    secureWipe(quantumCiphertext);
+    secureWipe(classicKey);
+    secureWipe(aad);
+    if (ciphertext.empty()) {
+        LOG(("Signal Protocol Error: AES-GCM encryption failed"));
+        return {};
+    }
+
+    // Commit both layers only after the full send path succeeded (the send
+    // chain advanced exactly once for a message that is actually sent).
+    state.sendChainKey = std::move(nextSendChain);
+    state.sendCounter++;
+    savePeerQuantumSession(peer->id, state);
+
+    updateSession(peer, session);
+    return ciphertext;
+}
+
+std::optional<bytes::vector> SignalProtocol::quantumUnwrapSessionPayload(
+        not_null<PeerData*> peer,
+        const bytes::const_span &payload,
+        const MessageMetadata &metadata) {
+    auto state = loadPeerQuantumSession(peer->id);
+    if (!usableQuantumSnapshot(state)) {
+        return std::nullopt;
+    }
+
+    bytes::vector messageKey;
+    if (metadata.messageCounter == state.recvCounter) {
+        // Expected message — derive the quantum message key and advance.
+        messageKey = deriveKey(state.recvChainKey, kInfoQuantumMessage, kAesKeySize);
+        state.recvChainKey = deriveKey(state.recvChainKey, kInfoQuantumChainStep, kAesKeySize);
+        state.recvCounter++;
+    } else if (metadata.messageCounter > state.recvCounter) {
+        // Future message — catch up, storing the skipped quantum keys exactly
+        // like the classic layer stores its skipped message keys.
+        if (metadata.messageCounter - state.recvCounter > kMaxQuantumSkipAhead) {
+            LOG(("Signal Protocol [PQ]: Too many skipped messages for the quantum chain"));
+            return std::nullopt;
+        }
+        auto currentChain = state.recvChainKey;
+        auto currentCounter = state.recvCounter;
+        while (currentCounter < metadata.messageCounter) {
+            QuantumSessionSnapshot::SkippedKey skip;
+            skip.messageNumber = currentCounter;
+            skip.key = deriveKey(currentChain, kInfoQuantumMessage, kAesKeySize);
+            state.skippedKeys.push_back(std::move(skip));
+
+            if (state.skippedKeys.size() > kMaxSkippedKeys) {
+                secureWipe(state.skippedKeys.front().key);
+                state.skippedKeys.erase(state.skippedKeys.begin());
+            }
+
+            currentChain = deriveKey(currentChain, kInfoQuantumChainStep, kAesKeySize);
+            currentCounter++;
+        }
+        messageKey = deriveKey(currentChain, kInfoQuantumMessage, kAesKeySize);
+        state.recvChainKey = deriveKey(currentChain, kInfoQuantumChainStep, kAesKeySize);
+        state.recvCounter = currentCounter + 1;
+    } else {
+        // Old message — check the skipped quantum key store.
+        const auto it = std::find_if(
+            state.skippedKeys.begin(),
+            state.skippedKeys.end(),
+            [&](const QuantumSessionSnapshot::SkippedKey &key) {
+                return key.messageNumber == metadata.messageCounter;
+            });
+        if (it == state.skippedKeys.end()) {
+            LOG(("Signal Protocol [PQ]: quantum message key not found for counter %1")
+                .arg(metadata.messageCounter));
+            return std::nullopt;
+        }
+        messageKey = it->key;
+        state.skippedKeys.erase(it);
+    }
+
+    // Same AAD + IV as the classic layer for this message.
+    bytes::vector aad;
+    aad.reserve(4 + metadata.senderPublicKey.size());
+    auto counter = metadata.messageCounter;
+    aad.push_back(bytes::type((counter >> 24) & 0xFF));
+    aad.push_back(bytes::type((counter >> 16) & 0xFF));
+    aad.push_back(bytes::type((counter >> 8) & 0xFF));
+    aad.push_back(bytes::type(counter & 0xFF));
+    aad.insert(aad.end(), metadata.senderPublicKey.begin(), metadata.senderPublicKey.end());
+
+    auto plaintext = aesGcmDecrypt(payload, messageKey, metadata.iv, aad);
+    secureWipe(messageKey);
+    secureWipe(aad);
+    if (plaintext.empty()) {
+        LOG(("Signal Protocol [PQ]: quantum session unwrap failed (chain mismatch)"));
+        return std::nullopt;
+    }
+
+    // Commit the receive chain only after a successful unwrap.
+    savePeerQuantumSession(peer->id, state);
+    return plaintext;
 }
 
 // Helpers
@@ -2840,6 +3197,13 @@ QString SignalProtocol::wrapEncryptedText(const bytes::vector &ciphertext, const
     QDataStream stream(&data, QIODevice::WriteOnly);
     stream.setVersion(QDataStream::Qt_5_15);
 
+    // Envelope version 2 routing prefix, written FIRST. Legacy (pre-v2)
+    // envelopes begin with the classic message counter at this position, so
+    // a receiver routing on this int keeps parsing them in the legacy field
+    // order (unwrapEncryptedText). The Android InteropCore wrapEnvelope
+    // mirrors this layout byte for byte.
+    stream << qint32(kEnvelopeVersion2);
+
     stream << metadata.messageCounter;
     stream << QByteArray(reinterpret_cast<const char*>(metadata.iv.data()), metadata.iv.size());
     stream << QByteArray(reinterpret_cast<const char*>(metadata.senderPublicKey.data()), metadata.senderPublicKey.size());
@@ -2864,6 +3228,19 @@ QString SignalProtocol::wrapEncryptedText(const bytes::vector &ciphertext, const
         // cryptographic validation — it never crosses the wire.
     }
 
+    // Quantum session init (v2 only): the ML-KEM encapsulation ciphertext is
+    // transported ONCE — on the first quantum-protected message of a fresh
+    // quantum session. kemEmitterPublic is the sender's static KEM public
+    // (SPKI DER) so the receiver can pick the right key store entry; the
+    // receiver decapsulates with its own static private key.
+    stream << metadata.hasQuantumInit;
+    if (metadata.hasQuantumInit) {
+        stream << QByteArray(reinterpret_cast<const char*>(metadata.quantumKemCiphertext.data()),
+                             metadata.quantumKemCiphertext.size());
+        stream << QByteArray(reinterpret_cast<const char*>(metadata.quantumKemEmitterPublic.data()),
+                             metadata.quantumKemEmitterPublic.size());
+    }
+
     stream << QByteArray(reinterpret_cast<const char*>(ciphertext.data()), ciphertext.size());
 
     const QChar kInvis[4] = { QChar(0x200B), QChar(0x200C), QChar(0x200D), QChar(0x2060) };
@@ -2878,6 +3255,63 @@ QString SignalProtocol::wrapEncryptedText(const bytes::vector &ciphertext, const
         result += kInvis[byte & 3];
     }
     return result;
+}
+
+// Envelope version 2 parser (routable quantum sessions). Field order after
+// the leading qint32 version matches the legacy layout, with the quantum
+// init fields inserted before the ciphertext.
+std::optional<std::pair<bytes::vector, SignalProtocol::MessageMetadata>> UnwrapEncryptedTextV2(
+        const QByteArray &data) {
+    QDataStream stream(data);
+    stream.setVersion(QDataStream::Qt_5_15);
+
+    SignalProtocol::MessageMetadata metadata;
+    qint32 version = 0;
+    stream >> version;
+    if (stream.status() != QDataStream::Ok || version != kEnvelopeVersion2) {
+        return std::nullopt;
+    }
+    metadata.envelopeVersion = kEnvelopeVersion2;
+
+    QByteArray iv, senderPublicKey, ct;
+    stream >> metadata.messageCounter >> iv >> senderPublicKey >> metadata.timestamp;
+
+    // ZK Phase 1 (identical to legacy)
+    stream >> metadata.hasCacChallenge;
+    if (metadata.hasCacChallenge) {
+        QByteArray challenge;
+        stream >> challenge;
+        metadata.cacChallengeNonce = bytes::make_vector(challenge);
+    }
+
+    // ZK Phase 2 — DER cert chain, NO DN (identical to legacy)
+    stream >> metadata.hasCacResponse;
+    if (metadata.hasCacResponse) {
+        QByteArray sig, certChain;
+        stream >> sig >> certChain;
+        metadata.cacSignature    = bytes::make_vector(sig);
+        metadata.cacCertChainDer = bytes::make_vector(certChain);
+    }
+
+    // Quantum session init (v2 only)
+    stream >> metadata.hasQuantumInit;
+    if (metadata.hasQuantumInit) {
+        QByteArray kemCiphertext, kemEmitterPublic;
+        stream >> kemCiphertext >> kemEmitterPublic;
+        metadata.quantumKemCiphertext     = bytes::make_vector(kemCiphertext);
+        metadata.quantumKemEmitterPublic  = bytes::make_vector(kemEmitterPublic);
+        if (metadata.quantumKemCiphertext.empty()
+            || metadata.quantumKemEmitterPublic.empty()) {
+            return std::nullopt;
+        }
+    }
+
+    stream >> ct;
+    if (stream.status() != QDataStream::Ok) return std::nullopt;
+
+    metadata.iv              = bytes::make_vector(iv);
+    metadata.senderPublicKey = bytes::make_vector(senderPublicKey);
+    return std::make_pair(bytes::make_vector(ct), metadata);
 }
 
 std::optional<std::pair<bytes::vector, SignalProtocol::MessageMetadata>> SignalProtocol::unwrapEncryptedText(const QString &text) {
@@ -2901,6 +3335,27 @@ std::optional<std::pair<bytes::vector, SignalProtocol::MessageMetadata>> SignalP
         if (b1 < 0 || b2 < 0 || b3 < 0 || b4 < 0) break;
         uint8 byte = (b1 << 6) | (b2 << 4) | (b3 << 2) | b4;
         data.append(static_cast<char>(byte));
+    }
+
+    // Route on the leading envelope version int. Legacy envelopes carry the
+    // classic message counter at this position: counters 0/1 (and any value
+    // that is not exactly 2) fall through to the legacy parser below, which
+    // keeps byte-compatible with envelopes already persisted in-flight. A
+    // legacy message whose counter happens to be 2 is structurally rejected
+    // by the v2 parser (the legacy IV length prefix is the random first four
+    // IV bytes) and then still parses as legacy.
+    {
+        QDataStream probe(data);
+        probe.setVersion(QDataStream::Qt_5_15);
+        qint32 version = 0;
+        probe >> version;
+        if (probe.status() == QDataStream::Ok && version == kEnvelopeVersion2) {
+            if (auto v2 = UnwrapEncryptedTextV2(data)) {
+                return v2;
+            }
+            // Corrupted or misrouted blob: fall through to the legacy
+            // parser, which fails loudly on real truncation.
+        }
     }
 
     QDataStream stream(data);
@@ -2941,14 +3396,31 @@ TextWithEntities SignalProtocol::processOutgoingMessage(not_null<PeerData*> peer
 
     MessageMetadata metadata;
     const auto plaintext = bytes::make_span(original.text.toUtf8());
-    // Post-quantum inner envelope (real ML-KEM + AES-256-GCM), applied
-    // before the classic ratchet when the peer advertised a KEM key and
-    // quantum protection is enabled; otherwise silently classic-only.
+    // Post-quantum protection. A per-peer ratcheted quantum session —
+    // established by ONE ML-KEM encapsulation when quantum protection is
+    // active and the peer advertised a KEM key (0x02) — supersedes the
+    // per-message PQE1 envelopes: the first quantum-protected message
+    // transports the encapsulation ciphertext in the v2 envelope metadata,
+    // later messages advance the chains with no new encapsulation. Without
+    // an established session the per-message PQE1 envelope (real ML-KEM +
+    // AES-256-GCM) applies as before; failing both, the message is silently
+    // classic-only.
     auto payload = bytes::vector(plaintext.begin(), plaintext.end());
-    if (auto quantumWrapped = quantumWrapPayload(peer, bytes::make_span(payload))) {
-        payload = std::move(*quantumWrapped);
+    bytes::vector ciphertext;
+    bool quantumSessionActive = false;
+    if (peerKemKeyAdvertised(peer)) {
+        quantumSessionActive = peerQuantumSessionActive(peer)
+            || establishQuantumSessionInitiator(peer, metadata);
     }
-    auto ciphertext = encryptMessage(bytes::make_span(payload), peer, metadata);
+    if (quantumSessionActive) {
+        ciphertext = encryptQuantumSessionMessage(
+            bytes::make_span(payload), peer, metadata);
+    } else {
+        if (auto quantumWrapped = quantumWrapPayload(peer, bytes::make_span(payload))) {
+            payload = std::move(*quantumWrapped);
+        }
+        ciphertext = encryptMessage(bytes::make_span(payload), peer, metadata);
+    }
     if (ciphertext.empty()) return original;
 
     // === ZK Phase 1: always emit a fresh challenge nonce ===
@@ -2991,14 +3463,24 @@ TextWithTags SignalProtocol::processOutgoingMessage(not_null<PeerData*> peer, co
 
     MessageMetadata metadata;
     const auto plaintext = bytes::make_span(original.text.toUtf8());
-    // Post-quantum inner envelope (real ML-KEM + AES-256-GCM), applied
-    // before the classic ratchet when the peer advertised a KEM key and
-    // quantum protection is enabled; otherwise silently classic-only.
+    // Quantum protection (see the TextWithEntities overload): an established
+    // per-peer quantum session supersedes the per-message PQE1 envelopes.
     auto payload = bytes::vector(plaintext.begin(), plaintext.end());
-    if (auto quantumWrapped = quantumWrapPayload(peer, bytes::make_span(payload))) {
-        payload = std::move(*quantumWrapped);
+    bytes::vector ciphertext;
+    bool quantumSessionActive = false;
+    if (peerKemKeyAdvertised(peer)) {
+        quantumSessionActive = peerQuantumSessionActive(peer)
+            || establishQuantumSessionInitiator(peer, metadata);
     }
-    auto ciphertext = encryptMessage(bytes::make_span(payload), peer, metadata);
+    if (quantumSessionActive) {
+        ciphertext = encryptQuantumSessionMessage(
+            bytes::make_span(payload), peer, metadata);
+    } else {
+        if (auto quantumWrapped = quantumWrapPayload(peer, bytes::make_span(payload))) {
+            payload = std::move(*quantumWrapped);
+        }
+        ciphertext = encryptMessage(bytes::make_span(payload), peer, metadata);
+    }
     if (ciphertext.empty()) return original;
 
     metadata.hasCacChallenge   = true;
@@ -3206,8 +3688,15 @@ TextWithEntities SignalProtocol::processIncomingMessage(not_null<PeerData*> peer
     }
     if (plaintext.empty()) return original;
 
-    // Post-quantum inner envelope: real ML-KEM decapsulation + AES-256-GCM,
-    // stripped after the classic ratchet layer has been removed.
+    // Post-quantum inner envelopes, stripped after the classic ratchet layer
+    // has been removed. Routing order matters:
+    //   1. Legacy per-message PQE1 (magic-gated) — the fallback for peers
+    //      advertising 0x02 without an established quantum session.
+    //   2. Quantum session (envelope v2): on the FIRST quantum-protected
+    //      message hasQuantumInit transports the ML-KEM encapsulation
+    //      ciphertext (decapsulated with our static private key); every
+    //      subsequent message is unwrapped with the lockstep chain keys and
+    //      carries NO new encapsulation.
     if (plaintext.size() > 8
         && plaintext[0] == bytes::type('P')
         && plaintext[1] == bytes::type('Q')
@@ -3219,6 +3708,29 @@ TextWithEntities SignalProtocol::processIncomingMessage(not_null<PeerData*> peer
             return original;
         }
         plaintext = std::move(*unwrappedPq);
+    } else if (unwrapped->second.envelopeVersion == kEnvelopeVersion2) {
+        if (unwrapped->second.hasQuantumInit) {
+            const bool accepted = acceptQuantumSessionInit(
+                peer,
+                bytes::make_span(unwrapped->second.quantumKemCiphertext));
+            if (!accepted && !peerQuantumSessionActive(peer)) {
+                // A quantum-protected payload without usable chains is not
+                // readable — never surface the raw ciphertext as text.
+                LOG(("Signal Protocol [PQ]: dropping message with undecryptable quantum init"));
+                return original;
+            }
+        }
+        if (peerQuantumSessionActive(peer)) {
+            auto unwrappedQuantum = quantumUnwrapSessionPayload(
+                peer, bytes::make_span(plaintext), unwrapped->second);
+            if (!unwrappedQuantum) {
+                LOG(("Signal Protocol [PQ]: dropping undecryptable quantum-session payload"));
+                return original;
+            }
+            plaintext = std::move(*unwrappedQuantum);
+        }
+        // No quantum session and no init: classic-only v2 message — the
+        // payload is the plaintext as-is.
     }
 
     const auto &metadata = unwrapped->second;
