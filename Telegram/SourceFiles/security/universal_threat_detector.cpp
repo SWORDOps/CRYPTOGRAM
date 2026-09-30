@@ -38,6 +38,7 @@ https://github.com/SWORDIntel/SpyGram/blob/main/LEGAL
 #include <thread>
 #include <atomic>
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <cmath>
 
@@ -1422,11 +1423,22 @@ void UniversalThreatDetector::downloadAssetsAsync(const QString &tierName) {
         QString error;
         bool ok = false;
 
+        // Progress reporting: stage boundary ticks for the settings UI.
+        // The worker never touches UI objects directly — every emission is
+        // marshalled onto the owner thread through this object's event
+        // queue (same pattern as the onAssetsReady hop below).
+        const auto reportStage = [this](QString stage, int percent) {
+            QMetaObject::invokeMethod(this, [this, stage, percent] {
+                Q_EMIT assetsDownloadProgress(stage, percent);
+            }, Qt::QueuedConnection);
+        };
+
         QNetworkAccessManager nam;
 
         const auto fetchToFile =
                 [&](const QUrl &url, const QString &dest,
-                        bool executable, int timeoutMs) -> bool {
+                        bool executable, int timeoutMs,
+                        const std::function<void(int)> &onPercent = {}) -> bool {
             QDir().mkpath(QFileInfo(dest).absolutePath());
             const auto tmp = dest + ".part";
             QFile out(tmp);
@@ -1442,6 +1454,22 @@ void UniversalThreatDetector::downloadAssetsAsync(const QString &tierName) {
             QObject::connect(reply, &QNetworkReply::readyRead, [&] {
                 out.write(reply->readAll());
             });
+            // Percent ticks, throttled to integer-percent changes via the
+            // shared last-reported value (a multi-GB body would otherwise
+            // flood the UI thread with queued emissions).
+            if (onPercent) {
+                const auto lastPercent = std::make_shared<int>(-2);
+                QObject::connect(reply, &QNetworkReply::downloadProgress,
+                    [onPercent, lastPercent](qint64 received, qint64 total) {
+                        const auto percent = (total > 0)
+                            ? static_cast<int>((received * 100) / total)
+                            : -1;
+                        if (percent != *lastPercent) {
+                            *lastPercent = percent;
+                            onPercent(percent);
+                        }
+                    });
+            }
             QEventLoop loop;
             QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
             QTimer timer;
@@ -1528,11 +1556,37 @@ void UniversalThreatDetector::downloadAssetsAsync(const QString &tierName) {
 
         if (QFileInfo::exists(serverDest) && QFileInfo::exists(modelDest)) {
             ok = true; // both assets appeared while we were queued
-        } else if (fetchToFile(serverUrl, serverDest, true, 15 * 60 * 1000)
-            && verifySha256(serverDest)
-            && fetchToFile(modelUrl, modelDest, false, kAssetDownloadTimeoutMs)
-            && verifySha256(modelDest)) {
-            ok = true;
+        } else {
+            // Stage boundaries, reported as
+            // ("engine", -1) → engine fetch start
+            // ("engine", 100) → engine fetched + verified
+            // ("model", -1 / x%) → model fetch start / percent ticks
+            // ("verify", -1) → model sidecar verification
+            // ("verified", 100) → all assets verified
+            reportStage("engine", -1);
+            ok = fetchToFile(serverUrl, serverDest, true, 15 * 60 * 1000);
+            if (ok) {
+                reportStage("engine", 100);
+                ok = verifySha256(serverDest);
+            }
+            if (ok) {
+                reportStage("model", -1);
+                ok = fetchToFile(
+                    modelUrl,
+                    modelDest,
+                    false,
+                    kAssetDownloadTimeoutMs,
+                    [&reportStage](int percent) {
+                        reportStage(QStringLiteral("model"), percent);
+                    });
+                if (ok) {
+                    reportStage("verify", -1);
+                    ok = verifySha256(modelDest);
+                    if (ok) {
+                        reportStage("verified", 100);
+                    }
+                }
+            }
         }
 
         const auto failure = ok ? QString() : error;

@@ -166,12 +166,33 @@ private:
 
     // Cryptographic session state
     // _sessionKey: 32-byte random key generated at construction.
-    // _packetSigningKey: 32-byte HMAC key derived from _sessionKey via HKDF-SHA256
-    //   label "CovertChannel-PacketMAC". Used for HMAC authentication of every packet.
+    // _packetSigningKey: HMAC key derived from _sessionKey via HKDF with label
+    //   "CovertChannel-PacketMAC". Used for HMAC authentication of every
+    //   packet. The digest is selected once at construction from the quantum
+    //   security level: level >= 3 (CNSA 2.0 tier) uses a uniform SHA-384
+    //   chain — HKDF-SHA384, 48-byte key, HMAC-SHA-384 (128-byte block) —
+    //   while levels 1-2 keep the legacy uniform SHA-256 chain (HKDF-SHA256,
+    //   32-byte key, HMAC-SHA-256, 64-byte block). The two digests are never
+    //   mixed inside one chain, and the selection is snapshotted so a
+    //   mid-session level change cannot desynchronize sign/verify.
     bytes::vector _sessionKey;
     bytes::vector _packetSigningKey;
+    bool _cnsa2Chain = false;  // true → SHA-384 chain, false → SHA-256 chain
 
+    [[nodiscard]] static bool useCnsa20Chain();
     void derivePacketSigningKey();
+
+    // HMAC over the packet signing material, using the digest selected for
+    // this channel instance (never called before derivePacketSigningKey).
+    [[nodiscard]] bytes::vector signPacketData(
+        const bytes::const_span &data) const;
+
+    // HMAC tag length on the wire: 48 bytes (SHA-384) for the CNSA 2.0
+    // tier, 32 bytes (SHA-256) for the legacy chain. Both sides of a
+    // uniform deployment select the same tier via the security level.
+    [[nodiscard]] size_t signatureSize() const {
+        return _cnsa2Chain ? 48 : 32;
+    }
 };
 
 } // namespace Data

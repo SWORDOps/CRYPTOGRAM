@@ -233,6 +233,12 @@ Q_SIGNALS:
     void analysisError(const QString &requestId, const QString &error);
     void modelLoaded(const QString &modelName);
     void modelLoadError(const QString &modelName, const QString &error);
+    // On-demand AI asset download progress, emitted from the download
+    // worker (hopped to the owner thread via QMetaObject::invokeMethod).
+    // stage: "engine" (llama-server fetch), "model" (GGUF fetch),
+    // "verify" (SHA-256 sidecar check). percent is 0..100, or -1 when
+    // indeterminate. Failures keep using modelLoadError.
+    void assetsDownloadProgress(const QString &stage, int percent);
     void processingTierChanged(AIProcessingTier newTier, AIProcessingTier oldTier);
     void statisticsUpdated(const ProcessingStatistics &stats);
     void threatDatabaseUpdated(int newVersion);

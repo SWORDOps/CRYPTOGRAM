@@ -137,6 +137,19 @@ target_link_libraries(test_android_persistence_host
     OpenSSL::Crypto
 )
 
+# Covert-channel CNSA 2.0 alignment (data_covert_channel.cpp): level-gated
+# uniform SHA-384 chain (HKDF-SHA384, 48-byte key, HMAC-SHA-384, 128-byte
+# block) vs the legacy uniform SHA-256 chain. Pure OpenSSL.
+add_executable(test_covert_channel_sha384
+    test_covert_channel_sha384.cpp
+)
+
+target_link_libraries(test_covert_channel_sha384
+    PRIVATE
+    Catch2::Catch2WithMain
+    OpenSSL::Crypto
+)
+
 # Exercises the production QuantumGuard implementation itself (ML-KEM
 # encapsulation/decapsulation, AES-256-GCM, key import and persistence).
 # Requires Qt6::Core, so it is NOT part of the minimal standalone CI set.

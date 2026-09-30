@@ -68,6 +68,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/fields/input_field.h"
+#include "ui/widgets/labels.h"
 #include "ui/wrap/slide_wrap.h"
 #include "ui/wrap/vertical_layout.h"
 #include "window/window_session_controller.h"
@@ -562,7 +563,67 @@ void BuildThreatDetectorSection(SectionBuilder &builder) {
 			Security::UniversalThreatDetector::instance().setEnabled(enabled);
 		}, toggle->lifetime());
 	}
-	
+
+	// Asset download status row under the AI toggle. Driven purely by the
+	// detector's signals (assetsDownloadProgress / modelLoadError /
+	// modelLoaded) — no polling, no threading changes in the settings UI.
+	builder.addControl({
+		.factory = [=](not_null<Ui::VerticalLayout*> container)
+				-> object_ptr<Ui::RpWidget> {
+			auto label = object_ptr<Ui::FlatLabel>(
+				container,
+				QString(),
+				st::defaultFlatLabel);
+			const auto raw = label.data();
+
+			// The detector is a main-thread singleton and emits these on
+			// the main thread, so plain connects are safe. Using `raw` as
+			// the context object disconnects on widget destruction.
+			QObject::connect(
+				&Security::UniversalThreatDetector::instance(),
+				&Security::UniversalThreatDetector::assetsDownloadProgress,
+				raw,
+				[=](const QString &stage, int percent) {
+					auto text = [&] {
+						if (stage == u"engine"_q) {
+							return (percent == 100)
+								? QString("AI engine downloaded.")
+								: QString("Downloading AI engine…");
+						} else if (stage == u"model"_q) {
+							return (percent >= 0)
+								? QString("Downloading model… %1%").arg(percent)
+								: QString("Downloading model…");
+						} else if (stage == u"verify"_q) {
+							return QString("Verifying AI assets…");
+						} else if (stage == u"verified"_q) {
+							return QString("AI assets ready.");
+						}
+						return QString();
+					}();
+					raw->setText(text);
+				});
+			QObject::connect(
+				&Security::UniversalThreatDetector::instance(),
+				&Security::UniversalThreatDetector::modelLoadError,
+				raw,
+				[=](const QString &, const QString &error) {
+					raw->setText(
+						QString("AI asset download failed: %1").arg(error));
+				});
+			QObject::connect(
+				&Security::UniversalThreatDetector::instance(),
+				&Security::UniversalThreatDetector::modelLoaded,
+				raw,
+				[=] {
+					raw->setText(QString());
+				});
+			return label;
+		},
+		.id = u"security/ai_download_status"_q,
+		.title = rpl::single(QString("AI Asset Download Status")),
+		.keywords = { u"ai"_q, u"download"_q, u"progress"_q, u"status"_q },
+	});
+
 	builder.addSkip();
 	builder.addDividerText(rpl::single(QString("Automatically scans incoming messages for phishing, malware, and social engineering using a local AI model (Qwen 2.5). The AI engine and the selected model (~0.5–2 GB) are downloaded on demand when you enable this — nothing is bundled with the app. Disable to save battery life.")));
 	

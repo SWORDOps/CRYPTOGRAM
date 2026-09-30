@@ -28,17 +28,21 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LEGAL
 namespace Data {
 namespace {
 
-// Helper to compute HMAC for integrity
-bytes::vector computeHMAC(const bytes::const_span &key, const bytes::const_span &data) {
+// Helper to compute HMAC for integrity using the full RFC 2104 construction.
+// The digest and block size always belong together (SHA-256 → 64-byte block,
+// SHA-384 → 128-byte block); mixing them produces invalid HMACs.
+bytes::vector computeHMAC(
+        const bytes::const_span &key,
+        const bytes::const_span &data,
+        QCryptographicHash::Algorithm algorithm,
+        int blockSize) {
     QByteArray keyData(reinterpret_cast<const char*>(key.data()), key.size());
     QByteArray msgData(reinterpret_cast<const char*>(data.data()), data.size());
 
-    // HMAC-SHA256 using full RFC 2104 construction
-    const int blockSize = 64; // SHA-256 block size
     QByteArray k = keyData;
 
     if (k.size() > blockSize) {
-        k = QCryptographicHash::hash(k, QCryptographicHash::Sha256);
+        k = QCryptographicHash::hash(k, algorithm);
     }
     if (k.size() < blockSize) {
         k = k.leftJustified(blockSize, '\0');
@@ -52,38 +56,100 @@ bytes::vector computeHMAC(const bytes::const_span &key, const bytes::const_span 
         opad[i] = opad[i] ^ k[i];
     }
 
-    QByteArray inner = QCryptographicHash::hash(ipad + msgData, QCryptographicHash::Sha256);
-    QByteArray hmac = QCryptographicHash::hash(opad + inner, QCryptographicHash::Sha256);
+    QByteArray inner = QCryptographicHash::hash(ipad + msgData, algorithm);
+    QByteArray hmac = QCryptographicHash::hash(opad + inner, algorithm);
 
     bytes::vector result(hmac.size());
     memcpy(result.data(), hmac.constData(), hmac.size());
     return result;
 }
 
+// Legacy chain: HKDF-SHA256 + HMAC-SHA-256 (64-byte block), 32-byte key.
+bytes::vector computeHmacSha256(
+        const bytes::const_span &key,
+        const bytes::const_span &data) {
+    return computeHMAC(
+        key,
+        data,
+        QCryptographicHash::Sha256,
+        64);
+}
+
+// CNSA 2.0 tier: HKDF-SHA384 + HMAC-SHA-384 (128-byte block), 48-byte key.
+bytes::vector computeHmacSha384(
+        const bytes::const_span &key,
+        const bytes::const_span &data) {
+    return computeHMAC(
+        key,
+        data,
+        QCryptographicHash::Sha384,
+        128);
+}
+
 } // namespace
 
+// CNSA 2.0 alignment: the military-trust tier (quantum security level >= 3)
+// upgrades the whole covert-channel authentication chain uniformly to
+// SHA-384. Lower levels keep the SHA-256 chain so existing tiers never
+// change wire behavior silently.
+bool CovertChannel::useCnsa20Chain() {
+    return Core::App().settings().quantumSecurityLevel()
+        >= int(Data::QuantumSecurityLevel::Level3);
+}
+
+// HMAC with the digest this channel instance selected at construction.
+bytes::vector CovertChannel::signPacketData(
+        const bytes::const_span &data) const {
+    if (_cnsa2Chain) {
+        return computeHmacSha384(bytes::make_span(_packetSigningKey), data);
+    }
+    return computeHmacSha256(bytes::make_span(_packetSigningKey), data);
+}
+
 void CovertChannel::derivePacketSigningKey() {
-    // HKDF-SHA256: extract + expand from _sessionKey with label "CovertChannel-PacketMAC"
-    // Using OpenSSL EVP_KDF interface (available in OpenSSL 3.x).
-    EVP_KDF *kdf = EVP_KDF_fetch(nullptr, "HKDF", nullptr);
-    if (!kdf) {
-        // Fallback: plain HMAC of the session key with fixed label
-        const char *label = "CovertChannel-PacketMAC";
+    // The chain is UNIFORM: HKDF digest, derived key length and packet HMAC
+    // all use the same hash. Level >= 3 (CNSA 2.0 tier) → SHA-384 with a
+    // 48-byte key; levels 1-2 keep the legacy SHA-256 chain with 32 bytes.
+    // Mixing SHA-256 and SHA-384 in one chain is forbidden.
+    _cnsa2Chain = useCnsa20Chain();
+    static const char *label = "CovertChannel-PacketMAC";
+    const auto digestName = _cnsa2Chain ? "SHA384" : "SHA256";
+    const auto keySize = _cnsa2Chain ? 48 : 32;
+
+    const auto fallbackKey = [&] {
+        // Fallback: plain HMAC of the session key with the fixed label,
+        // using the SAME digest as the primary derivation.
         const auto *labelBytesPtr = reinterpret_cast<const std::byte *>(label);
         bytes::vector labelBytes(labelBytesPtr, labelBytesPtr + strlen(label));
-        _packetSigningKey = computeHMAC(bytes::make_span(_sessionKey), bytes::make_span(labelBytes));
+        _packetSigningKey = _cnsa2Chain
+            ? computeHmacSha384(bytes::make_span(_sessionKey), bytes::make_span(labelBytes))
+            : computeHmacSha256(bytes::make_span(_sessionKey), bytes::make_span(labelBytes));
+    };
+
+    // HKDF extract + expand from _sessionKey using the OpenSSL EVP_KDF
+    // interface (OpenSSL 3.x).
+    EVP_KDF *kdf = EVP_KDF_fetch(nullptr, "HKDF", nullptr);
+    if (!kdf) {
+        fallbackKey();
         return;
     }
 
     EVP_KDF_CTX *ctx = EVP_KDF_CTX_new(kdf);
     EVP_KDF_free(kdf);
-    if (!ctx) return;
+    if (!ctx) {
+        fallbackKey();
+        return;
+    }
 
-    static const char *label = "CovertChannel-PacketMAC";
     OSSL_PARAM params[5];
     int mode = EVP_KDF_HKDF_MODE_EXTRACT_AND_EXPAND;
     params[0] = OSSL_PARAM_construct_int("mode", &mode);
-    params[1] = OSSL_PARAM_construct_utf8_string("digest", const_cast<char *>("SHA256"), 0);
+    // The digest MUST be set even in EXTRACT_AND_EXPAND mode — omitting it
+    // silently yields zero-filled output on OpenSSL 3.x.
+    params[1] = OSSL_PARAM_construct_utf8_string(
+        "digest",
+        const_cast<char *>(digestName),
+        0);
     params[2] = OSSL_PARAM_construct_octet_string(
         "key",
         const_cast<void *>(static_cast<const void *>(_sessionKey.data())),
@@ -94,15 +160,12 @@ void CovertChannel::derivePacketSigningKey() {
         strlen(label));
     params[4] = OSSL_PARAM_construct_end();
 
-    _packetSigningKey.resize(32);
+    _packetSigningKey.resize(keySize);
     if (EVP_KDF_derive(ctx,
-            reinterpret_cast<unsigned char *>(_packetSigningKey.data()), 32,
+            reinterpret_cast<unsigned char *>(_packetSigningKey.data()),
+            keySize,
             params) != 1) {
-        // Fallback on failure
-        const char *lb = "CovertChannel-PacketMAC";
-        const auto *lbPtr = reinterpret_cast<const std::byte *>(lb);
-        bytes::vector lbVec(lbPtr, lbPtr + strlen(lb));
-        _packetSigningKey = computeHMAC(bytes::make_span(_sessionKey), bytes::make_span(lbVec));
+        fallbackKey();
     }
     EVP_KDF_CTX_free(ctx);
 }
@@ -118,7 +181,9 @@ CovertChannel::CovertChannel(not_null<Main::Session*> session)
         // Fall back to base::RandomFill if OpenSSL RAND fails.
         base::RandomFill(bytes::make_span(_sessionKey));
     }
-    // Derive the packet signing key from the session key.
+    // Derive the packet signing key from the session key. The digest chain
+    // (SHA-256 legacy vs SHA-384 CNSA 2.0 tier) is selected here from the
+    // quantum security level and snapshotted for the channel's lifetime.
     derivePacketSigningKey();
 
     // Cleanup stale receptions every 60 seconds
@@ -156,8 +221,10 @@ void CovertChannel::sendCovertMessage(
     // Encrypt the message
     auto encrypted = encryptForCovert(plaintext, peer);
 
-    // Split into packets
-    const size_t maxPacketData = kMaxPacketSize - 32; // Reserve 32 bytes for header/signature
+    // Split into packets. Reserve room for the HMAC tag of this channel's
+    // chain (32 bytes SHA-256, 48 bytes SHA-384) next to the 8-byte header.
+    const size_t sigSize = signatureSize();
+    const size_t maxPacketData = kMaxPacketSize - sigSize;
     const uint32 totalPackets = (encrypted.size() + maxPacketData - 1) / maxPacketData;
 
     auto &transmission = _transmissions[peer->id];
@@ -196,10 +263,12 @@ CovertChannel::CovertPacket CovertChannel::createPacket(
     memcpy(signatureData.data() + 4, &total, 4);
     memcpy(signatureData.data() + 8, data.data(), data.size());
 
-    // Use the stable per-channel packet signing key (HKDF-derived from _sessionKey).
-    // This key is constant across all packets in the same channel session, providing
-    // real HMAC authentication instead of a random throw-away key.
-    packet.signature = computeHMAC(bytes::make_span(_packetSigningKey), signatureData);
+    // Use the stable per-channel packet signing key (HKDF-derived from
+    // _sessionKey with the digest selected for this channel's security
+    // level). This key is constant across all packets in the same channel
+    // session, providing real HMAC authentication instead of a random
+    // throw-away key.
+    packet.signature = signPacketData(signatureData);
 
     return packet;
 }
@@ -370,8 +439,10 @@ void CovertChannel::processTimingPattern(not_null<PeerData*> peer) {
     memcpy(&packet.sequenceNumber, packetData.data(), 4);
     memcpy(&packet.totalPackets, packetData.data() + 4, 4);
 
-    const size_t dataSize = packetData.size() - 8 - 32; // 8 byte header, 32 byte signature
-    if (dataSize > 0 && dataSize < packetData.size()) {
+    // 8 byte header + the HMAC tag length of this channel's chain.
+    const size_t sigSize = signatureSize();
+    if (packetData.size() > 8 + sigSize) {
+        const size_t dataSize = packetData.size() - 8 - sigSize;
         packet.data.assign(packetData.begin() + 8, packetData.begin() + 8 + dataSize);
         packet.signature.assign(packetData.begin() + 8 + dataSize, packetData.end());
 
