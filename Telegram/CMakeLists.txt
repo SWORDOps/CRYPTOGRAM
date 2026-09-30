@@ -2300,6 +2300,14 @@ else()
             desktop-app::external_xcb
         )
     endif()
+
+    # CAC/PIV smartcard backend (data/data_cac_interface.cpp) over PC/SC Lite.
+    # libpcsclite-dev is already installed by CI; the source side is guarded
+    # with __has_include, so machines without the headers keep the inert stub.
+    find_library(CRYPTOGRAM_PCSC_LIBRARY pcsclite)
+    if (CRYPTOGRAM_PCSC_LIBRARY)
+        target_link_libraries(Telegram PRIVATE ${CRYPTOGRAM_PCSC_LIBRARY})
+    endif()
 endif()
 
 if (build_macstore)

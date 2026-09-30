@@ -353,9 +353,11 @@ run_static_checks() {
     warn_grep 'RAND_bytes.*privateKey|RAND_bytes.*publicKey|placeholder.*signature|placeholder.*verification' \
         "Telegram/SourceFiles/data/data_mls_protocol.cpp" \
         "Desktop MLS still uses random bytes instead of real key generation"
-    warn_grep 'TODO: Initialize PC/SC' \
+    require_grep 'SCardEstablishContext' \
         "Telegram/SourceFiles/data/data_cac_interface.cpp" \
-        "CAC Linux backend still unimplemented (deprioritized: no test hardware)"
+        "CAC Linux PC/SC+PIV backend implemented (test hardware exists now: FIPS YubiKey — see docs/CAC_YUBIKEY_PROVISIONING.md)"
+    require_file "docs/CAC_YUBIKEY_PROVISIONING.md" \
+        "CAC YubiKey provisioning runbook present"
     warn_grep 'TODO\(quantum-transport\)' \
         "Telegram/SourceFiles/data/data_quantum_signal_impl.cpp" \
         "Quantum session-init transport still pending"

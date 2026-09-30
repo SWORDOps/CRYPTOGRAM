@@ -199,3 +199,28 @@ if (Qt6_FOUND)
         Qt6::Core
     )
 endif()
+
+# CAC/PIV hardware probe: drives the same PC/SC + PIV APDU sequence as the
+# production Linux backend (data_cac_interface.cpp) against a FIPS YubiKey in
+# PIV mode. Optional target — built only when the PC/SC development files are
+# present, so CI machines without libpcsclite-dev still configure. Without a
+# card attached the probe prints "plug in the YubiKey" instructions and exits
+# 0 (run_tests.sh-safe). See docs/CAC_YUBIKEY_PROVISIONING.md.
+find_path(CRYPTOGRAM_PCSC_INCLUDE_DIR PCSC/winscard.h)
+find_library(CRYPTOGRAM_PCSC_LIBRARY pcsclite)
+if (CRYPTOGRAM_PCSC_INCLUDE_DIR AND CRYPTOGRAM_PCSC_LIBRARY)
+    add_executable(test_cac_piv_probe
+        test_cac_piv_probe.cpp
+    )
+
+    target_include_directories(test_cac_piv_probe
+        PRIVATE
+        ${CRYPTOGRAM_PCSC_INCLUDE_DIR}
+    )
+
+    target_link_libraries(test_cac_piv_probe
+        PRIVATE
+        ${CRYPTOGRAM_PCSC_LIBRARY}
+        OpenSSL::Crypto
+    )
+endif()
