@@ -744,6 +744,8 @@ PRIVATE
     data/data_emoji_statuses.h
     data/data_enhanced_privacy.cpp
     data/data_enhanced_privacy.h
+    data/enhanced_privacy_crypto.cpp
+    data/enhanced_privacy_crypto.h
     data/data_folder.cpp
     data/data_folder.h
     data/data_forum.cpp

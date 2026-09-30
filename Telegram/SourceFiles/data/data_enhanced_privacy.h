@@ -85,10 +85,12 @@ public:
     static TextWithEntities DecryptMessage(const TextWithEntities &encrypted);
     static bool IsEncrypted(const TextWithEntities &text);
 
-    // Low-level AES-256-GCM string encryption/decryption.
-    // EncryptString returns a base64 string of (IV || ciphertext || tag).
-    // DecryptString accepts that base64 string and returns the plaintext
-    // (or an empty string on failure).
+    // Low-level passphrase string encryption/decryption, delegated to the
+    // self-contained EnhancedPrivacyCrypto unit (PBKDF2-HMAC-SHA-256 key
+    // derivation plus salted AES-256-GCM).
+    // EncryptString returns "CR2:" + base64(salt || iv || ciphertext || tag).
+    // DecryptString routes on the "CR2:" prefix (legacy envelopes from older
+    // builds are still accepted) and returns an empty string on failure.
     static QString EncryptString(const QString &text, const QString &key);
     static QString DecryptString(const QString &base64Text, const QString &key);
     

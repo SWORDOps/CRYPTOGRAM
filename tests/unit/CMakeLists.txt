@@ -162,4 +162,27 @@ if (Qt6_FOUND)
         OpenSSL::Crypto
         Qt6::Core
     )
+    # Exercises the production EnhancedPrivacyCrypto unit itself (PBKDF2
+    # key derivation, salted AES-256-GCM envelopes, legacy compatibility).
+    # Requires Qt6::Core, so it is NOT part of the minimal standalone CI set.
+    add_executable(test_e2e_enhanced_privacy
+        test_e2e_enhanced_privacy.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Telegram/SourceFiles/data/enhanced_privacy_crypto.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Telegram/lib_base/base/random.cpp
+    )
+
+    target_include_directories(test_e2e_enhanced_privacy
+        PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Telegram/SourceFiles
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Telegram/lib_base
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Telegram/ThirdParty/GSL/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Telegram/ThirdParty/expected/include
+    )
+
+    target_link_libraries(test_e2e_enhanced_privacy
+        PRIVATE
+        Catch2::Catch2WithMain
+        OpenSSL::Crypto
+        Qt6::Core
+    )
 endif()
