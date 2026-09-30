@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-VERSION=$(grep -oP 'AppVersion \K\S+' Telegram/build/version || echo "1.0.0")
+VERSION=$(sed -z "s/\xef\xbb\xbf//" Telegram/build/version | grep -aoP "AppVersionStr\s+\K\S+" | head -1)
 echo "Version: $VERSION"
 
 BINARY=""
