@@ -59,8 +59,11 @@ public class UserConfig extends BaseController {
 
     public boolean notificationsSettingsLoaded;
     public boolean notificationsSignUpSettingsLoaded;
-    public boolean syncContacts = true;
-    public boolean suggestContacts = true;
+    // Fork policy: contact sync/upload permanently disabled — the
+    // phone book never leaves the device.
+    public boolean syncContacts = false;
+    // Fork policy: never suggest/discover accounts by phone number.
+    public boolean suggestContacts = false;
     public boolean showCallsTab;
     public boolean hasSecureData;
     public int loginTime;
@@ -161,7 +164,8 @@ public class UserConfig extends BaseController {
                     editor.putInt("loginTime", loginTime);
                     editor.putBoolean("syncContacts", syncContacts);
                     editor.putBoolean("showCallsTab", showCallsTab);
-                    editor.putBoolean("suggestContacts", suggestContacts);
+            // Fork policy: persisted true is ignored.
+            editor.putBoolean("suggestContacts", false);
                     editor.putBoolean("hasSecureData", hasSecureData);
                     editor.putBoolean("notificationsSettingsLoaded4", notificationsSettingsLoaded);
                     editor.putBoolean("notificationsSignUpSettingsLoaded", notificationsSignUpSettingsLoaded);
@@ -311,9 +315,11 @@ public class UserConfig extends BaseController {
             botGuestRatingLoadTime = preferences.getInt("botGuestRatingLoadTime", 0);
             webappRatingLoadTime = preferences.getInt("webappRatingLoadTime", 0);
             loginTime = preferences.getInt("loginTime", currentAccount);
-            syncContacts = preferences.getBoolean("syncContacts", true);
+            // Fork policy: persisted sync=true is ignored — never upload.
+            syncContacts = false;
             showCallsTab = preferences.getBoolean("showCallsTab", false);
-            suggestContacts = preferences.getBoolean("suggestContacts", true);
+            // Fork policy: persisted true is ignored.
+            suggestContacts = false;
             hasSecureData = preferences.getBoolean("hasSecureData", false);
             notificationsSettingsLoaded = preferences.getBoolean("notificationsSettingsLoaded4", false);
             notificationsSignUpSettingsLoaded = preferences.getBoolean("notificationsSignUpSettingsLoaded", false);
@@ -483,9 +489,11 @@ public class UserConfig extends BaseController {
         webappRatingLoadTime = 0;
         draftsLoaded = false;
         contactsReimported = true;
-        syncContacts = true;
+        // Fork policy: resets also keep sync permanently off.
+        syncContacts = false;
         showCallsTab = false;
-        suggestContacts = true;
+        // Fork policy: resets keep discovery off.
+        suggestContacts = false;
         unreadDialogsLoaded = true;
         hasValidDialogLoadIds = true;
         unacceptedTermsOfService = null;

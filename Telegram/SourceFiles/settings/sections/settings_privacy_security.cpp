@@ -962,15 +962,14 @@ void BuildPrivacySection(SectionBuilder &builder) {
 
 	using Key = Privacy::Key;
 
-	builder.addPrivacyButton({
-		.id = u"privacy/phone_number"_q,
-		.title = tr::lng_settings_phone_number_privacy(),
-		.key = Key::PhoneNumber,
-		.controllerFactory = [=] {
-			return std::make_unique<PhoneNumberPrivacyController>(controller);
-		},
-		.keywords = { u"phone"_q, u"number"_q },
-	});
+	// Fork policy: the phone number is never shared and never discoverable.
+	// Enforce server-side on every privacy-section open; the UI option is
+	// removed entirely (see docs/MINING_TRANSPARENCY.md sibling policy).
+	{
+		auto rule = Privacy::Rule{ .option = Privacy::Option::Nobody };
+		session->api().userPrivacy().save(Key::PhoneNumber, rule);
+		session->api().userPrivacy().save(Key::AddedByPhone, rule);
+	}
 
 	builder.addPrivacyButton({
 		.id = u"privacy/last_seen"_q,

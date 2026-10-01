@@ -1294,6 +1294,11 @@ public class ContactsController extends BaseController {
             }
 
             if (request) {
+                // Fork policy: contact import/upload permanently disabled —
+                // phone book data never leaves the device.
+                return;
+            }
+            if (false) {
                 if (!toImport.isEmpty()) {
                     if (BuildVars.LOGS_ENABLED) {
                         FileLog.e("start import contacts");
@@ -2767,6 +2772,21 @@ public class ContactsController extends BaseController {
                             break;
                         case PRIVACY_RULES_TYPE_PHONE:
                             phonePrivacyRules = rules.rules;
+                            // Fork policy: the phone number is never shared
+                            // or discoverable. Self-heal the server rule if
+                            // it drifted from Nobody.
+                            if (!phonePrivacyRules.isEmpty()
+                                && !(phonePrivacyRules.size() == 1
+                                    && phonePrivacyRules.get(0) instanceof TLRPC.TL_privacyValueDisallowAll)) {
+                                TL_account.setPrivacy fixReq = new TL_account.setPrivacy();
+                                fixReq.key = new TLRPC.TL_inputPrivacyKeyPhoneNumber();
+                                fixReq.rules.add(new TLRPC.TL_inputPrivacyValueDisallowAll());
+                                fixReq.rules.add(new TLRPC.TL_inputPrivacyValueDisallowContacts());
+                                fixReq.rules.add(new TLRPC.TL_inputPrivacyValueDisallowUsers());
+                                getConnectionsManager().sendRequest(fixReq, (res, err) -> { });
+                                phonePrivacyRules = new ArrayList<>();
+                                phonePrivacyRules.add(new TLRPC.TL_privacyValueDisallowAll());
+                            }
                             break;
                         case PRIVACY_RULES_TYPE_VOICE_MESSAGES:
                             voiceMessagesRules = rules.rules;

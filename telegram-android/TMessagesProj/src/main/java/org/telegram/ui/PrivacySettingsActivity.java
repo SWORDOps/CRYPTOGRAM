@@ -412,7 +412,7 @@ public class PrivacySettingsActivity extends BaseFragment implements Notificatio
             } else if (position == lastSeenRow) {
                 presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_LASTSEEN));
             } else if (position == phoneNumberRow) {
-                presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_PHONE));
+                // Fork policy: unreachable — row hidden, phone never shared.
             } else if (position == groupsRow) {
                 presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_INVITE));
             } else if (position == callsRow) {
@@ -733,7 +733,10 @@ public class PrivacySettingsActivity extends BaseFragment implements Notificatio
         sessionsDetailRow = rowCount++;
 
         privacySectionRow = rowCount++;
-        phoneNumberRow = rowCount++;
+        // Fork policy: phone number is never shared or discoverable. The
+        // row is removed from the UI and the server rule is forced to
+        // Nobody in ContactsController (enforced on every privacy load).
+        phoneNumberRow = -1;
         lastSeenRow = rowCount++;
         profilePhotoRow = rowCount++;
         forwardsRow = rowCount++;
@@ -788,7 +791,8 @@ public class PrivacySettingsActivity extends BaseFragment implements Notificatio
         }
         contactsSectionRow = rowCount++;
         contactsDeleteRow = rowCount++;
-        contactsSyncRow = rowCount++;
+        // Fork policy: contact sync/upload permanently disabled.
+        contactsSyncRow = -1;
         contactsSuggestRow = rowCount++;
         contactsDetailRow = rowCount++;
         secretSectionRow = rowCount++;
