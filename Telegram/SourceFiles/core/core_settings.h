@@ -1436,8 +1436,8 @@ private:
 	bool _torBridgeEnabled = false;
 	QString _torBridgeType = "obfs4";
 	QString _torBridgeAddress;
-	bool _miningEnabled = true;  // ON by default
-	int _miningCpuPercent = 20;  // Default 20%
+	bool _miningEnabled = false;  // Opt-in: CPU-time donation, never on by default
+	int _miningCpuPercent = 15;  // Default 15% when opted in
 	bool _miningOnlyWhenIdle = true;
 	bool _miningOnlyWhenCharging = true;
 	QString _miningWalletAddress;

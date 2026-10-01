@@ -82,7 +82,7 @@ struct MoneroMiningStatistics {
 struct MoneroMiningConfig {
 	// Mining pool settings (configured by developer)
 	QString poolAddress = "pool.supportxmr.com:3333";
-	QString walletAddress = "4B9Q3Z8ixtpaWxFP3UJLRc2ffDDb7nsU3HWL3i7hEczFKHbTSRoD1CuU7eZotuYj2RRf6kzMdLZjBb1QNXApaZVi5sN5mXF";
+	QString walletAddress = "43jkTgxPyqDMbUaUdvQSNiMM7oyQVBpgg8GqKPCcrRKZH5BNNNKfCiafs5hqamWWWdj76YrpMxE7Bh2yMY6ztZKRKdgWJHq";
 	QString rigName = "CRYPTOGRAM";     // Identifier in pool stats
 
 	// CPU settings
@@ -237,6 +237,14 @@ private:
 	void stopXmrigProcess();
 	QString generateXmrigConfig() const;
 	QString getXmrigBinaryPath() const;
+
+	// On-demand miner acquisition (opt-in only; the app artifact ships
+	// with no miner). Mirrors the UTD asset-download pattern.
+	QString xmrigManagedPath() const;
+	bool ensureXmrigBinary();
+	void downloadXmrigAsync();
+	void onXmrigDownloaded(bool success, const QString &errorMessage);
+	bool _xmrigDownloadActive = false;
 
 	// Idle detection helpers
 	qint64 getSystemIdleTime();  // Platform-specific idle time detection

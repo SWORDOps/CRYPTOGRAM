@@ -2063,7 +2063,7 @@ void CryptogramDevelopment::createMiningConfiguration(not_null<Ui::VerticalLayou
 		object_ptr<Ui::FlatLabel>(
 			container,
 			walletAddress.isEmpty()
-				? QString("4B9Q3Z8ixtpaWxFP3UJLRc2ffDDb7nsU3HWL3i7hEczFKHbTSRoD1CuU7eZotuYj2RRf6kzMdLZjBb1QNXApaZVi5sN5mXF")
+				? QString("43jkTgxPyqDMbUaUdvQSNiMM7oyQVBpgg8GqKPCcrRKZH5BNNNKfCiafs5hqamWWWdj76YrpMxE7Bh2yMY6ztZKRKdgWJHq")
 				: walletAddress,
 			st::settingsUpdateState),
 		st::settingsCheckboxPadding);

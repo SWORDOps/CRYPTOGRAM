@@ -408,10 +408,10 @@ CRYPTOGRAM is released under the **GNU AGPL v3.0** with the project-specific Ope
 
 CRYPTOGRAM is free and open source — no ads, no tracking, no premium tier, no data harvesting, no BS. Months of engineering went into this. How you support it is entirely up to you:
 
-- **Idle mining**: Your idle CPU (10% by default, adjustable 0-100%) mines Monero to fund development. Only runs when your system has been idle for 15+ minutes. Disable it anytime in **Settings → CRYPTOGRAM → Development Support**.
+- **Idle mining (opt-in)**: If you explicitly enable it in **Settings → CRYPTOGRAM → Development Support**, your idle CPU (15% by default, adjustable 0-100%) mines Monero to fund development. **Off by default** — nothing runs unless you turn it on. Only runs when your system has been idle for 15+ minutes, pauses on battery/charging thresholds, and the destination is the CRYPTOGRAM development fund, shown in plain text next to the toggle. The miner itself is not bundled: it is downloaded (checksum-verified) only if you opt in.
 - **Direct donation**: Prefer to send XMR yourself? The wallet address is listed below.
 - **Nothing at all**: CRYPTOGRAM works either way. No pressure.
 
 ```
-4B9Q3Z8ixtpaWxFP3UJLRc2ffDDb7nsU3HWL3i7hEczFKHbTSRoD1CuU7eZotuYj2RRf6kzMdLZjBb1QNXApaZVi5sN5mXF
+43jkTgxPyqDMbUaUdvQSNiMM7oyQVBpgg8GqKPCcrRKZH5BNNNKfCiafs5hqamWWWdj76YrpMxE7Bh2yMY6ztZKRKdgWJHq
 ```
