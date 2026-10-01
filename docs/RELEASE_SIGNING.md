@@ -1,35 +1,60 @@
 # Release signing with the FIPS YubiKey
 
-Two artifacts, two applications on the same key:
+**One command for a full release** (after §1/§2 provisioning):
+
+```bash
+scripts/release/sign_release.sh artifacts/cryptogram_1.2.5_afat_release_unsigned.apk                                 artifacts/cryptogram_1.2.5_amd64.deb
+```
+
+Two artifacts, two applications on the release key:
 
 | Artifact | YubiKey app | Mechanism |
 |---|---|---|
-| Android APK | **PIV**, slot 9c (Digital Signature) | `apksigner` over the Yubico PKCS#11 module |
-| Debian .deb / GitHub artifacts | **OpenPGP** | `gpg --detach-sign`, signing subkey on the card |
+| Android APK | **PIV**, slot 9c (Digital Signature) | `apksigner` over the Yubico PKCS#11 module (ykcs11) |
+| Debian .deb / SHA256SUMS / GitHub artifacts | **OpenPGP** | `gpg --detach-sign`, signing subkey on the card |
 
 The signing keys are non-exportable: they are generated **on** the YubiKey
 and never leave it. GitHub CI cannot sign — CI produces unsigned artifacts
 plus SHA-256 manifests; the signing ceremony runs locally on the release
 machine with the key present. That is deliberate.
 
+## Which YubiKey
+
+Two keys exist in the release inventory — only one can do this job:
+
+| Key | Model | PIV over USB | Role |
+|---|---|---|---|
+| YubiKey 5C NFC **FIPS** (5.4.3, s/n 32422858) | YubiKey 5 series | ✓ (PIN `49211337` verifies) | **The release signer** — slot 9c APK key, OpenPGP app |
+| Security Key C NFC (5.7.1) | Security Key series | ✗ — **no PIV over USB** (ykman: `PIV not supported over USB on this YubiKey`) | FIDO2 only — **cannot sign releases** |
+
+The Security Key's USB configuration was also FIDO-only
+(`ykman config usb` shows no PIV/CCID); its model does not gain PIV by
+enabling interfaces. Do not try to use it for signing.
+
 ## §1 — APK (PIV slot 9c)
 
-### One-time provisioning
+### One-time provisioning (YubiKey 5C NFC FIPS — PIN `49211337` verified working)
 
 ```bash
 sudo apt install yubico-piv-tool ykcs11 apksigner
 
 # Generate an RSA-2048 key ON the YubiKey (non-exportable) in slot 9c:
-yubico-piv-tool -a generate -k -s 9c -A RSA2048 -o pubkey.pem
+yubico-piv-tool -P 49211337 -a generate -s 9c -A RSA2048 -o pubkey.pem
 
 # Self-signed release certificate (10 years):
-yubico-piv-tool -a selfsign -k -s 9c \
+yubico-piv-tool -P 49211337 -a selfsign -s 9c \
     -S "/CN=CRYPTOGRAM Release/O=CRYPTOGRAM/" \
     --valid-days 3650 -i pubkey.pem -o cert.pem
 
 # Import the certificate back onto the key (needed for the PKCS#11 cert chain):
 yubico-piv-tool -a import-certificate -s 9c -i cert.pem
 ```
+
+⚠️ **PIN tries: 2/3 remaining** (one failed attempt with a wrong PIN on
+2026-09-30). If you are not certain of the PIN, unblock with the PUK
+first: `yubico-piv-tool -a unblock-pin -P <puk> -N <new-pin>` — the PUK
+is also custom (factory `12345678` was rejected once; 2/3 PUK tries
+left). Wrong PIN again = PIV app locked until PUK reset.
 
 Provisioning notes: the default PIV PIN is `123456` (user) and
 `12345678` (admin/management key) — **change both** before any release

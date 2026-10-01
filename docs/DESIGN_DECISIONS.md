@@ -46,12 +46,17 @@ source of truth.
 | .deb / GitHub artifacts | OpenPGP detached signatures — script ready (`scripts/release/sign_deb.sh`), needs your OpenPGP signing subkey on the YubiKey OpenPGP app |
 | CI | Builds unsigned + SHA256SUMS; signing ceremony stays local with the key present |
 
-## 5. Desktop branding (OPEN, cosmetic but user-facing)
+## 5. Branding + styling unity (partially LOCKED)
 
-| Decision | Options | Recommendation |
-|---|---|---|
-| In-app name | a) Launcher/.deb already say CRYPTOGRAM; in-app title still says Telegram b) Full in-app rebrand (window titles, UI strings — large string surface, follow-up pass) | **a) now** (launcher + .deb name is what users see), b) as a follow-up pass |
-| Theme | Desktop has night theme + accent support | Ship red accent default in a follow-up config pass |
+| Decision | Status |
+|---|---|
+| Android launcher + in-app name = **Cryptogram** | ✅ landed (strings.xml) |
+| Android themes lead with **CRYPTOGRAM red** (0xFFD32F2F) — Dark Blue, Night, Day, Arctic Blue palettes | ✅ landed (Theme.java) |
+| Desktop launcher + .deb metadata = **CRYPTOGRAM** | ✅ landed (.desktop + package metadata) |
+| Desktop in-app name/title | ⏳ follow-up pass (large string surface; upstream sync branding) |
+| Desktop night theme red-accent default | ⏳ follow-up pass (desktop theme engine accent) |
+
+**Styling-unity contract:** every shipped surface — Android launcher, desktop launcher, in-app chrome on both platforms — carries the CRYPTOGRAM name and the red-on-black identity. No surface ships upstream Telegram branding except where a full rebrand pass has explicitly covered it.
 
 ---
 
